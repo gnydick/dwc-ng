@@ -1,0 +1,66 @@
+/* dwc-ng base — "solder mask & silkscreen" tokens (design/README.md) */
+
+@font-face {
+	font-family: "Rajdhani";
+	font-style: normal;
+	font-weight: 600;
+	font-display: swap;
+	src: url("./assets/fonts/rajdhani-600-latin.woff2") format("woff2");
+}
+@font-face {
+	font-family: "Rajdhani";
+	font-style: normal;
+	font-weight: 700;
+	font-display: swap;
+	src: url("./assets/fonts/rajdhani-700-latin.woff2") format("woff2");
+}
+
+:root {
+	--mask-900: #0b1626;
+	--mask-700: #122238;
+	--mask-500: #1b3350;
+	--silk: #e9eef4;
+	--silk-dim: #8fa3b8;
+	--hairline: rgba(233, 238, 244, 0.09);
+	--copper: #d9853b;
+	--copper-bright: #f0a050;
+	--ok: #6fbf8f;
+	--fault: #e05c4a;
+	--gold: #c9a227;
+	--t-cold: #6e8ca8;
+	--t-warm: #e0a458;
+	--t-hot: #ef7b45;
+	--font-display: "Rajdhani", "Segoe UI", system-ui, sans-serif;
+	--font-body: system-ui, "Segoe UI", Roboto, sans-serif;
+	--radius: 6px;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html { color-scheme: dark; }
+
+body {
+	background: var(--mask-900);
+	color: var(--silk);
+	font-family: var(--font-body);
+	font-size: 14px;
+	line-height: 1.45;
+	min-height: 100vh;
+}
+
+button, input {
+	font: inherit;
+	color: inherit;
+}
+
+button {
+	background: none;
+	border: none;
+	cursor: pointer;
+}
+
+:focus-visible {
+	outline: 2px solid var(--copper-bright);
+	outline-offset: 2px;
+	border-radius: 2px;
+}

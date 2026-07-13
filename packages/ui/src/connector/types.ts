@@ -1,0 +1,81 @@
+/**
+ * Transport-agnostic connector abstraction (CLAUDE.md architecture req).
+ *
+ * The UI layer sees only this interface. PollConnector (standalone rr_ API)
+ * implements it now; a DSF/SBC connector implements the same surface later.
+ * Nothing above a Connector may know about rr_ endpoints, seqs, sessions, or
+ * chunking — those are implementation details that differ per transport.
+ */
+
+export type ConnectionStatus =
+	| "disconnected"
+	| "connecting"
+	| "connected"
+	/** Connection lost; the connector is trying to get back on its own. */
+	| "reconnecting";
+
+export interface ConnectorEvents {
+	/**
+	 * Authoritative replacement of one top-level object-model subtree
+	 * (e.g. "heat"). Merge = wholesale replacement of that subtree.
+	 */
+	onModelKey?(key: string, value: unknown): void;
+	/**
+	 * Sparse patch of frequently-changing values (temperatures, positions,
+	 * job progress). Deep-merge into the model; fields absent from the patch
+	 * are unchanged, never deleted.
+	 */
+	onModelPatch?(patch: Record<string, unknown>): void;
+	/** A G-code reply / console message arrived. */
+	onReply?(text: string): void;
+	onStatusChange?(status: ConnectionStatus, detail?: string): void;
+	/** Files changed on the given volume (SD card index). */
+	onFilesChanged?(volume: number): void;
+}
+
+export interface FileListEntry {
+	/** "d" directory | "f" file */
+	type: "d" | "f";
+	name: string;
+	size: number;
+	/** ISO-ish timestamp, when the transport provides one. */
+	date?: string;
+}
+
+export interface Connector {
+	readonly status: ConnectionStatus;
+	/** Open a session and emit the full model via onModelKey, key by key. */
+	connect(): Promise<void>;
+	disconnect(): Promise<void>;
+	/** Execute a G/M/T-code; resolves with its reply text ("" if none came). */
+	sendCode(code: string): Promise<string>;
+	/** Upload a file (verified end-to-end by the transport, e.g. CRC32). */
+	upload(path: string, content: Uint8Array | string): Promise<void>;
+	/** Download a text file (configs, macros). */
+	download(path: string): Promise<string>;
+	/** List a directory. */
+	list(dir: string): Promise<FileListEntry[]>;
+}
+
+/** Wrong password at connect. */
+export class InvalidPasswordError extends Error {
+	constructor() { super("Invalid password"); this.name = "InvalidPasswordError"; }
+}
+
+/** The board has no free sessions (RRF allows very few). */
+export class NoFreeSessionError extends Error {
+	constructor() { super("No free session on the board"); this.name = "NoFreeSessionError"; }
+}
+
+export class FileNotFoundError extends Error {
+	constructor(path: string) { super(`File not found: ${path}`); this.name = "FileNotFoundError"; }
+}
+
+/** A request failed for good after retries. */
+export class OperationFailedError extends Error {
+	constructor(detail: string) { super(detail); this.name = "OperationFailedError"; }
+}
+
+export class DisconnectedError extends Error {
+	constructor() { super("Not connected"); this.name = "DisconnectedError"; }
+}
