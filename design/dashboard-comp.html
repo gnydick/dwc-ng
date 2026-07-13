@@ -1,0 +1,880 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>dwc-ng — machine screen design comp</title>
+<!--
+  DESIGN TOKENS ("solder mask & silkscreen") — see design/README.md
+  Content is the real OM snapshot from Gabe's toolchanger
+  (packages/mock-duet/captures/om-snapshot-2026-07-12.json): idle, unhomed,
+  cold. IA: Machine · Jobs · Macros · System · Settings; preflight strip;
+  console drawer; floating camera tile.
+  Comp only: Google Fonts link below. Production ships a subsetted woff2
+  from SD (falls back to system stack offline).
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --mask-900: #0B1626;
+    --mask-700: #122238;
+    --mask-500: #1B3350;
+    --silk: #E9EEF4;
+    --silk-dim: #8FA3B8;
+    --hairline: rgba(233, 238, 244, 0.09);
+    --copper: #D9853B;
+    --copper-bright: #F0A050;
+    --ok: #6FBF8F;
+    --fault: #E05C4A;
+    --gold: #C9A227;
+    --t-cold: #6E8CA8;
+    --t-warm: #E0A458;
+    --t-hot: #EF7B45;
+    --font-display: "Rajdhani", "Segoe UI", system-ui, sans-serif;
+    --font-body: system-ui, "Segoe UI", Roboto, sans-serif;
+    --radius: 6px;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html { color-scheme: dark; }
+
+  body {
+    background: var(--mask-900);
+    color: var(--silk);
+    font-family: var(--font-body);
+    font-size: 14px;
+    line-height: 1.45;
+    min-height: 100vh;
+  }
+
+  a { color: inherit; text-decoration: none; }
+
+  button {
+    font: inherit;
+    color: inherit;
+    background: none;
+    border: none;
+    cursor: pointer;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--copper-bright);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+
+  /* ---------- app frame ---------- */
+
+  .app {
+    display: grid;
+    grid-template-columns: 188px 1fr;
+    min-height: 100vh;
+  }
+
+  /* ---------- rail ---------- */
+
+  .rail {
+    border-right: 1px solid var(--hairline);
+    padding: 18px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+  }
+
+  .wordmark {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 19px;
+    letter-spacing: 0.04em;
+    padding-left: 10px;
+  }
+  .wordmark span { color: var(--copper); }
+
+  .rail nav { display: flex; flex-direction: column; gap: 2px; }
+
+  .rail nav a {
+    display: block;
+    padding: 8px 10px;
+    border-radius: var(--radius);
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 14px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--silk-dim);
+  }
+  .rail nav a:hover { background: var(--mask-700); color: var(--silk); }
+  .rail nav a[aria-current="page"] {
+    background: var(--mask-700);
+    color: var(--silk);
+    box-shadow: inset 2px 0 0 var(--copper);
+  }
+
+  .rail .machine-id {
+    margin-top: auto;
+    font-size: 11.5px;
+    color: var(--silk-dim);
+    padding-left: 10px;
+    line-height: 1.6;
+  }
+  .rail .machine-id b {
+    display: block;
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 13px;
+    letter-spacing: 0.06em;
+    color: var(--silk);
+    text-transform: uppercase;
+  }
+
+  /* ---------- main column ---------- */
+
+  .main {
+    padding: 0 24px 24px;
+    max-width: 1240px;
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+  }
+
+  /* ---------- preflight strip ---------- */
+
+  .preflight {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--hairline);
+    margin-bottom: 18px;
+    flex-wrap: wrap;
+  }
+
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 12.5px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    border: 1px solid var(--hairline);
+    border-radius: 999px;
+    padding: 4px 12px;
+    color: var(--silk-dim);
+  }
+  .chip .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+
+  .chip-state { color: var(--ok); border-color: rgba(111, 191, 143, 0.4); }
+  .chip-warn  { color: var(--gold); border-color: rgba(201, 162, 39, 0.45); }
+  .chip-quiet { border-style: dashed; }
+
+  .preflight-actions { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+
+  .ghost-btn {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 12.5px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--silk-dim);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius);
+    padding: 7px 12px;
+  }
+  .ghost-btn:hover { color: var(--silk); background: var(--mask-700); }
+  .ghost-btn[aria-pressed="true"] { color: var(--copper-bright); border-color: var(--copper); }
+
+  .estop {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 14px;
+    letter-spacing: 0.18em;
+    color: #fff;
+    background: var(--fault);
+    border-radius: var(--radius);
+    padding: 8px 18px;
+    box-shadow: 0 2px 0 #8f3527;
+  }
+  .estop:hover { background: #ea6c5a; }
+  .estop:active { transform: translateY(1px); box-shadow: 0 1px 0 #8f3527; }
+  .estop small { display: block; font-size: 9px; font-weight: 600; letter-spacing: 0.1em; opacity: 0.8; }
+
+  /* ---------- cards & grid ---------- */
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(12, 1fr);
+    gap: 14px;
+  }
+
+  .card {
+    background: var(--mask-700);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius);
+    padding: 16px 18px;
+  }
+
+  .card-pos    { grid-column: span 5; }
+  .card-tools  { grid-column: span 7; }
+  .card-job    { grid-column: span 7; }
+  .card-boards { grid-column: span 5; }
+
+  .card-head {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+
+  .card-title {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 13px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--silk-dim);
+  }
+
+  /* silkscreen reference-designator chip — always a real object-model key */
+  .des {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    color: var(--silk-dim);
+    border: 1px solid var(--hairline);
+    border-radius: 3px;
+    padding: 1px 6px 0;
+    white-space: nowrap;
+  }
+
+  /* ---------- DRO / position ---------- */
+
+  .dro { display: flex; flex-direction: column; }
+
+  .dro-row {
+    display: grid;
+    grid-template-columns: 36px 1fr auto;
+    align-items: baseline;
+    gap: 12px;
+    border-bottom: 1px solid var(--hairline);
+    padding: 7px 0;
+  }
+
+  .dro-axis {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 19px;
+    color: var(--silk-dim);
+  }
+
+  .dro-role {
+    display: block;
+    font-size: 10.5px;
+    color: var(--silk-dim);
+    letter-spacing: 0.04em;
+    font-family: var(--font-body);
+    font-weight: 400;
+    white-space: nowrap;
+  }
+
+  .dro-val {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 30px;
+    line-height: 1;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  .dro-val small { font-size: 14px; color: var(--silk-dim); margin-left: 3px; }
+
+  .unhomed .dro-val { color: var(--silk-dim); }
+  .unhomed .dro-axis { color: var(--gold); }
+
+  .homed-tag {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 10.5px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+  .homed-tag.no  { color: var(--gold); }
+  .homed-tag.yes { color: var(--ok); }
+
+  .axis-group {
+    margin-top: 12px;
+  }
+  .axis-group-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 10.5px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--silk-dim);
+    margin-bottom: 2px;
+  }
+  .axis-group-label::after {
+    content: "";
+    flex: 1;
+    border-top: 1px solid var(--hairline);
+  }
+  .axis-group .dro-row { padding: 5px 0; }
+  .axis-group .dro-val { font-size: 22px; }
+
+  /* ---------- tools & heaters ---------- */
+
+  .heat-table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  .heat-table th {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 10.5px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--silk-dim);
+    text-align: right;
+    padding: 0 0 8px;
+  }
+  .heat-table th:first-child { text-align: left; }
+  .heat-table td {
+    padding: 8px 0;
+    border-top: 1px solid var(--hairline);
+    text-align: right;
+    vertical-align: middle;
+  }
+  .heat-table td:first-child { text-align: left; }
+
+  .heat-name {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 15px;
+    display: inline-flex;
+    align-items: baseline;
+    gap: 8px;
+  }
+
+  .heat-cur {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 24px;
+    line-height: 1;
+  }
+  .heat-cur small { font-size: 12.5px; color: var(--silk-dim); }
+
+  /* thermal-keyed numerals — color encodes actual temperature */
+  .t-cold { color: var(--t-cold); }
+  .t-warm { color: var(--t-warm); }
+  .t-hot  { color: var(--t-hot); text-shadow: 0 0 14px rgba(239, 123, 69, 0.35); }
+
+  .heat-set { color: var(--silk-dim); font-size: 13px; }
+  .heat-set b { color: var(--silk); font-weight: 600; }
+
+  /* dock presence — from a user-mapped per-tool sensor; knows docked, not mounted */
+  .dock {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 10.5px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--silk-dim);
+  }
+  .dock::before {
+    content: "";
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--silk-dim);
+  }
+  .dock.docked { color: var(--ok); }
+  .dock.docked::before { background: var(--ok); }
+  .dock.away { color: var(--gold); }
+  .dock.away::before { background: var(--gold); }
+
+  /* heater mode control — options reflect what the heater actually supports */
+  .seg {
+    display: inline-flex;
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+  .seg button {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 10.5px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--silk-dim);
+    padding: 4px 9px;
+  }
+  .seg button + button { border-left: 1px solid var(--hairline); }
+  .seg button:hover { color: var(--silk); background: var(--mask-500); }
+  .seg button[aria-pressed="true"] { color: var(--mask-900); background: var(--silk-dim); }
+  .seg button[aria-pressed="true"].seg-on { background: var(--ok); }
+  .seg button[aria-pressed="true"].seg-standby { background: var(--gold); }
+
+  /* ---------- job (empty state) ---------- */
+
+  .job-empty {
+    border: 1px dashed var(--hairline);
+    border-radius: var(--radius);
+    padding: 22px 20px;
+    text-align: center;
+  }
+  .job-empty .headline {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 17px;
+    letter-spacing: 0.03em;
+  }
+  .job-empty .invite { color: var(--silk-dim); font-size: 13px; margin-top: 4px; }
+  .job-empty .invite a { color: var(--copper-bright); }
+  .job-empty .invite a:hover { text-decoration: underline; }
+
+  .job-last {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    margin-top: 16px;
+    font-size: 13px;
+    color: var(--silk-dim);
+    flex-wrap: wrap;
+  }
+  .job-last .fname {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--silk);
+    overflow-wrap: anywhere;
+  }
+  .job-last .action {
+    margin-left: auto;
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 12px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--copper-bright);
+    border: 1px solid var(--copper);
+    border-radius: var(--radius);
+    padding: 5px 12px;
+  }
+  .job-last .action:hover { background: rgba(217, 133, 59, 0.12); }
+
+  /* ---------- boards ---------- */
+
+  .boards-table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; font-size: 13px; }
+  .boards-table th {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 10.5px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--silk-dim);
+    text-align: right;
+    padding: 0 0 8px;
+  }
+  .boards-table th:first-child { text-align: left; }
+  .boards-table td {
+    padding: 6px 0;
+    border-top: 1px solid var(--hairline);
+    text-align: right;
+    color: var(--silk);
+  }
+  .boards-table td:first-child {
+    text-align: left;
+    font-family: var(--font-display);
+    font-weight: 600;
+    letter-spacing: 0.04em;
+  }
+  .boards-table .dim { color: var(--silk-dim); }
+
+  /* ---------- console drawer ---------- */
+
+  .console-drawer {
+    position: sticky;
+    bottom: 0;
+    margin-top: 18px;
+    background: var(--mask-700);
+    border: 1px solid var(--hairline);
+    border-bottom: none;
+    border-radius: var(--radius) var(--radius) 0 0;
+    padding: 10px 14px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    box-shadow: 0 -8px 24px rgba(4, 9, 17, 0.55);
+  }
+  .console-drawer .last {
+    font-size: 12.5px;
+    color: var(--silk-dim);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .console-drawer .last time { font-variant-numeric: tabular-nums; margin-right: 8px; }
+  .console-drawer input {
+    flex: 1;
+    min-width: 120px;
+    background: var(--mask-900);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius);
+    color: var(--silk);
+    font: inherit;
+    padding: 7px 10px;
+  }
+  .console-drawer input::placeholder { color: var(--silk-dim); }
+  .console-drawer input:focus { outline: 2px solid var(--copper-bright); outline-offset: 0; }
+  .console-send {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 12px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--copper-bright);
+    border: 1px solid var(--copper);
+    border-radius: var(--radius);
+    padding: 6px 14px;
+  }
+  .console-send:hover { background: rgba(217, 133, 59, 0.12); }
+  .console-expand { color: var(--silk-dim); font-size: 16px; line-height: 1; padding: 4px 6px; }
+  .console-expand:hover { color: var(--silk); }
+
+  /* ---------- floating camera tile ---------- */
+
+  .cam-tile {
+    position: fixed;
+    right: 22px;
+    bottom: 74px;
+    width: 260px;
+    background: var(--mask-700);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius);
+    overflow: hidden;
+    box-shadow: 0 12px 32px rgba(4, 9, 17, 0.65);
+    z-index: 10;
+  }
+  .cam-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--hairline);
+    cursor: grab;
+  }
+  .cam-head .cam-title {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--silk-dim);
+  }
+  .cam-head .cam-actions { margin-left: auto; display: flex; gap: 2px; }
+  .cam-head button { color: var(--silk-dim); font-size: 13px; line-height: 1; padding: 3px 5px; }
+  .cam-head button:hover { color: var(--silk); }
+  .cam-head button[aria-pressed="true"] { color: var(--copper-bright); }
+  .cam-body {
+    aspect-ratio: 4 / 3;
+    background:
+      radial-gradient(120% 90% at 65% 30%, #16283f 0%, #0a1220 70%);
+    display: grid;
+    place-items: center;
+    color: var(--silk-dim);
+    font-size: 11.5px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    font-family: var(--font-display);
+    font-weight: 600;
+  }
+
+  /* ---------- status strip ---------- */
+
+  .statusbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 22px;
+    margin-top: 16px;
+    font-size: 11.5px;
+    color: var(--silk-dim);
+    font-variant-numeric: tabular-nums;
+  }
+  .statusbar .live { color: var(--ok); }
+
+  /* ---------- responsive ---------- */
+
+  @media (max-width: 960px) {
+    .app { grid-template-columns: 1fr; }
+    .rail {
+      flex-direction: row;
+      align-items: center;
+      border-right: none;
+      border-bottom: 1px solid var(--hairline);
+      padding: 12px 16px;
+      overflow-x: auto;
+    }
+    .rail nav { flex-direction: row; }
+    .rail .machine-id { display: none; }
+    .card-pos, .card-tools, .card-job, .card-boards { grid-column: span 12; }
+    .cam-tile { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <aside class="rail">
+    <div class="wordmark">dwc<span>·</span>ng</div>
+    <nav aria-label="Main">
+      <a href="#" aria-current="page">Machine</a>
+      <a href="#">Jobs</a>
+      <a href="#">Macros</a>
+      <a href="#">System</a>
+      <a href="#">Settings</a>
+    </nav>
+    <p class="machine-id">
+      <b>Duet 3</b>
+      toolchanger · 4 tools<br>
+      MB6HC · SBC mode<br>
+      192.168.0.127
+    </p>
+  </aside>
+
+  <main class="main">
+
+    <!-- preflight strip: what you must know before touching the machine -->
+    <header class="preflight" aria-label="Machine preflight">
+      <span class="chip chip-state"><span class="dot"></span>Idle</span>
+      <span class="chip chip-warn">Unhomed · all axes</span>
+      <span class="chip chip-quiet">No tool selected</span>
+      <span class="chip chip-quiet">Heaters cold</span>
+      <div class="preflight-actions">
+        <button class="ghost-btn" aria-pressed="true" title="Show or hide the camera tile">Camera</button>
+        <button class="ghost-btn" title="Rearrange panels — save or discard when done">Edit layout</button>
+        <button class="estop" title="Emergency stop — sends M112 + M999">STOP<small>M112</small></button>
+      </div>
+    </header>
+
+    <div class="grid">
+
+      <!-- position -->
+      <section class="card card-pos" aria-label="Position">
+        <div class="card-head">
+          <h2 class="card-title">Position</h2>
+          <span class="des">move.axes</span>
+        </div>
+        <div class="dro">
+          <div class="dro-row unhomed">
+            <span class="dro-axis">X</span>
+            <span class="dro-val">0.00<small>mm</small></span>
+            <span class="homed-tag no">unhomed</span>
+          </div>
+          <div class="dro-row unhomed">
+            <span class="dro-axis">Y</span>
+            <span class="dro-val">300.00<small>mm</small></span>
+            <span class="homed-tag no">unhomed</span>
+          </div>
+          <div class="dro-row unhomed">
+            <span class="dro-axis">Z</span>
+            <span class="dro-val">16.43<small>mm</small></span>
+            <span class="homed-tag no">unhomed</span>
+          </div>
+        </div>
+
+        <div class="axis-group">
+          <p class="axis-group-label">Service axes</p>
+          <div class="dro">
+            <div class="dro-row unhomed">
+              <span class="dro-axis">U<span class="dro-role">Z motor 1</span></span>
+              <span class="dro-val">20.00<small>mm</small></span>
+              <span class="homed-tag no">unhomed</span>
+            </div>
+            <div class="dro-row unhomed">
+              <span class="dro-axis">V<span class="dro-role">Z motor 2</span></span>
+              <span class="dro-val">20.00<small>mm</small></span>
+              <span class="homed-tag no">unhomed</span>
+            </div>
+            <div class="dro-row unhomed">
+              <span class="dro-axis">W<span class="dro-role">Z motor 3</span></span>
+              <span class="dro-val">20.00<small>mm</small></span>
+              <span class="homed-tag no">unhomed</span>
+            </div>
+            <div class="dro-row unhomed">
+              <span class="dro-axis">C<span class="dro-role">Tool coupler</span></span>
+              <span class="dro-val">121.00<small>°</small></span>
+              <span class="homed-tag no">unhomed</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- tools & heaters -->
+      <section class="card card-tools" aria-label="Tools and heaters">
+        <div class="card-head">
+          <h2 class="card-title">Tools &amp; heaters</h2>
+          <span class="des">tools · heat.heaters</span>
+        </div>
+        <table class="heat-table">
+          <thead>
+            <tr>
+              <th scope="col">Heater</th>
+              <th scope="col">Current</th>
+              <th scope="col">Active</th>
+              <th scope="col">Standby</th>
+              <th scope="col">Dock</th>
+              <th scope="col">Mode</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="heat-name">Tool 0 <span class="des">T0</span></span></td>
+              <td><span class="heat-cur t-cold">21.7<small>°C</small></span></td>
+              <td><span class="heat-set"><b>0</b>°</span></td>
+              <td><span class="heat-set">0°</span></td>
+              <td><span class="dock docked" title="sensors.gpIn — user-mapped per tool">docked</span></td>
+              <td>
+                <span class="seg" role="group" aria-label="Tool 0 heater mode">
+                  <button class="seg-on">On</button><button class="seg-standby" aria-pressed="true">Standby</button><button>Off</button>
+                </span>
+              </td>
+            </tr>
+            <tr>
+              <td><span class="heat-name">Tool 1 <span class="des">T1</span></span></td>
+              <td><span class="heat-cur t-cold">26.0<small>°C</small></span></td>
+              <td><span class="heat-set"><b>0</b>°</span></td>
+              <td><span class="heat-set">0°</span></td>
+              <td><span class="dock docked" title="sensors.gpIn — user-mapped per tool">docked</span></td>
+              <td>
+                <span class="seg" role="group" aria-label="Tool 1 heater mode">
+                  <button class="seg-on">On</button><button class="seg-standby" aria-pressed="true">Standby</button><button>Off</button>
+                </span>
+              </td>
+            </tr>
+            <tr>
+              <td><span class="heat-name">Tool 2 <span class="des">T2</span></span></td>
+              <td><span class="heat-cur t-cold">24.2<small>°C</small></span></td>
+              <td><span class="heat-set"><b>0</b>°</span></td>
+              <td><span class="heat-set">0°</span></td>
+              <td><span class="dock docked" title="sensors.gpIn — user-mapped per tool">docked</span></td>
+              <td>
+                <span class="seg" role="group" aria-label="Tool 2 heater mode">
+                  <button class="seg-on">On</button><button class="seg-standby">Standby</button><button aria-pressed="true">Off</button>
+                </span>
+              </td>
+            </tr>
+            <tr>
+              <td><span class="heat-name">Tool 3 <span class="des">T3</span></span></td>
+              <td><span class="heat-cur t-cold">25.0<small>°C</small></span></td>
+              <td><span class="heat-set"><b>0</b>°</span></td>
+              <td><span class="heat-set">0°</span></td>
+              <td><span class="dock docked" title="sensors.gpIn — user-mapped per tool">docked</span></td>
+              <td>
+                <span class="seg" role="group" aria-label="Tool 3 heater mode">
+                  <button class="seg-on">On</button><button class="seg-standby">Standby</button><button aria-pressed="true">Off</button>
+                </span>
+              </td>
+            </tr>
+            <!-- bed has no standby mode, so it gets no standby cell and a two-state control -->
+            <tr>
+              <td><span class="heat-name">Bed <span class="des">heater0</span></span></td>
+              <td><span class="heat-cur t-cold">23.8<small>°C</small></span></td>
+              <td><span class="heat-set"><b>0</b>°</span></td>
+              <td><span class="heat-set">—</span></td>
+              <td><span class="heat-set">—</span></td>
+              <td>
+                <span class="seg" role="group" aria-label="Bed heater mode">
+                  <button class="seg-on" aria-pressed="true">On</button><button>Off</button>
+                </span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <!-- job (empty state) -->
+      <section class="card card-job" aria-label="Job">
+        <div class="card-head">
+          <h2 class="card-title">Job</h2>
+          <span class="des">job</span>
+        </div>
+        <div class="job-empty">
+          <p class="headline">No job running</p>
+          <p class="invite">Pick a file in <a href="#">Jobs</a> to start printing.</p>
+        </div>
+        <div class="job-last">
+          <span>Last job</span>
+          <span class="fname">non-planar-planer.gcode</span>
+          <span>completed</span>
+          <button class="action">Print again</button>
+        </div>
+      </section>
+
+      <!-- boards -->
+      <section class="card card-boards" aria-label="Boards">
+        <div class="card-head">
+          <h2 class="card-title">Boards</h2>
+          <span class="des">boards[]</span>
+        </div>
+        <table class="boards-table">
+          <thead>
+            <tr>
+              <th scope="col">Board</th>
+              <th scope="col">VIN</th>
+              <th scope="col">12V</th>
+              <th scope="col">MCU</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td>MB6HC</td><td>24.0 V</td><td>12.2 V</td><td>44.7 °C</td></tr>
+            <tr><td>EXP3HC</td><td>24.0 V</td><td>12.5 V</td><td>32.6 °C</td></tr>
+            <tr><td>TOOL1LC <span class="des">T0</span></td><td>23.8 V</td><td class="dim">—</td><td>42.1 °C</td></tr>
+            <tr><td>TOOL1LC <span class="des">T1</span></td><td>23.9 V</td><td class="dim">—</td><td>44.3 °C</td></tr>
+            <tr><td>TOOL1LC <span class="des">T2</span></td><td>24.0 V</td><td class="dim">—</td><td>41.5 °C</td></tr>
+            <tr><td>TOOL1LC <span class="des">T3</span></td><td>24.4 V</td><td class="dim">—</td><td>44.2 °C</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+    </div>
+
+    <footer class="statusbar">
+      <span class="live">● connected</span>
+      <span>DSF 3.6.3 · SBC</span>
+      <span>RRF 3.6.3</span>
+      <span>up 20 d 2 h</span>
+      <span>snapshot 2026-07-12</span>
+    </footer>
+
+    <!-- console drawer: available on every view, never a page you leave for -->
+    <div class="console-drawer" role="region" aria-label="Console">
+      <span class="last"><time>19:23:41</time>Connected to duet3.nydick.net</span>
+      <input type="text" placeholder="Send G-code — e.g. M290 S0.02" aria-label="G-code command">
+      <button class="console-send">Send</button>
+      <button class="console-expand" title="Expand console history" aria-label="Expand console history">▴</button>
+    </div>
+
+  </main>
+
+</div>
+
+<!-- floating camera tile: persists across views while pinned -->
+<aside class="cam-tile" aria-label="Camera">
+  <div class="cam-head">
+    <span class="cam-title">Camera</span>
+    <div class="cam-actions">
+      <button aria-pressed="true" title="Keep camera visible on every view">⌖</button>
+      <button title="Hide camera">✕</button>
+    </div>
+  </div>
+  <div class="cam-body">stream · printercams:8080</div>
+</aside>
+
+</body>
+</html>
