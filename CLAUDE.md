@@ -98,7 +98,19 @@ with no rework above the connector abstraction.
    toolchanger snapshot (M32 print: temps/positions/progress streaming).
    16 ui tests + 40 mock tests green. Bundle: ~46 KB gz incl. Rajdhani
    600/700 latin woff2 (font shipping approved 2026-07-12).
-5. ✅ **Established constraint.** Pinned to the 3.6.3 line in the Duet3D
+5. ✅ **Done (2026-07-12).** App shell + layout-config milestone (agreed in
+   session, follows task 4): hand-rolled hash router (decision: hash mode
+   forced by embedded server; @solidjs/router declined for now), rail nav
+   (Machine · Jobs · Macros · System · Settings; Jobs/Macros/System are
+   stubs), console drawer on every view, floating camera tile, e-stop.
+   Config store: user overlay on immutable code defaults, reset = drop
+   overlay, snapshot-on-save history (cap 10) with revert, persisted to
+   0:/sys/dwc-ng-config.json via rr_upload/download + localStorage cache.
+   First consumers: axis role labels, tool dock sensors (Settings view
+   edits them; Machine view renders them). Verified in Chrome: edit →
+   save → hard reload → config restored from SD; dock semantics correct
+   (printing T0 reads "away", docked T1 "docked"). 25 ui + 39 mock tests.
+6. ✅ **Established constraint.** Pinned to the 3.6.3 line in the Duet3D
    repository ecosystem. (Exact refs in reference/README.md: @duet3d/objectmodel
    3.6.3, @duet3d/connectors 3.6.0 — its 3.6.x release — DuetWebControl v3.6.3.)
 
