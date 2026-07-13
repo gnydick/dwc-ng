@@ -1,0 +1,32 @@
+{
+  "name": "@duet3d/objectmodel",
+  "version": "3.6.3",
+  "description": "TypeScript implementation of the Duet3D Object Model",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "test": "jest --config jestconfig.json",
+    "build": "tsc",
+    "prepare": "npm run build",
+    "prepublishOnly": "npm test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Duet3D/ObjectModel.git"
+  },
+  "author": "Christian Hammacher",
+  "license": "LGPL-2.1",
+  "bugs": {
+    "url": "https://github.com/Duet3D/ObjectModel/issues"
+  },
+  "homepage": "https://github.com/Duet3D/ObjectModel#readme",
+  "devDependencies": {
+    "@types/jest": "^29.5.12",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.2",
+    "typescript": "^5.4.5"
+  },
+  "files": [
+    "/dist"
+  ]
+}
