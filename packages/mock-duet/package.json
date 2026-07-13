@@ -1,0 +1,17 @@
+{
+  "name": "@dwc-ng/mock-duet",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Mock RRF server speaking the rr_ dialect, with scripted scenarios (CLAUDE.md Task #3).",
+  "scripts": {
+    "start": "node src/cli.ts",
+    "dev": "node --watch src/cli.ts",
+    "test": "node --test",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.2",
+    "typescript": "~6.0.2"
+  }
+}
