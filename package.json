@@ -1,0 +1,15 @@
+{
+  "name": "dwc-ng",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "packageManager": "pnpm@11.3.0",
+  "scripts": {
+    "dev": "pnpm --filter @dwc-ng/ui dev",
+    "build": "pnpm --filter @dwc-ng/ui build",
+    "preview": "pnpm --filter @dwc-ng/ui preview",
+    "mock": "pnpm --filter @dwc-ng/mock-duet start",
+    "test": "pnpm -r --if-present test",
+    "typecheck": "pnpm -r --if-present typecheck"
+  }
+}

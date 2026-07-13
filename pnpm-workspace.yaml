@@ -1,0 +1,10 @@
+packages:
+  - 'packages/*'
+
+# Security (see CLAUDE.md > Dependency policy):
+# Lifecycle build scripts are blocked by default in pnpm 10+; allowlist only esbuild.
+onlyBuiltDependencies:
+  - esbuild
+
+# Refuse packages published less than 3 days (4320 min) ago.
+minimumReleaseAge: 4320
