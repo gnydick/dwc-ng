@@ -3,6 +3,7 @@ import { useApp } from "./context.ts";
 import { createRouter, type Route } from "./router.ts";
 import { BACKENDS, type Backend, initialBackend, rememberBackend } from "../dev/backend.ts";
 import Machine from "../views/Machine.tsx";
+import Control from "../views/Control.tsx";
 import Jobs from "../views/Jobs.tsx";
 import Macros from "../views/Macros.tsx";
 import System from "../views/System.tsx";
@@ -10,6 +11,7 @@ import Settings from "../views/Settings.tsx";
 
 const NAV: Array<{ route: Route; label: string }> = [
 	{ route: "machine", label: "Machine" },
+	{ route: "control", label: "Control" },
 	{ route: "jobs", label: "Jobs" },
 	{ route: "macros", label: "Macros" },
 	{ route: "system", label: "System" },
@@ -116,6 +118,7 @@ export default function Shell() {
 
 				<Switch>
 					<Match when={route() === "machine"}><Machine /></Match>
+					<Match when={route() === "control"}><Control /></Match>
 					<Match when={route() === "jobs"}><Jobs /></Match>
 					<Match when={route() === "macros"}><Macros /></Match>
 					<Match when={route() === "system"}><System /></Match>
