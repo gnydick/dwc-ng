@@ -64,11 +64,18 @@ export default function Jobs() {
 
 	// ---- active job ----
 	const job = () => app.om.om.job;
-	const isActive = createMemo(() => ACTIVE_STATUSES.has(app.om.om.state.status) || job().file !== null);
+	// An idle machine can still carry a job.file object whose fields are null;
+	// only treat it as a real job when it names a file.
+	const jobFile = createMemo(() => {
+		const f = job().file;
+		return f !== null && typeof f.fileName === "string" && f.fileName.length > 0 ? f : null;
+	});
+	const isActive = createMemo(() => ACTIVE_STATUSES.has(app.om.om.state.status) || jobFile() !== null);
 	const progress = createMemo(() => {
 		const j = job();
-		if (j.file === null || j.filePosition === null || j.file.size === 0) return null;
-		return Math.min(100, (j.filePosition / j.file.size) * 100);
+		const f = jobFile();
+		if (f === null || j.filePosition === null || f.size === 0) return null;
+		return Math.min(100, (j.filePosition / f.size) * 100);
 	});
 
 	const startPrint = () => {
@@ -84,7 +91,7 @@ export default function Jobs() {
 						<h2 class="card-title">Printing</h2>
 						<span class="des">job · state</span>
 					</div>
-					<Show when={job().file} fallback={<p class="job-empty">{app.om.om.state.status}…</p>}>
+					<Show when={jobFile()} fallback={<p class="job-empty">{app.om.om.state.status}…</p>}>
 						{file => (
 							<>
 								<div class="job-active-head">
@@ -231,7 +238,8 @@ function Meta(props: { label: string; children: unknown }) {
 	);
 }
 
-function baseName(path: string): string {
+function baseName(path: string | null | undefined): string {
+	if (!path) return "";
 	const i = path.lastIndexOf("/");
 	return i >= 0 ? path.slice(i + 1) : path;
 }
