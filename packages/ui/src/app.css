@@ -454,9 +454,14 @@
 	align-items: center;
 	gap: 10px;
 	padding: 6px 0;
-	border-top: 1px solid var(--hairline);
 }
-.field:first-of-type { border-top: none; }
+/* Rule BETWEEN rows. Keyed off adjacency, not :first-of-type — fields are
+   <label> in one card and <div> in another, so :first-of-type gave the first
+   row a stray border in some cards and not others. */
+.field + .field { border-top: 1px solid var(--hairline); }
+/* .hint is a block elsewhere (margin-bottom); inside a centred row that
+   margin pushes the text off-centre. */
+.field .hint { margin: 0; }
 
 .field-label {
 	font-family: var(--font-display);
@@ -518,7 +523,10 @@
 	gap: 14px;
 	padding: 12px 0;
 }
-.save-bar .hint { margin: 0; }
+/* Fixed slot: the status swaps between "All changes saved." and "Unsaved
+   changes" (different widths). Without a reserved width it would shove the
+   Save button sideways on every edit — the one control you're aiming for. */
+.save-bar .hint { margin: 0; min-width: 132px; }
 
 /* ---------- responsive ---------- */
 
