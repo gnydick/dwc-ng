@@ -201,6 +201,20 @@
 }
 .dro-row.unhomed .dro-axis { color: var(--gold); }
 
+/* The role is a separate label, not part of the axis letter. Unstyled it
+   inherited .dro-axis (19px bold) and rendered welded on — "UZ motor 1",
+   "CCoupler". Same idiom as the jog controls' role tag. */
+.dro-role {
+	margin-left: 8px;
+	font-family: var(--font-display);
+	font-weight: 600;
+	font-size: 11px;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	color: var(--copper);
+	white-space: nowrap;
+}
+
 .dro-val {
 	font-family: var(--font-display);
 	font-weight: 600;
@@ -230,10 +244,13 @@
    gains a digit without reflowing any column. The Heater column takes the
    rest. Widths are sized for the worst case (3-digit temp, "standby"). */
 .heat-table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; table-layout: fixed; }
-.heat-table th:nth-child(2), .heat-table td:nth-child(2) { width: 84px; }
-.heat-table th:nth-child(3), .heat-table td:nth-child(3) { width: 48px; }
-.heat-table th:nth-child(4), .heat-table td:nth-child(4) { width: 48px; }
-.heat-table th:nth-child(5), .heat-table td:nth-child(5) { width: 60px; }
+/* Widths carry slack past the widest content: cells have no horizontal
+   padding, so a column sized exactly to its text leaves adjacent right-aligned
+   labels touching ("ACTIVESTANDBY"). */
+.heat-table th:nth-child(2), .heat-table td:nth-child(2) { width: 88px; }
+.heat-table th:nth-child(3), .heat-table td:nth-child(3) { width: 62px; }
+.heat-table th:nth-child(4), .heat-table td:nth-child(4) { width: 62px; }
+.heat-table th:nth-child(5), .heat-table td:nth-child(5) { width: 68px; }
 .heat-table th {
 	font-family: var(--font-display);
 	font-weight: 600;
@@ -551,10 +568,10 @@
 
 	/* Narrower fixed columns + smaller temp on phones so the Heater name never
 	   gets starved (and stays unclipped) while columns remain reflow-proof. */
-	.heat-table th:nth-child(2), .heat-table td:nth-child(2) { width: 70px; }
-	.heat-table th:nth-child(3), .heat-table td:nth-child(3) { width: 42px; }
-	.heat-table th:nth-child(4), .heat-table td:nth-child(4) { width: 42px; }
-	.heat-table th:nth-child(5), .heat-table td:nth-child(5) { width: 52px; }
+	.heat-table th:nth-child(2), .heat-table td:nth-child(2) { width: 68px; }
+	.heat-table th:nth-child(3), .heat-table td:nth-child(3) { width: 48px; }
+	.heat-table th:nth-child(4), .heat-table td:nth-child(4) { width: 48px; }
+	.heat-table th:nth-child(5), .heat-table td:nth-child(5) { width: 56px; }
 	.heat-cur { font-size: 18px; }
 	/* tighten headers so labels ("STANDBY") fit their narrower columns */
 	.heat-table th { font-size: 9.5px; letter-spacing: 0.05em; }
