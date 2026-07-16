@@ -118,12 +118,14 @@ export default function Jobs() {
 									</Show>
 								</div>
 								<div class="btn-row">
+									{/* job-toggle reserves the wider label's width so Cancel can't
+									    slide under the pointer when the job changes state. */}
 									<Switch>
 										<Match when={app.om.om.state.status === "paused"}>
-											<button class="btn" onClick={() => void app.connector.sendCode("M24")}>Resume</button>
+											<button class="btn job-toggle" onClick={() => void app.connector.sendCode("M24")}>Resume</button>
 										</Match>
 										<Match when={true}>
-											<button class="btn" onClick={() => void app.connector.sendCode("M25")}>Pause</button>
+											<button class="btn job-toggle" onClick={() => void app.connector.sendCode("M25")}>Pause</button>
 										</Match>
 									</Switch>
 									<button class="btn btn-danger" onClick={() => void app.connector.sendCode("M0")}>Cancel</button>

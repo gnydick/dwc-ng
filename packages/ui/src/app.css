@@ -581,6 +581,9 @@
 .btn-danger { color: var(--fault); border-color: rgba(224, 92, 74, 0.4); }
 .btn-danger:hover { background: rgba(224, 92, 74, 0.16); border-color: var(--fault); color: var(--fault); }
 .btn-row { display: flex; gap: 10px; align-items: center; margin-top: 14px; }
+/* "Pause" and "Resume" are different widths; without a reserved slot the
+   destructive Cancel button next to it slides when the job changes state. */
+.job-toggle { min-width: 96px; }
 
 .crumbs { display: flex; align-items: center; gap: 4px; margin-bottom: 10px; flex-wrap: wrap; }
 .crumb {
@@ -628,7 +631,10 @@
 .progress-label { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font: 600 12px/1 "Rajdhani", sans-serif; color: var(--silk); }
 .job-active-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
 .job-facts { display: flex; gap: 22px; flex-wrap: wrap; }
-.fact { display: flex; flex-direction: column; gap: 2px; }
+/* Live values gain and lose characters every tick ("59s" → "1m 0s", layer
+   9 → 10). tabular-nums evens the digits but not the string length, so
+   reserve each slot — otherwise the row shuffles for the whole print. */
+.fact { display: flex; flex-direction: column; gap: 2px; min-width: 104px; }
 .fact-label { color: var(--silk-dim); font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }
 .fact-val { color: var(--silk); font-size: 15px; font-variant-numeric: tabular-nums; }
 
