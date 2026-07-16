@@ -1,6 +1,7 @@
 import { onCleanup, onMount } from "solid-js";
 import { createOmStore } from "./om/store.ts";
 import { createConfigStore } from "./config/store.ts";
+import { createTemperatureHistory } from "./om/temperature.ts";
 import { PollConnector } from "./connector/index.ts";
 import { initialBackend } from "./dev/backend.ts";
 import { AppContext } from "./shell/context.ts";
@@ -10,6 +11,7 @@ import "./app.css";
 export default function App() {
 	const om = createOmStore();
 	const config = createConfigStore();
+	const temps = createTemperatureHistory(om);
 	// Boot from the persisted dev backend (Mock by default; "Real" targets the
 	// board via the dev proxy). In production this is always the same-origin
 	// mock-equivalent ("", empty password) and RRF serves the UI itself.
@@ -28,7 +30,7 @@ export default function App() {
 	onCleanup(() => void connector.disconnect());
 
 	return (
-		<AppContext.Provider value={{ om, config, connector }}>
+		<AppContext.Provider value={{ om, config, connector, temps }}>
 			<Shell />
 		</AppContext.Provider>
 	);

@@ -22,6 +22,9 @@ importers:
       solid-js:
         specifier: ^1.9.14
         version: 1.9.14
+      uplot:
+        specifier: ^1.6.32
+        version: 1.6.32
     devDependencies:
       '@types/node':
         specifier: ^24.13.2
@@ -522,6 +525,9 @@ packages:
     hasBin: true
     peerDependencies:
       browserslist: '>= 4.21.0'
+
+  uplot@1.6.32:
+    resolution: {integrity: sha512-KIMVnG68zvu5XXUbC4LQEPnhwOxBuLyW1AHtpm6IKTXImkbLgkMy+jabjLgSLMasNuGGzQm/ep3tOkyTxpiQIw==}
 
   vite-plugin-solid@2.11.12:
     resolution: {integrity: sha512-FgjPcx2OwX9h6f28jli7A4bG7PP3te8uyakE5iqsmpq3Jqi1TWLgSroC9N6cMfGRU2zXsl4Q6ISvTr2VL0QHpA==}
@@ -1028,6 +1034,8 @@ snapshots:
       browserslist: 4.28.5
       escalade: 3.2.0
       picocolors: 1.1.1
+
+  uplot@1.6.32: {}
 
   vite-plugin-solid@2.11.12(solid-js@1.9.14)(vite@8.1.3(@types/node@24.13.2)):
     dependencies:

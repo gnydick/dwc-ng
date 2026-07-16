@@ -1,6 +1,10 @@
 import { For, Show, createMemo } from "solid-js";
 import { useApp } from "../shell/context.ts";
 import type { Heater } from "../om/types.ts";
+import { TemperatureChart, type ChartSeries } from "../charts/TemperatureChart.tsx";
+
+/** Distinct line colors for tool heaters; the bed gets gold (see below). */
+const TOOL_COLORS = ["#f0a050", "#6fbf8f", "#5aa9e6", "#c88ce0", "#e0b84a", "#8fd0c0"];
 
 /** The Machine view: live DRO, tools & heaters, current job. */
 export default function Machine() {
@@ -22,6 +26,21 @@ export default function Machine() {
 		const active = gpIn.value >= 0.5;
 		return (ref.inverted ? !active : active) ? "docked" : "away";
 	};
+
+	// One chart series per heater (index == heat.heaters index == chart series
+	// index), labeled and colored by tool/bed semantics.
+	const chartSeries = createMemo<ChartSeries[]>(() => {
+		const heaters = app.om.om.heat.heaters;
+		const bedSet = new Set(app.om.om.heat.bedHeaters);
+		const toolByHeater = new Map<number, string>();
+		for (const t of app.om.om.tools) {
+			if (t) for (const h of t.heaters) toolByHeater.set(h, t.name || `Tool ${t.number}`);
+		}
+		return heaters.map((_, i) => ({
+			label: bedSet.has(i) ? "Bed" : toolByHeater.get(i) ?? `Heater ${i}`,
+			stroke: bedSet.has(i) ? "#c9a227" : TOOL_COLORS[i % TOOL_COLORS.length]!,
+		}));
+	});
 
 	const jobProgress = createMemo(() => {
 		const job = app.om.om.job;
@@ -151,6 +170,16 @@ export default function Machine() {
 							</Show>
 						</div>
 					)}
+				</Show>
+			</section>
+
+			<section class="card temp-card" aria-label="Temperatures">
+				<div class="card-head">
+					<h2 class="card-title">Temperatures</h2>
+					<span class="des">heat.heaters · live</span>
+				</div>
+				<Show when={chartSeries().length} fallback={<p class="job-empty">Waiting for heaters…</p>}>
+					<TemperatureChart data={app.temps.data} series={chartSeries()} height={220} />
 				</Show>
 			</section>
 		</div>
