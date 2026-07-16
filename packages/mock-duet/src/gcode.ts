@@ -6,7 +6,19 @@ import type { Machine } from "./machine.ts";
  * the common report codes. Everything else succeeds silently with an empty
  * reply, exactly like most codes on a real board.
  */
-export function executeGCode(machine: Machine, line: string): string {
+export function executeGCode(machine: Machine, source: string): string {
+	// rr_gcode may carry several newline-separated commands (e.g. the jog
+	// bundle "M120\nG91\nG1 X10\nM121"). RRF runs every line; so do we, and
+	// concatenate their non-empty replies the way the shared reply buffer would.
+	const replies: string[] = [];
+	for (const line of source.split("\n")) {
+		const reply = executeLine(machine, line);
+		if (reply !== "") replies.push(reply);
+	}
+	return replies.join("\n");
+}
+
+function executeLine(machine: Machine, line: string): string {
 	const code = stripComment(line).trim();
 	if (code === "") return "";
 
@@ -29,15 +41,24 @@ export function executeGCode(machine: Machine, line: string): string {
 		case "G1": {
 			for (const axis of om.move.axes) {
 				const v = param(axis.letter);
-				if (v !== null) axis.userPosition = axis.machinePosition = v;
+				if (v === null) continue;
+				// Modal: in relative mode (G91) the word is a delta, not a target.
+				axis.userPosition = axis.machinePosition = machine.axesRelative ? axis.userPosition + v : v;
 			}
 			const e = param("E");
 			if (e !== null) {
-				om.move.extruders[0].rawPosition += e;
-				om.move.extruders[0].position += e;
+				const extruder = om.move.extruders[0];
+				const pos = machine.extruderRelative ? extruder.position + e : e;
+				extruder.rawPosition = extruder.position = pos;
 			}
 			return "";
 		}
+		case "G90": machine.axesRelative = false; return "";
+		case "G91": machine.axesRelative = true; return "";
+		case "M82": machine.extruderRelative = false; return "";
+		case "M83": machine.extruderRelative = true; return "";
+		case "M120": machine.pushMode(); return "";
+		case "M121": machine.popMode(); return "";
 		case "G28": {
 			const letters = ["X", "Y", "Z"].filter(l => new RegExp(`\\b${l}`, "i").test(code.slice(3)));
 			const toHome = letters.length > 0 ? letters : ["X", "Y", "Z"];

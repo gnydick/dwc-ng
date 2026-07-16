@@ -101,6 +101,9 @@ test("loading from a machine with no config file yields defaults", async () => {
 	const connector = new PollConnector({ baseUrl: `http://127.0.0.1:${port}`, autoPoll: false, retryDelayMs: 10 });
 	try {
 		await connector.connect();
+		// The mock seeds a config for the machine it emulates; a truly blank
+		// machine has none, so remove it to exercise the no-file path.
+		mock.machine.sd.delete("0:/sys/dwc-ng-config.json", false);
 		const store = createConfigStore();
 		await store.loadFromMachine(connector); // no file on SD → not an error
 		assert.deepEqual(store.config, DEFAULT_CONFIG);

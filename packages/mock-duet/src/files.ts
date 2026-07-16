@@ -187,6 +187,21 @@ function seed(sd: VirtualSD) {
 		"pause.g": "; pause script\nM83\nG1 E-2 F3600\nG91\nG1 Z5 F600\nG90\n",
 		"resume.g": "; resume script\nG91\nG1 Z-5 F600\nG90\nM83\nG1 E2 F3600\n",
 		"stop.g": "; stop script\nM104 S0\nM140 S0\nM106 S0\n",
+		// dwc-ng UI config for the machine this mock emulates (Gabe's 6HC
+		// toolchanger). The dock indicator and axis-role labels are opt-in —
+		// they render only when the SD carries this mapping — so seeding it
+		// keeps them working out of the box and across restarts (the SD is
+		// rebuilt from this seed on every start). See packages/ui config store.
+		"dwc-ng-config.json": JSON.stringify({
+			version: 1,
+			overlay: {
+				// U/V/W drive the three individual Z leadscrew motors
+				// (M584 U1.0 V1.1 W1.2); C is the tool coupler (C0.2).
+				axisRoles: { U: "Z motor 1", V: "Z motor 2", W: "Z motor 3", C: "Coupler" },
+				// Tools 0..3 report dock presence on gpIn 10..13 (1 = docked).
+				dockSensors: { "0": { gpIn: 10 }, "1": { gpIn: 11 }, "2": { gpIn: 12 }, "3": { gpIn: 13 } },
+			},
+		}, null, "\t"),
 	};
 	for (const [name, content] of Object.entries(sysFiles)) {
 		sd.write(`0:/sys/${name}`, text(content), SEED_DATE);

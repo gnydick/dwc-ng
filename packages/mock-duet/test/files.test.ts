@@ -33,7 +33,30 @@ test("rr_filelist paginates via first/next", async t => {
 		all.push(...page.files);
 		next = page.next;
 	} while (next !== 0);
-	assert.equal(all.length, 9, "0:/sys is seeded with 9 files");
+	assert.equal(all.length, 10, "0:/sys is seeded with 10 files (incl. dwc-ng-config.json)");
+});
+
+test("mock SD seeds dwc-ng-config.json for the emulated toolchanger", async t => {
+	// The UI's dock indicator and axis-role labels are opt-in: they only
+	// render when the machine's SD carries a mapping. Seeding it here keeps
+	// those working out of the box (and across mock restarts, since the SD is
+	// rebuilt from this seed every start — an in-memory VirtualSD).
+	const mock = await startMock();
+	t.after(() => mock.close());
+	const key = await mock.connect();
+
+	const down = await mock.getRaw("rr_download?name=0:/sys/dwc-ng-config.json", key);
+	assert.equal(down.status, 200);
+	const parsed = JSON.parse(await down.text());
+	assert.equal(parsed.version, 1);
+
+	// Dock sensors: tools 0..3 map to gpIn 10..13 (real machine wiring).
+	for (let tool = 0; tool <= 3; tool++) {
+		assert.equal(parsed.overlay.dockSensors[String(tool)].gpIn, 10 + tool);
+	}
+	// Axis roles: U/V/W are the individual Z-leadscrew motors, C is the coupler.
+	assert.equal(parsed.overlay.axisRoles.C, "Coupler");
+	assert.match(parsed.overlay.axisRoles.U, /Z motor/);
 });
 
 test("rr_filelist reports err 1 (unmounted) and err 2 (missing)", async t => {

@@ -127,6 +127,27 @@ test("G28 homes axes; T0/T-1 selects and deselects the tool", () => {
 	assert.equal(machine.om.tools[0].state, "off");
 });
 
+test("multi-line gcode runs every line; G91 jogs relative without moving other axes", () => {
+	const machine = new Machine(scenarios["idle"]);
+	const x = () => machine.om.move.axes[0].userPosition;
+	const y = () => machine.om.move.axes[1].userPosition;
+
+	// Absolute positioning: a bare axis word is an absolute target.
+	machine.execute("G90\nG1 X100 Y50");
+	assert.equal(x(), 100, "second line of a multi-line command must execute");
+	assert.equal(y(), 50);
+
+	// The jog the Control view emits: M120 push, G91 relative +10 on X, M121 pop.
+	const y0 = y();
+	machine.execute("M120\nG91\nG1 X10 F6000\nM121");
+	assert.equal(x(), 110, "relative jog accumulates onto the current position");
+	assert.equal(y(), y0, "a single-axis jog must not move other axes (no diagonal)");
+
+	// M121 restored the pre-jog (absolute) mode for the next command.
+	machine.execute("G1 X5");
+	assert.equal(x(), 5, "mode is back to absolute after the jog");
+});
+
 test("unread replies expire (RRF drops them after ~1 s)", async t => {
 	const mock = await startMock({ replyExpiryMs: 50 });
 	t.after(() => mock.close());

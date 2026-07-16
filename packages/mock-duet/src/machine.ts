@@ -26,6 +26,25 @@ export class Machine {
 	outageUntil = 0;
 	scenario: Scenario | null = null;
 
+	/** G90/G91 axis positioning mode (false = absolute). Modal — persists
+	 * across codes, exactly like RRF. A jog relies on this being honoured. */
+	axesRelative = false;
+	/** M82/M83 extruder positioning mode (false = absolute). */
+	extruderRelative = false;
+	/** M120/M121 saved-state stack (mode is the part we simulate). */
+	private modeStack: Array<{ axesRelative: boolean; extruderRelative: boolean }> = [];
+
+	pushMode(): void {
+		this.modeStack.push({ axesRelative: this.axesRelative, extruderRelative: this.extruderRelative });
+	}
+	popMode(): void {
+		const saved = this.modeStack.pop();
+		if (saved !== undefined) {
+			this.axesRelative = saved.axesRelative;
+			this.extruderRelative = saved.extruderRelative;
+		}
+	}
+
 	/** Server hooks. */
 	onReply: ((text: string) => void) | null = null;
 	onReset: (() => void) | null = null;
@@ -82,6 +101,9 @@ export class Machine {
 		this.om = structuredClone(this.pristine);
 		this.sd = sd;
 		this.now = 0;
+		this.axesRelative = false;
+		this.extruderRelative = false;
+		this.modeStack = [];
 		for (const key of POLLED_KEYS) this.bump(key);
 		this.onReset?.();
 	}
