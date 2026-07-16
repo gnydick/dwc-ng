@@ -182,7 +182,10 @@
 
 .dro-row {
 	display: grid;
-	grid-template-columns: minmax(34px, auto) 1fr auto;
+	/* Fixed tag slot (not auto): "homed"/"unhomed" differ in width, so an auto
+	   column would shift the value on every toggle and misalign rows against
+	   each other. A fixed slot keeps the value's right edge rock-steady. */
+	grid-template-columns: minmax(34px, auto) 1fr 66px;
 	align-items: baseline;
 	gap: 12px;
 	border-bottom: 1px solid var(--hairline);
@@ -210,18 +213,27 @@
 .dro-val small { font-size: 13px; color: var(--silk-dim); margin-left: 3px; }
 
 .homed-tag {
+	justify-self: end;
 	font-family: var(--font-display);
 	font-weight: 600;
 	font-size: 10.5px;
 	letter-spacing: 0.12em;
 	text-transform: uppercase;
+	white-space: nowrap;
 }
 .homed-tag.yes { color: var(--ok); }
 .homed-tag.no  { color: var(--gold); }
 
 /* ---------- heaters ---------- */
 
-.heat-table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+/* table-layout: fixed + explicit numeric widths → a heater climbing 22°→200°
+   gains a digit without reflowing any column. The Heater column takes the
+   rest. Widths are sized for the worst case (3-digit temp, "standby"). */
+.heat-table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; table-layout: fixed; }
+.heat-table th:nth-child(2), .heat-table td:nth-child(2) { width: 84px; }
+.heat-table th:nth-child(3), .heat-table td:nth-child(3) { width: 48px; }
+.heat-table th:nth-child(4), .heat-table td:nth-child(4) { width: 48px; }
+.heat-table th:nth-child(5), .heat-table td:nth-child(5) { width: 60px; }
 .heat-table th {
 	font-family: var(--font-display);
 	font-weight: 600;
@@ -528,6 +540,16 @@
 	.rail .machine-id { display: none; }
 	.grid { grid-template-columns: minmax(0, 1fr); }
 	.cam-tile { display: none; }
+
+	/* Narrower fixed columns + smaller temp on phones so the Heater name never
+	   gets starved (and stays unclipped) while columns remain reflow-proof. */
+	.heat-table th:nth-child(2), .heat-table td:nth-child(2) { width: 70px; }
+	.heat-table th:nth-child(3), .heat-table td:nth-child(3) { width: 42px; }
+	.heat-table th:nth-child(4), .heat-table td:nth-child(4) { width: 42px; }
+	.heat-table th:nth-child(5), .heat-table td:nth-child(5) { width: 52px; }
+	.heat-cur { font-size: 18px; }
+	/* tighten headers so labels ("STANDBY") fit their narrower columns */
+	.heat-table th { font-size: 9.5px; letter-spacing: 0.05em; }
 }
 
 /* ---------- Jobs view ---------- */
