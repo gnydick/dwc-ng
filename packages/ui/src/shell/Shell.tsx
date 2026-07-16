@@ -1,7 +1,10 @@
 import { For, Match, Show, Switch, createMemo, createSignal } from "solid-js";
 import { useApp } from "./context.ts";
 import { createRouter, type Route } from "./router.ts";
-import { BACKENDS, type Backend, initialBackend, rememberBackend } from "../dev/backend.ts";
+import {
+	BACKENDS, type Backend, rememberBackend,
+	currentBackendId, setCurrentBackendId, writesArmed, setWritesArmed,
+} from "../dev/backend.ts";
 import Machine from "../views/Machine.tsx";
 import Control from "../views/Control.tsx";
 import Jobs from "../views/Jobs.tsx";
@@ -133,16 +136,16 @@ export default function Shell() {
 	);
 }
 
-/** Dev-only Mock/Real backend switcher (see src/dev/backend.ts). */
+/** Dev-only Mock/Real backend switcher + write arming (see src/dev/writeGuard.ts). */
 function BackendToggle() {
 	const app = useApp();
-	const [current, setCurrent] = createSignal<Backend["id"]>(initialBackend().id);
 	const [busy, setBusy] = createSignal(false);
 
 	const switchTo = async (b: Backend): Promise<void> => {
-		if (busy() || b.id === current() || app.connector.switchEndpoint === undefined) return;
+		if (busy() || b.id === currentBackendId() || app.connector.switchEndpoint === undefined) return;
 		setBusy(true);
-		setCurrent(b.id);
+		setCurrentBackendId(b.id);
+		setWritesArmed(false); // an arm never survives a backend switch
 		rememberBackend(b.id);
 		try {
 			await app.connector.switchEndpoint(b.baseUrl, b.password);
@@ -155,21 +158,38 @@ function BackendToggle() {
 	};
 
 	return (
-		<div class="backend-toggle" role="group" aria-label="Backend" title="Dev: which board the UI talks to">
-			<For each={BACKENDS}>
-				{b => (
-					<button
-						class="backend-opt"
-						classList={{ active: current() === b.id }}
-						aria-pressed={current() === b.id}
-						disabled={busy()}
-						onClick={() => void switchTo(b)}
-					>
-						{b.label}
-					</button>
-				)}
-			</For>
-		</div>
+		<>
+			<div class="backend-toggle" role="group" aria-label="Backend" title="Dev: which board the UI talks to">
+				<For each={BACKENDS}>
+					{b => (
+						<button
+							class="backend-opt"
+							classList={{ active: currentBackendId() === b.id, real: b.id === "real" }}
+							aria-pressed={currentBackendId() === b.id}
+							disabled={busy()}
+							onClick={() => void switchTo(b)}
+						>
+							{b.label}
+						</button>
+					)}
+				</For>
+			</div>
+			<Show when={currentBackendId() === "real"}>
+				<button
+					class="arm-btn"
+					classList={{ armed: writesArmed() }}
+					aria-pressed={writesArmed()}
+					title={
+						writesArmed()
+							? "Writes to the REAL board are ARMED — G-code and uploads will reach the machine. Click to disarm."
+							: "Writes to the REAL board are blocked. Reads still work. Click to arm deliberately."
+					}
+					onClick={() => setWritesArmed(v => !v)}
+				>
+					{writesArmed() ? "⚠ Writes armed" : "Writes locked"}
+				</button>
+			</Show>
+		</>
 	);
 }
 

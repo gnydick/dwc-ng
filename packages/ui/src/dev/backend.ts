@@ -8,6 +8,8 @@
  * the UI itself and there is only one same-origin backend, so the toggle is
  * gated behind import.meta.env.DEV at its call sites and tree-shakes away.
  */
+import { createSignal } from "solid-js";
+
 export interface Backend {
 	id: "mock" | "real";
 	label: string;
@@ -42,3 +44,20 @@ export function rememberBackend(id: Backend["id"]): void {
 		// Private-mode / storage-disabled: selection just won't persist.
 	}
 }
+
+/**
+ * Which backend the connector is pointed at right now. The toggle updates it;
+ * the write guard reads it. Separate from the persisted value because what
+ * matters for safety is where we are, not what we once chose.
+ */
+const [currentBackendId, setCurrentBackendId] = createSignal<Backend["id"]>(initialBackend().id);
+export { currentBackendId, setCurrentBackendId };
+
+/**
+ * Whether writes to the REAL board are armed. Deliberately in-memory only —
+ * NEVER persisted. A stale "this is fine" surviving a reload into a fresh tab
+ * is precisely how a print and a bogus config write reached real hardware.
+ * Every reload starts disarmed; switching backends disarms.
+ */
+const [writesArmed, setWritesArmed] = createSignal(false);
+export { writesArmed, setWritesArmed };
