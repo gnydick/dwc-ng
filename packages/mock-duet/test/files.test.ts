@@ -133,6 +133,36 @@ test("rr_fileinfo returns job metadata; rr_thumbnail pages base64 chunks", async
 	assert.ok(data.length >= thumb.size);
 });
 
+test("rr_thumbnail serves the real seat-support QOI across multiple chunks", async t => {
+	const mock = await startMock();
+	t.after(() => mock.close());
+	const key = await mock.connect();
+
+	const name = "0:/gcodes/seat support - PLA.gcode";
+	const info = await mock.getJson(`rr_fileinfo?name=${encodeURIComponent(name)}`, key);
+	assert.equal(info.err, 0);
+	assert.equal(info.thumbnails[0].format, "qoi");
+	assert.deepEqual([info.thumbnails[0].width, info.thumbnails[0].height], [160, 160]);
+
+	let data = "";
+	let offset = info.thumbnails[0].offset;
+	let chunks = 0;
+	do {
+		const chunk = await mock.getJson(`rr_thumbnail?name=${encodeURIComponent(name)}&offset=${offset}`, key);
+		assert.equal(chunk.err, 0);
+		assert.match(chunk.data, /^[A-Za-z0-9+/=]+$/, "DWC validates base64 strictly");
+		data += chunk.data;
+		offset = chunk.next;
+		chunks++;
+	} while (offset !== 0);
+
+	assert.ok(chunks > 1, `real QOI should span multiple chunks (got ${chunks})`);
+	const raw = Buffer.from(data, "base64");
+	assert.equal(raw.subarray(0, 4).toString("latin1"), "qoif", "decodes to a QOI stream");
+	assert.equal(raw.readUInt32BE(4), 160);
+	assert.equal(raw.readUInt32BE(8), 160);
+});
+
 test("rr_fileinfo without a name describes the file being printed", async t => {
 	const mock = await startMock({ scenario: "mid-print" });
 	t.after(() => mock.close());

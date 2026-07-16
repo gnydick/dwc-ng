@@ -3,6 +3,7 @@
  * Paths use RRF's volume syntax ("0:/gcodes/file.g"); a bare "/" prefix is
  * treated as volume 0 (matching RRF behaviour).
  */
+import { SEAT_SUPPORT_QOI_BASE64 } from "./fixtures/qoi-seat-support.ts";
 export interface VFile {
 	type: "f";
 	data: Uint8Array;
@@ -234,4 +235,24 @@ function seed(sd: VirtualSD) {
 		simulatedTime: null,
 		thumbnails: [],
 	});
+
+	// A real job captured from Gabe's machine (duet3.nydick.net): faithful
+	// fileinfo + a real 160x160 QOI thumbnail, so the Jobs view exercises the
+	// actual QOI decode + chunked rr_thumbnail path offline. The gcode body is
+	// synthetic (size is what fileinfo reports); the thumbnail/metadata are real.
+	sd.write("0:/gcodes/seat support - PLA.gcode", text("; real fileinfo, synthetic body\n"), "2026-07-03T21:16:18");
+	sd.fileInfo.set("0:/gcodes/seat support - PLA.gcode", {
+		fileName: "0:/gcodes/seat support - PLA.gcode",
+		size: 938253,
+		lastModified: "2026-07-03T21:16:18",
+		filament: [15463.9],
+		generatedBy: "PrusaSlicer 2.9.6 on 2026-07-04 at 04:14:51 UTC",
+		height: 30.08,
+		layerHeight: 0.32,
+		numLayers: 94,
+		printTime: 2992,
+		simulatedTime: null,
+		thumbnails: [{ format: "qoi", width: 160, height: 160, offset: 105, size: SEAT_SUPPORT_QOI_BASE64.length }],
+	});
+	sd.thumbnails.set("0:/gcodes/seat support - PLA.gcode", SEAT_SUPPORT_QOI_BASE64);
 }

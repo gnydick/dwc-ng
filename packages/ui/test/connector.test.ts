@@ -238,3 +238,49 @@ test("network outage: polling fails, then recovery re-auths and resyncs", async 
 		await h.close();
 	}
 });
+
+const SEAT_SUPPORT = "0:/gcodes/seat support - PLA.gcode";
+
+test("getFileInfo returns typed job metadata with thumbnail descriptors", async () => {
+	const h = await startHarness();
+	try {
+		await h.connector.connect();
+		const info = await h.connector.getFileInfo(SEAT_SUPPORT);
+
+		assert.equal(info.fileName, SEAT_SUPPORT);
+		assert.equal(info.numLayers, 94);
+		assert.equal(info.printTime, 2992);
+		assert.deepEqual(info.filament, [15463.9]);
+		assert.match(info.generatedBy, /PrusaSlicer 2\.9\.6/);
+		assert.equal(info.thumbnails.length, 1);
+		assert.equal(info.thumbnails[0].format, "qoi");
+		assert.deepEqual([info.thumbnails[0].width, info.thumbnails[0].height], [160, 160]);
+	} finally {
+		await h.close();
+	}
+});
+
+test("getThumbnail stitches rr_thumbnail chunks and returns decoded image bytes", async () => {
+	const h = await startHarness();
+	try {
+		await h.connector.connect();
+		const info = await h.connector.getFileInfo(SEAT_SUPPORT);
+		const bytes = await h.connector.getThumbnail(SEAT_SUPPORT, info.thumbnails[0].offset);
+
+		// Raw QOI stream: 'qoif' magic, 160x160, 17079 bytes (not base64 text).
+		assert.equal(bytes.length, 17079);
+		assert.deepEqual([...bytes.slice(0, 4)], [0x71, 0x6f, 0x69, 0x66]);
+	} finally {
+		await h.close();
+	}
+});
+
+test("getFileInfo surfaces a missing file as a rejection, not empty data", async () => {
+	const h = await startHarness();
+	try {
+		await h.connector.connect();
+		await assert.rejects(h.connector.getFileInfo("0:/gcodes/does-not-exist.gcode"));
+	} finally {
+		await h.close();
+	}
+});

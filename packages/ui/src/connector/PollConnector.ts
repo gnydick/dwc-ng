@@ -1,5 +1,6 @@
 import {
 	type Connector, type ConnectorEvents, type ConnectionStatus, type FileListEntry,
+	type GcodeFileInfo, type ThumbnailInfo,
 	InvalidPasswordError, NoFreeSessionError, FileNotFoundError,
 	OperationFailedError, DisconnectedError,
 } from "./types.ts";
@@ -249,6 +250,45 @@ export class PollConnector implements Connector {
 			if (!page.next) return entries;
 			first = page.next;
 		}
+	}
+
+	async getFileInfo(path: string): Promise<GcodeFileInfo> {
+		const res = await this.getJson(`rr_fileinfo?name=${encodeURIComponent(path)}`) as
+			Partial<GcodeFileInfo> & { err?: number };
+		if (res.err) throw new FileNotFoundError(path);
+		return {
+			fileName: res.fileName ?? path,
+			size: res.size ?? 0,
+			lastModified: res.lastModified,
+			height: res.height,
+			layerHeight: res.layerHeight,
+			numLayers: res.numLayers,
+			printTime: res.printTime,
+			simulatedTime: res.simulatedTime,
+			filament: res.filament ?? [],
+			generatedBy: res.generatedBy ?? "",
+			thumbnails: (res.thumbnails ?? []) as ThumbnailInfo[],
+		};
+	}
+
+	async getThumbnail(path: string, offset: number): Promise<Uint8Array> {
+		// rr_thumbnail returns base64 in `data` plus a `next` offset; loop until
+		// next is 0, concatenating the base64 BEFORE decoding (chunk boundaries
+		// are not guaranteed to fall on base64 quads). Mirrors the vendored
+		// PollConnector.getThumbnails (reference/connectors/src/PollConnector.ts).
+		let b64 = "";
+		let cursor = offset;
+		do {
+			const res = await this.getJson(`rr_thumbnail?name=${encodeURIComponent(path)}&offset=${cursor}`) as
+				{ err?: number; data?: string; next?: number };
+			if (res.err) throw new OperationFailedError(`rr_thumbnail err ${res.err} for ${path}`);
+			b64 += res.data ?? "";
+			cursor = res.next ?? 0;
+		} while (cursor !== 0);
+		const bin = atob(b64);
+		const bytes = new Uint8Array(bin.length);
+		for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+		return bytes;
 	}
 
 	// ---------- plumbing ----------

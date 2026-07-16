@@ -42,6 +42,39 @@ export interface FileListEntry {
 	date?: string;
 }
 
+/** Descriptor of one embedded thumbnail (see GcodeFileInfo). */
+export interface ThumbnailInfo {
+	width: number;
+	height: number;
+	format: "png" | "qoi" | "jpeg";
+	/** Opaque offset to pass to getThumbnail. */
+	offset: number;
+	/** Encoded (base64) size as reported by the board. */
+	size: number;
+}
+
+/**
+ * Parsed metadata for a G-code job file (rr_fileinfo / DSF fileinfo). Optional
+ * fields are absent when the slicer didn't emit them — the UI must not assume
+ * presence.
+ */
+export interface GcodeFileInfo {
+	fileName: string;
+	size: number;
+	lastModified?: string;
+	/** Object height, mm. */
+	height?: number;
+	layerHeight?: number;
+	numLayers?: number;
+	/** Slicer-estimated print time, seconds. */
+	printTime?: number;
+	simulatedTime?: number;
+	/** Filament used per extruder, mm. */
+	filament: number[];
+	generatedBy: string;
+	thumbnails: ThumbnailInfo[];
+}
+
 export interface Connector {
 	readonly status: ConnectionStatus;
 	/** Open a session and emit the full model via onModelKey, key by key. */
@@ -55,6 +88,15 @@ export interface Connector {
 	download(path: string): Promise<string>;
 	/** List a directory. */
 	list(dir: string): Promise<FileListEntry[]>;
+	/** Parse a job file's metadata (height, filament, layers, thumbnails). */
+	getFileInfo(path: string): Promise<GcodeFileInfo>;
+	/**
+	 * Fetch one embedded thumbnail by its offset (from GcodeFileInfo), returning
+	 * the decoded image bytes. The transport hides chunking and base64; the
+	 * caller decodes by ThumbnailInfo.format (QOI via decodeQoi, png/jpeg as a
+	 * Blob).
+	 */
+	getThumbnail(path: string, offset: number): Promise<Uint8Array>;
 }
 
 /** Wrong password at connect. */
