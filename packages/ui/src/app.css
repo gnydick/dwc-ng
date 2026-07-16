@@ -135,7 +135,10 @@
 
 .grid {
 	display: grid;
-	grid-template-columns: 5fr 7fr;
+	/* minmax(0, …) lets a wide child (e.g. the heater table) shrink instead of
+	   forcing the track past the viewport — otherwise the right card overflows
+	   off-screen (min-content default). */
+	grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
 	gap: 14px;
 	align-items: start;
 }
@@ -300,19 +303,19 @@
 
 /* ---------- dock indicator ---------- */
 
-.dock {
-	display: inline-flex;
-	align-items: center;
-	gap: 6px;
-	font-family: var(--font-display);
-	font-weight: 600;
-	font-size: 10.5px;
-	letter-spacing: 0.12em;
-	text-transform: uppercase;
+/* A single dot beside the tool name — docked (green) / away (gold). Kept
+   compact on purpose so it rides inline and never needs its own column. */
+.dock-dot {
+	display: inline-block;
+	width: 8px;
+	height: 8px;
+	margin-left: 7px;
+	border-radius: 50%;
+	vertical-align: middle;
+	box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 18%, transparent);
 }
-.dock::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
-.dock.docked { color: var(--ok); }
-.dock.away { color: var(--gold); }
+.dock-dot.docked { background: var(--ok); color: var(--ok); }
+.dock-dot.away { background: var(--gold); color: var(--gold); }
 
 /* ---------- console drawer ---------- */
 

@@ -15,8 +15,6 @@ export default function Machine() {
 	const heaterAt = (index: number): Heater | null => app.om.om.heat.heaters[index] ?? null;
 	const bedHeaterIndex = createMemo(() => app.om.om.heat.bedHeaters.find(i => i >= 0) ?? -1);
 
-	const dockConfigured = createMemo(() => Object.keys(app.config.config.dockSensors).length > 0);
-
 	/** docked/away from the user-mapped gpIn sensor; null = unknowable. */
 	const dockState = (toolNumber: number): "docked" | "away" | null => {
 		const ref = app.config.config.dockSensors[String(toolNumber)];
@@ -89,7 +87,6 @@ export default function Machine() {
 							<th scope="col">Current</th>
 							<th scope="col">Active</th>
 							<th scope="col">Standby</th>
-							<Show when={dockConfigured()}><th scope="col">Dock</th></Show>
 							<th scope="col">State</th>
 						</tr>
 					</thead>
@@ -102,6 +99,17 @@ export default function Machine() {
 											<td>
 												<span class="heat-name">
 													{t().name || `Tool ${t().number}`} <span class="des">T{t().number}</span>
+													{/* Dock presence: a single dot by the tool, no column
+													    to scroll off. Green = docked, gold = away. */}
+													<Show when={dockState(t().number)}>
+														{state => (
+															<span
+																class={`dock-dot ${state()}`}
+																title={state() === "docked" ? "Docked" : "Away"}
+																aria-label={state() === "docked" ? "Docked" : "Away"}
+															/>
+														)}
+													</Show>
 												</span>
 											</td>
 											<Show when={heaterAt(t().heaters[0] ?? -1)} fallback={<td colspan="4" class="heat-set">no heater</td>}>
@@ -110,18 +118,9 @@ export default function Machine() {
 														<td><HeaterCurrent heater={h()} /></td>
 														<td><span class="heat-set"><b>{h().active}</b>°</span></td>
 														<td><span class="heat-set">{h().standby}°</span></td>
+														<td><span class={`heat-state ${h().state}`}>{h().state}</span></td>
 													</>
 												)}
-											</Show>
-											<Show when={dockConfigured()}>
-												<td>
-													<Show when={dockState(t().number)} fallback={<span class="heat-set">—</span>}>
-														{state => <span class={`dock ${state()}`}>{state()}</span>}
-													</Show>
-												</td>
-											</Show>
-											<Show when={heaterAt(t().heaters[0] ?? -1)}>
-												{h => <td><span class={`heat-state ${h().state}`}>{h().state}</span></td>}
 											</Show>
 										</tr>
 									)}
@@ -136,7 +135,6 @@ export default function Machine() {
 									<td><span class="heat-set"><b>{h().active}</b>°</span></td>
 									{/* the bed has no standby mode — no standby cell, ever */}
 									<td><span class="heat-set">—</span></td>
-									<Show when={dockConfigured()}><td><span class="heat-set">—</span></td></Show>
 									<td><span class={`heat-state ${h().state}`}>{h().state}</span></td>
 								</tr>
 							)}
