@@ -8,12 +8,17 @@ import solid from 'vite-plugin-solid'
 //   DWC_TARGET=http://duet3.nydick.net pnpm dev
 // The proxy is server-side, so there is no CORS concern talking to the board.
 const target = process.env.DWC_TARGET ?? 'http://127.0.0.1:8970'
+const realTarget = process.env.DWC_REAL ?? 'http://duet3.nydick.net'
 
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [solid()],
   server: {
     proxy: {
+      // In-UI Mock/Real toggle (dev only): the connector prefixes requests with
+      // "/real" to reach the real board, "" for the mock. Both are proxied
+      // server-side so the browser never hits the board directly (no CORS).
+      '^/real/rr_.*': { target: realTarget, changeOrigin: true, rewrite: p => p.replace(/^\/real/, '') },
       '^/rr_.*': { target, changeOrigin: true },
     },
   },

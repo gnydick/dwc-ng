@@ -1,6 +1,7 @@
 import { For, Match, Show, Switch, createMemo, createSignal } from "solid-js";
 import { useApp } from "./context.ts";
 import { createRouter, type Route } from "./router.ts";
+import { BACKENDS, type Backend, initialBackend, rememberBackend } from "../dev/backend.ts";
 import Machine from "../views/Machine.tsx";
 import Jobs from "../views/Jobs.tsx";
 import Macros from "../views/Macros.tsx";
@@ -49,7 +50,10 @@ export default function Shell() {
 					<Show when={app.om.om.boards[0]}>
 						{board => <>{board().name}<br /></>}
 					</Show>
-					RRF · standalone
+					<Switch fallback="RRF">
+						<Match when={app.om.connection.emulated === true}>SBC · DSF</Match>
+						<Match when={app.om.connection.emulated === false}>RRF · standalone</Match>
+					</Switch>
 				</p>
 			</aside>
 
@@ -90,6 +94,7 @@ export default function Shell() {
 					</Show>
 
 					<div class="preflight-actions">
+						<Show when={import.meta.env.DEV}><BackendToggle /></Show>
 						<button
 							class="ghost-btn"
 							aria-pressed={app.config.config.camera.pinned}
@@ -121,6 +126,46 @@ export default function Shell() {
 			</div>
 
 			<CameraTile />
+		</div>
+	);
+}
+
+/** Dev-only Mock/Real backend switcher (see src/dev/backend.ts). */
+function BackendToggle() {
+	const app = useApp();
+	const [current, setCurrent] = createSignal<Backend["id"]>(initialBackend().id);
+	const [busy, setBusy] = createSignal(false);
+
+	const switchTo = async (b: Backend): Promise<void> => {
+		if (busy() || b.id === current() || app.connector.switchEndpoint === undefined) return;
+		setBusy(true);
+		setCurrent(b.id);
+		rememberBackend(b.id);
+		try {
+			await app.connector.switchEndpoint(b.baseUrl, b.password);
+			await app.config.loadFromMachine(app.connector);
+		} catch {
+			// Failure shows in the connection chip (e.g. bad password / offline).
+		} finally {
+			setBusy(false);
+		}
+	};
+
+	return (
+		<div class="backend-toggle" role="group" aria-label="Backend" title="Dev: which board the UI talks to">
+			<For each={BACKENDS}>
+				{b => (
+					<button
+						class="backend-opt"
+						classList={{ active: current() === b.id }}
+						aria-pressed={current() === b.id}
+						disabled={busy()}
+						onClick={() => void switchTo(b)}
+					>
+						{b.label}
+					</button>
+				)}
+			</For>
 		</div>
 	);
 }

@@ -48,8 +48,8 @@ const NON_MODEL_SEQS = new Set(["reply", "volChanges"]);
 export class PollConnector implements Connector {
 	status: ConnectionStatus = "disconnected";
 
-	private readonly base: string;
-	private readonly password: string;
+	private base: string;
+	private password: string;
 	private readonly pollIntervalMs: number;
 	private readonly retryDelayMs: number;
 	private readonly maxRetries: number;
@@ -60,8 +60,6 @@ export class PollConnector implements Connector {
 	private sessionKey: number | null = null;
 	private lastSeqs: Record<string, number> = {};
 	private lastVolSeqs: number[] = [];
-	/** limits.reportedAxes — RRF's cap on axes inlined in a `move` fetch. */
-	private reportedAxes = 9;
 	private pollTimer: ReturnType<typeof setTimeout> | null = null;
 	private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 	/** Serializes all traffic: RRF handles very few concurrent connections. */
@@ -95,6 +93,20 @@ export class PollConnector implements Connector {
 		if (this.autoPoll) this.schedulePoll();
 	}
 
+	/**
+	 * Repoint at a different backend (dev-only Mock/Real toggle). Tears the
+	 * session down, swaps endpoint + password, and reconnects with a clean full
+	 * sync so the object model reflects the new machine.
+	 */
+	async switchEndpoint(baseUrl: string, password: string): Promise<void> {
+		await this.disconnect();
+		this.base = baseUrl;
+		this.password = password;
+		this.lastSeqs = {};
+		this.lastVolSeqs = [];
+		await this.connect();
+	}
+
 	async disconnect(): Promise<void> {
 		this.stopTimers();
 		if (this.sessionKey !== null) {
@@ -112,11 +124,12 @@ export class PollConnector implements Connector {
 		const res = await this.rawRequest(
 			`rr_connect?password=${encodeURIComponent(this.password)}&time=${encodeURIComponent(isoNow())}&sessionKey=yes`,
 		);
-		const body = await res.json() as { err: number; sessionKey?: number };
+		const body = await res.json() as { err: number; sessionKey?: number; isEmulated?: boolean; boardType?: string };
 		if (body.err === 1) throw new InvalidPasswordError();
 		if (body.err === 2) throw new NoFreeSessionError();
 		if (body.err !== 0) throw new OperationFailedError(`rr_connect err ${body.err}`);
 		this.sessionKey = body.sessionKey ?? null;
+		this.events.onBoardInfo?.({ emulated: body.isEmulated === true, boardType: body.boardType });
 	}
 
 	/** Fetch seqs then every model key, emitting wholesale replacements. */
@@ -305,17 +318,18 @@ export class PollConnector implements Connector {
 
 	/**
 	 * Fetch a model key with RRF's edge cases applied on top of fetchKey:
-	 * since RRF 3.5, a `move` fetch inlines at most limits.reportedAxes axes
-	 * (his 7-axis machine reports 5!) — when the cap is hit, re-fetch
-	 * "move.axes" as its own chunked array, like the original does
-	 * (reference PollConnector.ts:518,576).
+	 * a verbose `move` fetch can truncate its axes array — at limits.reportedAxes
+	 * (RRF >= 3.5; Gabe's 7-axis machine reports 5) or mid-array when the
+	 * response buffer fills. We can't reliably know the axis total up front
+	 * (limits may not be fetched yet, and the response order isn't guaranteed),
+	 * so ALWAYS re-fetch move.axes as its own chunked array — it is authoritative
+	 * and cheap since `move` is a rarely-changing subtree. Regression: on the
+	 * real board the Machine view showed only 5 axes (W and C missing) because
+	 * the earlier reportedAxes gate misfired when move was fetched before limits.
 	 */
 	private async fetchModelKey(key: string): Promise<unknown> {
 		const value = await this.fetchKey(key);
-		if (key === "limits" && isRecord(value) && typeof value.reportedAxes === "number") {
-			this.reportedAxes = value.reportedAxes;
-		}
-		if (key === "move" && isRecord(value) && Array.isArray(value.axes) && value.axes.length >= this.reportedAxes) {
+		if (key === "move" && isRecord(value) && Array.isArray(value.axes)) {
 			value.axes = await this.fetchKey("move.axes");
 		}
 		return value;

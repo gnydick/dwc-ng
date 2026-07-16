@@ -598,3 +598,14 @@
 @media (max-width: 900px) {
 	.detail-body { grid-template-columns: 1fr; }
 }
+
+/* ---------- dev Mock/Real backend toggle ---------- */
+.backend-toggle { display: inline-flex; border: 1px solid var(--hairline); border-radius: var(--radius); overflow: hidden; }
+.backend-opt {
+	font-family: var(--font-display); font-weight: 600; font-size: 11.5px; letter-spacing: 0.08em; text-transform: uppercase;
+	color: var(--silk-dim); background: none; border: none; padding: 6px 11px; cursor: pointer;
+}
+.backend-opt + .backend-opt { border-left: 1px solid var(--hairline); }
+.backend-opt:hover:not(:disabled) { color: var(--silk); background: var(--mask-700); }
+.backend-opt.active { color: var(--mask-900); background: var(--copper); }
+.backend-opt:disabled { opacity: 0.5; cursor: wait; }

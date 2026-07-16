@@ -21,6 +21,9 @@ export interface ConnectionState {
 	status: ConnectionStatus;
 	/** Human-readable detail for the current status (e.g. last error). */
 	detail: string;
+	/** true = rr_ served by DSF on an SBC; false = standalone firmware; null = unknown. */
+	emulated: boolean | null;
+	boardType: string | null;
 }
 
 export interface ConsoleLine {
@@ -45,6 +48,8 @@ export function createOmStore(): OmStore {
 	const [connection, setConnection] = createStore<ConnectionState>({
 		status: "disconnected",
 		detail: "",
+		emulated: null,
+		boardType: null,
 	});
 	const [consoleLines, setConsoleLines] = createStore<ConsoleLine[]>([]);
 
@@ -64,6 +69,9 @@ export function createOmStore(): OmStore {
 		},
 		onStatusChange(status, detail) {
 			setConnection({ status, detail: detail ?? "" });
+		},
+		onBoardInfo(info) {
+			setConnection({ emulated: info.emulated, boardType: info.boardType ?? null });
 		},
 	};
 

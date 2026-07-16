@@ -31,6 +31,12 @@ export interface ConnectorEvents {
 	onStatusChange?(status: ConnectionStatus, detail?: string): void;
 	/** Files changed on the given volume (SD card index). */
 	onFilesChanged?(volume: number): void;
+	/**
+	 * Board facts learned at connect time. `emulated` is true when the rr_ API
+	 * is served by DSF on an SBC (rr_connect isEmulated) rather than by a
+	 * standalone board's own firmware.
+	 */
+	onBoardInfo?(info: { emulated: boolean; boardType?: string }): void;
 }
 
 export interface FileListEntry {
@@ -97,6 +103,11 @@ export interface Connector {
 	 * Blob).
 	 */
 	getThumbnail(path: string, offset: number): Promise<Uint8Array>;
+	/**
+	 * Dev-only: repoint the connector at a different backend (Mock vs the real
+	 * board, via the dev proxy). Optional — not every transport supports it.
+	 */
+	switchEndpoint?(baseUrl: string, password: string): Promise<void>;
 }
 
 /** Wrong password at connect. */

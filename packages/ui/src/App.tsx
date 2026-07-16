@@ -2,6 +2,7 @@ import { onCleanup, onMount } from "solid-js";
 import { createOmStore } from "./om/store.ts";
 import { createConfigStore } from "./config/store.ts";
 import { PollConnector } from "./connector/index.ts";
+import { initialBackend } from "./dev/backend.ts";
 import { AppContext } from "./shell/context.ts";
 import Shell from "./shell/Shell.tsx";
 import "./app.css";
@@ -9,12 +10,13 @@ import "./app.css";
 export default function App() {
 	const om = createOmStore();
 	const config = createConfigStore();
-	// Password is empty for the mock and for a passwordless board. To develop
-	// against a real board that has one, set VITE_DWC_PASSWORD (e.g. reprap).
-	// A proper standalone login prompt is a later milestone.
+	// Boot from the persisted dev backend (Mock by default; "Real" targets the
+	// board via the dev proxy). In production this is always the same-origin
+	// mock-equivalent ("", empty password) and RRF serves the UI itself.
+	const backend = initialBackend();
 	const connector = new PollConnector({
-		baseUrl: "",
-		password: import.meta.env.VITE_DWC_PASSWORD ?? "",
+		baseUrl: backend.baseUrl,
+		password: backend.password,
 		events: om.events,
 	});
 
