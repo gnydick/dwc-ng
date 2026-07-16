@@ -9,7 +9,14 @@ import "./app.css";
 export default function App() {
 	const om = createOmStore();
 	const config = createConfigStore();
-	const connector = new PollConnector({ baseUrl: "", events: om.events });
+	// Password is empty for the mock and for a passwordless board. To develop
+	// against a real board that has one, set VITE_DWC_PASSWORD (e.g. reprap).
+	// A proper standalone login prompt is a later milestone.
+	const connector = new PollConnector({
+		baseUrl: "",
+		password: import.meta.env.VITE_DWC_PASSWORD ?? "",
+		events: om.events,
+	});
 
 	onMount(() => {
 		void connector.connect()
