@@ -686,8 +686,29 @@
 .btn-cluster { display: flex; gap: 6px; margin-left: auto; }
 
 /* jog */
-.jog-controls { display: flex; flex-direction: column; gap: 8px; }
+.jog-controls { display: flex; flex-direction: column; gap: 12px; }
 .step-row, .jog-row, .coupler-row, .extrude-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+/* cardinal jog pad — fixed key positions build muscle memory; a direction is
+   always the same button, which is what cuts mis-jogs. */
+.jog-pad { display: flex; gap: 20px; align-items: center; flex-wrap: wrap; }
+.jog-xy { display: grid; grid-template-columns: repeat(3, 60px); grid-template-rows: repeat(3, 60px); gap: 8px; }
+.jog-z  { display: grid; grid-template-rows: 60px 18px 60px; gap: 8px; justify-items: center; align-items: center; }
+.jog-key { width: 100%; height: 100%; padding: 0; align-items: center; justify-content: center; text-align: center; }
+.jog-key .gcode-label { font-size: 18px; letter-spacing: 0.02em; }
+.jog-z .jog-key { width: 60px; }
+.pos-yp { grid-area: 1 / 2; }
+.pos-xn { grid-area: 2 / 1; }
+.pos-xp { grid-area: 2 / 3; }
+.pos-yn { grid-area: 3 / 2; }
+.jog-center {
+	grid-area: 2 / 2; display: flex; flex-direction: column; align-items: center; justify-content: center;
+	border: 1px dashed var(--hairline); border-radius: var(--radius);
+	font: 700 17px/1 var(--font-display); color: var(--copper-bright); font-variant-numeric: tabular-nums;
+}
+.jog-center small { font-size: 10px; color: var(--silk-dim); font-weight: 600; margin-top: 3px; letter-spacing: 0.06em; }
+.jog-zlabel { font: 700 12px/1 var(--font-display); letter-spacing: 0.1em; color: var(--silk-dim); }
+.jog-aux { display: flex; flex-direction: column; gap: 6px; }
 .chip-btn {
 	font: 600 12px/1 var(--font-display); text-transform: uppercase; letter-spacing: 0.03em;
 	color: var(--silk-dim); background: var(--mask-500); border: 1px solid var(--hairline); border-radius: 5px;

@@ -16,6 +16,10 @@ export default function Control() {
 
 	const axes = createMemo(() => app.om.om.move.axes.filter(a => a.visible));
 	const role = (letter: string): string | undefined => app.config.config.axisRoles[letter];
+	const hasAxis = (letter: string): boolean => axes().some(a => a.letter === letter);
+	/** Axes that aren't part of the cardinal XY/Z pad or the coupler — e.g. the
+	    U/V/W leadscrews, jogged individually for tramming. */
+	const auxAxes = createMemo(() => axes().filter(a => !["X", "Y", "Z", "C"].includes(a.letter)));
 
 	const heaterActive = (modelIndex: number): number =>
 		app.om.om.heat.heaters[modelIndex]?.active ?? 0;
@@ -103,20 +107,51 @@ export default function Control() {
 						</For>
 						<label class="feed-field">Feed <input type="number" value={jogFeed()} onInput={e => setJogFeed(Number(e.currentTarget.value))} /></label>
 					</div>
-					<For each={axes()}>
-						{axis => (
-							<div class="jog-row">
-								<span class="ctl-name">{axis.letter}<Show when={role(axis.letter)}>{r => <small>{r()}</small>}</Show></span>
-								<GcodeButton label={`− ${step()}`} command={cmd.jog(axis.letter, -step(), jogFeed())} stamp={false} />
-								<GcodeButton label={`+ ${step()}`} command={cmd.jog(axis.letter, step(), jogFeed())} stamp={false} />
+
+					{/* Cardinal pad: X/Y cross + Z column. Fixed key positions so the
+					    same physical direction is always the same button — muscle
+					    memory, fewer mis-jogs. Centre shows the active step. */}
+					<div class="jog-pad">
+						<Show when={hasAxis("X") && hasAxis("Y")}>
+							<div class="jog-xy" role="group" aria-label="X/Y jog">
+								<GcodeButton class="jog-key pos-yp" label="+Y" command={cmd.jog("Y", step(), jogFeed())} stamp={false} />
+								<GcodeButton class="jog-key pos-xn" label="−X" command={cmd.jog("X", -step(), jogFeed())} stamp={false} />
+								<span class="jog-center">{step()}<small>mm</small></span>
+								<GcodeButton class="jog-key pos-xp" label="+X" command={cmd.jog("X", step(), jogFeed())} stamp={false} />
+								<GcodeButton class="jog-key pos-yn" label="−Y" command={cmd.jog("Y", -step(), jogFeed())} stamp={false} />
 							</div>
-						)}
-					</For>
-					<div class="coupler-row">
-						<span class="ctl-name">Coupler <small>C</small></span>
-						<GcodeButton label="Lock" command={cmd.couplerLock()} />
-						<GcodeButton label="Unlock" variant="quiet" command={cmd.couplerUnlock()} />
+						</Show>
+						<Show when={hasAxis("Z")}>
+							<div class="jog-z" role="group" aria-label="Z jog">
+								<GcodeButton class="jog-key" label="+Z" command={cmd.jog("Z", step(), jogFeed())} stamp={false} />
+								<span class="jog-zlabel">Z</span>
+								<GcodeButton class="jog-key" label="−Z" command={cmd.jog("Z", -step(), jogFeed())} stamp={false} />
+							</div>
+						</Show>
 					</div>
+
+					{/* Leadscrews (U/V/W) — individual, for tramming; not spatial jogs. */}
+					<Show when={auxAxes().length > 0}>
+						<div class="jog-aux">
+							<For each={auxAxes()}>
+								{axis => (
+									<div class="jog-row">
+										<span class="ctl-name">{axis.letter}<Show when={role(axis.letter)}>{r => <small>{r()}</small>}</Show></span>
+										<GcodeButton label={`− ${step()}`} command={cmd.jog(axis.letter, -step(), jogFeed())} stamp={false} />
+										<GcodeButton label={`+ ${step()}`} command={cmd.jog(axis.letter, step(), jogFeed())} stamp={false} />
+									</div>
+								)}
+							</For>
+						</div>
+					</Show>
+
+					<Show when={hasAxis("C")}>
+						<div class="coupler-row">
+							<span class="ctl-name">Coupler <small>C</small></span>
+							<GcodeButton label="Lock" command={cmd.couplerLock()} />
+							<GcodeButton label="Unlock" variant="quiet" command={cmd.couplerUnlock()} />
+						</div>
+					</Show>
 					<div class="extrude-row">
 						<span class="ctl-name">Extruder</span>
 						<label class="feed-field">mm <input type="number" value={extAmt()} onInput={e => setExtAmt(Number(e.currentTarget.value))} /></label>

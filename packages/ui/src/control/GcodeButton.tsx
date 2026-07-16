@@ -16,6 +16,8 @@ export function GcodeButton(props: {
 	onSent?: () => void;
 	/** Hide the mono stamp (dense rows where the command is obvious/shown once). */
 	stamp?: boolean;
+	/** Extra class(es) for layout variants (e.g. the jog pad's square keys). */
+	class?: string;
 }) {
 	const app = useApp();
 	const send = (): void => {
@@ -24,7 +26,7 @@ export function GcodeButton(props: {
 	};
 	return (
 		<button
-			class="gcode-btn"
+			class={`gcode-btn ${props.class ?? ""}`}
 			classList={{
 				"gcode-go": props.variant === "go",
 				"gcode-danger": props.variant === "danger",
