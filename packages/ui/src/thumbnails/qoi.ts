@@ -18,10 +18,9 @@ export interface DecodedImage {
 const QOI_OP_INDEX = 0x00; // 00xxxxxx
 const QOI_OP_DIFF = 0x40; // 01xxxxxx
 const QOI_OP_LUMA = 0x80; // 10xxxxxx
-const QOI_OP_RUN = 0xc0; // 11xxxxxx
 const QOI_OP_RGB = 0xfe; // 11111110
 const QOI_OP_RGBA = 0xff; // 11111111
-const MASK2 = 0xc0;
+const MASK2 = 0xc0; // 11xxxxxx also selects QOI_OP_RUN (the final else)
 
 const hash = (r: number, g: number, b: number, a: number) =>
 	(r * 3 + g * 5 + b * 7 + a * 11) & 63;
