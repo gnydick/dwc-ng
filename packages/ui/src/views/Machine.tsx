@@ -98,7 +98,8 @@ export default function Machine() {
 										<tr>
 											<td>
 												<span class="heat-name">
-													{t().name || `Tool ${t().number}`} <span class="des">T{t().number}</span>
+													<span class="heat-tool">{t().name || `Tool ${t().number}`}</span>
+													<span class="des">T{t().number}</span>
 													{/* Dock presence: a single dot by the tool, no column
 													    to scroll off. Green = docked, gold = away. */}
 													<Show when={dockState(t().number)}>
@@ -130,7 +131,12 @@ export default function Machine() {
 						<Show when={heaterAt(bedHeaterIndex())}>
 							{h => (
 								<tr>
-									<td><span class="heat-name">Bed <span class="des">heater{bedHeaterIndex()}</span></span></td>
+									<td>
+										<span class="heat-name">
+											<span class="heat-tool">Bed</span>
+											<span class="des">heater{bedHeaterIndex()}</span>
+										</span>
+									</td>
 									<td><HeaterCurrent heater={h()} /></td>
 									<td><span class="heat-set"><b>{h().active}</b>°</span></td>
 									{/* the bed has no standby mode — no standby cell, ever */}

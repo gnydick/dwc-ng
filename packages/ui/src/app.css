@@ -270,14 +270,24 @@
 }
 .heat-table td:first-child { text-align: left; }
 
+/* Fixed slots, not flow: the badge and dock dot must land at the same x on
+   every row. Flowing them after the name staggered them by a few px, because
+   the display face's digits aren't tabular ("Tool 1" is narrower than
+   "Tool 0"). Same-length names are NOT the same width. */
 .heat-name {
 	font-family: var(--font-display);
 	font-weight: 600;
 	font-size: 15px;
-	display: inline-flex;
-	align-items: baseline;
+	display: grid;
+	grid-template-columns: 84px 58px 12px; /* name | designator | dock dot */
+	align-items: center;
 	gap: 8px;
 }
+.heat-tool { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Grid items stretch by default, which inflated the designator's bordered box
+   to the full slot. Hug the text; only the slot's left edge needs to be fixed. */
+.heat-name .des { justify-self: start; }
+.heat-name .dock-dot { justify-self: center; margin-left: 0; }
 
 .heat-cur {
 	font-family: var(--font-display);
@@ -668,7 +678,21 @@
 .backend-opt + .backend-opt { border-left: 1px solid var(--hairline); }
 .backend-opt:hover:not(:disabled) { color: var(--silk); background: var(--mask-700); }
 .backend-opt.active { color: var(--mask-900); background: var(--copper); }
+/* Real selected is a hazard state, not a neutral choice — make it unmissable. */
+.backend-opt.real.active { background: var(--fault); color: #fff; }
 .backend-opt:disabled { opacity: 0.5; cursor: wait; }
+
+/* Arm control: only shown on the real board. Fixed slot so swapping
+   "Writes locked" ↔ "⚠ Writes armed" can't shove the Camera/STOP buttons. */
+.arm-btn {
+	font: 600 11px/1 var(--font-display); letter-spacing: 0.08em; text-transform: uppercase;
+	color: var(--silk-dim); background: var(--mask-500);
+	border: 1px solid var(--hairline); border-radius: var(--radius);
+	padding: 7px 10px; cursor: pointer; white-space: nowrap;
+	min-width: 116px; text-align: center;
+}
+.arm-btn:hover { color: var(--silk); border-color: var(--copper); }
+.arm-btn.armed { color: #fff; background: var(--fault); border-color: var(--fault); }
 
 /* ---------- temperature chart ---------- */
 .temp-card { grid-column: 1 / -1; }
