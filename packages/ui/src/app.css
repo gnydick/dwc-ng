@@ -749,6 +749,10 @@
 	font: 600 11px/1 var(--font-display); letter-spacing: 0.06em; text-transform: uppercase;
 	color: var(--silk-dim); background: var(--mask-700); border: 1px solid var(--hairline); border-radius: 5px;
 	padding: 5px 10px; cursor: pointer; white-space: nowrap;
+	/* "▶ Run" (55px) and "Confirm" (66px) differ, and this is a two-step
+	   confirm — the button must not resize between the two clicks it asks for.
+	   Reserve the wider label so the target stays put. */
+	min-width: 72px;
 }
 .run-btn:hover { color: var(--ok); border-color: rgba(111, 191, 143, 0.5); }
 .run-btn.armed { color: var(--mask-900); background: var(--gold); border-color: var(--gold); }
