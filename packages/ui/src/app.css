@@ -511,7 +511,11 @@
 /* ---------- responsive ---------- */
 
 @media (max-width: 900px) {
-	.app { grid-template-columns: 1fr; }
+	/* minmax(0, …) so a wide child (the horizontal nav bar, a heater table)
+	   can't push the whole page past the viewport — the nav scrolls inside
+	   its own bar instead of forcing a page-level horizontal scroll. */
+	.app { grid-template-columns: minmax(0, 1fr); }
+	.main { min-width: 0; }
 	.rail {
 		flex-direction: row;
 		align-items: center;
@@ -522,7 +526,7 @@
 	}
 	.rail nav { flex-direction: row; }
 	.rail .machine-id { display: none; }
-	.grid { grid-template-columns: 1fr; }
+	.grid { grid-template-columns: minmax(0, 1fr); }
 	.cam-tile { display: none; }
 }
 
