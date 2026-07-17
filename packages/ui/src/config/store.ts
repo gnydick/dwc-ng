@@ -3,7 +3,7 @@ import type { Connector } from "../connector/types.ts";
 import { FileNotFoundError } from "../connector/types.ts";
 import {
 	CONFIG_CACHE_KEY, CONFIG_FILE, CONFIG_VERSION, DEFAULT_CONFIG, MAX_SNAPSHOTS,
-	type CameraConfig, type ConfigOverlay, type ConfigSnapshot, type DockSensorRef, type UiConfig,
+	type CameraConfig, type ConsoleConfig, type ConfigOverlay, type ConfigSnapshot, type DockSensorRef, type UiConfig,
 } from "./types.ts";
 
 export interface ConfigStore {
@@ -18,6 +18,7 @@ export interface ConfigStore {
 	setDockSensor(toolNumber: number, ref: DockSensorRef): void;
 	clearDockSensor(toolNumber: number): void;
 	setCamera(patch: Partial<CameraConfig>): void;
+	setConsole(patch: Partial<ConsoleConfig>): void;
 
 	/** Drop one section's overlay — that section returns to defaults. */
 	resetSection(section: keyof UiConfig): void;
@@ -69,6 +70,9 @@ export function createConfigStore(): ConfigStore {
 		},
 		setCamera(patch) {
 			apply(draft => { draft.camera = { ...draft.camera, ...patch }; });
+		},
+		setConsole(patch) {
+			apply(draft => { draft.console = { ...draft.console, ...patch }; });
 		},
 
 		resetSection(section) {

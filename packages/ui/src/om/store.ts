@@ -1,6 +1,7 @@
 import { createStore, reconcile, produce, type SetStoreFunction } from "solid-js/store";
 import type { ConnectorEvents, ConnectionStatus } from "../connector/types.ts";
 import { emptyModel, type ObjectModel } from "./types.ts";
+import { CONSOLE_LIMIT, loadConsole, saveConsole, type ConsoleLine } from "./consoleLog.ts";
 
 /**
  * The two stores of machine truth, and the bridge from a Connector.
@@ -26,13 +27,7 @@ export interface ConnectionState {
 	boardType: string | null;
 }
 
-export interface ConsoleLine {
-	/** Wall-clock time the reply arrived (client-side). */
-	receivedAt: number;
-	text: string;
-}
-
-const CONSOLE_LIMIT = 200;
+export type { ConsoleLine };
 
 export interface OmStore {
 	om: ObjectModel;
@@ -51,7 +46,20 @@ export function createOmStore(): OmStore {
 		emulated: null,
 		boardType: null,
 	});
-	const [consoleLines, setConsoleLines] = createStore<ConsoleLine[]>([]);
+	// Macro output (M118) is the reason to run some macros — restore it so a
+	// reload mid-run doesn't lose what the machine already told you.
+	const [consoleLines, setConsoleLines] = createStore<ConsoleLine[]>(loadConsole());
+
+	// Persist throttled: a chatty macro must not re-serialize the whole log per
+	// message. The store proxy is read at flush time, so this saves current state.
+	let saveTimer: ReturnType<typeof setTimeout> | null = null;
+	const persistSoon = (): void => {
+		if (saveTimer !== null) return;
+		saveTimer = setTimeout(() => {
+			saveTimer = null;
+			saveConsole(consoleLines.slice());
+		}, 400);
+	};
 
 	const events: ConnectorEvents = {
 		onModelKey(key, value) {
@@ -66,6 +74,7 @@ export function createOmStore(): OmStore {
 				lines.push({ receivedAt: Date.now(), text });
 				if (lines.length > CONSOLE_LIMIT) lines.splice(0, lines.length - CONSOLE_LIMIT);
 			}));
+			persistSoon();
 		},
 		onStatusChange(status, detail) {
 			setConnection({ status, detail: detail ?? "" });

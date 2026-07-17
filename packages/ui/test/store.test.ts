@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createOmStore, deepMergeInto } from "../src/om/store.ts";
+import { CONSOLE_LIMIT } from "../src/om/consoleLog.ts";
 import { createMockServer } from "../../mock-duet/src/server.ts";
 import { PollConnector } from "../src/connector/PollConnector.ts";
 
@@ -50,10 +51,12 @@ test("array patches merge element-wise and never truncate", () => {
 
 test("console log is a capped ring buffer", () => {
 	const store = createOmStore();
-	for (let i = 0; i < 230; i++) store.events.onReply!(`reply ${i}`);
-	assert.equal(store.console.length, 200);
-	assert.equal(store.console[0]!.text, "reply 30", "oldest lines dropped first");
-	assert.equal(store.console.at(-1)!.text, "reply 229");
+	const overflow = 30;
+	const total = CONSOLE_LIMIT + overflow;
+	for (let i = 0; i < total; i++) store.events.onReply!(`reply ${i}`);
+	assert.equal(store.console.length, CONSOLE_LIMIT);
+	assert.equal(store.console[0]!.text, `reply ${overflow}`, "oldest lines dropped first");
+	assert.equal(store.console.at(-1)!.text, `reply ${total - 1}`);
 });
 
 test("end to end: poll → seqs → rr_model → reconcile, mock to store", async () => {

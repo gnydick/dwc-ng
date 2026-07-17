@@ -24,6 +24,11 @@ export interface CameraConfig {
 	pinned: boolean;
 }
 
+export interface ConsoleConfig {
+	/** Undocked into a floating tile that survives navigation. */
+	floating: boolean;
+}
+
 export interface UiConfig {
 	/** Axis letter → human role label ("U" → "Z motor 1"). RRF has no
 	 * notion of axis roles; this is per-machine UI metadata. */
@@ -32,6 +37,7 @@ export interface UiConfig {
 	 * docked/away, never "mounted" — label accordingly. */
 	dockSensors: Record<string, DockSensorRef>;
 	camera: CameraConfig;
+	console: ConsoleConfig;
 }
 
 export type DeepPartial<T> = {
@@ -50,6 +56,7 @@ export const DEFAULT_CONFIG: UiConfig = {
 	axisRoles: {},
 	dockSensors: {},
 	camera: { streamUrl: "", pinned: false },
+	console: { floating: false },
 };
 
 /** Where the overlay lives on the machine's SD card. */

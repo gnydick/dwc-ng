@@ -1,4 +1,4 @@
-import { For, Match, Show, Switch, createMemo, createSignal } from "solid-js";
+import { For, Match, Show, Switch, createEffect, createMemo, createSignal } from "solid-js";
 import { useApp } from "./context.ts";
 import { createRouter, type Route } from "./router.ts";
 import {
@@ -193,11 +193,102 @@ function BackendToggle() {
 	);
 }
 
+/**
+ * Console. Docks at the bottom by default, or snaps out into a floating tile
+ * that survives navigation — Gabe's macros emit M118 messages that are the
+ * reason to run them, and a one-line drawer loses them as they stream past.
+ * The undocked state persists (config overlay), the log persists (localStorage).
+ */
 function ConsoleDrawer() {
 	const app = useApp();
-	const [code, setCode] = createSignal("");
 	const [expanded, setExpanded] = createSignal(false);
+	const floating = (): boolean => app.config.config.console.floating;
 
+	return (
+		<Show when={!floating()} fallback={<ConsoleTile />}>
+			<div class="console-drawer" role="region" aria-label="Console">
+				<Show when={expanded()}>
+					<ConsoleHistory />
+				</Show>
+				<div class="console-row">
+					<Show when={!expanded()}>
+						<span class="console-last">
+							<Show when={app.om.console.at(-1)} fallback={"Console"}>
+								{line => line().text}
+							</Show>
+						</span>
+					</Show>
+					<ConsoleForm />
+					<button
+						class="console-expand"
+						title={expanded() ? "Collapse console history" : "Expand console history"}
+						aria-expanded={expanded()}
+						onClick={() => setExpanded(v => !v)}
+					>
+						{expanded() ? "▾" : "▴"}
+					</button>
+					<button
+						class="console-expand"
+						title="Snap the console out into a floating panel"
+						onClick={() => app.config.setConsole({ floating: true })}
+					>
+						⇱
+					</button>
+				</div>
+			</div>
+		</Show>
+	);
+}
+
+/** The snapped-out console: fixed, resizable, above every view. */
+function ConsoleTile() {
+	const app = useApp();
+	return (
+		<aside class="console-tile" role="region" aria-label="Console">
+			<div class="console-tile-head">
+				<span class="console-tile-title">Console</span>
+				<button
+					class="console-expand"
+					title="Dock the console back to the bottom"
+					onClick={() => app.config.setConsole({ floating: false })}
+				>
+					⇲
+				</button>
+			</div>
+			<ConsoleHistory />
+			<ConsoleForm />
+		</aside>
+	);
+}
+
+function ConsoleHistory() {
+	const app = useApp();
+	let el!: HTMLDivElement;
+	// Follow the tail: watching messages arrive is the whole point, and a macro
+	// that emits faster than you scroll is useless if it doesn't stick to the end.
+	createEffect(() => {
+		app.om.console.length; // track
+		el.scrollTop = el.scrollHeight;
+	});
+	return (
+		<div class="console-history" ref={el}>
+			<Show when={app.om.console.length} fallback={<p class="console-empty">No replies yet.</p>}>
+				<For each={app.om.console}>
+					{line => (
+						<div class="console-line">
+							<time>{new Date(line.receivedAt).toLocaleTimeString(undefined, { hour12: false })}</time>
+							<span>{line.text}</span>
+						</div>
+					)}
+				</For>
+			</Show>
+		</div>
+	);
+}
+
+function ConsoleForm() {
+	const app = useApp();
+	const [code, setCode] = createSignal("");
 	const send = (event: SubmitEvent): void => {
 		event.preventDefault();
 		const value = code().trim();
@@ -205,51 +296,17 @@ function ConsoleDrawer() {
 		setCode("");
 		void app.connector.sendCode(value).catch(() => undefined);
 	};
-
 	return (
-		<div class="console-drawer" role="region" aria-label="Console">
-			<Show when={expanded()}>
-				<div class="console-history">
-					<Show when={app.om.console.length} fallback={<p class="console-empty">No replies yet.</p>}>
-						<For each={app.om.console}>
-							{line => (
-								<div class="console-line">
-									<time>{new Date(line.receivedAt).toLocaleTimeString(undefined, { hour12: false })}</time>
-									<span>{line.text}</span>
-								</div>
-							)}
-						</For>
-					</Show>
-				</div>
-			</Show>
-			<div class="console-row">
-				<Show when={!expanded()}>
-					<span class="console-last">
-						<Show when={app.om.console.at(-1)} fallback={"Console"}>
-							{line => line().text}
-						</Show>
-					</span>
-				</Show>
-				<form class="console-form" onSubmit={send}>
-					<input
-						type="text"
-						placeholder="Send G-code — e.g. M114"
-						aria-label="G-code command"
-						value={code()}
-						onInput={e => setCode(e.currentTarget.value)}
-					/>
-					<button type="submit">Send</button>
-				</form>
-				<button
-					class="console-expand"
-					title={expanded() ? "Collapse console history" : "Expand console history"}
-					aria-expanded={expanded()}
-					onClick={() => setExpanded(v => !v)}
-				>
-					{expanded() ? "▾" : "▴"}
-				</button>
-			</div>
-		</div>
+		<form class="console-form" onSubmit={send}>
+			<input
+				type="text"
+				placeholder="Send G-code — e.g. M114"
+				aria-label="G-code command"
+				value={code()}
+				onInput={e => setCode(e.currentTarget.value)}
+			/>
+			<button type="submit">Send</button>
+		</form>
 	);
 }
 
