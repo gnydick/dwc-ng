@@ -3,16 +3,11 @@ import { useApp } from "../shell/context.ts";
 import { cmd } from "../control/commands.ts";
 import { GcodeButton } from "../control/GcodeButton.tsx";
 import { Panel } from "../shell/Panel.tsx";
-import { createPanelLayout, type PanelDefault } from "../shell/panelLayout.ts";
-
-const PANEL_DEFAULTS: PanelDefault[] = [
-	{ id: "homing" },
-	{ id: "tools" },
-	{ id: "heaters" },
-	{ id: "movement" },
-	{ id: "fans" },
-	{ id: "tuning" },
-];
+import { PanelCanvas } from "../shell/PanelCanvas.tsx";
+import { ConsolePanel } from "../shell/ConsolePanel.tsx";
+import { CameraPanel } from "../shell/CameraPanel.tsx";
+import { createPanelCanvas } from "../shell/panelCanvas.ts";
+import { CONTROL_PANEL_DEFAULTS } from "./control.panelDefaults.ts";
 
 const STEPS = [0.1, 1, 10, 100];
 
@@ -24,7 +19,7 @@ const STEPS = [0.1, 1, 10, 100];
  */
 export default function Control() {
 	const app = useApp();
-	const layout = createPanelLayout("dwc-ng.layout.control", PANEL_DEFAULTS);
+	const canvas = createPanelCanvas("dwc-ng.canvas.control", CONTROL_PANEL_DEFAULTS);
 
 	const axes = createMemo(() => app.om.om.move.axes.filter(a => a.visible));
 	const role = (letter: string): string | undefined => app.config.config.axisRoles[letter];
@@ -46,10 +41,10 @@ export default function Control() {
 	return (
 		<>
 			<div class="layout-toolbar">
-				<button class="layout-reset" onClick={() => layout.reset()}>↺ Reset layout</button>
+				<button class="layout-reset" onClick={() => canvas.reset()}>↺ Reset layout</button>
 			</div>
-			<div class="grid control">
-				<Panel id="homing" layout={layout} ariaLabel="Homing">
+			<PanelCanvas class="control">
+				<Panel id="homing" canvas={canvas} ariaLabel="Homing">
 					<div class="card-head"><h2 class="card-title">Homing</h2><span class="des">G28</span></div>
 					<div class="ctl-wrap">
 						<GcodeButton label="Home All" variant="go" command={cmd.homeAll()} />
@@ -64,7 +59,7 @@ export default function Control() {
 					</div>
 				</Panel>
 
-				<Panel id="tools" layout={layout} ariaLabel="Tools">
+				<Panel id="tools" canvas={canvas} ariaLabel="Tools">
 					<div class="card-head"><h2 class="card-title">Tools</h2><span class="des">T · state.currentTool</span></div>
 					<div class="ctl-wrap">
 						<For each={app.om.om.tools}>
@@ -84,7 +79,7 @@ export default function Control() {
 					</div>
 				</Panel>
 
-				<Panel id="heaters" layout={layout} ariaLabel="Heaters">
+				<Panel id="heaters" canvas={canvas} ariaLabel="Heaters">
 					<div class="card-head"><h2 class="card-title">Heaters</h2><span class="des">M568 · M140</span></div>
 					<div class="heater-list">
 						<For each={app.om.om.tools}>
@@ -107,7 +102,7 @@ export default function Control() {
 					</div>
 				</Panel>
 
-				<Panel id="movement" layout={layout} ariaLabel="Movement">
+				<Panel id="movement" canvas={canvas} ariaLabel="Movement">
 					<div class="card-head"><h2 class="card-title">Movement</h2><span class="des">M120 · G91 · M121</span></div>
 					<div class="jog-controls">
 						<div class="step-row">
@@ -171,7 +166,7 @@ export default function Control() {
 				</Panel>
 
 				<Show when={app.om.om.fans.some(f => f !== null)}>
-					<Panel id="fans" layout={layout} ariaLabel="Fans">
+					<Panel id="fans" canvas={canvas} ariaLabel="Fans">
 						<div class="card-head"><h2 class="card-title">Fans</h2><span class="des">M106</span></div>
 						<div class="heater-list">
 							<For each={app.om.om.fans}>
@@ -185,7 +180,7 @@ export default function Control() {
 					</Panel>
 				</Show>
 
-				<Panel id="tuning" layout={layout} ariaLabel="Tuning">
+				<Panel id="tuning" canvas={canvas} ariaLabel="Tuning">
 					<div class="card-head"><h2 class="card-title">Tuning</h2><span class="des">M220 · M221 · M290</span></div>
 					<div class="heater-list">
 						<FactorControl label="Speed" build={cmd.speedFactor} current={Math.round((app.om.om.move.speedFactor ?? 1) * 100)} />
@@ -199,7 +194,10 @@ export default function Control() {
 						</div>
 					</div>
 				</Panel>
-			</div>
+
+				<ConsolePanel canvas={canvas} />
+				<CameraPanel canvas={canvas} />
+			</PanelCanvas>
 		</>
 	);
 }

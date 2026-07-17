@@ -701,7 +701,6 @@
 .temp-chart .u-select { background: rgba(217, 133, 59, 0.12); }
 
 /* ---------- Control view (controls wear their G-code) ---------- */
-.control { grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); align-items: start; }
 
 .gcode-btn {
 	display: inline-flex; flex-direction: column; align-items: flex-start; gap: 3px;
