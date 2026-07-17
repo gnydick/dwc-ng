@@ -7,6 +7,8 @@
  * docs/superpowers/specs/2026-07-17-grid-canvas-design.md.
  */
 
+import { createSignal } from "solid-js";
+
 export const GRID_COLS = 24;
 export const ROW_UNIT_PX = 24;
 export const GAP_PX = 6;
@@ -199,4 +201,130 @@ export function mergeCanvas(stored: unknown, defaults: PanelDefault[]): CanvasSt
 		result[d.id] = isPanelRect(entry) ? clampRect(entry) : fallback[d.id]!;
 	}
 	return hasCollisions(result) ? fallback : result;
+}
+
+function readStorage(key: string): string | null {
+	if (typeof localStorage === "undefined") return null;
+	try {
+		return localStorage.getItem(key);
+	} catch {
+		return null;
+	}
+}
+
+function writeStorage(key: string, value: string): void {
+	if (typeof localStorage === "undefined") return;
+	try {
+		localStorage.setItem(key, value);
+	} catch {
+		// Private mode / quota exceeded: the layout just won't survive a reload.
+	}
+}
+
+function removeStorage(key: string): void {
+	if (typeof localStorage === "undefined") return;
+	try {
+		localStorage.removeItem(key);
+	} catch {
+		// Private mode / quota exceeded: reset just won't survive a reload either.
+	}
+}
+
+export interface PanelCanvasController {
+	styleFor: (id: string) => Record<string, string>;
+	startMove: (id: string, event: PointerEvent) => void;
+	startResize: (id: string, event: PointerEvent) => void;
+	reset: () => void;
+}
+
+/**
+ * Per-view grid canvas controller. Call once per view; pass the result to
+ * every <Panel> in it. Position/size persist to
+ * localStorage["<storageKey>"] and survive reload.
+ */
+export function createPanelCanvas(storageKey: string, defaults: PanelDefault[]): PanelCanvasController {
+	const [state, setState] = createSignal(mergeCanvas(parseStoredCanvas(readStorage(storageKey)), defaults));
+
+	const persist = (next: CanvasState): void => {
+		setState(next);
+		writeStorage(storageKey, serializeCanvas(next));
+	};
+
+	const styleFor = (id: string): Record<string, string> => {
+		const r = state()[id];
+		if (!r) return {};
+		return {
+			"grid-column": `${r.col + 1} / span ${r.colSpan}`,
+			"grid-row": `${r.row + 1} / span ${r.rowSpan}`,
+		};
+	};
+
+	const cellSize = (canvasEl: HTMLElement): { colWidthPx: number; rowHeightPx: number } => {
+		const width = canvasEl.getBoundingClientRect().width;
+		const colWidthPx = (width - (GRID_COLS - 1) * GAP_PX) / GRID_COLS;
+		return { colWidthPx, rowHeightPx: ROW_UNIT_PX };
+	};
+
+	const startMove = (id: string, event: PointerEvent): void => {
+		const grip = event.currentTarget as HTMLElement;
+		const canvasEl = grip.closest<HTMLElement>(".panel-canvas");
+		const start = state()[id];
+		if (!canvasEl || !start) return;
+		event.preventDefault();
+		const { colWidthPx, rowHeightPx } = cellSize(canvasEl);
+		const originX = event.clientX;
+		const originY = event.clientY;
+		let lastValid = start;
+
+		const onMove = (moveEvent: PointerEvent): void => {
+			const deltaCol = Math.round((moveEvent.clientX - originX) / (colWidthPx + GAP_PX));
+			const deltaRow = Math.round((moveEvent.clientY - originY) / (rowHeightPx + GAP_PX));
+			const candidate = tryMove(state(), id, start.col + deltaCol, start.row + deltaRow);
+			if (candidate) {
+				lastValid = candidate;
+				setState({ ...state(), [id]: candidate }); // live preview, not yet persisted
+			}
+		};
+		const onUp = (): void => {
+			window.removeEventListener("pointermove", onMove);
+			window.removeEventListener("pointerup", onUp);
+			const withMove = { ...state(), [id]: lastValid };
+			persist(settle(withMove));
+		};
+		window.addEventListener("pointermove", onMove);
+		window.addEventListener("pointerup", onUp);
+	};
+
+	const startResize = (id: string, event: PointerEvent): void => {
+		const grip = event.currentTarget as HTMLElement;
+		const canvasEl = grip.closest<HTMLElement>(".panel-canvas");
+		const start = state()[id];
+		if (!canvasEl || !start) return;
+		event.preventDefault();
+		event.stopPropagation();
+		const { colWidthPx, rowHeightPx } = cellSize(canvasEl);
+		const originX = event.clientX;
+		const originY = event.clientY;
+
+		const onMove = (moveEvent: PointerEvent): void => {
+			const deltaColSpan = Math.round((moveEvent.clientX - originX) / (colWidthPx + GAP_PX));
+			const deltaRowSpan = Math.round((moveEvent.clientY - originY) / (rowHeightPx + GAP_PX));
+			const next = tryResize(state(), id, start.colSpan + deltaColSpan, start.rowSpan + deltaRowSpan);
+			setState({ ...state(), [id]: next }); // live preview, no settle on resize
+		};
+		const onUp = (): void => {
+			window.removeEventListener("pointermove", onMove);
+			window.removeEventListener("pointerup", onUp);
+			persist(state());
+		};
+		window.addEventListener("pointermove", onMove);
+		window.addEventListener("pointerup", onUp);
+	};
+
+	const reset = (): void => {
+		removeStorage(storageKey);
+		setState(defaultCanvas(defaults));
+	};
+
+	return { styleFor, startMove, startResize, reset };
 }

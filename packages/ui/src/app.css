@@ -54,7 +54,7 @@
 	min-height: 100vh;
 }
 
-.main > .grid { flex: 1; align-content: start; }
+.main > .panel-canvas { flex: 1; align-content: start; }
 
 .preflight-actions { margin-left: auto; display: flex; align-items: center; gap: 10px; }
 
@@ -133,14 +133,11 @@
 
 /* ---------- cards ---------- */
 
-.grid {
+.panel-canvas {
 	display: grid;
-	/* minmax(0, …) lets a wide child (e.g. the heater table) shrink instead of
-	   forcing the track past the viewport — otherwise the right card overflows
-	   off-screen (min-content default). */
-	grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
-	gap: 14px;
-	align-items: start;
+	grid-template-columns: repeat(24, minmax(0, 1fr));
+	grid-auto-rows: 24px;
+	gap: 6px;
 }
 
 .card {
@@ -165,8 +162,6 @@
 	text-transform: uppercase;
 	color: var(--silk-dim);
 }
-
-/* ---------- rearrangeable panels ---------- */
 
 .card.panel { position: relative; }
 
@@ -643,7 +638,6 @@
 	}
 	.rail nav { flex-direction: row; }
 	.rail .machine-id { display: none; }
-	.grid { grid-template-columns: minmax(0, 1fr); }
 	.cam-tile { display: none; }
 
 	/* Narrower fixed columns + smaller temp on phones so the Heater name never
