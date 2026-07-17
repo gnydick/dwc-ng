@@ -5,6 +5,7 @@ import {
 	tryMove, tryResize, settle, defaultCanvas, parseStoredCanvas, serializeCanvas, mergeCanvas,
 } from "../src/shell/panelCanvas.ts";
 import { MACHINE_PANEL_DEFAULTS } from "../src/views/machine.panelDefaults.ts";
+import { JOBS_PANEL_DEFAULTS } from "../src/views/jobs.panelDefaults.ts";
 
 const rect = (col: number, row: number, colSpan: number, rowSpan: number) => ({ col, row, colSpan, rowSpan });
 
@@ -144,4 +145,8 @@ test("serializeCanvas round-trips through parseStoredCanvas and mergeCanvas", ()
 
 test("Machine view's default panel layout is collision-free", () => {
 	assert.equal(hasCollisions(defaultCanvas(MACHINE_PANEL_DEFAULTS)), false);
+});
+
+test("Jobs view's default panel layout is collision-free", () => {
+	assert.equal(hasCollisions(defaultCanvas(JOBS_PANEL_DEFAULTS)), false);
 });

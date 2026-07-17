@@ -3,13 +3,11 @@ import { useApp } from "../shell/context.ts";
 import { Thumbnail } from "../thumbnails/Thumbnail.tsx";
 import type { FileListEntry } from "../connector/types.ts";
 import { Panel } from "../shell/Panel.tsx";
-import { createPanelLayout, type PanelDefault } from "../shell/panelLayout.ts";
-
-const PANEL_DEFAULTS: PanelDefault[] = [
-	{ id: "active-job", colSpan: 2 },
-	{ id: "job-files" },
-	{ id: "job-details" },
-];
+import { PanelCanvas } from "../shell/PanelCanvas.tsx";
+import { ConsolePanel } from "../shell/ConsolePanel.tsx";
+import { CameraPanel } from "../shell/CameraPanel.tsx";
+import { createPanelCanvas } from "../shell/panelCanvas.ts";
+import { JOBS_PANEL_DEFAULTS } from "./jobs.panelDefaults.ts";
 
 const GCODES_ROOT = "0:/gcodes";
 
@@ -24,7 +22,7 @@ const ACTIVE_STATUSES = new Set(["processing", "paused", "pausing", "resuming", 
  */
 export default function Jobs() {
 	const app = useApp();
-	const layout = createPanelLayout("dwc-ng.layout.jobs", PANEL_DEFAULTS);
+	const canvas = createPanelCanvas("dwc-ng.canvas.jobs", JOBS_PANEL_DEFAULTS);
 
 	const connected = () => app.om.connection.status === "connected";
 
@@ -95,11 +93,11 @@ export default function Jobs() {
 	return (
 		<>
 			<div class="layout-toolbar">
-				<button class="layout-reset" onClick={() => layout.reset()}>↺ Reset layout</button>
+				<button class="layout-reset" onClick={() => canvas.reset()}>↺ Reset layout</button>
 			</div>
-			<div class="grid jobs">
+			<PanelCanvas class="jobs">
 				<Show when={isActive()}>
-					<Panel id="active-job" layout={layout} ariaLabel="Active job" class="job-active">
+					<Panel id="active-job" canvas={canvas} ariaLabel="Active job" class="job-active">
 						<div class="card-head">
 							<h2 class="card-title">Printing</h2>
 							<span class="des">job · state</span>
@@ -149,7 +147,7 @@ export default function Jobs() {
 					</Panel>
 				</Show>
 
-				<Panel id="job-files" layout={layout} ariaLabel="Job files" class="jobs-browse">
+				<Panel id="job-files" canvas={canvas} ariaLabel="Job files" class="jobs-browse">
 					<div class="card-head">
 						<h2 class="card-title">Jobs</h2>
 						<span class="des">{dir()}</span>
@@ -199,7 +197,7 @@ export default function Jobs() {
 				</Panel>
 
 				<Show when={selected()}>
-					<Panel id="job-details" layout={layout} ariaLabel="Job details" class="jobs-detail">
+					<Panel id="job-details" canvas={canvas} ariaLabel="Job details" class="jobs-detail">
 						<div class="card-head">
 							<h2 class="card-title">{baseName(selected()!)}</h2>
 							<span class="des">rr_fileinfo</span>
@@ -234,7 +232,10 @@ export default function Jobs() {
 						</Switch>
 					</Panel>
 				</Show>
-			</div>
+
+				<ConsolePanel canvas={canvas} />
+				<CameraPanel canvas={canvas} />
+			</PanelCanvas>
 		</>
 	);
 }
