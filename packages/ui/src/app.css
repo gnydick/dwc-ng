@@ -413,19 +413,7 @@
 .dock-dot.docked { background: var(--ok); color: var(--ok); }
 .dock-dot.away { background: var(--gold); color: var(--gold); }
 
-/* ---------- console drawer ---------- */
-
-.console-drawer {
-	position: sticky;
-	bottom: 0;
-	margin-top: 18px;
-	background: var(--mask-700);
-	border: 1px solid var(--hairline);
-	border-bottom: none;
-	border-radius: var(--radius) var(--radius) 0 0;
-	padding: 10px 14px;
-	box-shadow: 0 -8px 24px rgba(4, 9, 17, 0.55);
-}
+/* ---------- console (body used by shell/ConsolePanel.tsx) ---------- */
 
 .console-history {
 	max-height: 220px;
@@ -436,18 +424,6 @@
 	padding-bottom: 10px;
 	margin-bottom: 10px;
 	border-bottom: 1px solid var(--hairline);
-}
-
-.console-row { display: flex; align-items: center; gap: 12px; }
-
-.console-last {
-	flex: 1;
-	min-width: 0;
-	font-size: 12.5px;
-	color: var(--silk-dim);
-	white-space: nowrap;
-	overflow: hidden;
-	text-overflow: ellipsis;
 }
 
 .console-line {
@@ -480,53 +456,9 @@
 	padding: 6px 14px;
 }
 .console-form button:hover { background: rgba(217, 133, 59, 0.12); }
-.console-expand { color: var(--silk-dim); font-size: 15px; line-height: 1; padding: 4px 6px; }
-.console-expand:hover { color: var(--silk); }
 
-/* ---------- camera tile ---------- */
+/* ---------- camera (body used by shell/CameraPanel.tsx) ---------- */
 
-.cam-tile {
-	position: fixed;
-	right: 22px;
-	bottom: 74px;
-	z-index: 10;
-	display: flex;
-	flex-direction: column;
-	width: 260px;
-	height: 230px;
-	min-width: 180px;
-	min-height: 160px;
-	max-width: calc(100vw - 44px);
-	max-height: 80vh;
-	resize: both;
-	overflow: hidden;
-	background: var(--mask-700);
-	border: 1px solid var(--hairline);
-	border-radius: var(--radius);
-	box-shadow: 0 12px 32px rgba(4, 9, 17, 0.65);
-}
-.cam-head {
-	display: flex;
-	align-items: center;
-	gap: 8px;
-	padding: 6px 10px;
-	border-bottom: 1px solid var(--hairline);
-	cursor: grab;
-	touch-action: none;
-	user-select: none;
-}
-.cam-head:active { cursor: grabbing; }
-.cam-title {
-	font-family: var(--font-display);
-	font-weight: 600;
-	font-size: 11px;
-	letter-spacing: 0.14em;
-	text-transform: uppercase;
-	color: var(--silk-dim);
-}
-.cam-actions { margin-left: auto; }
-.cam-head button { color: var(--silk-dim); font-size: 13px; line-height: 1; padding: 3px 5px; cursor: pointer; }
-.cam-head button:hover { color: var(--silk); }
 .cam-body {
 	flex: 1;
 	min-height: 0;
@@ -643,7 +575,6 @@
 	}
 	.rail nav { flex-direction: row; }
 	.rail .machine-id { display: none; }
-	.cam-tile { display: none; }
 
 	/* Narrower fixed columns + smaller temp on phones so the Heater name never
 	   gets starved (and stays unclipped) while columns remain reflow-proof. */
@@ -914,50 +845,3 @@
 .om-val.k-boolean { color: var(--gold); }
 .om-val.k-null { color: var(--silk-dim); font-style: italic; }
 
-/* ---------- snapped-out console ---------- */
-/* Fixed and above the views, so macro output stays watchable while you work.
-   Sits left of the camera tile's corner so the two don't stack. */
-.console-tile {
-	position: fixed;
-	right: 22px;
-	bottom: 22px;
-	z-index: 40;
-	display: flex;
-	flex-direction: column;
-	width: 720px;
-	height: 520px;
-	min-width: 300px;
-	min-height: 180px;
-	max-width: calc(100vw - 44px);
-	max-height: 90vh;
-	resize: both;
-	overflow: hidden;
-	padding: 10px 12px;
-	background: var(--mask-700);
-	border: 1px solid var(--hairline);
-	border-radius: var(--radius);
-	box-shadow: 0 12px 44px rgba(4, 9, 17, 0.62);
-}
-.console-tile-head {
-	display: flex;
-	align-items: center;
-	gap: 10px;
-	margin-bottom: 8px;
-	cursor: grab;
-	touch-action: none;
-	user-select: none;
-}
-.console-tile-head:active { cursor: grabbing; }
-.console-tile-title {
-	font: 600 11px/1 var(--font-display); letter-spacing: 0.16em; text-transform: uppercase;
-	color: var(--silk-dim);
-}
-.console-tile-head .console-expand { margin-left: auto; cursor: pointer; }
-/* In the tile the history is the body, not a capped strip. */
-.console-tile .console-history { flex: 1; max-height: none; min-height: 0; margin-bottom: 8px; }
-
-@media (max-width: 900px) {
-	/* Dragged/resized geometry is inline style — !important keeps small screens
-	   full-width regardless of whatever position the tile was left in on desktop. */
-	.console-tile { left: 12px !important; right: 12px !important; top: auto !important; bottom: 12px !important; width: auto !important; height: 46vh !important; resize: vertical; }
-}

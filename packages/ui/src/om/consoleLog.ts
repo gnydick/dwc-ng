@@ -20,7 +20,6 @@ export interface ConsoleLine {
 export const CONSOLE_LIMIT = 1000;
 
 const STORAGE_KEY = "dwc-ng.console";
-const FLOATING_KEY = "dwc-ng.console.floating";
 
 /** Keep only the newest `limit` lines. */
 export function capLines(lines: ConsoleLine[], limit: number = CONSOLE_LIMIT): ConsoleLine[] {
@@ -65,31 +64,5 @@ export function saveConsole(lines: ConsoleLine[]): void {
 		localStorage.setItem(STORAGE_KEY, serializeConsole(lines));
 	} catch {
 		// Private mode / quota exceeded: the log just won't survive a reload.
-	}
-}
-
-/**
- * Whether the console is snapped out into its floating panel.
- *
- * Persisted here rather than in the config overlay: the overlay only lands on
- * an explicit Save (and uploads to the machine's SD), which would mean snapping
- * the console out, reloading, and finding it docked again. It's a workspace
- * preference, so it sticks immediately and stays local to this browser.
- */
-export function loadConsoleFloating(): boolean {
-	if (typeof localStorage === "undefined") return false;
-	try {
-		return localStorage.getItem(FLOATING_KEY) === "true";
-	} catch {
-		return false;
-	}
-}
-
-export function saveConsoleFloating(floating: boolean): void {
-	if (typeof localStorage === "undefined") return;
-	try {
-		localStorage.setItem(FLOATING_KEY, String(floating));
-	} catch {
-		// Private mode / quota: the choice just won't survive a reload.
 	}
 }

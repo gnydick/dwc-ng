@@ -1,29 +1,16 @@
-import { For, Match, Show, Switch, createEffect, createMemo, createSignal } from "solid-js";
+import { For, Match, Show, Switch, createMemo, createSignal } from "solid-js";
 import { useApp } from "./context.ts";
 import { createRouter, type Route } from "./router.ts";
 import {
 	BACKENDS, type Backend, rememberBackend,
 	currentBackendId, setCurrentBackendId, writesArmed, setWritesArmed,
 } from "../dev/backend.ts";
-import { loadConsoleFloating, saveConsoleFloating } from "../om/consoleLog.ts";
-import { createFloatingTile } from "./floatingTile.ts";
 import Machine from "../views/Machine.tsx";
 import Control from "../views/Control.tsx";
 import Jobs from "../views/Jobs.tsx";
 import Macros from "../views/Macros.tsx";
 import System from "../views/System.tsx";
 import Settings from "../views/Settings.tsx";
-
-/**
- * Console floating state. Module-level + localStorage-backed rather than in the
- * config overlay: the overlay needs an explicit Save (and uploads to the SD), so
- * the console would dock itself again on every reload. This sticks immediately.
- */
-const [consoleFloating, setConsoleFloatingSignal] = createSignal(loadConsoleFloating());
-function setConsoleFloating(floating: boolean): void {
-	setConsoleFloatingSignal(floating);
-	saveConsoleFloating(floating);
-}
 
 const NAV: Array<{ route: Route; label: string }> = [
 	{ route: "machine", label: "Machine" },
@@ -116,7 +103,7 @@ export default function Shell() {
 						<button
 							class="ghost-btn"
 							aria-pressed={app.config.config.camera.pinned}
-							title="Keep the camera tile visible on every view"
+							title="Show the camera panel on the current view"
 							onClick={() => app.config.setCamera({ pinned: !app.config.config.camera.pinned })}
 						>
 							Camera
@@ -140,11 +127,7 @@ export default function Shell() {
 					<Match when={route() === "system"}><System /></Match>
 					<Match when={route() === "settings"}><Settings /></Match>
 				</Switch>
-
-				<ConsoleDrawer />
 			</div>
-
-			<CameraTile />
 		</div>
 	);
 }
@@ -203,156 +186,5 @@ function BackendToggle() {
 				</button>
 			</Show>
 		</>
-	);
-}
-
-/**
- * Console. Docks at the bottom by default, or snaps out into a floating tile
- * that survives navigation — Gabe's macros emit M118 messages that are the
- * reason to run them, and a one-line drawer loses them as they stream past.
- * The undocked state persists (config overlay), the log persists (localStorage).
- */
-function ConsoleDrawer() {
-	const app = useApp();
-	const [expanded, setExpanded] = createSignal(false);
-	const floating = consoleFloating;
-
-	return (
-		<Show when={!floating()} fallback={<ConsoleTile />}>
-			<div class="console-drawer" role="region" aria-label="Console">
-				<Show when={expanded()}>
-					<ConsoleHistory />
-				</Show>
-				<div class="console-row">
-					<Show when={!expanded()}>
-						<span class="console-last">
-							<Show when={app.om.console.at(-1)} fallback={"Console"}>
-								{line => line().text}
-							</Show>
-						</span>
-					</Show>
-					<ConsoleForm />
-					<button
-						class="console-expand"
-						title={expanded() ? "Collapse console history" : "Expand console history"}
-						aria-expanded={expanded()}
-						onClick={() => setExpanded(v => !v)}
-					>
-						{expanded() ? "▾" : "▴"}
-					</button>
-					<button
-						class="console-expand"
-						title="Snap the console out into a floating panel"
-						onClick={() => setConsoleFloating(true)}
-					>
-						⇱
-					</button>
-				</div>
-			</div>
-		</Show>
-	);
-}
-
-/**
- * The snapped-out console: fixed, resizable, above every view, and draggable
- * by its header. Position + size persist via createFloatingTile — CSS's
- * default bottom-right corner is only a fallback until the first drag/resize.
- */
-function ConsoleTile() {
-	const app = useApp();
-	const tile = createFloatingTile("dwc-ng.console.geometry");
-
-	return (
-		<aside class="console-tile" role="region" aria-label="Console" style={tile.style()} ref={tile.setEl}>
-			<div class="console-tile-head" onPointerDown={tile.startDrag}>
-				<span class="console-tile-title">Console</span>
-				<button
-					class="console-expand"
-					title="Dock the console back to the bottom"
-					onClick={() => setConsoleFloating(false)}
-				>
-					⇲
-				</button>
-			</div>
-			<ConsoleHistory />
-			<ConsoleForm />
-		</aside>
-	);
-}
-
-function ConsoleHistory() {
-	const app = useApp();
-	let el!: HTMLDivElement;
-	// Follow the tail: watching messages arrive is the whole point, and a macro
-	// that emits faster than you scroll is useless if it doesn't stick to the end.
-	createEffect(() => {
-		app.om.console.length; // track
-		el.scrollTop = el.scrollHeight;
-	});
-	return (
-		<div class="console-history" ref={el}>
-			<Show when={app.om.console.length} fallback={<p class="console-empty">No replies yet.</p>}>
-				<For each={app.om.console}>
-					{line => (
-						<div class="console-line">
-							<time>{new Date(line.receivedAt).toLocaleTimeString(undefined, { hour12: false })}</time>
-							<span>{line.text}</span>
-						</div>
-					)}
-				</For>
-			</Show>
-		</div>
-	);
-}
-
-function ConsoleForm() {
-	const app = useApp();
-	const [code, setCode] = createSignal("");
-	const send = (event: SubmitEvent): void => {
-		event.preventDefault();
-		const value = code().trim();
-		if (value === "") return;
-		setCode("");
-		void app.connector.sendCode(value).catch(() => undefined);
-	};
-	return (
-		<form class="console-form" onSubmit={send}>
-			<input
-				type="text"
-				placeholder="Send G-code — e.g. M114"
-				aria-label="G-code command"
-				value={code()}
-				onInput={e => setCode(e.currentTarget.value)}
-			/>
-			<button type="submit">Send</button>
-		</form>
-	);
-}
-
-/** Draggable/resizable like the console tile; same reasoning — a workspace
- * placement, not machine config, so it's localStorage-only. */
-function CameraTile() {
-	const app = useApp();
-	const tile = createFloatingTile("dwc-ng.camera.geometry");
-
-	return (
-		<Show when={app.config.config.camera.pinned}>
-			<aside class="cam-tile" aria-label="Camera" style={tile.style()} ref={tile.setEl}>
-				<div class="cam-head" onPointerDown={tile.startDrag}>
-					<span class="cam-title">Camera</span>
-					<div class="cam-actions">
-						<button title="Hide camera" onClick={() => app.config.setCamera({ pinned: false })}>✕</button>
-					</div>
-				</div>
-				<div class="cam-body">
-					<Show
-						when={app.config.config.camera.streamUrl !== ""}
-						fallback={<span>Set a stream URL in <a href="#/settings">Settings</a></span>}
-					>
-						<img src={app.config.config.camera.streamUrl} alt="Machine camera stream" />
-					</Show>
-				</div>
-			</aside>
-		</Show>
 	);
 }
