@@ -5,12 +5,24 @@ import {
 	BACKENDS, type Backend, rememberBackend,
 	currentBackendId, setCurrentBackendId, writesArmed, setWritesArmed,
 } from "../dev/backend.ts";
+import { loadConsoleFloating, saveConsoleFloating } from "../om/consoleLog.ts";
 import Machine from "../views/Machine.tsx";
 import Control from "../views/Control.tsx";
 import Jobs from "../views/Jobs.tsx";
 import Macros from "../views/Macros.tsx";
 import System from "../views/System.tsx";
 import Settings from "../views/Settings.tsx";
+
+/**
+ * Console floating state. Module-level + localStorage-backed rather than in the
+ * config overlay: the overlay needs an explicit Save (and uploads to the SD), so
+ * the console would dock itself again on every reload. This sticks immediately.
+ */
+const [consoleFloating, setConsoleFloatingSignal] = createSignal(loadConsoleFloating());
+function setConsoleFloating(floating: boolean): void {
+	setConsoleFloatingSignal(floating);
+	saveConsoleFloating(floating);
+}
 
 const NAV: Array<{ route: Route; label: string }> = [
 	{ route: "machine", label: "Machine" },
@@ -202,7 +214,7 @@ function BackendToggle() {
 function ConsoleDrawer() {
 	const app = useApp();
 	const [expanded, setExpanded] = createSignal(false);
-	const floating = (): boolean => app.config.config.console.floating;
+	const floating = consoleFloating;
 
 	return (
 		<Show when={!floating()} fallback={<ConsoleTile />}>
@@ -230,7 +242,7 @@ function ConsoleDrawer() {
 					<button
 						class="console-expand"
 						title="Snap the console out into a floating panel"
-						onClick={() => app.config.setConsole({ floating: true })}
+						onClick={() => setConsoleFloating(true)}
 					>
 						⇱
 					</button>
@@ -250,7 +262,7 @@ function ConsoleTile() {
 				<button
 					class="console-expand"
 					title="Dock the console back to the bottom"
-					onClick={() => app.config.setConsole({ floating: false })}
+					onClick={() => setConsoleFloating(false)}
 				>
 					⇲
 				</button>
