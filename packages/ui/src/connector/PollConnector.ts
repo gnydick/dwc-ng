@@ -5,6 +5,7 @@ import {
 	OperationFailedError, DisconnectedError,
 } from "./types.ts";
 import { crc32 } from "./crc32.ts";
+import { RequestQueue, type RequestPriority } from "./requestQueue.ts";
 
 /**
  * Standalone-mode connector speaking RRF's rr_ HTTP dialect.
@@ -62,8 +63,13 @@ export class PollConnector implements Connector {
 	private lastVolSeqs: number[] = [];
 	private pollTimer: ReturnType<typeof setTimeout> | null = null;
 	private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-	/** Serializes all traffic: RRF handles very few concurrent connections. */
-	private queue: Promise<unknown> = Promise.resolve();
+	/**
+	 * Serializes all traffic (RRF handles very few concurrent connections) AND
+	 * orders it: the poll heartbeat and user commands must not sit behind bulk
+	 * file I/O. One slot; each attempt takes it briefly and backoff happens
+	 * outside, so a retrying request can't starve the poll.
+	 */
+	private readonly requests = new RequestQueue(1);
 	/** sendCode() calls waiting for the next non-empty reply. */
 	private replyWaiters: Array<(text: string) => void> = [];
 
@@ -111,7 +117,7 @@ export class PollConnector implements Connector {
 		this.stopTimers();
 		if (this.sessionKey !== null) {
 			try {
-				await this.rawRequest("rr_disconnect");
+				await this.rawRequest("rr_disconnect", undefined, "high");
 			} catch {
 				// Session dies via idle timeout anyway; nothing to recover.
 			}
@@ -228,7 +234,7 @@ export class PollConnector implements Connector {
 				resolve("");
 			}, this.requestTimeoutMs);
 		});
-		await this.getJson(`rr_gcode?gcode=${encodeURIComponent(code)}`);
+		await this.getJson(`rr_gcode?gcode=${encodeURIComponent(code)}`, "high");
 		// Nudge the reply drain rather than waiting a full poll cycle
 		await this.drainReply();
 		return replyPromise;
@@ -246,7 +252,7 @@ export class PollConnector implements Connector {
 	}
 
 	async download(path: string): Promise<string> {
-		const res = await this.rawRequest(`rr_download?name=${encodeURIComponent(path)}`);
+		const res = await this.rawRequest(`rr_download?name=${encodeURIComponent(path)}`, undefined, "low");
 		return res.text();
 	}
 
@@ -254,7 +260,7 @@ export class PollConnector implements Connector {
 		const entries: FileListEntry[] = [];
 		let first = 0;
 		for (;;) {
-			const page = await this.getJson(`rr_filelist?dir=${encodeURIComponent(dir)}&first=${first}`) as
+			const page = await this.getJson(`rr_filelist?dir=${encodeURIComponent(dir)}&first=${first}`, "low") as
 				{ err?: number; files: Array<{ type: "d" | "f"; name: string; size: number; date?: string }>; next: number };
 			if (page.err) throw new OperationFailedError(`rr_filelist err ${page.err} for ${dir}`);
 			for (const f of page.files) {
@@ -266,7 +272,7 @@ export class PollConnector implements Connector {
 	}
 
 	async getFileInfo(path: string): Promise<GcodeFileInfo> {
-		const res = await this.getJson(`rr_fileinfo?name=${encodeURIComponent(path)}`) as
+		const res = await this.getJson(`rr_fileinfo?name=${encodeURIComponent(path)}`, "low") as
 			Partial<GcodeFileInfo> & { err?: number };
 		if (res.err) throw new FileNotFoundError(path);
 		return {
@@ -292,7 +298,7 @@ export class PollConnector implements Connector {
 		let b64 = "";
 		let cursor = offset;
 		do {
-			const res = await this.getJson(`rr_thumbnail?name=${encodeURIComponent(path)}&offset=${cursor}`) as
+			const res = await this.getJson(`rr_thumbnail?name=${encodeURIComponent(path)}&offset=${cursor}`, "low") as
 				{ err?: number; data?: string; next?: number };
 			if (res.err) throw new OperationFailedError(`rr_thumbnail err ${res.err} for ${path}`);
 			b64 += res.data ?? "";
@@ -307,7 +313,7 @@ export class PollConnector implements Connector {
 	// ---------- plumbing ----------
 
 	private async drainReply(): Promise<void> {
-		const res = await this.rawRequest("rr_reply");
+		const res = await this.rawRequest("rr_reply", undefined, "high");
 		const text = (await res.text()).trim();
 		if (text === "") return;
 		const waiters = this.replyWaiters;
@@ -349,8 +355,8 @@ export class PollConnector implements Connector {
 		return result;
 	}
 
-	private async getJson(path: string): Promise<any> {
-		const res = await this.rawRequest(path);
+	private async getJson(path: string, priority: RequestPriority = "normal"): Promise<any> {
+		const res = await this.rawRequest(path, undefined, priority);
 		return res.json();
 	}
 
@@ -360,26 +366,34 @@ export class PollConnector implements Connector {
 	 * 401/403 → transparent re-auth and replay; 404 → FileNotFound;
 	 * network error → delayed retries until maxRetries.
 	 */
-	private rawRequest(path: string, init?: { method?: string; body?: Uint8Array }): Promise<Response> {
-		const run = () => this.attemptRequest(path, init, 0);
-		const chained = this.queue.then(run, run);
-		this.queue = chained.catch(() => undefined); // keep the chain alive on failure
-		return chained;
+	private rawRequest(
+		path: string,
+		init?: { method?: string; body?: Uint8Array },
+		priority: RequestPriority = "normal",
+	): Promise<Response> {
+		return this.attemptRequest(path, init, 0, priority);
 	}
 
-	private async attemptRequest(path: string, init: { method?: string; body?: Uint8Array } | undefined, retry: number): Promise<Response> {
+	private async attemptRequest(
+		path: string,
+		init: { method?: string; body?: Uint8Array } | undefined,
+		retry: number,
+		priority: RequestPriority,
+	): Promise<Response> {
 		let res: Response;
 		try {
-			res = await fetch(`${this.base}/${path}`, {
+			// Only the fetch holds a slot. Everything below (backoff, reply drain,
+			// re-auth) runs outside it, so recovery never blocks the heartbeat.
+			res = await this.requests.enqueue(() => fetch(`${this.base}/${path}`, {
 				method: init?.method ?? "GET",
 				body: init?.body as BodyInit | undefined,
 				headers: this.sessionKey !== null ? { "X-Session-Key": String(this.sessionKey) } : {},
 				signal: AbortSignal.timeout(this.requestTimeoutMs),
-			});
+			}), priority);
 		} catch (err) {
 			if (retry < this.maxRetries) {
 				await delay(this.retryDelayMs * (retry + 1));
-				return this.attemptRequest(path, init, retry + 1);
+				return this.attemptRequest(path, init, retry + 1, priority);
 			}
 			throw new OperationFailedError(`${path}: ${(err as Error).message}`);
 		}
@@ -390,28 +404,32 @@ export class PollConnector implements Connector {
 			if (retry === 0 && !path.startsWith("rr_reply")) {
 				// RRF may be out of output buffers because an unread reply is
 				// blocking (original :180-190): drain it, then retry
-				try { await this.drainReplyUnqueued(); } catch { /* retry anyway */ }
+				try { await this.drainReplyDirect(); } catch { /* retry anyway */ }
 			} else {
 				await delay(this.retryDelayMs * (retry + 1));
 			}
-			return this.attemptRequest(path, init, retry + 1);
+			return this.attemptRequest(path, init, retry + 1, priority);
 		}
 		if ((res.status === 401 || res.status === 403) && !path.startsWith("rr_connect")) {
 			// Session was culled (idle timeout, reboot, another client):
 			// re-auth with the stored password and replay (original :202-224)
-			await this.openSessionUnqueued();
-			return this.attemptRequest(path, init, retry + 1);
+			await this.openSessionDirect();
+			return this.attemptRequest(path, init, retry + 1, priority);
 		}
 		if (res.status === 404) throw new FileNotFoundError(path);
 		throw new OperationFailedError(`${path}: HTTP ${res.status}`);
 	}
 
-	/** rr_reply outside the queue (we're already inside a queued request). */
-	private async drainReplyUnqueued(): Promise<void> {
-		const res = await fetch(`${this.base}/rr_reply`, {
+	/**
+	 * Recovery drain of rr_reply. Goes through the queue at high priority: it is
+	 * unblocking the board's output buffers, so everything else can wait. (Safe
+	 * to enqueue — unlike the old promise chain, callers hold no slot here.)
+	 */
+	private async drainReplyDirect(): Promise<void> {
+		const res = await this.requests.enqueue(() => fetch(`${this.base}/rr_reply`, {
 			headers: this.sessionKey !== null ? { "X-Session-Key": String(this.sessionKey) } : {},
 			signal: AbortSignal.timeout(this.requestTimeoutMs),
-		});
+		}), "high");
 		const text = (await res.text()).trim();
 		if (text === "") return;
 		const waiters = this.replyWaiters;
@@ -420,11 +438,12 @@ export class PollConnector implements Connector {
 		this.events.onReply?.(text);
 	}
 
-	private async openSessionUnqueued(): Promise<void> {
-		const res = await fetch(
+	/** Re-auth after a culled session. High priority: nothing else can proceed. */
+	private async openSessionDirect(): Promise<void> {
+		const res = await this.requests.enqueue(() => fetch(
 			`${this.base}/rr_connect?password=${encodeURIComponent(this.password)}&time=${encodeURIComponent(isoNow())}&sessionKey=yes`,
 			{ signal: AbortSignal.timeout(this.requestTimeoutMs) },
-		);
+		), "high");
 		const body = await res.json() as { err: number; sessionKey?: number };
 		if (body.err !== 0) throw new InvalidPasswordError();
 		this.sessionKey = body.sessionKey ?? null;
