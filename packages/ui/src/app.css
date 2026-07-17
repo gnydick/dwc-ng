@@ -657,9 +657,6 @@
 	.heat-table th { font-size: 9.5px; letter-spacing: 0.05em; }
 }
 
-/* ---------- Jobs view ---------- */
-.jobs .job-active { grid-column: 1 / -1; }
-
 .btn {
 	font: 600 13px/1 "Rajdhani", system-ui, sans-serif;
 	letter-spacing: 0.03em;

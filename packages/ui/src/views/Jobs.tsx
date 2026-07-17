@@ -2,6 +2,14 @@ import { For, Show, Switch, Match, createMemo, createResource, createSignal } fr
 import { useApp } from "../shell/context.ts";
 import { Thumbnail } from "../thumbnails/Thumbnail.tsx";
 import type { FileListEntry } from "../connector/types.ts";
+import { Panel } from "../shell/Panel.tsx";
+import { createPanelLayout, type PanelDefault } from "../shell/panelLayout.ts";
+
+const PANEL_DEFAULTS: PanelDefault[] = [
+	{ id: "active-job", colSpan: 2 },
+	{ id: "job-files" },
+	{ id: "job-details" },
+];
 
 const GCODES_ROOT = "0:/gcodes";
 
@@ -16,6 +24,7 @@ const ACTIVE_STATUSES = new Set(["processing", "paused", "pausing", "resuming", 
  */
 export default function Jobs() {
 	const app = useApp();
+	const layout = createPanelLayout("dwc-ng.layout.jobs", PANEL_DEFAULTS);
 
 	const connected = () => app.om.connection.status === "connected";
 
@@ -84,144 +93,149 @@ export default function Jobs() {
 	};
 
 	return (
-		<div class="grid jobs">
-			<Show when={isActive()}>
-				<section class="card job-active" aria-label="Active job">
-					<div class="card-head">
-						<h2 class="card-title">Printing</h2>
-						<span class="des">job · state</span>
-					</div>
-					<Show when={jobFile()} fallback={<p class="job-empty">{app.om.om.state.status}…</p>}>
-						{file => (
-							<>
-								<div class="job-active-head">
-									<span class="fname">{baseName(file().fileName)}</span>
-									<span class={`chip chip-${app.om.om.state.status === "paused" ? "warn" : "busy"}`}>
-										<span class="dot" />{app.om.om.state.status}
-									</span>
-								</div>
-								<Show when={progress() !== null}>
-									<div class="progress" role="progressbar" aria-valuenow={Math.round(progress()!)}>
-										<div class="progress-fill" style={{ width: `${progress()!}%` }} />
-										<span class="progress-label">{progress()!.toFixed(1)}%</span>
+		<>
+			<div class="layout-toolbar">
+				<button class="layout-reset" onClick={() => layout.reset()}>↺ Reset layout</button>
+			</div>
+			<div class="grid jobs">
+				<Show when={isActive()}>
+					<Panel id="active-job" layout={layout} ariaLabel="Active job" class="job-active">
+						<div class="card-head">
+							<h2 class="card-title">Printing</h2>
+							<span class="des">job · state</span>
+						</div>
+						<Show when={jobFile()} fallback={<p class="job-empty">{app.om.om.state.status}…</p>}>
+							{file => (
+								<>
+									<div class="job-active-head">
+										<span class="fname">{baseName(file().fileName)}</span>
+										<span class={`chip chip-${app.om.om.state.status === "paused" ? "warn" : "busy"}`}>
+											<span class="dot" />{app.om.om.state.status}
+										</span>
 									</div>
-								</Show>
-								<div class="job-facts">
-									<Show when={job().layer !== null}>
-										<Fact label="Layer">{job().layer} / {file().numLayers}</Fact>
+									<Show when={progress() !== null}>
+										<div class="progress" role="progressbar" aria-valuenow={Math.round(progress()!)}>
+											<div class="progress-fill" style={{ width: `${progress()!}%` }} />
+											<span class="progress-label">{progress()!.toFixed(1)}%</span>
+										</div>
 									</Show>
-									<Show when={job().duration !== null}>
-										<Fact label="Elapsed">{fmtDuration(job().duration!)}</Fact>
-									</Show>
-									<Show when={job().timesLeft.file !== null}>
-										<Fact label="Remaining">{fmtDuration(job().timesLeft.file!)}</Fact>
-									</Show>
-								</div>
-								<div class="btn-row">
-									{/* job-toggle reserves the wider label's width so Cancel can't
-									    slide under the pointer when the job changes state. */}
-									<Switch>
-										<Match when={app.om.om.state.status === "paused"}>
-											<button class="btn job-toggle" onClick={() => void app.connector.sendCode("M24")}>Resume</button>
-										</Match>
-										<Match when={true}>
-											<button class="btn job-toggle" onClick={() => void app.connector.sendCode("M25")}>Pause</button>
-										</Match>
-									</Switch>
-									<button class="btn btn-danger" onClick={() => void app.connector.sendCode("M0")}>Cancel</button>
-								</div>
-							</>
-						)}
-					</Show>
-				</section>
-			</Show>
+									<div class="job-facts">
+										<Show when={job().layer !== null}>
+											<Fact label="Layer">{job().layer} / {file().numLayers}</Fact>
+										</Show>
+										<Show when={job().duration !== null}>
+											<Fact label="Elapsed">{fmtDuration(job().duration!)}</Fact>
+										</Show>
+										<Show when={job().timesLeft.file !== null}>
+											<Fact label="Remaining">{fmtDuration(job().timesLeft.file!)}</Fact>
+										</Show>
+									</div>
+									<div class="btn-row">
+										{/* job-toggle reserves the wider label's width so Cancel can't
+										    slide under the pointer when the job changes state. */}
+										<Switch>
+											<Match when={app.om.om.state.status === "paused"}>
+												<button class="btn job-toggle" onClick={() => void app.connector.sendCode("M24")}>Resume</button>
+											</Match>
+											<Match when={true}>
+												<button class="btn job-toggle" onClick={() => void app.connector.sendCode("M25")}>Pause</button>
+											</Match>
+										</Switch>
+										<button class="btn btn-danger" onClick={() => void app.connector.sendCode("M0")}>Cancel</button>
+									</div>
+								</>
+							)}
+						</Show>
+					</Panel>
+				</Show>
 
-			<section class="card jobs-browse" aria-label="Job files">
-				<div class="card-head">
-					<h2 class="card-title">Jobs</h2>
-					<span class="des">{dir()}</span>
-				</div>
-
-				<nav class="crumbs" aria-label="Folder">
-					<button class="crumb" classList={{ active: dir() === GCODES_ROOT }} onClick={() => { setSelected(null); setDir(GCODES_ROOT); }}>gcodes</button>
-					<For each={crumbs()}>
-						{c => (
-							<>
-								<span class="crumb-sep">/</span>
-								<button class="crumb" onClick={() => { setSelected(null); setDir(c.path); }}>{c.name}</button>
-							</>
-						)}
-					</For>
-				</nav>
-
-				<Switch>
-					<Match when={entries.loading}><p class="job-empty">Loading…</p></Match>
-					<Match when={entries.error}>
-						<p class="job-empty">Couldn’t list {dir()}. <button class="link-btn" onClick={() => void refetchEntries()}>Retry</button></p>
-					</Match>
-					<Match when={sorted().length === 0}><p class="job-empty">Empty folder.</p></Match>
-					<Match when={true}>
-						<ul class="file-list">
-							<For each={sorted()}>
-								{entry => (
-									<li>
-										<button
-											class="file-row"
-											classList={{ dir: entry.type === "d", selected: selected() === `${dir()}/${entry.name}` }}
-											onClick={() => openEntry(entry)}
-										>
-											<span class="file-icon" aria-hidden="true">{entry.type === "d" ? "▸" : "▤"}</span>
-											<span class="file-name">{entry.name}</span>
-											<Show when={entry.type === "f"}>
-												<span class="file-meta">{fmtSize(entry.size)}</span>
-												<Show when={entry.date}><span class="file-meta file-date">{fmtDate(entry.date!)}</span></Show>
-											</Show>
-										</button>
-									</li>
-								)}
-							</For>
-						</ul>
-					</Match>
-				</Switch>
-			</section>
-
-			<Show when={selected()}>
-				<section class="card jobs-detail" aria-label="Job details">
+				<Panel id="job-files" layout={layout} ariaLabel="Job files" class="jobs-browse">
 					<div class="card-head">
-						<h2 class="card-title">{baseName(selected()!)}</h2>
-						<span class="des">rr_fileinfo</span>
+						<h2 class="card-title">Jobs</h2>
+						<span class="des">{dir()}</span>
 					</div>
+
+					<nav class="crumbs" aria-label="Folder">
+						<button class="crumb" classList={{ active: dir() === GCODES_ROOT }} onClick={() => { setSelected(null); setDir(GCODES_ROOT); }}>gcodes</button>
+						<For each={crumbs()}>
+							{c => (
+								<>
+									<span class="crumb-sep">/</span>
+									<button class="crumb" onClick={() => { setSelected(null); setDir(c.path); }}>{c.name}</button>
+								</>
+							)}
+						</For>
+					</nav>
+
 					<Switch>
-						<Match when={info.loading}><p class="job-empty">Reading metadata…</p></Match>
-						<Match when={info.error}><p class="job-empty">No metadata for this file.</p></Match>
-						<Match when={info()}>
-							<div class="detail-body">
-								<div class="thumb-frame">
-									<Switch>
-										<Match when={thumb()}>{t => <Thumbnail bytes={t().bytes} format={t().format} alt={`Preview of ${baseName(selected()!)}`} />}</Match>
-										<Match when={thumb.loading}><span class="thumb-placeholder">…</span></Match>
-										<Match when={true}><span class="thumb-placeholder">no preview</span></Match>
-									</Switch>
-								</div>
-								<dl class="meta-grid">
-									<Show when={info()!.printTime}><Meta label="Print time">{fmtDuration(info()!.printTime!)}</Meta></Show>
-									<Show when={info()!.filament.length}><Meta label="Filament">{fmtFilament(info()!.filament)}</Meta></Show>
-									<Show when={info()!.numLayers}><Meta label="Layers">{info()!.numLayers}</Meta></Show>
-									<Show when={info()!.height}><Meta label="Height">{info()!.height!.toFixed(2)} mm</Meta></Show>
-									<Show when={info()!.layerHeight}><Meta label="Layer height">{info()!.layerHeight} mm</Meta></Show>
-									<Meta label="Size">{fmtSize(info()!.size)}</Meta>
-									<Show when={info()!.generatedBy}><Meta label="Sliced by">{info()!.generatedBy}</Meta></Show>
-								</dl>
-							</div>
-							<div class="btn-row detail-actions">
-								<button class="btn btn-go" disabled={isActive()} onClick={startPrint}>Start print</button>
-								<Show when={isActive()}><span class="job-empty">A job is already running.</span></Show>
-							</div>
+						<Match when={entries.loading}><p class="job-empty">Loading…</p></Match>
+						<Match when={entries.error}>
+							<p class="job-empty">Couldn’t list {dir()}. <button class="link-btn" onClick={() => void refetchEntries()}>Retry</button></p>
+						</Match>
+						<Match when={sorted().length === 0}><p class="job-empty">Empty folder.</p></Match>
+						<Match when={true}>
+							<ul class="file-list">
+								<For each={sorted()}>
+									{entry => (
+										<li>
+											<button
+												class="file-row"
+												classList={{ dir: entry.type === "d", selected: selected() === `${dir()}/${entry.name}` }}
+												onClick={() => openEntry(entry)}
+											>
+												<span class="file-icon" aria-hidden="true">{entry.type === "d" ? "▸" : "▤"}</span>
+												<span class="file-name">{entry.name}</span>
+												<Show when={entry.type === "f"}>
+													<span class="file-meta">{fmtSize(entry.size)}</span>
+													<Show when={entry.date}><span class="file-meta file-date">{fmtDate(entry.date!)}</span></Show>
+												</Show>
+											</button>
+										</li>
+									)}
+								</For>
+							</ul>
 						</Match>
 					</Switch>
-				</section>
-			</Show>
-		</div>
+				</Panel>
+
+				<Show when={selected()}>
+					<Panel id="job-details" layout={layout} ariaLabel="Job details" class="jobs-detail">
+						<div class="card-head">
+							<h2 class="card-title">{baseName(selected()!)}</h2>
+							<span class="des">rr_fileinfo</span>
+						</div>
+						<Switch>
+							<Match when={info.loading}><p class="job-empty">Reading metadata…</p></Match>
+							<Match when={info.error}><p class="job-empty">No metadata for this file.</p></Match>
+							<Match when={info()}>
+								<div class="detail-body">
+									<div class="thumb-frame">
+										<Switch>
+											<Match when={thumb()}>{t => <Thumbnail bytes={t().bytes} format={t().format} alt={`Preview of ${baseName(selected()!)}`} />}</Match>
+											<Match when={thumb.loading}><span class="thumb-placeholder">…</span></Match>
+											<Match when={true}><span class="thumb-placeholder">no preview</span></Match>
+										</Switch>
+									</div>
+									<dl class="meta-grid">
+										<Show when={info()!.printTime}><Meta label="Print time">{fmtDuration(info()!.printTime!)}</Meta></Show>
+										<Show when={info()!.filament.length}><Meta label="Filament">{fmtFilament(info()!.filament)}</Meta></Show>
+										<Show when={info()!.numLayers}><Meta label="Layers">{info()!.numLayers}</Meta></Show>
+										<Show when={info()!.height}><Meta label="Height">{info()!.height!.toFixed(2)} mm</Meta></Show>
+										<Show when={info()!.layerHeight}><Meta label="Layer height">{info()!.layerHeight} mm</Meta></Show>
+										<Meta label="Size">{fmtSize(info()!.size)}</Meta>
+										<Show when={info()!.generatedBy}><Meta label="Sliced by">{info()!.generatedBy}</Meta></Show>
+									</dl>
+								</div>
+								<div class="btn-row detail-actions">
+									<button class="btn btn-go" disabled={isActive()} onClick={startPrint}>Start print</button>
+									<Show when={isActive()}><span class="job-empty">A job is already running.</span></Show>
+								</div>
+							</Match>
+						</Switch>
+					</Panel>
+				</Show>
+			</div>
+		</>
 	);
 }
 
