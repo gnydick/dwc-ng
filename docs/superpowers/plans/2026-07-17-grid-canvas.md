@@ -1462,9 +1462,12 @@ git commit -m "feat(ui): migrate Macros and System views to the grid canvas"
 **Files:**
 - Create: `packages/ui/src/views/control.panelDefaults.ts`
 - Modify: `packages/ui/src/views/Control.tsx`
+- Modify: `packages/ui/src/app.css`
 - Modify: `packages/ui/test/panel-canvas.test.ts`
 
 **Interfaces:** same as Task 5.
+
+**Known landmine (found during Task 7):** `app.css` still has a pre-existing `.control { grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); align-items: start; }` rule from before this migration (currently around line 704). `<PanelCanvas class="control">` renders `class="panel-canvas control"` — both `.panel-canvas` and `.control` are single-class selectors with equal specificity, and `.control` is declared later in the file, so it silently wins the cascade and would collapse the 24-column grid back to an auto-fill 320px layout, exactly like the `.macros`/`.system` rules Task 7 had to remove. **Delete this `.control` rule** as part of this task's CSS step — same fix, different view. (`.jobs` and `.settings` were checked and have no equivalent rule — this landmine is specific to `.control`.)
 
 - [ ] **Step 1: Wire the view**
 
@@ -1485,9 +1488,13 @@ export const CONTROL_PANEL_DEFAULTS: PanelDefault[] = [
 ];
 ```
 
-Same import/wiring pattern as prior tasks in `Control.tsx`, importing `CONTROL_PANEL_DEFAULTS` from `./control.panelDefaults.ts`. `canvas = createPanelCanvas("dwc-ng.canvas.control", CONTROL_PANEL_DEFAULTS)`. Six existing `<Panel>`s get `canvas={canvas}` — `fans` keeps its `<Show when={app.om.om.fans.some(f => f !== null)}>` wrapping the `<Panel>` (Panel inside Show, same as before), the other five are unconditional. `<div class="grid control">` → `<PanelCanvas class="control">`, add `<ConsolePanel>`/`<CameraPanel>`. All inner JSX (the jog pad, coupler row, heater/fan/tuning controls) is unchanged from the current file — this view has no CSS removal step (Control never had a full-span panel).
+Same import/wiring pattern as prior tasks in `Control.tsx`, importing `CONTROL_PANEL_DEFAULTS` from `./control.panelDefaults.ts`. `canvas = createPanelCanvas("dwc-ng.canvas.control", CONTROL_PANEL_DEFAULTS)`. Six existing `<Panel>`s get `canvas={canvas}` — `fans` keeps its `<Show when={app.om.om.fans.some(f => f !== null)}>` wrapping the `<Panel>` (Panel inside Show, same as before), the other five are unconditional. `<div class="grid control">` → `<PanelCanvas class="control">`, add `<ConsolePanel>`/`<CameraPanel>`. All inner JSX (the jog pad, coupler row, heater/fan/tuning controls) is unchanged from the current file.
 
-- [ ] **Step 2: Add the collision test**
+- [ ] **Step 2: Remove the landmine CSS rule**
+
+In `packages/ui/src/app.css`, find and delete the `.control { grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); align-items: start; }` rule (see the landmine note above this task's Files list) — search by content, not line number, since it may have shifted.
+
+- [ ] **Step 3: Add the collision test**
 
 At the top of `packages/ui/test/panel-canvas.test.ts`, add:
 
@@ -1503,7 +1510,7 @@ test("Control view's default panel layout is collision-free", () => {
 });
 ```
 
-- [ ] **Step 3: Typecheck and run tests**
+- [ ] **Step 4: Typecheck and run tests**
 
 Run (from `packages/ui`): `node ../../node_modules/typescript/bin/tsc -b`
 Expected: only Settings still errors.
@@ -1511,15 +1518,20 @@ Expected: only Settings still errors.
 Run: `pnpm --filter @dwc-ng/ui test`
 Expected: PASS.
 
-- [ ] **Step 4: Live-verify in the browser**
+- [ ] **Step 5: Live-verify in the browser**
 
-Same shape as Task 5's Step 5 on `#/control`. Avoid clicking any `GcodeButton` control (only interact with grips, reset, and nav) — same caution as the prior plan's Task 7. Confirm Fans still renders (mock snapshot has fans) and is a regular movable/resizable panel now.
+Same shape as Task 5's Step 5 on `#/control`. Avoid clicking any `GcodeButton` control (only interact with grips, reset, and nav) — same caution as the prior plan's Task 7. Confirm Fans still renders (mock snapshot has fans) and is a regular movable/resizable panel now. **Specifically confirm the grid is genuinely 24 proportional columns now** (drag a panel to an arbitrary column, not just the halves the old 2-column layout offered) — this is the check that would have caught the `.macros`/`.system` landmine earlier if it had been done as a targeted check rather than a general visual glance.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
-git add packages/ui/src/views/Control.tsx packages/ui/src/views/control.panelDefaults.ts packages/ui/test/panel-canvas.test.ts
-git commit -m "feat(ui): migrate Control view to the grid canvas"
+git add packages/ui/src/views/Control.tsx packages/ui/src/views/control.panelDefaults.ts packages/ui/src/app.css packages/ui/test/panel-canvas.test.ts
+git commit -m "feat(ui): migrate Control view to the grid canvas
+
+Also removes app.css's pre-existing .control { grid-template-columns:
+repeat(auto-fill, minmax(320px, 1fr)) } rule — same class-name collision
+Task 7 hit with .macros/.system, caught proactively this time since the
+plan was updated after Task 7's discovery."
 ```
 
 ---
