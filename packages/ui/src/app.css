@@ -772,7 +772,6 @@
 .jog-row .gcode-label { font-variant-numeric: tabular-nums; }
 
 /* ---------- Macros view + file editor ---------- */
-.macros { grid-template-columns: minmax(0, 320px) minmax(0, 1fr); }
 .file-row .file-name {
 	flex: 1; background: none; border: none; color: inherit; cursor: pointer; text-align: left;
 	font: 400 14px/1.2 system-ui, sans-serif; padding: 4px 0;
@@ -814,8 +813,6 @@
 .editor-overlay.err { color: var(--fault); padding: 16px; text-align: center; }
 
 /* ---------- System view + object-model inspector ---------- */
-.system { grid-template-columns: minmax(0, 320px) minmax(0, 1fr); }
-
 .om-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
 .om-filter {
 	flex: 1; min-width: 0; background: var(--mask-900); border: 1px solid var(--hairline); border-radius: 5px;

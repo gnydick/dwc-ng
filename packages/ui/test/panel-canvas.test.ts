@@ -6,6 +6,8 @@ import {
 } from "../src/shell/panelCanvas.ts";
 import { MACHINE_PANEL_DEFAULTS } from "../src/views/machine.panelDefaults.ts";
 import { JOBS_PANEL_DEFAULTS } from "../src/views/jobs.panelDefaults.ts";
+import { MACROS_PANEL_DEFAULTS } from "../src/views/macros.panelDefaults.ts";
+import { SYSTEM_PANEL_DEFAULTS } from "../src/views/system.panelDefaults.ts";
 
 const rect = (col: number, row: number, colSpan: number, rowSpan: number) => ({ col, row, colSpan, rowSpan });
 
@@ -149,4 +151,12 @@ test("Machine view's default panel layout is collision-free", () => {
 
 test("Jobs view's default panel layout is collision-free", () => {
 	assert.equal(hasCollisions(defaultCanvas(JOBS_PANEL_DEFAULTS)), false);
+});
+
+test("Macros view's default panel layout is collision-free", () => {
+	assert.equal(hasCollisions(defaultCanvas(MACROS_PANEL_DEFAULTS)), false);
+});
+
+test("System view's default panel layout is collision-free", () => {
+	assert.equal(hasCollisions(defaultCanvas(SYSTEM_PANEL_DEFAULTS)), false);
 });

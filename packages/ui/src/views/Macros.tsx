@@ -3,12 +3,11 @@ import { useApp } from "../shell/context.ts";
 import { FileEditor } from "../editor/FileEditor.tsx";
 import type { FileListEntry } from "../connector/types.ts";
 import { Panel } from "../shell/Panel.tsx";
-import { createPanelLayout, type PanelDefault } from "../shell/panelLayout.ts";
-
-const PANEL_DEFAULTS: PanelDefault[] = [
-	{ id: "macros" },
-	{ id: "editor" },
-];
+import { PanelCanvas } from "../shell/PanelCanvas.tsx";
+import { ConsolePanel } from "../shell/ConsolePanel.tsx";
+import { CameraPanel } from "../shell/CameraPanel.tsx";
+import { createPanelCanvas } from "../shell/panelCanvas.ts";
+import { MACROS_PANEL_DEFAULTS } from "./macros.panelDefaults.ts";
 
 const MACROS_ROOT = "0:/macros";
 
@@ -20,7 +19,7 @@ const MACROS_ROOT = "0:/macros";
  */
 export default function Macros() {
 	const app = useApp();
-	const layout = createPanelLayout("dwc-ng.layout.macros", PANEL_DEFAULTS);
+	const canvas = createPanelCanvas("dwc-ng.canvas.macros", MACROS_PANEL_DEFAULTS);
 	const connected = (): boolean => app.om.connection.status === "connected";
 
 	const [dir, setDir] = createSignal(MACROS_ROOT);
@@ -73,10 +72,10 @@ export default function Macros() {
 	return (
 		<>
 			<div class="layout-toolbar">
-				<button class="layout-reset" onClick={() => layout.reset()}>↺ Reset layout</button>
+				<button class="layout-reset" onClick={() => canvas.reset()}>↺ Reset layout</button>
 			</div>
-			<div class="grid macros">
-				<Panel id="macros" layout={layout} ariaLabel="Macros">
+			<PanelCanvas class="macros">
+				<Panel id="macros" canvas={canvas} ariaLabel="Macros">
 					<div class="card-head">
 						<h2 class="card-title">Macros</h2>
 						<span class="des">{dir()}</span>
@@ -114,7 +113,7 @@ export default function Macros() {
 					</Show>
 				</Panel>
 
-				<Panel id="editor" layout={layout} ariaLabel="Editor" class="editor-card">
+				<Panel id="editor" canvas={canvas} ariaLabel="Editor" class="editor-card">
 					<Show
 						when={selected()}
 						fallback={
@@ -130,7 +129,10 @@ export default function Macros() {
 						{path => <FileEditor path={path()} lang="gcode" onClose={() => setSelected(null)} />}
 					</Show>
 				</Panel>
-			</div>
+
+				<ConsolePanel canvas={canvas} />
+				<CameraPanel canvas={canvas} />
+			</PanelCanvas>
 		</>
 	);
 }

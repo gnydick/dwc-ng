@@ -5,13 +5,11 @@ import { OmInspector } from "../om/OmInspector.tsx";
 import { languageFor, type EditorLang } from "../editor/lang.ts";
 import type { FileListEntry } from "../connector/types.ts";
 import { Panel } from "../shell/Panel.tsx";
-import { createPanelLayout, type PanelDefault } from "../shell/panelLayout.ts";
-
-const PANEL_DEFAULTS: PanelDefault[] = [
-	{ id: "system-files" },
-	{ id: "editor" },
-	{ id: "object-model", colSpan: 2 },
-];
+import { PanelCanvas } from "../shell/PanelCanvas.tsx";
+import { ConsolePanel } from "../shell/ConsolePanel.tsx";
+import { CameraPanel } from "../shell/CameraPanel.tsx";
+import { createPanelCanvas } from "../shell/panelCanvas.ts";
+import { SYSTEM_PANEL_DEFAULTS } from "./system.panelDefaults.ts";
 
 const SYS_ROOT = "0:/sys";
 
@@ -23,7 +21,7 @@ const SYS_ROOT = "0:/sys";
  */
 export default function System() {
 	const app = useApp();
-	const layout = createPanelLayout("dwc-ng.layout.system", PANEL_DEFAULTS);
+	const canvas = createPanelCanvas("dwc-ng.canvas.system", SYSTEM_PANEL_DEFAULTS);
 	const connected = (): boolean => app.om.connection.status === "connected";
 
 	const [dir, setDir] = createSignal(SYS_ROOT);
@@ -67,10 +65,10 @@ export default function System() {
 	return (
 		<>
 			<div class="layout-toolbar">
-				<button class="layout-reset" onClick={() => layout.reset()}>↺ Reset layout</button>
+				<button class="layout-reset" onClick={() => canvas.reset()}>↺ Reset layout</button>
 			</div>
-			<div class="grid system">
-				<Panel id="system-files" layout={layout} ariaLabel="System files">
+			<PanelCanvas class="system">
+				<Panel id="system-files" canvas={canvas} ariaLabel="System files">
 					<div class="card-head">
 						<h2 class="card-title">System files</h2>
 						<span class="des">{dir()}</span>
@@ -100,7 +98,7 @@ export default function System() {
 					</Show>
 				</Panel>
 
-				<Panel id="editor" layout={layout} ariaLabel="Editor" class="editor-card">
+				<Panel id="editor" canvas={canvas} ariaLabel="Editor" class="editor-card">
 					<Show
 						when={selected()}
 						fallback={
@@ -117,7 +115,7 @@ export default function System() {
 					</Show>
 				</Panel>
 
-				<Panel id="object-model" layout={layout} ariaLabel="Object model" class="om-card">
+				<Panel id="object-model" canvas={canvas} ariaLabel="Object model" class="om-card">
 					<div class="card-head">
 						<h2 class="card-title">Object model</h2>
 						<span class="des">live · rr_model</span>
@@ -126,7 +124,10 @@ export default function System() {
 						<OmInspector data={app.om.om as unknown as Record<string, unknown>} />
 					</Show>
 				</Panel>
-			</div>
+
+				<ConsolePanel canvas={canvas} />
+				<CameraPanel canvas={canvas} />
+			</PanelCanvas>
 		</>
 	);
 }
