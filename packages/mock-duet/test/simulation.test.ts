@@ -158,3 +158,16 @@ test("unread replies expire (RRF drops them after ~1 s)", async t => {
 	const reply = await (await mock.getRaw("rr_reply", key)).text();
 	assert.equal(reply, "", "stale replies must be gone");
 });
+
+test("M118 echoes its message — the mock must speak like Gabe's macros do", () => {
+	const machine = new Machine(scenarios["idle"]);
+	const seen: string[] = [];
+	machine.onReply = text => seen.push(text);
+
+	machine.execute('M118 S"tool detection start"');
+	machine.execute('M118 S"T1 docked" P0 L3');
+	// no message → nothing useful to say
+	machine.execute("M118");
+
+	assert.deepEqual(seen, ["tool detection start", "T1 docked", ""]);
+});

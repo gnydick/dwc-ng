@@ -110,6 +110,10 @@ function executeLine(machine: Machine, line: string): string {
 			const e = om.move.extruders[0].position.toFixed(3);
 			return `${pos} E:${e} Count ${om.move.axes.map((a: any) => Math.round(a.machinePosition * a.stepsPerMm)).join(" ")}`;
 		}
+		case "M118":
+			// Macros talk to the operator with M118 S"..." — echoing it is what
+			// makes the console testable against a realistic toolchanger macro.
+			return quoted() ?? "";
 		case "M115":
 			return (
 				"FIRMWARE_NAME: RepRapFirmware for Duet 3 Mini 5+ FIRMWARE_VERSION: 3.6.3 " +
