@@ -9,6 +9,7 @@ import { JOBS_PANEL_DEFAULTS } from "../src/views/jobs.panelDefaults.ts";
 import { MACROS_PANEL_DEFAULTS } from "../src/views/macros.panelDefaults.ts";
 import { SYSTEM_PANEL_DEFAULTS } from "../src/views/system.panelDefaults.ts";
 import { CONTROL_PANEL_DEFAULTS } from "../src/views/control.panelDefaults.ts";
+import { SETTINGS_PANEL_DEFAULTS } from "../src/views/settings.panelDefaults.ts";
 
 const rect = (col: number, row: number, colSpan: number, rowSpan: number) => ({ col, row, colSpan, rowSpan });
 
@@ -164,4 +165,8 @@ test("System view's default panel layout is collision-free", () => {
 
 test("Control view's default panel layout is collision-free", () => {
 	assert.equal(hasCollisions(defaultCanvas(CONTROL_PANEL_DEFAULTS)), false);
+});
+
+test("Settings view's default panel layout is collision-free", () => {
+	assert.equal(hasCollisions(defaultCanvas(SETTINGS_PANEL_DEFAULTS)), false);
 });
