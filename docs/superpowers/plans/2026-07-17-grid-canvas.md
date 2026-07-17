@@ -95,13 +95,19 @@ test("tryMove commits only when the target is in bounds and collision-free", () 
 	assert.equal(tryMove(state, "ghost", 0, 0), null, "unknown id");
 });
 
-test("tryResize grows one cell at a time and stops at the first collision or boundary", () => {
+test("tryResize grows one cell at a time and stops at the first collision", () => {
 	const state = { a: rect(0, 0, 4, 4), blockerRight: rect(10, 0, 4, 4), blockerBelow: rect(0, 10, 4, 4) };
 	assert.deepEqual(tryResize(state, "a", 8, 4), rect(0, 0, 8, 4), "grows freely up to the desired span");
 	assert.deepEqual(tryResize(state, "a", 20, 4), rect(0, 0, 10, 4), "stopped by blockerRight at col 10");
 	assert.deepEqual(tryResize(state, "a", 4, 20), rect(0, 0, 4, 10), "stopped by blockerBelow at row 10");
-	assert.deepEqual(tryResize(state, "a", 30, 4), rect(0, 0, GRID_COLS, 4), "also can't exceed the grid boundary");
 	assert.deepEqual(tryResize(state, "a", 1, 1), rect(0, 0, 1, 1), "shrinking is always safe, never blocked");
+});
+
+test("tryResize stops at the grid's column boundary when nothing else blocks it", () => {
+	// No other panel in this state, so growth is limited purely by GRID_COLS,
+	// not by a collision — isolates the boundary check from the collision check.
+	const state = { a: rect(0, 0, 4, 4) };
+	assert.deepEqual(tryResize(state, "a", 30, 4), rect(0, 0, GRID_COLS, 4), "colSpan can't exceed GRID_COLS even with open space");
 });
 
 test("settle rises then drifts left, processed in (row, col) order, only against already-settled panels", () => {
@@ -141,8 +147,12 @@ test("mergeCanvas falls back to defaults when storage is corrupt, empty, or the 
 
 test("mergeCanvas keeps a valid stored rect for a known id, clamped", () => {
 	const defaults = [{ id: "a", col: 0, row: 0, colSpan: 4, rowSpan: 4 }];
-	const stored = { a: rect(2, 3, 30, 2) };
-	assert.deepEqual(mergeCanvas(stored, defaults).a, rect(2, 3, 22, 2), "stored position kept, oversized span clamped");
+	// col: 0 isolates the "colSpan itself exceeds GRID_COLS" clamp path from the
+	// "col+colSpan exceeds GRID_COLS" repositioning path (clampRect always clamps
+	// colSpan to GRID_COLS first, then pulls col back to fit — with col already
+	// at 0 there's nothing left to reposition, so this purely exercises the span clamp).
+	const stored = { a: rect(0, 3, 30, 2) };
+	assert.deepEqual(mergeCanvas(stored, defaults).a, rect(0, 3, GRID_COLS, 2), "row/col kept, oversized colSpan clamped to GRID_COLS");
 });
 
 test("mergeCanvas drops a stored id no longer in defaults and defaults a new id missing from storage", () => {
