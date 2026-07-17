@@ -54,6 +54,12 @@ test("tryMove commits only when the target is in bounds and collision-free", () 
 	assert.equal(tryMove(state, "ghost", 0, 0), null, "unknown id");
 });
 
+test("tryMove rounds fractional candidates and falls back to the panel's current position on non-finite input", () => {
+	const state = { a: rect(0, 0, 4, 4) };
+	assert.deepEqual(tryMove(state, "a", 5.4, 5.6), rect(5, 6, 4, 4), "fractional pixel-delta math rounds to whole cells");
+	assert.deepEqual(tryMove(state, "a", Number.NaN, 2), rect(0, 2, 4, 4), "non-finite col falls back to the panel's current col");
+});
+
 test("tryResize grows one cell at a time and stops at the first collision", () => {
 	const state = { a: rect(0, 0, 4, 4), blockerRight: rect(10, 0, 4, 4), blockerBelow: rect(0, 10, 4, 4) };
 	assert.deepEqual(tryResize(state, "a", 8, 4), rect(0, 0, 8, 4), "grows freely up to the desired span");

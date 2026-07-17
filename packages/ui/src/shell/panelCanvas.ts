@@ -71,8 +71,10 @@ export function inBounds(rect: PanelRect): boolean {
 export function tryMove(state: CanvasState, id: string, candidateCol: number, candidateRow: number): PanelRect | null {
 	const current = state[id];
 	if (!current) return null;
-	if (candidateRow < 0) return null;
-	const candidate: PanelRect = { col: candidateCol, row: candidateRow, colSpan: current.colSpan, rowSpan: current.rowSpan };
+	const col = Math.round(safeNum(candidateCol, current.col));
+	const row = Math.round(safeNum(candidateRow, current.row));
+	if (row < 0) return null;
+	const candidate: PanelRect = { col, row, colSpan: current.colSpan, rowSpan: current.rowSpan };
 	if (!inBounds(candidate)) return null;
 	if (collidesWithAny(state, id, candidate)) return null;
 	return candidate;
