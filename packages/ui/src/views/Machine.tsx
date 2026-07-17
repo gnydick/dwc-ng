@@ -3,14 +3,11 @@ import { useApp } from "../shell/context.ts";
 import type { Heater } from "../om/types.ts";
 import { TemperatureChart, type ChartSeries } from "../charts/TemperatureChart.tsx";
 import { Panel } from "../shell/Panel.tsx";
-import { createPanelLayout, type PanelDefault } from "../shell/panelLayout.ts";
-
-const PANEL_DEFAULTS: PanelDefault[] = [
-	{ id: "position" },
-	{ id: "tools-heaters" },
-	{ id: "job" },
-	{ id: "temperatures", colSpan: 2 },
-];
+import { PanelCanvas } from "../shell/PanelCanvas.tsx";
+import { ConsolePanel } from "../shell/ConsolePanel.tsx";
+import { CameraPanel } from "../shell/CameraPanel.tsx";
+import { createPanelCanvas } from "../shell/panelCanvas.ts";
+import { MACHINE_PANEL_DEFAULTS } from "./machine.panelDefaults.ts";
 
 /** Distinct line colors for tool heaters; the bed gets gold (see below). */
 const TOOL_COLORS = ["#f0a050", "#6fbf8f", "#5aa9e6", "#c88ce0", "#e0b84a", "#8fd0c0"];
@@ -18,7 +15,7 @@ const TOOL_COLORS = ["#f0a050", "#6fbf8f", "#5aa9e6", "#c88ce0", "#e0b84a", "#8f
 /** The Machine view: live DRO, tools & heaters, current job. */
 export default function Machine() {
 	const app = useApp();
-	const layout = createPanelLayout("dwc-ng.layout.machine", PANEL_DEFAULTS);
+	const canvas = createPanelCanvas("dwc-ng.canvas.machine", MACHINE_PANEL_DEFAULTS);
 
 	const visibleAxes = createMemo(() => app.om.om.move.axes.filter(a => a.visible));
 
@@ -59,10 +56,10 @@ export default function Machine() {
 	return (
 		<>
 			<div class="layout-toolbar">
-				<button class="layout-reset" onClick={() => layout.reset()}>↺ Reset layout</button>
+				<button class="layout-reset" onClick={() => canvas.reset()}>↺ Reset layout</button>
 			</div>
-			<div class="grid">
-				<Panel id="position" layout={layout} ariaLabel="Position">
+			<PanelCanvas>
+				<Panel id="position" canvas={canvas} ariaLabel="Position">
 					<div class="card-head">
 						<h2 class="card-title">Position</h2>
 						<span class="des">move.axes</span>
@@ -89,7 +86,7 @@ export default function Machine() {
 					</Show>
 				</Panel>
 
-				<Panel id="tools-heaters" layout={layout} ariaLabel="Tools and heaters">
+				<Panel id="tools-heaters" canvas={canvas} ariaLabel="Tools and heaters">
 					<div class="card-head">
 						<h2 class="card-title">Tools &amp; heaters</h2>
 						<span class="des">tools · heat.heaters</span>
@@ -163,7 +160,7 @@ export default function Machine() {
 					</table>
 				</Panel>
 
-				<Panel id="job" layout={layout} ariaLabel="Job">
+				<Panel id="job" canvas={canvas} ariaLabel="Job">
 					<div class="card-head">
 						<h2 class="card-title">Job</h2>
 						<span class="des">job</span>
@@ -191,7 +188,7 @@ export default function Machine() {
 					</Show>
 				</Panel>
 
-				<Panel id="temperatures" layout={layout} ariaLabel="Temperatures">
+				<Panel id="temperatures" canvas={canvas} ariaLabel="Temperatures">
 					<div class="card-head">
 						<h2 class="card-title">Temperatures</h2>
 						<span class="des">heat.heaters · live</span>
@@ -200,7 +197,10 @@ export default function Machine() {
 						<TemperatureChart data={app.temps.data} series={chartSeries()} height={220} />
 					</Show>
 				</Panel>
-			</div>
+
+				<ConsolePanel canvas={canvas} />
+				<CameraPanel canvas={canvas} />
+			</PanelCanvas>
 		</>
 	);
 }

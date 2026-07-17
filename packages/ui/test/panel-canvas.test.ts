@@ -4,6 +4,7 @@ import {
 	GRID_COLS, clampRect, rectsOverlap, collidesWithAny, hasCollisions, inBounds,
 	tryMove, tryResize, settle, defaultCanvas, parseStoredCanvas, serializeCanvas, mergeCanvas,
 } from "../src/shell/panelCanvas.ts";
+import { MACHINE_PANEL_DEFAULTS } from "../src/views/machine.panelDefaults.ts";
 
 const rect = (col: number, row: number, colSpan: number, rowSpan: number) => ({ col, row, colSpan, rowSpan });
 
@@ -139,4 +140,8 @@ test("serializeCanvas round-trips through parseStoredCanvas and mergeCanvas", ()
 	const defaults = [{ id: "a", col: 0, row: 0, colSpan: 4, rowSpan: 4 }];
 	const canvas = defaultCanvas(defaults);
 	assert.deepEqual(mergeCanvas(parseStoredCanvas(serializeCanvas(canvas)), defaults), canvas);
+});
+
+test("Machine view's default panel layout is collision-free", () => {
+	assert.equal(hasCollisions(defaultCanvas(MACHINE_PANEL_DEFAULTS)), false);
 });
