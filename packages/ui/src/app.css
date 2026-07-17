@@ -206,6 +206,11 @@
 }
 .panel-resize-grip:hover::before { opacity: 1; border-color: var(--copper-bright); }
 
+.console-panel .console-history { flex: 1; max-height: none; min-height: 0; margin-bottom: 8px; }
+.console-panel { display: flex; flex-direction: column; }
+.cam-panel .cam-body { flex: 1; min-height: 0; }
+.cam-panel { display: flex; flex-direction: column; }
+
 .layout-toolbar { display: flex; justify-content: flex-end; margin-bottom: 8px; }
 .layout-reset {
 	font-family: var(--font-display);
