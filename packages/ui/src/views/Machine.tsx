@@ -2,6 +2,15 @@ import { For, Show, createMemo } from "solid-js";
 import { useApp } from "../shell/context.ts";
 import type { Heater } from "../om/types.ts";
 import { TemperatureChart, type ChartSeries } from "../charts/TemperatureChart.tsx";
+import { Panel } from "../shell/Panel.tsx";
+import { createPanelLayout, type PanelDefault } from "../shell/panelLayout.ts";
+
+const PANEL_DEFAULTS: PanelDefault[] = [
+	{ id: "position" },
+	{ id: "tools-heaters" },
+	{ id: "job" },
+	{ id: "temperatures", colSpan: 2 },
+];
 
 /** Distinct line colors for tool heaters; the bed gets gold (see below). */
 const TOOL_COLORS = ["#f0a050", "#6fbf8f", "#5aa9e6", "#c88ce0", "#e0b84a", "#8fd0c0"];
@@ -9,6 +18,7 @@ const TOOL_COLORS = ["#f0a050", "#6fbf8f", "#5aa9e6", "#c88ce0", "#e0b84a", "#8f
 /** The Machine view: live DRO, tools & heaters, current job. */
 export default function Machine() {
 	const app = useApp();
+	const layout = createPanelLayout("dwc-ng.layout.machine", PANEL_DEFAULTS);
 
 	const visibleAxes = createMemo(() => app.om.om.move.axes.filter(a => a.visible));
 
@@ -47,146 +57,148 @@ export default function Machine() {
 	});
 
 	return (
-		<div class="grid">
-			<section class="card" aria-label="Position">
-				<div class="card-head">
-					<h2 class="card-title">Position</h2>
-					<span class="des">move.axes</span>
-				</div>
-				<Show when={visibleAxes().length} fallback={<p class="job-empty">Waiting for the machine…</p>}>
-					<For each={visibleAxes()}>
-						{axis => (
-							<div class="dro-row" classList={{ unhomed: !axis.homed }}>
-								<span class="dro-axis">
-									{axis.letter}
-									<Show when={app.config.config.axisRoles[axis.letter]}>
-										{role => <span class="dro-role">{role()}</span>}
-									</Show>
-								</span>
-								<span class="dro-val">
-									{(axis.machinePosition ?? 0).toFixed(2)}<small>mm</small>
-								</span>
-								<span class="homed-tag" classList={{ yes: axis.homed, no: !axis.homed }}>
-									{axis.homed ? "homed" : "unhomed"}
-								</span>
-							</div>
-						)}
-					</For>
-				</Show>
-			</section>
-
-			<section class="card" aria-label="Tools and heaters">
-				<div class="card-head">
-					<h2 class="card-title">Tools &amp; heaters</h2>
-					<span class="des">tools · heat.heaters</span>
-				</div>
-				<table class="heat-table">
-					<thead>
-						<tr>
-							<th scope="col">Heater</th>
-							<th scope="col">Current</th>
-							<th scope="col">Active</th>
-							<th scope="col">Standby</th>
-							<th scope="col">State</th>
-						</tr>
-					</thead>
-					<tbody>
-						<For each={app.om.om.tools}>
-							{tool => (
-								<Show when={tool}>
-									{t => (
-										<tr>
-											<td>
-												<span class="heat-name">
-													<span class="heat-tool">{t().name || `Tool ${t().number}`}</span>
-													<span class="des">T{t().number}</span>
-													{/* Dock presence: a single dot by the tool, no column
-													    to scroll off. Green = docked, gold = away. */}
-													<Show when={dockState(t().number)}>
-														{state => (
-															<span
-																class={`dock-dot ${state()}`}
-																title={state() === "docked" ? "Docked" : "Away"}
-																aria-label={state() === "docked" ? "Docked" : "Away"}
-															/>
-														)}
-													</Show>
-												</span>
-											</td>
-											<Show when={heaterAt(t().heaters[0] ?? -1)} fallback={<td colspan="4" class="heat-set">no heater</td>}>
-												{h => (
-													<>
-														<td><HeaterCurrent heater={h()} /></td>
-														<td><span class="heat-set"><b>{h().active}</b>°</span></td>
-														<td><span class="heat-set">{h().standby}°</span></td>
-														<td><span class={`heat-state ${h().state}`}>{h().state}</span></td>
-													</>
-												)}
-											</Show>
-										</tr>
-									)}
-								</Show>
+		<>
+			<div class="layout-toolbar">
+				<button class="layout-reset" onClick={() => layout.reset()}>↺ Reset layout</button>
+			</div>
+			<div class="grid">
+				<Panel id="position" layout={layout} ariaLabel="Position">
+					<div class="card-head">
+						<h2 class="card-title">Position</h2>
+						<span class="des">move.axes</span>
+					</div>
+					<Show when={visibleAxes().length} fallback={<p class="job-empty">Waiting for the machine…</p>}>
+						<For each={visibleAxes()}>
+							{axis => (
+								<div class="dro-row" classList={{ unhomed: !axis.homed }}>
+									<span class="dro-axis">
+										{axis.letter}
+										<Show when={app.config.config.axisRoles[axis.letter]}>
+											{role => <span class="dro-role">{role()}</span>}
+										</Show>
+									</span>
+									<span class="dro-val">
+										{(axis.machinePosition ?? 0).toFixed(2)}<small>mm</small>
+									</span>
+									<span class="homed-tag" classList={{ yes: axis.homed, no: !axis.homed }}>
+										{axis.homed ? "homed" : "unhomed"}
+									</span>
+								</div>
 							)}
 						</For>
-						<Show when={heaterAt(bedHeaterIndex())}>
-							{h => (
-								<tr>
-									<td>
-										<span class="heat-name">
-											<span class="heat-tool">Bed</span>
-											<span class="des">heater{bedHeaterIndex()}</span>
-										</span>
-									</td>
-									<td><HeaterCurrent heater={h()} /></td>
-									<td><span class="heat-set"><b>{h().active}</b>°</span></td>
-									{/* the bed has no standby mode — no standby cell, ever */}
-									<td><span class="heat-set">—</span></td>
-									<td><span class={`heat-state ${h().state}`}>{h().state}</span></td>
-								</tr>
-							)}
-						</Show>
-					</tbody>
-				</table>
-			</section>
+					</Show>
+				</Panel>
 
-			<section class="card" aria-label="Job">
-				<div class="card-head">
-					<h2 class="card-title">Job</h2>
-					<span class="des">job</span>
-				</div>
-				<Show
-					when={app.om.om.job.file}
-					fallback={
-						<p class="job-empty">
-							No job running.
-							<Show when={app.om.om.job.lastFileName}> Last: {app.om.om.job.lastFileName}</Show>
-						</p>
-					}
-				>
-					{file => (
-						<div class="job-line">
-							<span class="fname">{file().fileName}</span>
-							<Show when={app.om.om.job.layer !== null}>
-								<span class="heat-set">layer {app.om.om.job.layer} / {file().numLayers}</span>
+				<Panel id="tools-heaters" layout={layout} ariaLabel="Tools and heaters">
+					<div class="card-head">
+						<h2 class="card-title">Tools &amp; heaters</h2>
+						<span class="des">tools · heat.heaters</span>
+					</div>
+					<table class="heat-table">
+						<thead>
+							<tr>
+								<th scope="col">Heater</th>
+								<th scope="col">Current</th>
+								<th scope="col">Active</th>
+								<th scope="col">Standby</th>
+								<th scope="col">State</th>
+							</tr>
+						</thead>
+						<tbody>
+							<For each={app.om.om.tools}>
+								{tool => (
+									<Show when={tool}>
+										{t => (
+											<tr>
+												<td>
+													<span class="heat-name">
+														<span class="heat-tool">{t().name || `Tool ${t().number}`}</span>
+														<span class="des">T{t().number}</span>
+														<Show when={dockState(t().number)}>
+															{state => (
+																<span
+																	class={`dock-dot ${state()}`}
+																	title={state() === "docked" ? "Docked" : "Away"}
+																	aria-label={state() === "docked" ? "Docked" : "Away"}
+																/>
+															)}
+														</Show>
+													</span>
+												</td>
+												<Show when={heaterAt(t().heaters[0] ?? -1)} fallback={<td colspan="4" class="heat-set">no heater</td>}>
+													{h => (
+														<>
+															<td><HeaterCurrent heater={h()} /></td>
+															<td><span class="heat-set"><b>{h().active}</b>°</span></td>
+															<td><span class="heat-set">{h().standby}°</span></td>
+															<td><span class={`heat-state ${h().state}`}>{h().state}</span></td>
+														</>
+													)}
+												</Show>
+											</tr>
+										)}
+									</Show>
+								)}
+							</For>
+							<Show when={heaterAt(bedHeaterIndex())}>
+								{h => (
+									<tr>
+										<td>
+											<span class="heat-name">
+												<span class="heat-tool">Bed</span>
+												<span class="des">heater{bedHeaterIndex()}</span>
+											</span>
+										</td>
+										<td><HeaterCurrent heater={h()} /></td>
+										<td><span class="heat-set"><b>{h().active}</b>°</span></td>
+										<td><span class="heat-set">—</span></td>
+										<td><span class={`heat-state ${h().state}`}>{h().state}</span></td>
+									</tr>
+								)}
 							</Show>
-							<Show when={jobProgress() !== null}>
-								<span class="pct">{jobProgress()!.toFixed(1)}%</span>
-							</Show>
-						</div>
-					)}
-				</Show>
-			</section>
+						</tbody>
+					</table>
+				</Panel>
 
-			<section class="card temp-card" aria-label="Temperatures">
-				<div class="card-head">
-					<h2 class="card-title">Temperatures</h2>
-					<span class="des">heat.heaters · live</span>
-				</div>
-				<Show when={chartSeries().length} fallback={<p class="job-empty">Waiting for heaters…</p>}>
-					<TemperatureChart data={app.temps.data} series={chartSeries()} height={220} />
-				</Show>
-			</section>
-		</div>
+				<Panel id="job" layout={layout} ariaLabel="Job">
+					<div class="card-head">
+						<h2 class="card-title">Job</h2>
+						<span class="des">job</span>
+					</div>
+					<Show
+						when={app.om.om.job.file}
+						fallback={
+							<p class="job-empty">
+								No job running.
+								<Show when={app.om.om.job.lastFileName}> Last: {app.om.om.job.lastFileName}</Show>
+							</p>
+						}
+					>
+						{file => (
+							<div class="job-line">
+								<span class="fname">{file().fileName}</span>
+								<Show when={app.om.om.job.layer !== null}>
+									<span class="heat-set">layer {app.om.om.job.layer} / {file().numLayers}</span>
+								</Show>
+								<Show when={jobProgress() !== null}>
+									<span class="pct">{jobProgress()!.toFixed(1)}%</span>
+								</Show>
+							</div>
+						)}
+					</Show>
+				</Panel>
+
+				<Panel id="temperatures" layout={layout} ariaLabel="Temperatures">
+					<div class="card-head">
+						<h2 class="card-title">Temperatures</h2>
+						<span class="des">heat.heaters · live</span>
+					</div>
+					<Show when={chartSeries().length} fallback={<p class="job-empty">Waiting for heaters…</p>}>
+						<TemperatureChart data={app.temps.data} series={chartSeries()} height={220} />
+					</Show>
+				</Panel>
+			</div>
+		</>
 	);
 }
 
