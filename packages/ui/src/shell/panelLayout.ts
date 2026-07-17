@@ -9,6 +9,8 @@
  * view's grid.
  */
 
+import { createEffect, createSignal, onCleanup } from "solid-js";
+
 export interface PanelDefault {
 	id: string;
 	/** Columns to span by default (this is a 2-column grid). Default 1. */
@@ -118,4 +120,143 @@ export function colSpanForDelta(startSpan: number, deltaPx: number, colWidthPx: 
 export function rowSpanForDelta(startSpan: number, deltaPx: number, rowHeightPx: number): number {
 	if (!(rowHeightPx > 0)) return clampSpan(startSpan, MAX_ROW_SPAN);
 	return clampSpan(startSpan + Math.round(deltaPx / rowHeightPx), MAX_ROW_SPAN);
+}
+
+function readStorage(key: string): string | null {
+	if (typeof localStorage === "undefined") return null;
+	try {
+		return localStorage.getItem(key);
+	} catch {
+		return null;
+	}
+}
+
+function writeStorage(key: string, value: string): void {
+	if (typeof localStorage === "undefined") return;
+	try {
+		localStorage.setItem(key, value);
+	} catch {
+		// Private mode / quota exceeded: the layout just won't survive a reload.
+	}
+}
+
+function removeStorage(key: string): void {
+	if (typeof localStorage === "undefined") return;
+	try {
+		localStorage.removeItem(key);
+	} catch {
+		// Private mode / quota exceeded: reset just won't survive a reload either.
+	}
+}
+
+/** Matches the existing mobile breakpoint used throughout app.css. */
+const NARROW_QUERY = "(max-width: 900px)";
+
+function liveColumnCount(): 1 | 2 {
+	return typeof window !== "undefined" && window.matchMedia(NARROW_QUERY).matches ? 1 : 2;
+}
+
+export interface PanelLayoutController {
+	styleFor: (id: string) => Record<string, string>;
+	startReorder: (id: string, event: PointerEvent) => void;
+	startResize: (id: string, event: PointerEvent) => void;
+	reset: () => void;
+}
+
+/**
+ * Per-view panel layout controller. Call once per view; pass the result to
+ * every `<Panel>` in that view. Position/size persist to
+ * `localStorage["<storageKey>"]` and survive reload.
+ */
+export function createPanelLayout(storageKey: string, defaults: PanelDefault[]): PanelLayoutController {
+	const [state, setState] = createSignal(mergeLayout(parseStoredLayout(readStorage(storageKey)), defaults));
+	const [columns, setColumns] = createSignal(liveColumnCount());
+
+	// Below the mobile breakpoint the grid has only 1 explicit column — an
+	// unclamped `grid-column: span 2` there would force an implicit second
+	// column and overflow the page. Track the live count so styleFor can clamp
+	// what's *applied* without touching the *stored* preference.
+	createEffect(() => {
+		if (typeof window === "undefined") return;
+		const query = window.matchMedia(NARROW_QUERY);
+		const onChange = (): void => { setColumns(query.matches ? 1 : 2); };
+		query.addEventListener("change", onChange);
+		onCleanup(() => query.removeEventListener("change", onChange));
+	});
+
+	const persist = (next: PanelLayoutState): void => {
+		setState(next);
+		writeStorage(storageKey, serializeLayout(next));
+	};
+
+	const styleFor = (id: string): Record<string, string> => {
+		const s = state()[id];
+		if (!s) return {};
+		const col = Math.min(s.colSpan, columns());
+		return { order: String(s.order), "grid-column": `span ${col}`, "grid-row": `span ${s.rowSpan}` };
+	};
+
+	const startReorder = (id: string, event: PointerEvent): void => {
+		event.preventDefault();
+		const onMove = (moveEvent: PointerEvent): void => {
+			const overCard = document.elementFromPoint(moveEvent.clientX, moveEvent.clientY)
+				?.closest<HTMLElement>("[data-panel-id]");
+			const overId = overCard?.dataset.panelId;
+			if (overId === undefined || overId === id) return;
+			const current = state();
+			const a = current[id];
+			const b = current[overId];
+			if (!a || !b) return;
+			persist({ ...current, [id]: { ...a, order: b.order }, [overId]: { ...b, order: a.order } });
+		};
+		const onUp = (): void => {
+			window.removeEventListener("pointermove", onMove);
+			window.removeEventListener("pointerup", onUp);
+		};
+		window.addEventListener("pointermove", onMove);
+		window.addEventListener("pointerup", onUp);
+	};
+
+	const startResize = (id: string, event: PointerEvent): void => {
+		event.preventDefault();
+		event.stopPropagation();
+		const card = (event.currentTarget as HTMLElement).closest<HTMLElement>("[data-panel-id]");
+		const grid = card?.closest<HTMLElement>(".grid");
+		const start = state()[id];
+		if (!card || !grid || !start) return;
+		const cardRect = card.getBoundingClientRect();
+		const gridRect = grid.getBoundingClientRect();
+		const gapPx = 14; // matches .grid { gap: 14px } in app.css
+		const colWidthPx = (gridRect.width - gapPx) / 2;
+		const rowHeightPx = cardRect.height;
+		const originX = event.clientX;
+		const originY = event.clientY;
+
+		const onMove = (moveEvent: PointerEvent): void => {
+			const current = state();
+			const s = current[id];
+			if (!s) return;
+			persist({
+				...current,
+				[id]: {
+					...s,
+					colSpan: colSpanForDelta(start.colSpan, moveEvent.clientX - originX, colWidthPx),
+					rowSpan: rowSpanForDelta(start.rowSpan, moveEvent.clientY - originY, rowHeightPx),
+				},
+			});
+		};
+		const onUp = (): void => {
+			window.removeEventListener("pointermove", onMove);
+			window.removeEventListener("pointerup", onUp);
+		};
+		window.addEventListener("pointermove", onMove);
+		window.addEventListener("pointerup", onUp);
+	};
+
+	const reset = (): void => {
+		removeStorage(storageKey);
+		setState(defaultLayout(defaults));
+	};
+
+	return { styleFor, startReorder, startResize, reset };
 }
