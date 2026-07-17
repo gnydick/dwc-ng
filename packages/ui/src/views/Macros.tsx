@@ -2,6 +2,13 @@ import { For, Show, Switch, Match, createMemo, createResource, createSignal } fr
 import { useApp } from "../shell/context.ts";
 import { FileEditor } from "../editor/FileEditor.tsx";
 import type { FileListEntry } from "../connector/types.ts";
+import { Panel } from "../shell/Panel.tsx";
+import { createPanelLayout, type PanelDefault } from "../shell/panelLayout.ts";
+
+const PANEL_DEFAULTS: PanelDefault[] = [
+	{ id: "macros" },
+	{ id: "editor" },
+];
 
 const MACROS_ROOT = "0:/macros";
 
@@ -13,6 +20,7 @@ const MACROS_ROOT = "0:/macros";
  */
 export default function Macros() {
 	const app = useApp();
+	const layout = createPanelLayout("dwc-ng.layout.macros", PANEL_DEFAULTS);
 	const connected = (): boolean => app.om.connection.status === "connected";
 
 	const [dir, setDir] = createSignal(MACROS_ROOT);
@@ -63,61 +71,66 @@ export default function Macros() {
 	};
 
 	return (
-		<div class="grid macros">
-			<section class="card" aria-label="Macros">
-				<div class="card-head">
-					<h2 class="card-title">Macros</h2>
-					<span class="des">{dir()}</span>
-				</div>
-				<Show when={connected()} fallback={<p class="job-empty">Not connected.</p>}>
-					<Show when={dir() !== MACROS_ROOT}>
-						<button class="link-btn" onClick={goUp}>← up a level</button>
+		<>
+			<div class="layout-toolbar">
+				<button class="layout-reset" onClick={() => layout.reset()}>↺ Reset layout</button>
+			</div>
+			<div class="grid macros">
+				<Panel id="macros" layout={layout} ariaLabel="Macros">
+					<div class="card-head">
+						<h2 class="card-title">Macros</h2>
+						<span class="des">{dir()}</span>
+					</div>
+					<Show when={connected()} fallback={<p class="job-empty">Not connected.</p>}>
+						<Show when={dir() !== MACROS_ROOT}>
+							<button class="link-btn" onClick={goUp}>← up a level</button>
+						</Show>
+						<ul class="file-list">
+							<For each={sorted()} fallback={<li class="job-empty">No macros here.</li>}>
+								{entry => (
+									<li class="file-row" classList={{ active: selected() === pathOf(entry) }}>
+										<Switch>
+											<Match when={entry.type === "d"}>
+												<button class="file-name is-dir" onClick={() => open(entry)}>
+													<span class="file-ico">▸</span>{entry.name}
+												</button>
+											</Match>
+											<Match when={entry.type === "f"}>
+												<button class="file-name" onClick={() => open(entry)}>{entry.name}</button>
+												<button
+													class="run-btn"
+													classList={{ armed: armed() === pathOf(entry) }}
+													title={`Run ${entry.name} (M98)`}
+													onClick={() => run(entry)}
+												>
+													{armed() === pathOf(entry) ? "Confirm" : "▶ Run"}
+												</button>
+											</Match>
+										</Switch>
+									</li>
+								)}
+							</For>
+						</ul>
 					</Show>
-					<ul class="file-list">
-						<For each={sorted()} fallback={<li class="job-empty">No macros here.</li>}>
-							{entry => (
-								<li class="file-row" classList={{ active: selected() === pathOf(entry) }}>
-									<Switch>
-										<Match when={entry.type === "d"}>
-											<button class="file-name is-dir" onClick={() => open(entry)}>
-												<span class="file-ico">▸</span>{entry.name}
-											</button>
-										</Match>
-										<Match when={entry.type === "f"}>
-											<button class="file-name" onClick={() => open(entry)}>{entry.name}</button>
-											<button
-												class="run-btn"
-												classList={{ armed: armed() === pathOf(entry) }}
-												title={`Run ${entry.name} (M98)`}
-												onClick={() => run(entry)}
-											>
-												{armed() === pathOf(entry) ? "Confirm" : "▶ Run"}
-											</button>
-										</Match>
-									</Switch>
-								</li>
-							)}
-						</For>
-					</ul>
-				</Show>
-			</section>
+				</Panel>
 
-			<section class="card editor-card" aria-label="Editor">
-				<Show
-					when={selected()}
-					fallback={
-						<>
-							<div class="card-head"><h2 class="card-title">Editor</h2></div>
-							<p class="job-empty">
-								Select a macro to view or edit it. Opening never runs it — use the
-								explicit ▶ Run button (click twice to confirm).
-							</p>
-						</>
-					}
-				>
-					{path => <FileEditor path={path()} lang="gcode" onClose={() => setSelected(null)} />}
-				</Show>
-			</section>
-		</div>
+				<Panel id="editor" layout={layout} ariaLabel="Editor" class="editor-card">
+					<Show
+						when={selected()}
+						fallback={
+							<>
+								<div class="card-head"><h2 class="card-title">Editor</h2></div>
+								<p class="job-empty">
+									Select a macro to view or edit it. Opening never runs it — use the
+									explicit ▶ Run button (click twice to confirm).
+								</p>
+							</>
+						}
+					>
+						{path => <FileEditor path={path()} lang="gcode" onClose={() => setSelected(null)} />}
+					</Show>
+				</Panel>
+			</div>
+		</>
 	);
 }

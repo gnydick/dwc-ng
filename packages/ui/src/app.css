@@ -885,7 +885,6 @@
 
 /* ---------- System view + object-model inspector ---------- */
 .system { grid-template-columns: minmax(0, 320px) minmax(0, 1fr); }
-.system .om-card { grid-column: 1 / -1; }
 
 .om-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
 .om-filter {
