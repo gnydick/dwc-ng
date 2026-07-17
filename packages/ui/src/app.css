@@ -489,13 +489,21 @@
 	position: fixed;
 	right: 22px;
 	bottom: 74px;
+	z-index: 10;
+	display: flex;
+	flex-direction: column;
 	width: 260px;
+	height: 230px;
+	min-width: 180px;
+	min-height: 160px;
+	max-width: calc(100vw - 44px);
+	max-height: 80vh;
+	resize: both;
+	overflow: hidden;
 	background: var(--mask-700);
 	border: 1px solid var(--hairline);
 	border-radius: var(--radius);
-	overflow: hidden;
 	box-shadow: 0 12px 32px rgba(4, 9, 17, 0.65);
-	z-index: 10;
 }
 .cam-head {
 	display: flex;
@@ -503,7 +511,11 @@
 	gap: 8px;
 	padding: 6px 10px;
 	border-bottom: 1px solid var(--hairline);
+	cursor: grab;
+	touch-action: none;
+	user-select: none;
 }
+.cam-head:active { cursor: grabbing; }
 .cam-title {
 	font-family: var(--font-display);
 	font-weight: 600;
@@ -513,10 +525,11 @@
 	color: var(--silk-dim);
 }
 .cam-actions { margin-left: auto; }
-.cam-head button { color: var(--silk-dim); font-size: 13px; line-height: 1; padding: 3px 5px; }
+.cam-head button { color: var(--silk-dim); font-size: 13px; line-height: 1; padding: 3px 5px; cursor: pointer; }
 .cam-head button:hover { color: var(--silk); }
 .cam-body {
-	aspect-ratio: 4 / 3;
+	flex: 1;
+	min-height: 0;
 	background: radial-gradient(120% 90% at 65% 30%, #16283f 0%, #0a1220 70%);
 	display: grid;
 	place-items: center;

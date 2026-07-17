@@ -1,14 +1,12 @@
-import { For, Match, Show, Switch, createEffect, createMemo, createSignal, onCleanup } from "solid-js";
+import { For, Match, Show, Switch, createEffect, createMemo, createSignal } from "solid-js";
 import { useApp } from "./context.ts";
 import { createRouter, type Route } from "./router.ts";
 import {
 	BACKENDS, type Backend, rememberBackend,
 	currentBackendId, setCurrentBackendId, writesArmed, setWritesArmed,
 } from "../dev/backend.ts";
-import {
-	loadConsoleFloating, saveConsoleFloating,
-	loadConsoleGeometry, saveConsoleGeometry,
-} from "../om/consoleLog.ts";
+import { loadConsoleFloating, saveConsoleFloating } from "../om/consoleLog.ts";
+import { createFloatingTile } from "./floatingTile.ts";
 import Machine from "../views/Machine.tsx";
 import Control from "../views/Control.tsx";
 import Jobs from "../views/Jobs.tsx";
@@ -257,64 +255,16 @@ function ConsoleDrawer() {
 
 /**
  * The snapped-out console: fixed, resizable, above every view, and draggable
- * by its header. Position + size are pixel geometry so they can be dragged
- * anywhere and stick — CSS's default bottom-right corner is only a fallback
- * until the first drag or resize.
+ * by its header. Position + size persist via createFloatingTile — CSS's
+ * default bottom-right corner is only a fallback until the first drag/resize.
  */
 function ConsoleTile() {
 	const app = useApp();
-	let el!: HTMLElement;
-	const [geometry, setGeometry] = createSignal(loadConsoleGeometry());
-
-	const startDrag = (event: PointerEvent): void => {
-		// Don't hijack clicks on the dock button.
-		if (event.target instanceof HTMLElement && event.target.closest("button")) return;
-		event.preventDefault();
-		const rect = el.getBoundingClientRect();
-		const originX = event.clientX;
-		const originY = event.clientY;
-
-		const onMove = (moveEvent: PointerEvent): void => {
-			const maxLeft = Math.max(0, window.innerWidth - rect.width);
-			const maxTop = Math.max(0, window.innerHeight - rect.height);
-			setGeometry({
-				left: Math.min(Math.max(0, rect.left + (moveEvent.clientX - originX)), maxLeft),
-				top: Math.min(Math.max(0, rect.top + (moveEvent.clientY - originY)), maxTop),
-				width: rect.width,
-				height: rect.height,
-			});
-		};
-		const onUp = (): void => {
-			window.removeEventListener("pointermove", onMove);
-			window.removeEventListener("pointerup", onUp);
-			const g = geometry();
-			if (g) saveConsoleGeometry(g);
-		};
-		window.addEventListener("pointermove", onMove);
-		window.addEventListener("pointerup", onUp);
-	};
-
-	// The native resize handle (CSS `resize: both`) mutates the element's own
-	// inline size directly — watch for that so a manual resize also sticks.
-	createEffect(() => {
-		const observer = new ResizeObserver(() => {
-			const rect = el.getBoundingClientRect();
-			const g = geometry();
-			setGeometry({ left: g?.left ?? rect.left, top: g?.top ?? rect.top, width: rect.width, height: rect.height });
-		});
-		observer.observe(el);
-		onCleanup(() => observer.disconnect());
-	});
-
-	const style = createMemo<Record<string, string> | undefined>(() => {
-		const g = geometry();
-		if (!g) return undefined;
-		return { left: `${g.left}px`, top: `${g.top}px`, right: "auto", bottom: "auto", width: `${g.width}px`, height: `${g.height}px` };
-	});
+	const tile = createFloatingTile("dwc-ng.console.geometry");
 
 	return (
-		<aside class="console-tile" role="region" aria-label="Console" style={style()} ref={el}>
-			<div class="console-tile-head" onPointerDown={startDrag}>
+		<aside class="console-tile" role="region" aria-label="Console" style={tile.style()} ref={tile.setEl}>
+			<div class="console-tile-head" onPointerDown={tile.startDrag}>
 				<span class="console-tile-title">Console</span>
 				<button
 					class="console-expand"
@@ -379,12 +329,16 @@ function ConsoleForm() {
 	);
 }
 
+/** Draggable/resizable like the console tile; same reasoning — a workspace
+ * placement, not machine config, so it's localStorage-only. */
 function CameraTile() {
 	const app = useApp();
+	const tile = createFloatingTile("dwc-ng.camera.geometry");
+
 	return (
 		<Show when={app.config.config.camera.pinned}>
-			<aside class="cam-tile" aria-label="Camera">
-				<div class="cam-head">
+			<aside class="cam-tile" aria-label="Camera" style={tile.style()} ref={tile.setEl}>
+				<div class="cam-head" onPointerDown={tile.startDrag}>
 					<span class="cam-title">Camera</span>
 					<div class="cam-actions">
 						<button title="Hide camera" onClick={() => app.config.setCamera({ pinned: false })}>✕</button>
