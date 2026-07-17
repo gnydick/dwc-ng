@@ -2,6 +2,17 @@ import { For, Show, createMemo, createSignal } from "solid-js";
 import { useApp } from "../shell/context.ts";
 import { cmd } from "../control/commands.ts";
 import { GcodeButton } from "../control/GcodeButton.tsx";
+import { Panel } from "../shell/Panel.tsx";
+import { createPanelLayout, type PanelDefault } from "../shell/panelLayout.ts";
+
+const PANEL_DEFAULTS: PanelDefault[] = [
+	{ id: "homing" },
+	{ id: "tools" },
+	{ id: "heaters" },
+	{ id: "movement" },
+	{ id: "fans" },
+	{ id: "tuning" },
+];
 
 const STEPS = [0.1, 1, 10, 100];
 
@@ -13,6 +24,7 @@ const STEPS = [0.1, 1, 10, 100];
  */
 export default function Control() {
 	const app = useApp();
+	const layout = createPanelLayout("dwc-ng.layout.control", PANEL_DEFAULTS);
 
 	const axes = createMemo(() => app.om.om.move.axes.filter(a => a.visible));
 	const role = (letter: string): string | undefined => app.config.config.axisRoles[letter];
@@ -32,168 +44,163 @@ export default function Control() {
 	const [babyStep, setBabyStep] = createSignal(0.02);
 
 	return (
-		<div class="grid control">
-			{/* Homing */}
-			<section class="card" aria-label="Homing">
-				<div class="card-head"><h2 class="card-title">Homing</h2><span class="des">G28</span></div>
-				<div class="ctl-wrap">
-					<GcodeButton label="Home All" variant="go" command={cmd.homeAll()} />
-					<For each={axes()}>
-						{axis => (
-							<GcodeButton
-								label={`Home ${axis.letter}${role(axis.letter) ? ` · ${role(axis.letter)}` : ""}`}
-								command={cmd.homeAxis(axis.letter)}
-							/>
-						)}
-					</For>
-				</div>
-			</section>
-
-			{/* Tools */}
-			<section class="card" aria-label="Tools">
-				<div class="card-head"><h2 class="card-title">Tools</h2><span class="des">T · state.currentTool</span></div>
-				<div class="ctl-wrap">
-					<For each={app.om.om.tools}>
-						{tool => (
-							<Show when={tool}>
-								{t => (
-									<GcodeButton
-										label={t().name || `Tool ${t().number}`}
-										variant={app.om.om.state.currentTool === t().number ? "go" : undefined}
-										command={cmd.selectTool(t().number)}
-									/>
-								)}
-							</Show>
-						)}
-					</For>
-					<GcodeButton label="Deselect" variant="quiet" command={cmd.deselectTool()} />
-				</div>
-			</section>
-
-			{/* Heaters */}
-			<section class="card" aria-label="Heaters">
-				<div class="card-head"><h2 class="card-title">Heaters</h2><span class="des">M568 · M140</span></div>
-				<div class="heater-list">
-					<For each={app.om.om.tools}>
-						{tool => (
-							<Show when={tool}>
-								{t => (
-									<HeaterControl
-										label={t().name || `Tool ${t().number}`}
-										kind="tool"
-										num={t().number}
-										active={heaterActive(t().heaters[0] ?? -1)}
-									/>
-								)}
-							</Show>
-						)}
-					</For>
-					<Show when={bedModelIndex() >= 0}>
-						<HeaterControl label="Bed" kind="bed" num={0} active={heaterActive(bedModelIndex())} />
-					</Show>
-				</div>
-			</section>
-
-			{/* Movement */}
-			<section class="card" aria-label="Movement">
-				<div class="card-head"><h2 class="card-title">Movement</h2><span class="des">M120 · G91 · M121</span></div>
-				<div class="jog-controls">
-					<div class="step-row">
-						<span class="ctl-name">Step</span>
-						<For each={STEPS}>
-							{s => (
-								<button class="chip-btn" classList={{ active: step() === s }} onClick={() => setStep(s)}>{s} mm</button>
+		<>
+			<div class="layout-toolbar">
+				<button class="layout-reset" onClick={() => layout.reset()}>↺ Reset layout</button>
+			</div>
+			<div class="grid control">
+				<Panel id="homing" layout={layout} ariaLabel="Homing">
+					<div class="card-head"><h2 class="card-title">Homing</h2><span class="des">G28</span></div>
+					<div class="ctl-wrap">
+						<GcodeButton label="Home All" variant="go" command={cmd.homeAll()} />
+						<For each={axes()}>
+							{axis => (
+								<GcodeButton
+									label={`Home ${axis.letter}${role(axis.letter) ? ` · ${role(axis.letter)}` : ""}`}
+									command={cmd.homeAxis(axis.letter)}
+								/>
 							)}
 						</For>
-						<label class="feed-field">Feed <input type="number" value={jogFeed()} onInput={e => setJogFeed(Number(e.currentTarget.value))} /></label>
 					</div>
+				</Panel>
 
-					{/* Cardinal pad: X/Y cross + Z column. Fixed key positions so the
-					    same physical direction is always the same button — muscle
-					    memory, fewer mis-jogs. Centre shows the active step. */}
-					<div class="jog-pad">
-						<Show when={hasAxis("X") && hasAxis("Y")}>
-							<div class="jog-xy" role="group" aria-label="X/Y jog">
-								<GcodeButton class="jog-key pos-yp" label="+Y" command={cmd.jog("Y", step(), jogFeed())} stamp={false} />
-								<GcodeButton class="jog-key pos-xn" label="−X" command={cmd.jog("X", -step(), jogFeed())} stamp={false} />
-								<span class="jog-center">{step()}<small>mm</small></span>
-								<GcodeButton class="jog-key pos-xp" label="+X" command={cmd.jog("X", step(), jogFeed())} stamp={false} />
-								<GcodeButton class="jog-key pos-yn" label="−Y" command={cmd.jog("Y", -step(), jogFeed())} stamp={false} />
-							</div>
-						</Show>
-						<Show when={hasAxis("Z")}>
-							<div class="jog-z" role="group" aria-label="Z jog">
-								<GcodeButton class="jog-key" label="+Z" command={cmd.jog("Z", step(), jogFeed())} stamp={false} />
-								<span class="jog-zlabel">Z</span>
-								<GcodeButton class="jog-key" label="−Z" command={cmd.jog("Z", -step(), jogFeed())} stamp={false} />
-							</div>
-						</Show>
-					</div>
-
-					{/* Leadscrews (U/V/W) — individual, for tramming; not spatial jogs. */}
-					<Show when={auxAxes().length > 0}>
-						<div class="jog-aux">
-							<For each={auxAxes()}>
-								{axis => (
-									<div class="jog-row">
-										<span class="ctl-name">{axis.letter}<Show when={role(axis.letter)}>{r => <small>{r()}</small>}</Show></span>
-										<GcodeButton label={`− ${step()}`} command={cmd.jog(axis.letter, -step(), jogFeed())} stamp={false} />
-										<GcodeButton label={`+ ${step()}`} command={cmd.jog(axis.letter, step(), jogFeed())} stamp={false} />
-									</div>
-								)}
-							</For>
-						</div>
-					</Show>
-
-					<Show when={hasAxis("C")}>
-						<div class="coupler-row">
-							<span class="ctl-name">Coupler <small>C</small></span>
-							<GcodeButton label="Lock" command={cmd.couplerLock()} />
-							<GcodeButton label="Unlock" variant="quiet" command={cmd.couplerUnlock()} />
-						</div>
-					</Show>
-					<div class="extrude-row">
-						<span class="ctl-name">Extruder</span>
-						<label class="feed-field">mm <input type="number" value={extAmt()} onInput={e => setExtAmt(Number(e.currentTarget.value))} /></label>
-						<label class="feed-field">F <input type="number" value={extFeed()} onInput={e => setExtFeed(Number(e.currentTarget.value))} /></label>
-						<GcodeButton label="Retract" command={cmd.extrude(-extAmt(), extFeed())} stamp={false} />
-						<GcodeButton label="Extrude" command={cmd.extrude(extAmt(), extFeed())} stamp={false} />
-					</div>
-				</div>
-			</section>
-
-			{/* Fans */}
-			<Show when={app.om.om.fans.some(f => f !== null)}>
-				<section class="card" aria-label="Fans">
-					<div class="card-head"><h2 class="card-title">Fans</h2><span class="des">M106</span></div>
-					<div class="heater-list">
-						<For each={app.om.om.fans}>
-							{(fan, i) => (
-								<Show when={fan}>
-									{f => <FanControl label={f().name || `Fan ${i()}`} index={i()} value={f().actualValue} />}
+				<Panel id="tools" layout={layout} ariaLabel="Tools">
+					<div class="card-head"><h2 class="card-title">Tools</h2><span class="des">T · state.currentTool</span></div>
+					<div class="ctl-wrap">
+						<For each={app.om.om.tools}>
+							{tool => (
+								<Show when={tool}>
+									{t => (
+										<GcodeButton
+											label={t().name || `Tool ${t().number}`}
+											variant={app.om.om.state.currentTool === t().number ? "go" : undefined}
+											command={cmd.selectTool(t().number)}
+										/>
+									)}
 								</Show>
 							)}
 						</For>
+						<GcodeButton label="Deselect" variant="quiet" command={cmd.deselectTool()} />
 					</div>
-				</section>
-			</Show>
+				</Panel>
 
-			{/* Tuning */}
-			<section class="card" aria-label="Tuning">
-				<div class="card-head"><h2 class="card-title">Tuning</h2><span class="des">M220 · M221 · M290</span></div>
-				<div class="heater-list">
-					<FactorControl label="Speed" build={cmd.speedFactor} current={Math.round((app.om.om.move.speedFactor ?? 1) * 100)} />
-					<div class="heater-ctl">
-						<span class="ctl-name">Babystep Z</span>
-						<label class="feed-field">mm <input type="number" step="0.01" value={babyStep()} onInput={e => setBabyStep(Number(e.currentTarget.value))} /></label>
-						<div class="btn-cluster">
-							<GcodeButton label={`− ${babyStep()}`} command={cmd.babystep(-babyStep())} stamp={false} />
-							<GcodeButton label={`+ ${babyStep()}`} command={cmd.babystep(babyStep())} stamp={false} />
+				<Panel id="heaters" layout={layout} ariaLabel="Heaters">
+					<div class="card-head"><h2 class="card-title">Heaters</h2><span class="des">M568 · M140</span></div>
+					<div class="heater-list">
+						<For each={app.om.om.tools}>
+							{tool => (
+								<Show when={tool}>
+									{t => (
+										<HeaterControl
+											label={t().name || `Tool ${t().number}`}
+											kind="tool"
+											num={t().number}
+											active={heaterActive(t().heaters[0] ?? -1)}
+										/>
+									)}
+								</Show>
+							)}
+						</For>
+						<Show when={bedModelIndex() >= 0}>
+							<HeaterControl label="Bed" kind="bed" num={0} active={heaterActive(bedModelIndex())} />
+						</Show>
+					</div>
+				</Panel>
+
+				<Panel id="movement" layout={layout} ariaLabel="Movement">
+					<div class="card-head"><h2 class="card-title">Movement</h2><span class="des">M120 · G91 · M121</span></div>
+					<div class="jog-controls">
+						<div class="step-row">
+							<span class="ctl-name">Step</span>
+							<For each={STEPS}>
+								{s => (
+									<button class="chip-btn" classList={{ active: step() === s }} onClick={() => setStep(s)}>{s} mm</button>
+								)}
+							</For>
+							<label class="feed-field">Feed <input type="number" value={jogFeed()} onInput={e => setJogFeed(Number(e.currentTarget.value))} /></label>
+						</div>
+
+						<div class="jog-pad">
+							<Show when={hasAxis("X") && hasAxis("Y")}>
+								<div class="jog-xy" role="group" aria-label="X/Y jog">
+									<GcodeButton class="jog-key pos-yp" label="+Y" command={cmd.jog("Y", step(), jogFeed())} stamp={false} />
+									<GcodeButton class="jog-key pos-xn" label="−X" command={cmd.jog("X", -step(), jogFeed())} stamp={false} />
+									<span class="jog-center">{step()}<small>mm</small></span>
+									<GcodeButton class="jog-key pos-xp" label="+X" command={cmd.jog("X", step(), jogFeed())} stamp={false} />
+									<GcodeButton class="jog-key pos-yn" label="−Y" command={cmd.jog("Y", -step(), jogFeed())} stamp={false} />
+								</div>
+							</Show>
+							<Show when={hasAxis("Z")}>
+								<div class="jog-z" role="group" aria-label="Z jog">
+									<GcodeButton class="jog-key" label="+Z" command={cmd.jog("Z", step(), jogFeed())} stamp={false} />
+									<span class="jog-zlabel">Z</span>
+									<GcodeButton class="jog-key" label="−Z" command={cmd.jog("Z", -step(), jogFeed())} stamp={false} />
+								</div>
+							</Show>
+						</div>
+
+						<Show when={auxAxes().length > 0}>
+							<div class="jog-aux">
+								<For each={auxAxes()}>
+									{axis => (
+										<div class="jog-row">
+											<span class="ctl-name">{axis.letter}<Show when={role(axis.letter)}>{r => <small>{r()}</small>}</Show></span>
+											<GcodeButton label={`− ${step()}`} command={cmd.jog(axis.letter, -step(), jogFeed())} stamp={false} />
+											<GcodeButton label={`+ ${step()}`} command={cmd.jog(axis.letter, step(), jogFeed())} stamp={false} />
+										</div>
+									)}
+								</For>
+							</div>
+						</Show>
+
+						<Show when={hasAxis("C")}>
+							<div class="coupler-row">
+								<span class="ctl-name">Coupler <small>C</small></span>
+								<GcodeButton label="Lock" command={cmd.couplerLock()} />
+								<GcodeButton label="Unlock" variant="quiet" command={cmd.couplerUnlock()} />
+							</div>
+						</Show>
+						<div class="extrude-row">
+							<span class="ctl-name">Extruder</span>
+							<label class="feed-field">mm <input type="number" value={extAmt()} onInput={e => setExtAmt(Number(e.currentTarget.value))} /></label>
+							<label class="feed-field">F <input type="number" value={extFeed()} onInput={e => setExtFeed(Number(e.currentTarget.value))} /></label>
+							<GcodeButton label="Retract" command={cmd.extrude(-extAmt(), extFeed())} stamp={false} />
+							<GcodeButton label="Extrude" command={cmd.extrude(extAmt(), extFeed())} stamp={false} />
 						</div>
 					</div>
-				</div>
-			</section>
-		</div>
+				</Panel>
+
+				<Show when={app.om.om.fans.some(f => f !== null)}>
+					<Panel id="fans" layout={layout} ariaLabel="Fans">
+						<div class="card-head"><h2 class="card-title">Fans</h2><span class="des">M106</span></div>
+						<div class="heater-list">
+							<For each={app.om.om.fans}>
+								{(fan, i) => (
+									<Show when={fan}>
+										{f => <FanControl label={f().name || `Fan ${i()}`} index={i()} value={f().actualValue} />}
+									</Show>
+								)}
+							</For>
+						</div>
+					</Panel>
+				</Show>
+
+				<Panel id="tuning" layout={layout} ariaLabel="Tuning">
+					<div class="card-head"><h2 class="card-title">Tuning</h2><span class="des">M220 · M221 · M290</span></div>
+					<div class="heater-list">
+						<FactorControl label="Speed" build={cmd.speedFactor} current={Math.round((app.om.om.move.speedFactor ?? 1) * 100)} />
+						<div class="heater-ctl">
+							<span class="ctl-name">Babystep Z</span>
+							<label class="feed-field">mm <input type="number" step="0.01" value={babyStep()} onInput={e => setBabyStep(Number(e.currentTarget.value))} /></label>
+							<div class="btn-cluster">
+								<GcodeButton label={`− ${babyStep()}`} command={cmd.babystep(-babyStep())} stamp={false} />
+								<GcodeButton label={`+ ${babyStep()}`} command={cmd.babystep(babyStep())} stamp={false} />
+							</div>
+						</div>
+					</div>
+				</Panel>
+			</div>
+		</>
 	);
 }
 
