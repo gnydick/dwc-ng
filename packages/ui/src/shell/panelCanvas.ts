@@ -10,6 +10,10 @@
  */
 
 import { createSignal } from "solid-js";
+import {
+	type Orientation, type OrientationState,
+	parseOrientationState, serializeOrientationState, toggledOrientation,
+} from "./panelOrientation.ts";
 
 export const GRID_COLS = 48;
 export const ROW_UNIT_PX = 24;
@@ -242,6 +246,10 @@ export interface PanelCanvasController {
 	startMove: (id: string, event: PointerEvent) => void;
 	startResize: (id: string, event: PointerEvent) => void;
 	reset: () => void;
+	/** Content layout direction for a panel that opts into the toggle
+	 *  (Panel's orientationToggle prop) — "vertical" for anything never set. */
+	orientationFor: (id: string) => Orientation;
+	toggleOrientation: (id: string) => void;
 }
 
 /**
@@ -259,9 +267,20 @@ export interface PanelCanvasController {
 export function createPanelCanvas(storageKey: string, defaults: PanelDefault[], isActive?: (id: string) => boolean): PanelCanvasController {
 	const [state, setState] = createSignal(mergeCanvas(parseStoredCanvas(readStorage(storageKey)), defaults));
 
+	const orientationStorageKey = `${storageKey}.orientation`;
+	const [orientationState, setOrientationState] = createSignal(parseOrientationState(readStorage(orientationStorageKey)));
+
 	const persist = (next: CanvasState): void => {
 		setState(next);
 		writeStorage(storageKey, serializeCanvas(next));
+	};
+
+	const orientationFor = (id: string): Orientation => orientationState()[id] ?? "vertical";
+
+	const toggleOrientation = (id: string): void => {
+		const next: OrientationState = { ...orientationState(), [id]: toggledOrientation(orientationFor(id)) };
+		setOrientationState(next);
+		writeStorage(orientationStorageKey, serializeOrientationState(next));
 	};
 
 	/** state(), minus any currently-inactive panel other than the one being dragged/resized. */
@@ -405,7 +424,9 @@ export function createPanelCanvas(storageKey: string, defaults: PanelDefault[], 
 	const reset = (): void => {
 		removeStorage(storageKey);
 		setState(defaultCanvas(defaults));
+		removeStorage(orientationStorageKey);
+		setOrientationState({});
 	};
 
-	return { styleFor, startMove, startResize, reset };
+	return { styleFor, startMove, startResize, reset, orientationFor, toggleOrientation };
 }

@@ -17,6 +17,10 @@ export function Panel(props: {
 	canvas: PanelCanvasController;
 	ariaLabel: string;
 	class?: string;
+	/** Shows a small header toggle for this card's own content layout
+	 *  direction (canvas.orientationFor/toggleOrientation) — opt-in per
+	 *  card, since not every card's content can meaningfully flip. */
+	orientationToggle?: boolean;
 	children: JSX.Element;
 }) {
 	let bodyEl!: HTMLDivElement;
@@ -78,6 +82,17 @@ export function Panel(props: {
 			>
 				⠿
 			</button>
+			<Show when={props.orientationToggle}>
+				<button
+					type="button"
+					class="panel-orientation-toggle"
+					title={props.canvas.orientationFor(props.id) === "vertical" ? "Switch to horizontal layout" : "Switch to vertical layout"}
+					aria-label={`Toggle ${props.ariaLabel} layout direction`}
+					onClick={() => props.canvas.toggleOrientation(props.id)}
+				>
+					{props.canvas.orientationFor(props.id) === "vertical" ? "⇄" : "⇅"}
+				</button>
+			</Show>
 			<Show when={canScrollUp()}>
 				<button
 					type="button"

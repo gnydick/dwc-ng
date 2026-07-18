@@ -62,30 +62,53 @@ export default function Machine() {
 				<button class="layout-reset" onClick={() => canvas.reset()}>↺ Reset layout</button>
 			</div>
 			<PanelCanvas>
-				<Panel id="position" canvas={canvas} ariaLabel="Position">
+				<Panel id="position" canvas={canvas} ariaLabel="Position" orientationToggle>
 					<div class="card-head">
 						<h2 class="card-title">Position</h2>
 						<span class="des">move.axes</span>
 					</div>
 					<Show when={visibleAxes().length} fallback={<p class="job-empty">Waiting for the machine…</p>}>
-						<For each={visibleAxes()}>
-							{axis => (
-								<div class="dro-row" classList={{ unhomed: !axis.homed }}>
-									<span class="dro-axis">
-										{axis.letter}
-										<Show when={app.config.config.axisRoles[axis.letter]}>
-											{role => <span class="dro-role">{role()}</span>}
-										</Show>
-									</span>
-									<span class="dro-val">
-										{(axis.machinePosition ?? 0).toFixed(2)}<small>mm</small>
-									</span>
-									<span class="homed-tag" classList={{ yes: axis.homed, no: !axis.homed }}>
-										{axis.homed ? "homed" : "unhomed"}
-									</span>
-								</div>
-							)}
-						</For>
+						<Show
+							when={canvas.orientationFor("position") === "horizontal"}
+							fallback={
+								<For each={visibleAxes()}>
+									{axis => (
+										<div class="dro-row" classList={{ unhomed: !axis.homed }}>
+											<span class="dro-axis">
+												{axis.letter}
+												<Show when={app.config.config.axisRoles[axis.letter]}>
+													{role => <span class="dro-role">{role()}</span>}
+												</Show>
+											</span>
+											<span class="dro-val">
+												{(axis.machinePosition ?? 0).toFixed(2)}<small>mm</small>
+											</span>
+											<span class="homed-tag" classList={{ yes: axis.homed, no: !axis.homed }}>
+												{axis.homed ? "homed" : "unhomed"}
+											</span>
+										</div>
+									)}
+								</For>
+							}
+						>
+							<div class="dro-h-row">
+								<For each={visibleAxes()}>
+									{axis => (
+										<div class="dro-h-cell" classList={{ unhomed: !axis.homed }}>
+											<span class="dro-h-axis">
+												{axis.letter}
+												<Show when={app.config.config.axisRoles[axis.letter]}>
+													{role => <span class="dro-role">{role()}</span>}
+												</Show>
+											</span>
+											<span class="dro-h-val">
+												{(axis.machinePosition ?? 0).toFixed(2)}<small>mm</small>
+											</span>
+										</div>
+									)}
+								</For>
+							</div>
+						</Show>
 					</Show>
 				</Panel>
 

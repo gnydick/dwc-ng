@@ -204,6 +204,26 @@
 .panel-grip:hover { color: var(--silk); border-color: var(--copper); }
 .panel-grip:active { cursor: grabbing; }
 
+.panel-orientation-toggle {
+	position: absolute;
+	top: 6px;
+	left: 10px;
+	z-index: 2;
+	background: var(--mask-700);
+	border: 1px solid var(--hairline);
+	border-radius: 4px;
+	color: var(--silk-dim);
+	font-size: 11px;
+	line-height: 1;
+	padding: 2px 6px;
+	cursor: pointer;
+	opacity: 0;
+	pointer-events: none;
+	transition: opacity 0.15s ease;
+}
+.card.panel:hover .panel-orientation-toggle { opacity: 1; pointer-events: auto; }
+.panel-orientation-toggle:hover { color: var(--silk); border-color: var(--copper); }
+
 .panel-resize-grip {
 	position: absolute;
 	right: -1px;
@@ -337,6 +357,27 @@
 }
 .dro-row.unhomed .dro-val { color: var(--silk-dim); }
 .dro-val small { font-size: 13px; color: var(--silk-dim); margin-left: 3px; }
+
+/* Horizontal Position layout (orientationToggle) — same data, arranged as a
+   row of compact per-axis cells instead of a stack of rows. */
+.dro-h-row { display: flex; flex-wrap: wrap; gap: 14px 22px; }
+.dro-h-cell { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+.dro-h-axis {
+	font-family: var(--font-display);
+	font-weight: 700;
+	font-size: 14px;
+	color: var(--silk-dim);
+}
+.dro-h-cell.unhomed .dro-h-axis { color: var(--gold); }
+.dro-h-val {
+	font-family: var(--font-display);
+	font-weight: 600;
+	font-size: 20px;
+	line-height: 1;
+	font-variant-numeric: tabular-nums;
+}
+.dro-h-cell.unhomed .dro-h-val { color: var(--silk-dim); }
+.dro-h-val small { font-size: 11px; color: var(--silk-dim); margin-left: 2px; }
 
 .homed-tag {
 	justify-self: end;
