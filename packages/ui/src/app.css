@@ -469,6 +469,20 @@
 .heat-state.standby { color: var(--gold); }
 .heat-state.fault   { color: var(--fault); }
 
+/* Horizontal Tools & Heaters layout (orientationToggle) — one compact block
+   per tool/bed instead of a table row. */
+.heat-h-row { display: flex; flex-wrap: wrap; gap: 18px; }
+.heat-h-cell { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 90px; }
+.heat-h-meta {
+	display: flex;
+	align-items: baseline;
+	gap: 8px;
+	color: var(--silk-dim);
+	font-size: 12.5px;
+	font-variant-numeric: tabular-nums;
+}
+.heat-h-meta b { color: var(--silk); font-weight: 600; }
+
 /* ---------- job ---------- */
 
 .job-line {
@@ -527,6 +541,13 @@
 .sensor-dot.ok { background: var(--ok); }
 .sensor-dot.warn { background: var(--gold); }
 .sensor-label { overflow-wrap: anywhere; }
+
+/* Horizontal Sensors layout (orientationToggle) — one compact cell per
+   sensor instead of a full-width row. */
+.sensor-h-row { display: flex; flex-wrap: wrap; gap: 8px 18px; }
+.sensor-h-cell { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.sensor-h-label { white-space: nowrap; }
+
 .sensor-state {
 	font-family: var(--font-display);
 	font-weight: 600;
@@ -874,6 +895,12 @@
 }
 .deg { color: var(--silk-dim); font-size: 12px; }
 .btn-cluster { display: flex; gap: 6px; margin-left: auto; }
+
+/* Horizontal Fans layout (orientationToggle) — same .heater-ctl rows, just
+   reflowed into a row of compact vertical blocks instead of a stack. */
+.heater-list.horizontal { flex-direction: row; flex-wrap: wrap; gap: 16px; }
+.heater-list.horizontal .heater-ctl { flex-direction: column; align-items: flex-start; gap: 6px; }
+.heater-list.horizontal .heater-ctl .btn-cluster { margin-left: 0; }
 
 /* jog */
 .jog-controls { display: flex; flex-direction: column; gap: 12px; }

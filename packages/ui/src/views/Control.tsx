@@ -175,9 +175,9 @@ export default function Control() {
 				</Panel>
 
 				<Show when={hasFans()}>
-					<Panel id="fans" canvas={canvas} ariaLabel="Fans">
+					<Panel id="fans" canvas={canvas} ariaLabel="Fans" orientationToggle>
 						<div class="card-head"><h2 class="card-title">Fans</h2><span class="des">M106</span></div>
-						<div class="heater-list">
+						<div class="heater-list" classList={{ horizontal: canvas.orientationFor("fans") === "horizontal" }}>
 							<For each={app.om.om.fans}>
 								{(fan, i) => (
 									<Show when={isManualFan(fan) ? fan : undefined}>
