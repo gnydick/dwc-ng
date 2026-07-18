@@ -3,11 +3,10 @@ import { useApp } from "../shell/context.ts";
 import type { Heater } from "../om/types.ts";
 import { sensorRows } from "./machine.sensors.ts";
 import { TemperatureChart, type ChartSeries } from "../charts/TemperatureChart.tsx";
-import { Panel } from "../shell/Panel.tsx";
+import { Card } from "../shell/Card.tsx";
 import { PanelCanvas } from "../shell/PanelCanvas.tsx";
 import { ConsolePanel } from "../shell/ConsolePanel.tsx";
 import { CameraPanel } from "../shell/CameraPanel.tsx";
-import { CardHead } from "../shell/CardHead.tsx";
 import { createPanelCanvas } from "../shell/panelCanvas.ts";
 import { MACHINE_PANEL_DEFAULTS } from "./machine.panelDefaults.ts";
 
@@ -63,8 +62,7 @@ export default function Machine() {
 				<button class="layout-reset" onClick={() => canvas.reset()}>↺ Reset layout</button>
 			</div>
 			<PanelCanvas>
-				<Panel id="position" canvas={canvas} ariaLabel="Position" orientationToggle>
-					<CardHead title="Position" tip="move.axes" />
+				<Card id="position" canvas={canvas} ariaLabel="Position" title="Position" tip="move.axes" orientationToggle>
 					<Show when={visibleAxes().length} fallback={<p class="job-empty">Waiting for the machine…</p>}>
 						<Show
 							when={canvas.orientationFor("position") === "horizontal"}
@@ -108,10 +106,9 @@ export default function Machine() {
 							</div>
 						</Show>
 					</Show>
-				</Panel>
+				</Card>
 
-				<Panel id="tools-heaters" canvas={canvas} ariaLabel="Tools and heaters" orientationToggle>
-					<CardHead title="Tools & heaters" tip="tools · heat.heaters" />
+				<Card id="tools-heaters" canvas={canvas} ariaLabel="Tools and heaters" title="Tools & heaters" tip="tools · heat.heaters" orientationToggle>
 					<Show
 						when={canvas.orientationFor("tools-heaters") === "horizontal"}
 						fallback={
@@ -236,10 +233,9 @@ export default function Machine() {
 							</Show>
 						</div>
 					</Show>
-				</Panel>
+				</Card>
 
-				<Panel id="job" canvas={canvas} ariaLabel="Job">
-					<CardHead title="Job" tip="job" />
+				<Card id="job" canvas={canvas} ariaLabel="Job" title="Job" tip="job">
 					<Show
 						when={app.om.om.job.file}
 						fallback={
@@ -261,10 +257,9 @@ export default function Machine() {
 							</div>
 						)}
 					</Show>
-				</Panel>
+				</Card>
 
-				<Panel id="sensors" canvas={canvas} ariaLabel="Sensors" orientationToggle>
-					<CardHead title="Sensors" tip="sensors.endstops · filamentMonitors · probes" />
+				<Card id="sensors" canvas={canvas} ariaLabel="Sensors" title="Sensors" tip="sensors.endstops · filamentMonitors · probes" orientationToggle>
 					<Show when={sensorList().length} fallback={<p class="job-empty">No sensors configured.</p>}>
 						<Show
 							when={canvas.orientationFor("sensors") === "horizontal"}
@@ -305,14 +300,13 @@ export default function Machine() {
 							</table>
 						</Show>
 					</Show>
-				</Panel>
+				</Card>
 
-				<Panel id="temperatures" canvas={canvas} ariaLabel="Temperatures">
-					<CardHead title="Temperatures" tip="heat.heaters · live" />
+				<Card id="temperatures" canvas={canvas} ariaLabel="Temperatures" title="Temperatures" tip="heat.heaters · live">
 					<Show when={chartSeries().length} fallback={<p class="job-empty">Waiting for heaters…</p>}>
 						<TemperatureChart data={app.temps.data} series={chartSeries()} height={220} />
 					</Show>
-				</Panel>
+				</Card>
 
 				<ConsolePanel canvas={canvas} />
 				<CameraPanel canvas={canvas} />

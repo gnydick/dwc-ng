@@ -3,6 +3,7 @@ import { useApp } from "../shell/context.ts";
 import { FileEditor } from "../editor/FileEditor.tsx";
 import type { FileListEntry } from "../connector/types.ts";
 import { Panel } from "../shell/Panel.tsx";
+import { Card } from "../shell/Card.tsx";
 import { PanelCanvas } from "../shell/PanelCanvas.tsx";
 import { ConsolePanel } from "../shell/ConsolePanel.tsx";
 import { CameraPanel } from "../shell/CameraPanel.tsx";
@@ -76,8 +77,7 @@ export default function Macros() {
 				<button class="layout-reset" onClick={() => canvas.reset()}>↺ Reset layout</button>
 			</div>
 			<PanelCanvas class="macros">
-				<Panel id="macros" canvas={canvas} ariaLabel="Macros">
-					<CardHead title="Macros" tip={dir()} />
+				<Card id="macros" canvas={canvas} ariaLabel="Macros" title="Macros" tip={dir()}>
 					<Show when={connected()} fallback={<p class="job-empty">Not connected.</p>}>
 						<Show when={dir() !== MACROS_ROOT}>
 							<button class="link-btn" onClick={goUp}>← up a level</button>
@@ -109,7 +109,7 @@ export default function Macros() {
 							</For>
 						</ul>
 					</Show>
-				</Panel>
+				</Card>
 
 				<Panel id="editor" canvas={canvas} ariaLabel="Editor" class="editor-card">
 					<Show

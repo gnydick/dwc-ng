@@ -2,11 +2,10 @@ import { For, Show, Switch, Match, createMemo, createResource, createSignal } fr
 import { useApp } from "../shell/context.ts";
 import { Thumbnail } from "../thumbnails/Thumbnail.tsx";
 import type { FileListEntry } from "../connector/types.ts";
-import { Panel } from "../shell/Panel.tsx";
+import { Card } from "../shell/Card.tsx";
 import { PanelCanvas } from "../shell/PanelCanvas.tsx";
 import { ConsolePanel } from "../shell/ConsolePanel.tsx";
 import { CameraPanel } from "../shell/CameraPanel.tsx";
-import { CardHead } from "../shell/CardHead.tsx";
 import { createPanelCanvas } from "../shell/panelCanvas.ts";
 import { JOBS_PANEL_DEFAULTS } from "./jobs.panelDefaults.ts";
 
@@ -102,8 +101,7 @@ export default function Jobs() {
 			</div>
 			<PanelCanvas class="jobs">
 				<Show when={isActive()}>
-					<Panel id="active-job" canvas={canvas} ariaLabel="Active job" class="job-active">
-						<CardHead title="Printing" tip="job · state" />
+					<Card id="active-job" canvas={canvas} ariaLabel="Active job" class="job-active" title="Printing" tip="job · state">
 						<Show when={jobFile()} fallback={<p class="job-empty">{app.om.om.state.status}…</p>}>
 							{file => (
 								<>
@@ -146,11 +144,10 @@ export default function Jobs() {
 								</>
 							)}
 						</Show>
-					</Panel>
+					</Card>
 				</Show>
 
-				<Panel id="job-files" canvas={canvas} ariaLabel="Job files" class="jobs-browse">
-					<CardHead title="Jobs" tip={dir()} />
+				<Card id="job-files" canvas={canvas} ariaLabel="Job files" class="jobs-browse" title="Jobs" tip={dir()}>
 
 					<nav class="crumbs" aria-label="Folder">
 						<button class="crumb" classList={{ active: dir() === GCODES_ROOT }} onClick={() => { setSelected(null); setDir(GCODES_ROOT); }}>gcodes</button>
@@ -193,11 +190,10 @@ export default function Jobs() {
 							</ul>
 						</Match>
 					</Switch>
-				</Panel>
+				</Card>
 
 				<Show when={selected()}>
-					<Panel id="job-details" canvas={canvas} ariaLabel="Job details" class="jobs-detail">
-						<CardHead title={baseName(selected()!)} tip="rr_fileinfo" />
+					<Card id="job-details" canvas={canvas} ariaLabel="Job details" class="jobs-detail" title={baseName(selected()!)} tip="rr_fileinfo">
 						<Switch>
 							<Match when={info.loading}><p class="job-empty">Reading metadata…</p></Match>
 							<Match when={info.error}><p class="job-empty">No metadata for this file.</p></Match>
@@ -226,7 +222,7 @@ export default function Jobs() {
 								</div>
 							</Match>
 						</Switch>
-					</Panel>
+					</Card>
 				</Show>
 
 				<ConsolePanel canvas={canvas} />

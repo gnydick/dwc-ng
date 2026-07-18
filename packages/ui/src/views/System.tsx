@@ -5,6 +5,7 @@ import { OmInspector } from "../om/OmInspector.tsx";
 import { languageFor, type EditorLang } from "../editor/lang.ts";
 import type { FileListEntry } from "../connector/types.ts";
 import { Panel } from "../shell/Panel.tsx";
+import { Card } from "../shell/Card.tsx";
 import { PanelCanvas } from "../shell/PanelCanvas.tsx";
 import { ConsolePanel } from "../shell/ConsolePanel.tsx";
 import { CameraPanel } from "../shell/CameraPanel.tsx";
@@ -69,8 +70,7 @@ export default function System() {
 				<button class="layout-reset" onClick={() => canvas.reset()}>↺ Reset layout</button>
 			</div>
 			<PanelCanvas class="system">
-				<Panel id="system-files" canvas={canvas} ariaLabel="System files">
-					<CardHead title="System files" tip={dir()} />
+				<Card id="system-files" canvas={canvas} ariaLabel="System files" title="System files" tip={dir()}>
 					<Show when={connected()} fallback={<p class="job-empty">Not connected.</p>}>
 						<Show when={dir() !== SYS_ROOT}>
 							<button class="link-btn" onClick={goUp}>← up a level</button>
@@ -94,7 +94,7 @@ export default function System() {
 							</For>
 						</ul>
 					</Show>
-				</Panel>
+				</Card>
 
 				<Panel id="editor" canvas={canvas} ariaLabel="Editor" class="editor-card">
 					<Show
@@ -113,12 +113,11 @@ export default function System() {
 					</Show>
 				</Panel>
 
-				<Panel id="object-model" canvas={canvas} ariaLabel="Object model" class="om-card">
-					<CardHead title="Object model" tip="live · rr_model" />
+				<Card id="object-model" canvas={canvas} ariaLabel="Object model" class="om-card" title="Object model" tip="live · rr_model">
 					<Show when={connected()} fallback={<p class="job-empty">Not connected.</p>}>
 						<OmInspector data={app.om.om as unknown as Record<string, unknown>} />
 					</Show>
-				</Panel>
+				</Card>
 
 				<ConsolePanel canvas={canvas} />
 				<CameraPanel canvas={canvas} />
