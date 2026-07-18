@@ -31,7 +31,7 @@ export function Panel(props: {
 			>
 				⠿
 			</button>
-			{props.children}
+			<div class="panel-body">{props.children}</div>
 			<div
 				class="panel-resize-grip"
 				title="Drag to resize"

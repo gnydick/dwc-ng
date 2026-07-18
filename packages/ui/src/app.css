@@ -163,7 +163,19 @@
 	color: var(--silk-dim);
 }
 
-.card.panel { position: relative; }
+.card.panel { position: relative; display: flex; flex-direction: column; padding: 0; }
+
+/* Scrolls independently of the grips (which sit just outside this box),
+   so shrinking a panel below its content's natural size scrolls the
+   content instead of letting it bleed into whatever's next to it. */
+.panel-body {
+	flex: 1;
+	min-height: 0;
+	overflow: auto;
+	padding: 16px 18px;
+	display: flex;
+	flex-direction: column;
+}
 
 .panel-grip {
 	position: absolute;
