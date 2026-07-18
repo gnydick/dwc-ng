@@ -1,6 +1,7 @@
 import { For, Show, createMemo } from "solid-js";
 import { useApp } from "../shell/context.ts";
 import type { Heater } from "../om/types.ts";
+import { sensorRows } from "./machine.sensors.ts";
 import { TemperatureChart, type ChartSeries } from "../charts/TemperatureChart.tsx";
 import { Panel } from "../shell/Panel.tsx";
 import { PanelCanvas } from "../shell/PanelCanvas.tsx";
@@ -26,11 +27,13 @@ export default function Machine() {
 	const dockState = (toolNumber: number): "docked" | "away" | null => {
 		const ref = app.config.config.dockSensors[String(toolNumber)];
 		if (ref === undefined) return null;
-		const gpIn = (app.om.om.sensors as { gpIn?: Array<{ value?: number } | null> } | undefined)?.gpIn?.[ref.gpIn];
-		if (gpIn === null || gpIn === undefined || typeof gpIn.value !== "number") return null;
+		const gpIn = app.om.om.sensors.gpIn[ref.gpIn];
+		if (gpIn === null || gpIn === undefined) return null;
 		const active = gpIn.value >= 0.5;
 		return (ref.inverted ? !active : active) ? "docked" : "away";
 	};
+
+	const sensorList = createMemo(() => sensorRows(app.om.om.sensors, app.om.om.move.axes));
 
 	// One chart series per heater (index == heat.heaters index == chart series
 	// index), labeled and colored by tool/bed semantics.
@@ -185,6 +188,26 @@ export default function Machine() {
 								</Show>
 							</div>
 						)}
+					</Show>
+				</Panel>
+
+				<Panel id="sensors" canvas={canvas} ariaLabel="Sensors">
+					<div class="card-head">
+						<h2 class="card-title">Sensors</h2>
+						<span class="des">sensors.endstops · filamentMonitors · probes</span>
+					</div>
+					<Show when={sensorList().length} fallback={<p class="job-empty">No sensors configured.</p>}>
+						<div class="sensor-list">
+							<For each={sensorList()}>
+								{row => (
+									<div class="sensor-row">
+										<span class={`sensor-dot ${row.ok ? "ok" : "warn"}`} />
+										<span class="sensor-label">{row.label}</span>
+										<span class="sensor-state">{row.state}</span>
+									</div>
+								)}
+							</For>
+						</div>
 					</Show>
 				</Panel>
 

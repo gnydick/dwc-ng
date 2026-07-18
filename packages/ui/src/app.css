@@ -425,6 +425,35 @@
 .dock-dot.docked { background: var(--ok); color: var(--ok); }
 .dock-dot.away { background: var(--gold); color: var(--gold); }
 
+/* ---------- sensors (Machine view) ---------- */
+
+.sensor-list { display: flex; flex-direction: column; gap: 8px; }
+.sensor-row {
+	display: grid;
+	grid-template-columns: 10px 1fr auto;
+	align-items: center;
+	gap: 10px;
+	font-size: 13px;
+}
+.sensor-dot {
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+}
+.sensor-dot.ok { background: var(--ok); }
+.sensor-dot.warn { background: var(--gold); }
+.sensor-label { overflow-wrap: anywhere; }
+.sensor-state {
+	font-family: var(--font-display);
+	font-weight: 600;
+	font-size: 10.5px;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: var(--silk-dim);
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+}
+
 /* ---------- console (body used by shell/ConsolePanel.tsx) ---------- */
 
 .console-history {

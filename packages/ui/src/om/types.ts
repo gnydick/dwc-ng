@@ -103,12 +103,45 @@ export interface Fan {
 	requestedValue: number;
 }
 
+/** reference/objectmodel/src/sensors/index.ts (GpInputPort) */
+export interface GpInputPort {
+	value: number;
+}
+
+/** reference/objectmodel/src/sensors/Endstop.ts */
+export interface Endstop {
+	triggered: boolean;
+}
+
+/** reference/objectmodel/src/sensors/FilamentMonitors/FilamentMonitorBase.ts */
+export interface FilamentMonitor {
+	/** "noMonitor" | "ok" | "noDataReceived" | "noFilament" | "tooLittleMovement" | "tooMuchMovement" | "sensorError" */
+	status: string;
+}
+
+/** reference/objectmodel/src/sensors/Probe.ts */
+export interface Probe {
+	/** ProbeType.none = 0 (reference/objectmodel/src/sensors/Probe.ts:4) — anything else means a probe is configured. */
+	type: number;
+	value: number[];
+	threshold: number;
+}
+
+/** reference/objectmodel/src/sensors/index.ts (Sensors) */
+export interface Sensors {
+	gpIn: (GpInputPort | null)[];
+	endstops: (Endstop | null)[];
+	filamentMonitors: (FilamentMonitor | null)[];
+	probes: (Probe | null)[];
+}
+
 export interface KnownModel {
 	boards: (Board | null)[];
 	fans: (Fan | null)[];
 	heat: Heat;
 	job: Job;
 	move: Move;
+	sensors: Sensors;
 	state: MachineState;
 	tools: (Tool | null)[];
 }
@@ -124,6 +157,7 @@ export function emptyModel(): ObjectModel {
 		heat: { bedHeaters: [], chamberHeaters: [], heaters: [] },
 		job: { file: null, filePosition: null, duration: null, layer: null, lastFileName: null, timesLeft: { filament: null, file: null, slicer: null } },
 		move: { axes: [], currentMove: { requestedSpeed: 0, topSpeed: 0 }, speedFactor: 1 },
+		sensors: { gpIn: [], endstops: [], filamentMonitors: [], probes: [] },
 		state: { status: "disconnected", currentTool: -1, machineMode: "FFF", displayMessage: "", upTime: 0 },
 		tools: [],
 	};
