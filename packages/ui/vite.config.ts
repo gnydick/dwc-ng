@@ -14,6 +14,8 @@ const realTarget = process.env.DWC_REAL ?? 'http://duet3.nydick.net'
 export default defineConfig({
   plugins: [solid()],
   server: {
+    host: true, // listen on all interfaces, not just localhost — lets other devices on the LAN reach the dev server
+    allowedHosts: ['bighoss'], // Vite's DNS-rebinding guard rejects any Host header not on this list — LAN devices reach us by hostname
     proxy: {
       // In-UI Mock/Real toggle (dev only): the connector prefixes requests with
       // "/real" to reach the real board, "" for the mock. Both are proxied
