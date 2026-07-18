@@ -208,8 +208,7 @@ export default function Control() {
 }
 
 function HeaterControl(props: { label: string; kind: "tool" | "bed"; num: number; active: number }) {
-	const fallback = props.kind === "bed" ? 60 : 200;
-	const [temp, setTemp] = createSignal(props.active > 0 ? props.active : fallback);
+	const [temp, setTemp] = createSignal(props.active > 0 ? props.active : 0);
 	const activeCmd = () => (props.kind === "bed" ? cmd.bedActive(props.num, temp()) : cmd.toolActive(props.num, temp()));
 	const offCmd = () => (props.kind === "bed" ? cmd.bedOff(props.num) : cmd.toolOff(props.num));
 	return (
