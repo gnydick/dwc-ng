@@ -16,7 +16,12 @@ export function CameraPanel(props: { canvas: PanelCanvasController }) {
 	let bodyEl!: HTMLDivElement;
 	let scrollSaveTimer = 0;
 
+	// bodyEl is only assigned while this Show branch is actually mounted
+	// (camera.pinned); the effect below runs on every instance regardless of
+	// that flag, since it reacts to the *global* view state, not this view's
+	// own pinned setting — guard against calling this before/without a mount.
 	const restoreScroll = (): void => {
+		if (!bodyEl) return;
 		const s = cameraViewState();
 		bodyEl.scrollLeft = s.scrollLeft;
 		bodyEl.scrollTop = s.scrollTop;
