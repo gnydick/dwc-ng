@@ -705,12 +705,22 @@
 .arm-btn.armed { color: #fff; background: var(--fault); border-color: var(--fault); }
 
 /* ---------- temperature chart ---------- */
-.temp-chart { width: 100%; }
+.temp-chart { width: 100%; display: flex; flex-direction: row; align-items: flex-start; gap: 12px; }
+.temp-chart-legend { flex: 0 0 auto; }
+.temp-chart-plot { flex: 1; min-width: 0; }
 .temp-chart .u-title { color: var(--silk); }
-.temp-chart .u-legend { color: var(--silk-dim); font-size: 12px; font-family: var(--font-display); }
-.temp-chart .u-legend .u-label { color: var(--silk); }
-.temp-chart .u-legend .u-value { color: var(--silk); font-variant-numeric: tabular-nums; }
-.temp-chart .u-legend .u-marker { border-radius: 2px; }
+.temp-chart-legend .u-legend {
+	color: var(--silk-dim);
+	font-size: 12px;
+	font-family: var(--font-display);
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+.temp-chart-legend .u-legend tr { display: flex; align-items: center; }
+.temp-chart-legend .u-legend .u-label { color: var(--silk); white-space: nowrap; }
+.temp-chart-legend .u-legend .u-value { color: var(--silk); font-variant-numeric: tabular-nums; }
+.temp-chart-legend .u-legend .u-marker { border-radius: 2px; }
 .temp-chart .u-select { background: rgba(217, 133, 59, 0.12); }
 
 /* ---------- Control view (controls wear their G-code) ---------- */

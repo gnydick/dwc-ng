@@ -16,7 +16,8 @@ export interface ChartSeries {
  * Colors/labels come from the caller (which knows tool/bed semantics).
  */
 export function TemperatureChart(props: { data: () => AlignedData; series: ChartSeries[]; height?: number }) {
-	let el!: HTMLDivElement;
+	let plotEl!: HTMLDivElement;
+	let legendEl!: HTMLDivElement;
 	let plot: uPlot | undefined;
 
 	// Theme-matched axis/grid (uPlot needs concrete colors, not CSS vars).
@@ -26,11 +27,15 @@ export function TemperatureChart(props: { data: () => AlignedData; series: Chart
 
 	const build = (): void => {
 		plot?.destroy();
+		legendEl.replaceChildren();
 		const opts: uPlot.Options = {
-			width: el.clientWidth || 600,
+			width: plotEl.clientWidth || 600,
 			height: height(),
 			cursor: { y: false },
-			legend: { show: true },
+			// Default legend mounts as a row below the chart; move it into our
+			// own left-hand column instead (uPlot's supported hook for this —
+			// see legend.mount in uPlot.d.ts).
+			legend: { show: true, mount: (_self, legendTable) => legendEl.appendChild(legendTable) },
 			scales: { x: { time: true } },
 			axes: [
 				{ stroke: AXIS, grid: { stroke: GRID, width: 1 }, ticks: { stroke: GRID } },
@@ -47,13 +52,13 @@ export function TemperatureChart(props: { data: () => AlignedData; series: Chart
 				...props.series.map(s => ({ label: s.label, stroke: s.stroke, width: 2, points: { show: false } })),
 			],
 		};
-		plot = new uPlot(opts, props.data(), el);
+		plot = new uPlot(opts, props.data(), plotEl);
 	};
 
 	onMount(() => {
 		build();
-		const ro = new ResizeObserver(() => plot?.setSize({ width: el.clientWidth, height: height() }));
-		ro.observe(el);
+		const ro = new ResizeObserver(() => plot?.setSize({ width: plotEl.clientWidth, height: height() }));
+		ro.observe(plotEl);
 		onCleanup(() => {
 			ro.disconnect();
 			plot?.destroy();
@@ -71,5 +76,10 @@ export function TemperatureChart(props: { data: () => AlignedData; series: Chart
 		if (prev !== undefined && len !== prev) build();
 	}, { defer: true }));
 
-	return <div class="temp-chart" ref={el} />;
+	return (
+		<div class="temp-chart">
+			<div class="temp-chart-legend" ref={legendEl} />
+			<div class="temp-chart-plot" ref={plotEl} />
+		</div>
+	);
 }
