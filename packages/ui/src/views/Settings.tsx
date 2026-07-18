@@ -114,7 +114,7 @@ export default function Settings() {
 						<h2 class="card-title">Camera</h2>
 						<button class="link-btn" onClick={() => app.config.resetSection("camera")}>Reset</button>
 					</div>
-					<p class="hint">The camera shows as a floating tile you can keep on every view.</p>
+					<p class="hint">Pin the camera (top-right, on any view) to show it as a panel on that view — position and size are set independently per view.</p>
 					<label class="field">
 						<span class="field-label">Stream URL</span>
 						<input

@@ -20,7 +20,7 @@ export interface DockSensorRef {
 export interface CameraConfig {
 	/** MJPEG/stream URL; "" = no camera configured. */
 	streamUrl: string;
-	/** Keep the floating tile visible across views. */
+	/** Show the camera panel — each view places/sizes it independently. */
 	pinned: boolean;
 }
 
