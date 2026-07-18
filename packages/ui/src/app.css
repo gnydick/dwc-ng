@@ -556,11 +556,9 @@
 .sensor-h-table { border-collapse: collapse; font-variant-numeric: tabular-nums; }
 .sensor-h-table th {
 	font-family: var(--font-display);
-	font-weight: 600;
-	font-size: 10.5px;
-	letter-spacing: 0.1em;
-	text-transform: uppercase;
-	color: var(--silk-dim);
+	font-weight: 700;
+	font-size: 15px;
+	color: var(--silk);
 	text-align: left;
 	white-space: nowrap;
 	padding: 0 22px 8px 0;
@@ -569,9 +567,9 @@
 .sensor-h-table th .sensor-dot { margin-right: 7px; }
 .sensor-h-table td {
 	padding: 9px 22px 0 0;
-	font-family: var(--font-display);
-	font-weight: 700;
-	font-size: 15px;
+	font-family: var(--font-body);
+	font-weight: 400;
+	font-size: 13px;
 	color: var(--silk-dim);
 }
 .sensor-h-table td.ok { color: var(--ok); }
