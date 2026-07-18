@@ -277,8 +277,13 @@ export function createPanelCanvas(storageKey: string, defaults: PanelDefault[]):
 		// at a screen edge behaves in most drag-and-drop UIs.
 		let raf = 0;
 		const tick = (): void => {
-			if (pointerY < AUTO_SCROLL_EDGE_PX) window.scrollBy(0, -AUTO_SCROLL_SPEED_PX);
-			else if (pointerY > window.innerHeight - AUTO_SCROLL_EDGE_PX) window.scrollBy(0, AUTO_SCROLL_SPEED_PX);
+			// Gated on having actually moved past the start point, in that
+			// direction — not just "pointer is near the edge" — so grabbing a
+			// panel whose grip already starts near the viewport edge (the
+			// bottom-most panel on the page, most of the time) doesn't
+			// immediately run away scrolling before any real drag happened.
+			if (pointerY < originY && pointerY < AUTO_SCROLL_EDGE_PX) window.scrollBy(0, -AUTO_SCROLL_SPEED_PX);
+			else if (pointerY > originY && pointerY > window.innerHeight - AUTO_SCROLL_EDGE_PX) window.scrollBy(0, AUTO_SCROLL_SPEED_PX);
 
 			const effectiveY = pointerY + (window.scrollY - originScrollY);
 			const deltaCol = Math.round((pointerX - originX) / (colWidthPx + GAP_PX));
@@ -329,7 +334,10 @@ export function createPanelCanvas(storageKey: string, defaults: PanelDefault[]):
 		// width is the viewport's width, never scrollable horizontally).
 		let raf = 0;
 		const tick = (): void => {
-			if (pointerY > window.innerHeight - AUTO_SCROLL_EDGE_PX) window.scrollBy(0, AUTO_SCROLL_SPEED_PX);
+			// Same start-relative gate as startMove — resizing a panel whose
+			// bottom edge already sits near the viewport edge shouldn't
+			// immediately run away scrolling either.
+			if (pointerY > originY && pointerY > window.innerHeight - AUTO_SCROLL_EDGE_PX) window.scrollBy(0, AUTO_SCROLL_SPEED_PX);
 
 			const effectiveY = pointerY + (window.scrollY - originScrollY);
 			const deltaColSpan = Math.round((pointerX - originX) / (colWidthPx + GAP_PX));
