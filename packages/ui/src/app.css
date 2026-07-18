@@ -546,7 +546,6 @@
 .primary-btn:not(:disabled):hover { background: var(--copper); }
 
 .save-bar {
-	grid-column: 1 / -1;
 	display: flex;
 	align-items: center;
 	gap: 14px;
