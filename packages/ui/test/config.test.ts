@@ -28,10 +28,12 @@ test("resetSection drops one section only; resetAll drops everything", () => {
 	const store = createConfigStore();
 	store.setAxisRole("U", "Z motor 1");
 	store.setDockSensor(1, { gpIn: 5, inverted: true });
+	store.setSensorName("probe:0", "BLTouch");
 
 	store.resetSection("axisRoles");
 	assert.deepEqual(store.config.axisRoles, {}, "section back to defaults");
 	assert.deepEqual(store.config.dockSensors["1"], { gpIn: 5, inverted: true }, "other sections kept");
+	assert.equal(store.config.sensorNames["probe:0"], "BLTouch", "other sections kept");
 
 	store.resetAll();
 	assert.deepEqual(store.config, DEFAULT_CONFIG);
@@ -42,6 +44,21 @@ test("clearing the last key of a section equals never touching it", () => {
 	store.setAxisRole("C", "Tool coupler");
 	store.clearAxisRole("C");
 	assert.deepEqual(store.config, DEFAULT_CONFIG);
+});
+
+test("sensor names: set/clear round-trip, other names untouched", () => {
+	const store = createConfigStore();
+	store.setSensorName("endstop:0", "Bed leveling switch");
+	store.setSensorName("probe:0", "BLTouch");
+	assert.equal(store.config.sensorNames["endstop:0"], "Bed leveling switch");
+	assert.equal(store.config.sensorNames["probe:0"], "BLTouch");
+
+	store.clearSensorName("endstop:0");
+	assert.equal(store.config.sensorNames["endstop:0"], undefined);
+	assert.equal(store.config.sensorNames["probe:0"], "BLTouch", "clearing one name doesn't touch others");
+
+	store.clearSensorName("probe:0");
+	assert.deepEqual(store.config, DEFAULT_CONFIG, "clearing the last name equals never touching it");
 });
 
 test("snapshot and revert restore an earlier overlay", () => {

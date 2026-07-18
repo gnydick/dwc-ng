@@ -1,6 +1,7 @@
 import { For, Show, createMemo, createSignal } from "solid-js";
 import { useApp } from "../shell/context.ts";
 import { CONFIG_FILE } from "../config/types.ts";
+import { sensorRows } from "./machine.sensors.ts";
 import { Panel } from "../shell/Panel.tsx";
 import { PanelCanvas } from "../shell/PanelCanvas.tsx";
 import { ConsolePanel } from "../shell/ConsolePanel.tsx";
@@ -18,6 +19,7 @@ export default function Settings() {
 	const canvas = createPanelCanvas("dwc-ng.canvas.settings", SETTINGS_PANEL_DEFAULTS);
 
 	const visibleAxes = createMemo(() => app.om.om.move.axes.filter(a => a.visible));
+	const sensorList = createMemo(() => sensorRows(app.om.om.sensors, app.om.om.move.axes));
 
 	const [saveError, setSaveError] = createSignal<string | null>(null);
 
@@ -129,6 +131,36 @@ export default function Settings() {
 							onChange={e => app.config.setCamera({ streamUrl: e.currentTarget.value.trim() })}
 						/>
 					</label>
+				</Panel>
+
+				<Panel id="sensor-names" canvas={canvas} ariaLabel="Sensor names">
+					<div class="card-head">
+						<h2 class="card-title">Sensor names</h2>
+						<button class="link-btn" onClick={() => app.config.resetSection("sensorNames")}>Reset</button>
+					</div>
+					<p class="hint">
+						Name the endstops, filament monitors, and probes that show up on the
+						Machine view's Sensors card — RRF only knows them by index.
+					</p>
+					<Show when={sensorList().length} fallback={<p class="job-empty">Waiting for the machine…</p>}>
+						<For each={sensorList()}>
+							{row => (
+								<label class="field">
+									<span class="field-label">{row.label}</span>
+									<input
+										type="text"
+										placeholder="Custom name"
+										value={app.config.config.sensorNames[row.key] ?? ""}
+										onChange={e => {
+											const value = e.currentTarget.value.trim();
+											if (value === "") app.config.clearSensorName(row.key);
+											else app.config.setSensorName(row.key, value);
+										}}
+									/>
+								</label>
+							)}
+						</For>
+					</Show>
 				</Panel>
 
 				<Panel id="saved-versions" canvas={canvas} ariaLabel="Saved versions">

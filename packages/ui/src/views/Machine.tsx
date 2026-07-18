@@ -33,7 +33,7 @@ export default function Machine() {
 		return (ref.inverted ? !active : active) ? "docked" : "away";
 	};
 
-	const sensorList = createMemo(() => sensorRows(app.om.om.sensors, app.om.om.move.axes));
+	const sensorList = createMemo(() => sensorRows(app.om.om.sensors, app.om.om.move.axes, app.config.config.sensorNames));
 
 	// One chart series per heater (index == heat.heaters index == chart series
 	// index), labeled and colored by tool/bed semantics.

@@ -18,6 +18,8 @@ export interface ConfigStore {
 	setDockSensor(toolNumber: number, ref: DockSensorRef): void;
 	clearDockSensor(toolNumber: number): void;
 	setCamera(patch: Partial<CameraConfig>): void;
+	setSensorName(key: string, name: string): void;
+	clearSensorName(key: string): void;
 
 	/** Drop one section's overlay — that section returns to defaults. */
 	resetSection(section: keyof UiConfig): void;
@@ -69,6 +71,12 @@ export function createConfigStore(): ConfigStore {
 		},
 		setCamera(patch) {
 			apply(draft => { draft.camera = { ...draft.camera, ...patch }; });
+		},
+		setSensorName(key, name) {
+			apply(draft => { (draft.sensorNames ??= {})[key] = name; });
+		},
+		clearSensorName(key) {
+			apply(draft => { delete draft.sensorNames?.[key]; });
 		},
 
 		resetSection(section) {

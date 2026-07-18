@@ -32,6 +32,11 @@ export interface UiConfig {
 	 * docked/away, never "mounted" — label accordingly. */
 	dockSensors: Record<string, DockSensorRef>;
 	camera: CameraConfig;
+	/** Sensor slot key (endstopKey/filamentKey/probeKey from
+	 * views/machine.sensors.ts, e.g. "probe:0") → human name. RRF only knows
+	 * indices; this replaces the auto-generated label on the Machine view's
+	 * Sensors card wherever set. */
+	sensorNames: Record<string, string>;
 }
 
 export type DeepPartial<T> = {
@@ -50,6 +55,7 @@ export const DEFAULT_CONFIG: UiConfig = {
 	axisRoles: {},
 	dockSensors: {},
 	camera: { streamUrl: "", pinned: false },
+	sensorNames: {},
 };
 
 /** Where the overlay lives on the machine's SD card. */
