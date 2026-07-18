@@ -147,11 +147,19 @@
 	padding: 16px 18px;
 }
 
+/* Sticky within .panel-body's own scroll — stays put while everything
+   below it scrolls underneath. Needs the card's own background so
+   scrolled content doesn't show through. */
 .card-head {
 	display: flex;
 	align-items: baseline;
 	gap: 10px;
 	margin-bottom: 12px;
+	padding-top: 8px;
+	position: sticky;
+	top: 0;
+	z-index: 1;
+	background: var(--mask-700);
 }
 
 .card-title {
@@ -172,7 +180,7 @@
 	flex: 1;
 	min-height: 0;
 	overflow: auto;
-	padding: 16px 18px;
+	padding: 0 18px 16px;
 	display: flex;
 	flex-direction: column;
 	scrollbar-width: none;
