@@ -37,7 +37,11 @@
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
-html { color-scheme: dark; }
+/* Grid canvases grow their own scroll height mid-drag (see panelCanvas.ts);
+   scroll anchoring would otherwise "help" by shifting scrollY to keep the
+   dragged panel's viewport position stable, which feeds straight back into
+   the drag's own scroll-position math and runs away. */
+html { color-scheme: dark; overflow-anchor: none; }
 
 body {
 	background: var(--mask-900);

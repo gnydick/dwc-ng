@@ -15,11 +15,6 @@ export const GRID_COLS = 24;
 export const ROW_UNIT_PX = 24;
 export const GAP_PX = 6;
 
-/** Auto-scroll while dragging near the viewport edge — rows have no
- *  ceiling, but a physical pointer can't move past the browser window. */
-const AUTO_SCROLL_EDGE_PX = 60;
-const AUTO_SCROLL_SPEED_PX = 14;
-
 export interface PanelRect {
 	col: number;
 	row: number;
@@ -271,20 +266,17 @@ export function createPanelCanvas(storageKey: string, defaults: PanelDefault[]):
 		spacer.style.visibility = "hidden";
 		canvasEl.appendChild(spacer);
 
-		// A rAF loop, not just pointermove, so holding the pointer at the
-		// viewport edge keeps auto-scrolling (and the candidate recomputing to
-		// match) even with no new pointer events — matches how holding a drag
-		// at a screen edge behaves in most drag-and-drop UIs.
+		// No programmatic auto-scroll — that turned out too fragile against
+		// real pointer jitter (any tiny involuntary movement past the origin
+		// while starting a drag near an edge was enough to trigger a runaway
+		// scroll). Scrolling the page during a drag is the browser's job:
+		// the mouse wheel / trackpad already works while a button is held
+		// down, and this rAF loop just keeps recomputing against whatever
+		// window.scrollY currently is, every frame, so the panel correctly
+		// follows if the user scrolls manually mid-drag — without this code
+		// ever touching scroll position itself.
 		let raf = 0;
 		const tick = (): void => {
-			// Gated on having actually moved past the start point, in that
-			// direction — not just "pointer is near the edge" — so grabbing a
-			// panel whose grip already starts near the viewport edge (the
-			// bottom-most panel on the page, most of the time) doesn't
-			// immediately run away scrolling before any real drag happened.
-			if (pointerY < originY && pointerY < AUTO_SCROLL_EDGE_PX) window.scrollBy(0, -AUTO_SCROLL_SPEED_PX);
-			else if (pointerY > originY && pointerY > window.innerHeight - AUTO_SCROLL_EDGE_PX) window.scrollBy(0, AUTO_SCROLL_SPEED_PX);
-
 			const effectiveY = pointerY + (window.scrollY - originScrollY);
 			const deltaCol = Math.round((pointerX - originX) / (colWidthPx + GAP_PX));
 			const deltaRow = Math.round((effectiveY - originY) / (rowHeightPx + GAP_PX));
@@ -329,16 +321,13 @@ export function createPanelCanvas(storageKey: string, defaults: PanelDefault[]):
 		let pointerX = event.clientX;
 		let pointerY = event.clientY;
 
-		// Growing taller has no row ceiling either — same bottom-edge
-		// auto-scroll as startMove (growing wider never needs it: the grid's
-		// width is the viewport's width, never scrollable horizontally).
+		// No programmatic auto-scroll — see startMove's comment. Growing
+		// taller than the viewport is handled by tryResize's own achieved
+		// size being applied every tick (unconditionally, clamped rather than
+		// rejected), which already grows the grid in step with the resize;
+		// the user scrolls manually if they need to see further down.
 		let raf = 0;
 		const tick = (): void => {
-			// Same start-relative gate as startMove — resizing a panel whose
-			// bottom edge already sits near the viewport edge shouldn't
-			// immediately run away scrolling either.
-			if (pointerY > originY && pointerY > window.innerHeight - AUTO_SCROLL_EDGE_PX) window.scrollBy(0, AUTO_SCROLL_SPEED_PX);
-
 			const effectiveY = pointerY + (window.scrollY - originScrollY);
 			const deltaColSpan = Math.round((pointerX - originX) / (colWidthPx + GAP_PX));
 			const deltaRowSpan = Math.round((effectiveY - originY) / (rowHeightPx + GAP_PX));
