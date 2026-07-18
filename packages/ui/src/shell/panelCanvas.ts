@@ -15,6 +15,11 @@ export const GRID_COLS = 24;
 export const ROW_UNIT_PX = 24;
 export const GAP_PX = 6;
 
+/** Auto-scroll while dragging near the viewport edge — rows have no
+ *  ceiling, but a physical pointer can't move past the browser window. */
+const AUTO_SCROLL_EDGE_PX = 60;
+const AUTO_SCROLL_SPEED_PX = 14;
+
 export interface PanelRect {
 	col: number;
 	row: number;
@@ -247,18 +252,56 @@ export function createPanelCanvas(storageKey: string, defaults: PanelDefault[]):
 		const { colWidthPx, rowHeightPx } = cellSize(canvasEl);
 		const originX = event.clientX;
 		const originY = event.clientY;
+		const originScrollY = window.scrollY;
+		let pointerX = event.clientX;
+		let pointerY = event.clientY;
 		let lastValid = start;
 
-		const onMove = (moveEvent: PointerEvent): void => {
-			const deltaCol = Math.round((moveEvent.clientX - originX) / (colWidthPx + GAP_PX));
-			const deltaRow = Math.round((moveEvent.clientY - originY) / (rowHeightPx + GAP_PX));
+		// A move only ever commits a fully-valid candidate, so a run of
+		// rejected candidates (dragging toward a spot that's currently
+		// blocked, before the path clears) never grows the grid — but
+		// auto-scroll can only scroll as far as the page is already tall.
+		// This spacer reserves scroll room up to wherever the drag is
+		// currently reaching, valid or not, so scrolling can keep pace with
+		// the drag instead of hitting a wall the moment a candidate is
+		// rejected. Purely a scroll aid — invisible, not part of any state,
+		// removed the instant the drag ends.
+		const spacer = document.createElement("div");
+		spacer.style.gridColumn = "1 / span 1";
+		spacer.style.visibility = "hidden";
+		canvasEl.appendChild(spacer);
+
+		// A rAF loop, not just pointermove, so holding the pointer at the
+		// viewport edge keeps auto-scrolling (and the candidate recomputing to
+		// match) even with no new pointer events — matches how holding a drag
+		// at a screen edge behaves in most drag-and-drop UIs.
+		let raf = 0;
+		const tick = (): void => {
+			if (pointerY < AUTO_SCROLL_EDGE_PX) window.scrollBy(0, -AUTO_SCROLL_SPEED_PX);
+			else if (pointerY > window.innerHeight - AUTO_SCROLL_EDGE_PX) window.scrollBy(0, AUTO_SCROLL_SPEED_PX);
+
+			const effectiveY = pointerY + (window.scrollY - originScrollY);
+			const deltaCol = Math.round((pointerX - originX) / (colWidthPx + GAP_PX));
+			const deltaRow = Math.round((effectiveY - originY) / (rowHeightPx + GAP_PX));
+			const reachRow = Math.max(0, start.row + deltaRow) + start.rowSpan;
+			spacer.style.gridRow = `${reachRow + 1} / span 1`;
+
 			const candidate = tryMove(state(), id, start.col + deltaCol, start.row + deltaRow);
 			if (candidate) {
 				lastValid = candidate;
 				setState({ ...state(), [id]: candidate }); // live preview, not yet persisted
 			}
+			raf = requestAnimationFrame(tick);
+		};
+		raf = requestAnimationFrame(tick);
+
+		const onMove = (moveEvent: PointerEvent): void => {
+			pointerX = moveEvent.clientX;
+			pointerY = moveEvent.clientY;
 		};
 		const onUp = (): void => {
+			cancelAnimationFrame(raf);
+			spacer.remove();
 			window.removeEventListener("pointermove", onMove);
 			window.removeEventListener("pointerup", onUp);
 			persist({ ...state(), [id]: lastValid });
@@ -277,14 +320,32 @@ export function createPanelCanvas(storageKey: string, defaults: PanelDefault[]):
 		const { colWidthPx, rowHeightPx } = cellSize(canvasEl);
 		const originX = event.clientX;
 		const originY = event.clientY;
+		const originScrollY = window.scrollY;
+		let pointerX = event.clientX;
+		let pointerY = event.clientY;
 
-		const onMove = (moveEvent: PointerEvent): void => {
-			const deltaColSpan = Math.round((moveEvent.clientX - originX) / (colWidthPx + GAP_PX));
-			const deltaRowSpan = Math.round((moveEvent.clientY - originY) / (rowHeightPx + GAP_PX));
+		// Growing taller has no row ceiling either — same bottom-edge
+		// auto-scroll as startMove (growing wider never needs it: the grid's
+		// width is the viewport's width, never scrollable horizontally).
+		let raf = 0;
+		const tick = (): void => {
+			if (pointerY > window.innerHeight - AUTO_SCROLL_EDGE_PX) window.scrollBy(0, AUTO_SCROLL_SPEED_PX);
+
+			const effectiveY = pointerY + (window.scrollY - originScrollY);
+			const deltaColSpan = Math.round((pointerX - originX) / (colWidthPx + GAP_PX));
+			const deltaRowSpan = Math.round((effectiveY - originY) / (rowHeightPx + GAP_PX));
 			const next = tryResize(state(), id, start.colSpan + deltaColSpan, start.rowSpan + deltaRowSpan);
 			setState({ ...state(), [id]: next }); // live preview, persisted only on drop
+			raf = requestAnimationFrame(tick);
+		};
+		raf = requestAnimationFrame(tick);
+
+		const onMove = (moveEvent: PointerEvent): void => {
+			pointerX = moveEvent.clientX;
+			pointerY = moveEvent.clientY;
 		};
 		const onUp = (): void => {
+			cancelAnimationFrame(raf);
 			window.removeEventListener("pointermove", onMove);
 			window.removeEventListener("pointerup", onUp);
 			persist(state());
