@@ -175,11 +175,13 @@
 	padding: 16px 18px;
 	display: flex;
 	flex-direction: column;
+	scrollbar-width: none;
 }
+.panel-body::-webkit-scrollbar { display: none; }
 
 .panel-grip {
 	position: absolute;
-	top: -9px;
+	top: 6px;
 	right: 10px;
 	z-index: 2;
 	background: var(--mask-700);
@@ -217,6 +219,37 @@
 	opacity: 0.5;
 }
 .panel-resize-grip:hover::before { opacity: 1; border-color: var(--copper-bright); }
+
+/* Invisible until the card is hovered — then a soft glow at the qualifying
+   edge(s) hints "more here," no button chrome. Still a real button underneath
+   (pointer-events off while hidden so it never steals clicks from whatever's
+   at the top/bottom of the card's own content), held down to keep scrolling. */
+.panel-scroll-nub {
+	position: absolute;
+	left: 6px;
+	right: 6px;
+	height: 18px;
+	z-index: 2;
+	background: none;
+	border: none;
+	padding: 0;
+	margin: 0;
+	cursor: pointer;
+	touch-action: none;
+	opacity: 0;
+	pointer-events: none;
+	transition: opacity 0.15s ease;
+}
+.card.panel:hover .panel-scroll-nub { opacity: 1; pointer-events: auto; }
+.panel-scroll-nub.up {
+	top: 0;
+	box-shadow: inset 0 10px 10px -6px var(--copper-bright);
+}
+.panel-scroll-nub.down {
+	bottom: 0;
+	box-shadow: inset 0 -10px 10px -6px var(--copper-bright);
+}
+.panel-scroll-nub:active { filter: brightness(1.5); }
 
 .console-panel .console-history { flex: 1; max-height: none; min-height: 0; margin-bottom: 8px; }
 .console-panel { display: flex; flex-direction: column; }
@@ -465,7 +498,9 @@
 	padding-bottom: 10px;
 	margin-bottom: 10px;
 	border-bottom: 1px solid var(--hairline);
+	scrollbar-width: none;
 }
+.console-history::-webkit-scrollbar { display: none; }
 
 .console-line {
 	display: grid;
@@ -513,7 +548,8 @@
 }
 .cam-body a { color: var(--copper-bright); }
 .cam-body img { width: 100%; height: 100%; object-fit: cover; cursor: zoom-in; }
-.cam-body.native { overflow: auto; place-items: start; }
+.cam-body.native { overflow: auto; place-items: start; scrollbar-width: none; }
+.cam-body.native::-webkit-scrollbar { display: none; }
 .cam-body.native img { width: auto; height: auto; max-width: none; cursor: zoom-out; }
 
 /* ---------- settings ---------- */
@@ -661,7 +697,8 @@
 .crumb.active { color: var(--copper-bright); }
 .crumb-sep { color: var(--silk-dim); font-size: 12px; }
 
-.file-list { list-style: none; margin: 0; padding: 0; max-height: 62vh; overflow-y: auto; }
+.file-list { list-style: none; margin: 0; padding: 0; max-height: 62vh; overflow-y: auto; scrollbar-width: none; }
+.file-list::-webkit-scrollbar { display: none; }
 .file-row {
 	width: 100%; display: flex; align-items: center; gap: 10px;
 	background: none; border: none; border-bottom: 1px solid var(--hairline);
@@ -873,7 +910,8 @@
 .om-count { font: 600 11px/1 var(--font-display); letter-spacing: 0.08em; text-transform: uppercase; color: var(--silk-dim); white-space: nowrap; }
 
 .om-tree, .om-children { list-style: none; margin: 0; padding: 0; }
-.om-tree { max-height: 52vh; overflow-y: auto; }
+.om-tree { max-height: 52vh; overflow-y: auto; scrollbar-width: none; }
+.om-tree::-webkit-scrollbar { display: none; }
 .om-row {
 	display: flex; align-items: center; gap: 8px; padding: 3px 4px; border-radius: 4px;
 	font: 400 12.5px/1.5 ui-monospace, "Cascadia Code", Consolas, monospace;
