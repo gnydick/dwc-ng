@@ -25,6 +25,15 @@ export function TemperatureChart(props: { data: () => AlignedData; series: Chart
 	const GRID = "rgba(143,163,184,0.10)";
 	const height = () => props.height ?? 200;
 
+	// uPlot's legend only shows a value at the hovered cursor position — blank
+	// whenever the mouse isn't over the chart. Force it back to the newest
+	// sample instead, so the legend always reads the current temperature at a
+	// glance. setLegend doesn't re-fire the setCursor hook, so this can't loop.
+	const showLatest = (p: uPlot): void => {
+		const len = p.data[0]?.length ?? 0;
+		if (len > 0) p.setLegend({ idx: len - 1 });
+	};
+
 	const build = (): void => {
 		plot?.destroy();
 		legendEl.replaceChildren();
@@ -36,6 +45,11 @@ export function TemperatureChart(props: { data: () => AlignedData; series: Chart
 			// own left-hand column instead (uPlot's supported hook for this —
 			// see legend.mount in uPlot.d.ts).
 			legend: { show: true, mount: (_self, legendTable) => legendEl.appendChild(legendTable) },
+			hooks: {
+				setCursor: [u => {
+					if (u.cursor.idx == null) showLatest(u);
+				}],
+			},
 			scales: { x: { time: true } },
 			axes: [
 				{ stroke: AXIS, grid: { stroke: GRID, width: 1 }, ticks: { stroke: GRID } },
@@ -53,6 +67,7 @@ export function TemperatureChart(props: { data: () => AlignedData; series: Chart
 			],
 		};
 		plot = new uPlot(opts, props.data(), plotEl);
+		showLatest(plot);
 	};
 
 	onMount(() => {
@@ -65,10 +80,15 @@ export function TemperatureChart(props: { data: () => AlignedData; series: Chart
 		});
 	});
 
-	// Stream new samples into the existing plot.
+	// Stream new samples into the existing plot. Only re-pin the legend to the
+	// newest sample if the user isn't mid-hover (cursor.idx == null) — an
+	// active hover keeps showing whatever point it's over.
 	createEffect(() => {
 		const d = props.data();
-		if (plot) plot.setData(d);
+		if (plot) {
+			plot.setData(d);
+			if (plot.cursor.idx == null) showLatest(plot);
+		}
 	});
 
 	// Rebuild only when the number of series changes (heaters added/removed).
