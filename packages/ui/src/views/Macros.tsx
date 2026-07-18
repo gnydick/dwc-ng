@@ -6,6 +6,7 @@ import { Panel } from "../shell/Panel.tsx";
 import { PanelCanvas } from "../shell/PanelCanvas.tsx";
 import { ConsolePanel } from "../shell/ConsolePanel.tsx";
 import { CameraPanel } from "../shell/CameraPanel.tsx";
+import { CardHead } from "../shell/CardHead.tsx";
 import { createPanelCanvas } from "../shell/panelCanvas.ts";
 import { MACROS_PANEL_DEFAULTS } from "./macros.panelDefaults.ts";
 
@@ -76,10 +77,7 @@ export default function Macros() {
 			</div>
 			<PanelCanvas class="macros">
 				<Panel id="macros" canvas={canvas} ariaLabel="Macros">
-					<div class="card-head">
-						<h2 class="card-title">Macros</h2>
-						<span class="des">{dir()}</span>
-					</div>
+					<CardHead title="Macros" tip={dir()} />
 					<Show when={connected()} fallback={<p class="job-empty">Not connected.</p>}>
 						<Show when={dir() !== MACROS_ROOT}>
 							<button class="link-btn" onClick={goUp}>← up a level</button>
@@ -118,7 +116,7 @@ export default function Macros() {
 						when={selected()}
 						fallback={
 							<>
-								<div class="card-head"><h2 class="card-title">Editor</h2></div>
+								<CardHead title="Editor" />
 								<p class="job-empty">
 									Select a macro to view or edit it. Opening never runs it — use the
 									explicit ▶ Run button (click twice to confirm).

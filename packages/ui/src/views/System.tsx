@@ -8,6 +8,7 @@ import { Panel } from "../shell/Panel.tsx";
 import { PanelCanvas } from "../shell/PanelCanvas.tsx";
 import { ConsolePanel } from "../shell/ConsolePanel.tsx";
 import { CameraPanel } from "../shell/CameraPanel.tsx";
+import { CardHead } from "../shell/CardHead.tsx";
 import { createPanelCanvas } from "../shell/panelCanvas.ts";
 import { SYSTEM_PANEL_DEFAULTS } from "./system.panelDefaults.ts";
 
@@ -69,10 +70,7 @@ export default function System() {
 			</div>
 			<PanelCanvas class="system">
 				<Panel id="system-files" canvas={canvas} ariaLabel="System files">
-					<div class="card-head">
-						<h2 class="card-title">System files</h2>
-						<span class="des">{dir()}</span>
-					</div>
+					<CardHead title="System files" tip={dir()} />
 					<Show when={connected()} fallback={<p class="job-empty">Not connected.</p>}>
 						<Show when={dir() !== SYS_ROOT}>
 							<button class="link-btn" onClick={goUp}>← up a level</button>
@@ -103,7 +101,7 @@ export default function System() {
 						when={selected()}
 						fallback={
 							<>
-								<div class="card-head"><h2 class="card-title">Editor</h2></div>
+								<CardHead title="Editor" />
 								<p class="job-empty">
 									Select a system file to view or edit it. These run when the firmware
 									calls them — config.g at boot, homeall.g on G28.
@@ -116,10 +114,7 @@ export default function System() {
 				</Panel>
 
 				<Panel id="object-model" canvas={canvas} ariaLabel="Object model" class="om-card">
-					<div class="card-head">
-						<h2 class="card-title">Object model</h2>
-						<span class="des">live · rr_model</span>
-					</div>
+					<CardHead title="Object model" tip="live · rr_model" />
 					<Show when={connected()} fallback={<p class="job-empty">Not connected.</p>}>
 						<OmInspector data={app.om.om as unknown as Record<string, unknown>} />
 					</Show>

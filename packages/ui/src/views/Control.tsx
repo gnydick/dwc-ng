@@ -7,6 +7,7 @@ import { Panel } from "../shell/Panel.tsx";
 import { PanelCanvas } from "../shell/PanelCanvas.tsx";
 import { ConsolePanel } from "../shell/ConsolePanel.tsx";
 import { CameraPanel } from "../shell/CameraPanel.tsx";
+import { CardHead } from "../shell/CardHead.tsx";
 import { createPanelCanvas } from "../shell/panelCanvas.ts";
 import { CONTROL_PANEL_DEFAULTS } from "./control.panelDefaults.ts";
 
@@ -54,7 +55,7 @@ export default function Control() {
 			</div>
 			<PanelCanvas class="control">
 				<Panel id="homing" canvas={canvas} ariaLabel="Homing">
-					<div class="card-head"><h2 class="card-title">Homing</h2><span class="des">G28</span></div>
+					<CardHead title="Homing" tip="G28" />
 					<div class="ctl-wrap">
 						<GcodeButton label="Home All" variant="go" command={cmd.homeAll()} />
 						<For each={axes()}>
@@ -69,7 +70,7 @@ export default function Control() {
 				</Panel>
 
 				<Panel id="tools" canvas={canvas} ariaLabel="Tools">
-					<div class="card-head"><h2 class="card-title">Tools</h2><span class="des">T · state.currentTool</span></div>
+					<CardHead title="Tools" tip="T · state.currentTool" />
 					<div class="ctl-wrap">
 						<For each={app.om.om.tools}>
 							{tool => (
@@ -89,7 +90,7 @@ export default function Control() {
 				</Panel>
 
 				<Panel id="heaters" canvas={canvas} ariaLabel="Heaters">
-					<div class="card-head"><h2 class="card-title">Heaters</h2><span class="des">M568 · M140</span></div>
+					<CardHead title="Heaters" tip="M568 · M140" />
 					<div class="heater-list">
 						<For each={app.om.om.tools}>
 							{tool => (
@@ -112,7 +113,7 @@ export default function Control() {
 				</Panel>
 
 				<Panel id="movement" canvas={canvas} ariaLabel="Movement">
-					<div class="card-head"><h2 class="card-title">Movement</h2><span class="des">M120 · G91 · M121</span></div>
+					<CardHead title="Movement" tip="M120 · G91 · M121" />
 					<div class="jog-controls">
 						<div class="step-row">
 							<span class="ctl-name">Step</span>
@@ -176,7 +177,7 @@ export default function Control() {
 
 				<Show when={hasFans()}>
 					<Panel id="fans" canvas={canvas} ariaLabel="Fans" orientationToggle>
-						<div class="card-head"><h2 class="card-title">Fans</h2><span class="des">M106</span></div>
+						<CardHead title="Fans" tip="M106" />
 						<div class="heater-list" classList={{ horizontal: canvas.orientationFor("fans") === "horizontal" }}>
 							<For each={app.om.om.fans}>
 								{(fan, i) => (
@@ -190,7 +191,7 @@ export default function Control() {
 				</Show>
 
 				<Panel id="tuning" canvas={canvas} ariaLabel="Tuning">
-					<div class="card-head"><h2 class="card-title">Tuning</h2><span class="des">M220 · M221 · M290</span></div>
+					<CardHead title="Tuning" tip="M220 · M221 · M290" />
 					<div class="heater-list">
 						<FactorControl label="Speed" build={cmd.speedFactor} current={Math.round((app.om.om.move.speedFactor ?? 1) * 100)} />
 						<div class="heater-ctl">

@@ -310,6 +310,23 @@
 	white-space: nowrap;
 }
 
+/* Same look as .des, but interactive (shell/CardTip.tsx) — a separate class
+   so plain .des designators (T0, heater0) never pick up a pointer cursor
+   or hover state they can't act on. */
+.card-tip {
+	font-family: var(--font-display);
+	font-weight: 600;
+	font-size: 11px;
+	letter-spacing: 0.08em;
+	color: var(--silk-dim);
+	border: 1px solid var(--hairline);
+	border-radius: 3px;
+	padding: 1px 6px 0;
+	white-space: nowrap;
+}
+.card-tip:hover { color: var(--silk); border-color: var(--copper); }
+.card-tip.copied { color: var(--ok); border-color: var(--ok); }
+
 /* ---------- DRO ---------- */
 
 .dro-row {

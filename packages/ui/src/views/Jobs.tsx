@@ -6,6 +6,7 @@ import { Panel } from "../shell/Panel.tsx";
 import { PanelCanvas } from "../shell/PanelCanvas.tsx";
 import { ConsolePanel } from "../shell/ConsolePanel.tsx";
 import { CameraPanel } from "../shell/CameraPanel.tsx";
+import { CardHead } from "../shell/CardHead.tsx";
 import { createPanelCanvas } from "../shell/panelCanvas.ts";
 import { JOBS_PANEL_DEFAULTS } from "./jobs.panelDefaults.ts";
 
@@ -102,10 +103,7 @@ export default function Jobs() {
 			<PanelCanvas class="jobs">
 				<Show when={isActive()}>
 					<Panel id="active-job" canvas={canvas} ariaLabel="Active job" class="job-active">
-						<div class="card-head">
-							<h2 class="card-title">Printing</h2>
-							<span class="des">job · state</span>
-						</div>
+						<CardHead title="Printing" tip="job · state" />
 						<Show when={jobFile()} fallback={<p class="job-empty">{app.om.om.state.status}…</p>}>
 							{file => (
 								<>
@@ -152,10 +150,7 @@ export default function Jobs() {
 				</Show>
 
 				<Panel id="job-files" canvas={canvas} ariaLabel="Job files" class="jobs-browse">
-					<div class="card-head">
-						<h2 class="card-title">Jobs</h2>
-						<span class="des">{dir()}</span>
-					</div>
+					<CardHead title="Jobs" tip={dir()} />
 
 					<nav class="crumbs" aria-label="Folder">
 						<button class="crumb" classList={{ active: dir() === GCODES_ROOT }} onClick={() => { setSelected(null); setDir(GCODES_ROOT); }}>gcodes</button>
@@ -202,10 +197,7 @@ export default function Jobs() {
 
 				<Show when={selected()}>
 					<Panel id="job-details" canvas={canvas} ariaLabel="Job details" class="jobs-detail">
-						<div class="card-head">
-							<h2 class="card-title">{baseName(selected()!)}</h2>
-							<span class="des">rr_fileinfo</span>
-						</div>
+						<CardHead title={baseName(selected()!)} tip="rr_fileinfo" />
 						<Switch>
 							<Match when={info.loading}><p class="job-empty">Reading metadata…</p></Match>
 							<Match when={info.error}><p class="job-empty">No metadata for this file.</p></Match>
