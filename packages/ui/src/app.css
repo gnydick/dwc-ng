@@ -248,7 +248,7 @@
 	pointer-events: none;
 	transition: opacity 0.15s ease;
 }
-.card.panel:hover .panel-scroll-nub { opacity: 0.45; pointer-events: auto; }
+.card.panel:hover .panel-scroll-nub { opacity: 0.58; pointer-events: auto; }
 .panel-scroll-nub:hover { opacity: 0.8; }
 .panel-scroll-nub.up {
 	top: 0;
