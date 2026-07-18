@@ -18,6 +18,11 @@ import {
 export const GRID_COLS = 48;
 export const ROW_UNIT_PX = 24;
 export const GAP_PX = 6;
+/** Fixed column width (matches app.css's .panel-canvas grid-template-columns)
+ *  — columns don't scale with viewport width, so a card's pixel size only
+ *  ever depends on its own colSpan. A narrower window scrolls horizontally
+ *  instead of shrinking every card to fit. */
+export const COL_UNIT_PX = 46;
 
 export interface PanelRect {
 	col: number;
@@ -302,19 +307,12 @@ export function createPanelCanvas(storageKey: string, defaults: PanelDefault[], 
 		};
 	};
 
-	const cellSize = (canvasEl: HTMLElement): { colWidthPx: number; rowHeightPx: number } => {
-		const width = canvasEl.getBoundingClientRect().width;
-		const colWidthPx = (width - (GRID_COLS - 1) * GAP_PX) / GRID_COLS;
-		return { colWidthPx, rowHeightPx: ROW_UNIT_PX };
-	};
-
 	const startMove = (id: string, event: PointerEvent): void => {
 		const grip = event.currentTarget as HTMLElement;
 		const canvasEl = grip.closest<HTMLElement>(".panel-canvas");
 		const start = state()[id];
 		if (!canvasEl || !start) return;
 		event.preventDefault();
-		const { colWidthPx, rowHeightPx } = cellSize(canvasEl);
 		const originX = event.clientX;
 		const originY = event.clientY;
 		const originScrollY = window.scrollY;
@@ -348,8 +346,8 @@ export function createPanelCanvas(storageKey: string, defaults: PanelDefault[], 
 		let raf = 0;
 		const tick = (): void => {
 			const effectiveY = pointerY + (window.scrollY - originScrollY);
-			const deltaCol = Math.round((pointerX - originX) / (colWidthPx + GAP_PX));
-			const deltaRow = Math.round((effectiveY - originY) / (rowHeightPx + GAP_PX));
+			const deltaCol = Math.round((pointerX - originX) / (COL_UNIT_PX + GAP_PX));
+			const deltaRow = Math.round((effectiveY - originY) / (ROW_UNIT_PX + GAP_PX));
 			const reachRow = Math.max(0, start.row + deltaRow) + start.rowSpan;
 			spacer.style.gridRow = `${reachRow + 1} / span 1`;
 
@@ -384,7 +382,6 @@ export function createPanelCanvas(storageKey: string, defaults: PanelDefault[], 
 		if (!canvasEl || !start) return;
 		event.preventDefault();
 		event.stopPropagation();
-		const { colWidthPx, rowHeightPx } = cellSize(canvasEl);
 		const originX = event.clientX;
 		const originY = event.clientY;
 		const originScrollY = window.scrollY;
@@ -399,8 +396,8 @@ export function createPanelCanvas(storageKey: string, defaults: PanelDefault[], 
 		let raf = 0;
 		const tick = (): void => {
 			const effectiveY = pointerY + (window.scrollY - originScrollY);
-			const deltaColSpan = Math.round((pointerX - originX) / (colWidthPx + GAP_PX));
-			const deltaRowSpan = Math.round((effectiveY - originY) / (rowHeightPx + GAP_PX));
+			const deltaColSpan = Math.round((pointerX - originX) / (COL_UNIT_PX + GAP_PX));
+			const deltaRowSpan = Math.round((effectiveY - originY) / (ROW_UNIT_PX + GAP_PX));
 			const next = tryResize(collidableState(id), id, start.colSpan + deltaColSpan, start.rowSpan + deltaRowSpan);
 			setState({ ...state(), [id]: next }); // live preview, persisted only on drop
 			raf = requestAnimationFrame(tick);

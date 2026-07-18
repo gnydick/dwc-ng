@@ -132,9 +132,14 @@
 
 /* ---------- cards ---------- */
 
+/* Fixed-width columns (not minmax(0,1fr)) — a card's pixel size depends only
+   on its own colSpan, never on viewport width. A wide window just shows more
+   empty grid to the right; a narrow one scrolls horizontally (see .main)
+   instead of shrinking every card to fit. Matches panelCanvas.ts's
+   COL_UNIT_PX — keep the two in sync. */
 .panel-canvas {
 	display: grid;
-	grid-template-columns: repeat(48, minmax(0, 1fr));
+	grid-template-columns: repeat(48, 46px);
 	grid-auto-rows: 24px;
 	gap: 6px;
 }
