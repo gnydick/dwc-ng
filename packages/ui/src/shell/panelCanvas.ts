@@ -214,13 +214,30 @@ export interface PanelCanvasController {
  * Per-view grid canvas controller. Call once per view; pass the result to
  * every <Panel> in it. Position/size persist to
  * localStorage["<storageKey>"] and survive reload.
+ *
+ * `isActive`, when given, excludes currently-not-rendered panels (e.g. a
+ * `<Show>`-gated Camera or Fans panel, or Jobs' conditional Active-job/
+ * Job-details cards) from collision checks during move/resize — their
+ * position is still tracked in state so they reappear where they were
+ * once shown again, but an invisible panel can't block a visible one from
+ * moving into the space it would otherwise occupy.
  */
-export function createPanelCanvas(storageKey: string, defaults: PanelDefault[]): PanelCanvasController {
+export function createPanelCanvas(storageKey: string, defaults: PanelDefault[], isActive?: (id: string) => boolean): PanelCanvasController {
 	const [state, setState] = createSignal(mergeCanvas(parseStoredCanvas(readStorage(storageKey)), defaults));
 
 	const persist = (next: CanvasState): void => {
 		setState(next);
 		writeStorage(storageKey, serializeCanvas(next));
+	};
+
+	/** state(), minus any currently-inactive panel other than the one being dragged/resized. */
+	const collidableState = (selfId: string): CanvasState => {
+		if (!isActive) return state();
+		const filtered: CanvasState = {};
+		for (const [pid, rect] of Object.entries(state())) {
+			if (pid === selfId || isActive(pid)) filtered[pid] = rect;
+		}
+		return filtered;
 	};
 
 	const styleFor = (id: string): Record<string, string> => {
@@ -283,7 +300,7 @@ export function createPanelCanvas(storageKey: string, defaults: PanelDefault[]):
 			const reachRow = Math.max(0, start.row + deltaRow) + start.rowSpan;
 			spacer.style.gridRow = `${reachRow + 1} / span 1`;
 
-			const candidate = tryMove(state(), id, start.col + deltaCol, start.row + deltaRow);
+			const candidate = tryMove(collidableState(id), id, start.col + deltaCol, start.row + deltaRow);
 			if (candidate) {
 				lastValid = candidate;
 				setState({ ...state(), [id]: candidate }); // live preview, not yet persisted
@@ -331,7 +348,7 @@ export function createPanelCanvas(storageKey: string, defaults: PanelDefault[]):
 			const effectiveY = pointerY + (window.scrollY - originScrollY);
 			const deltaColSpan = Math.round((pointerX - originX) / (colWidthPx + GAP_PX));
 			const deltaRowSpan = Math.round((effectiveY - originY) / (rowHeightPx + GAP_PX));
-			const next = tryResize(state(), id, start.colSpan + deltaColSpan, start.rowSpan + deltaRowSpan);
+			const next = tryResize(collidableState(id), id, start.colSpan + deltaColSpan, start.rowSpan + deltaRowSpan);
 			setState({ ...state(), [id]: next }); // live preview, persisted only on drop
 			raf = requestAnimationFrame(tick);
 		};

@@ -19,7 +19,12 @@ const STEPS = [0.1, 1, 10, 100];
  */
 export default function Control() {
 	const app = useApp();
-	const canvas = createPanelCanvas("dwc-ng.canvas.control", CONTROL_PANEL_DEFAULTS);
+	const hasFans = createMemo(() => app.om.om.fans.some(f => f !== null));
+	const canvas = createPanelCanvas("dwc-ng.canvas.control", CONTROL_PANEL_DEFAULTS, id => {
+		if (id === "camera") return app.config.config.camera.pinned;
+		if (id === "fans") return hasFans();
+		return true;
+	});
 
 	const axes = createMemo(() => app.om.om.move.axes.filter(a => a.visible));
 	const role = (letter: string): string | undefined => app.config.config.axisRoles[letter];
@@ -165,7 +170,7 @@ export default function Control() {
 					</div>
 				</Panel>
 
-				<Show when={app.om.om.fans.some(f => f !== null)}>
+				<Show when={hasFans()}>
 					<Panel id="fans" canvas={canvas} ariaLabel="Fans">
 						<div class="card-head"><h2 class="card-title">Fans</h2><span class="des">M106</span></div>
 						<div class="heater-list">
