@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
 	GRID_COLS, clampRect, rectsOverlap, collidesWithAny, hasCollisions, inBounds,
-	tryMove, tryResize, settle, defaultCanvas, parseStoredCanvas, serializeCanvas, mergeCanvas,
+	tryMove, tryResize, defaultCanvas, parseStoredCanvas, serializeCanvas, mergeCanvas,
 } from "../src/shell/panelCanvas.ts";
 import { MACHINE_PANEL_DEFAULTS } from "../src/views/machine.panelDefaults.ts";
 import { JOBS_PANEL_DEFAULTS } from "../src/views/jobs.panelDefaults.ts";
@@ -79,21 +79,6 @@ test("tryResize stops at the grid's column boundary when nothing else blocks it"
 	// not by a collision — isolates the boundary check from the collision check.
 	const state = { a: rect(0, 0, 4, 4) };
 	assert.deepEqual(tryResize(state, "a", 30, 4), rect(0, 0, GRID_COLS, 4), "colSpan can't exceed GRID_COLS even with open space");
-});
-
-test("settle rises then drifts left, processed in (row, col) order, only against already-settled panels", () => {
-	// b sits directly below a with a gap; moving a away should let b rise into the freed space.
-	const state = { a: rect(0, 10, 4, 4), b: rect(0, 20, 4, 4) };
-	const settled = settle(state);
-	assert.deepEqual(settled.a, rect(0, 0, 4, 4), "a rises to the top, nothing above it");
-	assert.deepEqual(settled.b, rect(0, 4, 4, 4), "b rises to rest just below settled a, not through it");
-});
-
-test("settle drifts left after rising, stopping against an already-settled neighbor", () => {
-	const state = { a: rect(0, 0, 4, 4), b: rect(10, 0, 4, 4) };
-	const settled = settle(state);
-	assert.deepEqual(settled.a, rect(0, 0, 4, 4));
-	assert.deepEqual(settled.b, rect(4, 0, 4, 4), "b drifts left to rest against a, not through it");
 });
 
 test("defaultCanvas orders by the defaults array and clamps each rect", () => {

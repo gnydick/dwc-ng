@@ -1,9 +1,11 @@
 /**
  * 24-column collision-based grid canvas: panels sit at explicit
- * (col, row, colSpan, rowSpan), never displace each other on move or
- * resize, and settle into freed space only after a move commits. Pure
- * logic here (no DOM, no Solid) so it's testable without a browser and a
- * corrupt/blocked store can never break a view's layout — see
+ * (col, row, colSpan, rowSpan) and never move or resize except by direct
+ * drag — a move is rejected outright if it would collide or run off-grid,
+ * a resize stops dead at the first collision or boundary, and nothing
+ * else on the canvas ever shifts as a side effect. Pure logic here (no
+ * DOM, no Solid) so it's testable without a browser and a corrupt/blocked
+ * store can never break a view's layout — see
  * docs/superpowers/specs/2026-07-17-grid-canvas-design.md.
  */
 
@@ -119,35 +121,6 @@ export function tryResize(state: CanvasState, id: string, desiredColSpan: number
 	}
 
 	return clampRect({ col: current.col, row: current.row, colSpan, rowSpan });
-}
-
-/**
- * After a move frees space, pull every panel up then left into it: a
- * single deterministic pass, panels processed in ascending (row, col)
- * order so earlier (higher, more left) panels settle first and form a
- * stable floor/wall for later ones. Never called after a resize.
- */
-export function settle(state: CanvasState): CanvasState {
-	const ids = Object.keys(state).sort((a, b) => {
-		const ra = state[a]!, rb = state[b]!;
-		return ra.row - rb.row || ra.col - rb.col;
-	});
-	const result: CanvasState = {};
-	for (const id of ids) {
-		let current = state[id]!;
-		while (current.row > 0) {
-			const candidate = { ...current, row: current.row - 1 };
-			if (collidesWithAny(result, id, candidate)) break;
-			current = candidate;
-		}
-		while (current.col > 0) {
-			const candidate = { ...current, col: current.col - 1 };
-			if (collidesWithAny(result, id, candidate)) break;
-			current = candidate;
-		}
-		result[id] = current;
-	}
-	return result;
 }
 
 /** A view's coded layout: every default clamped into valid bounds. */
@@ -288,8 +261,7 @@ export function createPanelCanvas(storageKey: string, defaults: PanelDefault[]):
 		const onUp = (): void => {
 			window.removeEventListener("pointermove", onMove);
 			window.removeEventListener("pointerup", onUp);
-			const withMove = { ...state(), [id]: lastValid };
-			persist(settle(withMove));
+			persist({ ...state(), [id]: lastValid });
 		};
 		window.addEventListener("pointermove", onMove);
 		window.addEventListener("pointerup", onUp);
@@ -310,7 +282,7 @@ export function createPanelCanvas(storageKey: string, defaults: PanelDefault[]):
 			const deltaColSpan = Math.round((moveEvent.clientX - originX) / (colWidthPx + GAP_PX));
 			const deltaRowSpan = Math.round((moveEvent.clientY - originY) / (rowHeightPx + GAP_PX));
 			const next = tryResize(state(), id, start.colSpan + deltaColSpan, start.rowSpan + deltaRowSpan);
-			setState({ ...state(), [id]: next }); // live preview, no settle on resize
+			setState({ ...state(), [id]: next }); // live preview, persisted only on drop
 		};
 		const onUp = (): void => {
 			window.removeEventListener("pointermove", onMove);

@@ -9,8 +9,9 @@ Replace the fixed-2-column panel layout (spec `2026-07-17-rearrangeable-panels-d
 built as Tasks 1-7 on `panelLayout.ts`/`Panel.tsx`) with a fully positioned grid
 canvas: panels sit at explicit `(col, row)` coordinates on a 24-column grid,
 sized by `(colSpan, rowSpan)`, move only into empty space, resize only until
-blocked by a neighbor, and settle into freed space after a move. This was
-discovered mid-session by testing the old system live — it fundamentally
+blocked by a neighbor, and never move otherwise — nothing on the canvas
+shifts except the panel you're directly dragging. This was discovered
+mid-session by testing the old system live — it fundamentally
 cannot express "three stacked half-width panels beside one tall panel"
 because CSS Grid auto-flow has no explicit column assignment, only linear
 order + a span cap of 2.
@@ -67,16 +68,16 @@ bottom-right corner only (grow right/down, shrink by dragging back),
 matching the existing Panel grip convention — no separate top/left-edge
 handles.
 
-**Settle (compaction).** After a *move* commits (never after a resize),
-a single pass runs over every panel in the view, processed in ascending
-`(row, col)` order, each pulled as far up as possible (decreasing `row`
-while it doesn't collide with any already-settled panel or run past
-`row 0`), then as far left as possible (`col` decreasing, same rule) at
-its new row. This is what makes freed space actually get used — drag a
-panel out of a stack's way and whatever was resting against that gap
-falls into it — without ever being triggered by a resize, and without
-needing to touch anything that wasn't already adjacent to freed space.
-Deterministic, single pass, no animation-driven continuous reflow.
+**No automatic settling (revised post-ship).** The original round of this
+spec included a "settle" pass — after a move, other panels would auto-pull
+up/left into freed space. Built, tested, and shipped, then reversed after
+live use: it read as unpredictable ("everything floats to pack the area")
+even though it only ever ran after a manual move, never a resize. Current
+behavior: a panel only ever changes position when directly dragged.
+Nothing else on the canvas moves as a side effect of anything, ever —
+freed space just stays empty until something is explicitly dragged into
+it. The `settle()` function and its tests have been removed entirely
+rather than kept dead/unused.
 
 **Scope for this round.** Serial, single-panel drags only. Moving or
 selecting multiple panels together is a real, explicitly-deferred future
@@ -116,11 +117,10 @@ to the old system — and Settings, never wired) get rewired to the new
 ## Testing
 
 Pure logic — `rectsOverlap`, collision/bounds checking, clamped-growth
-math for resize, clamped-move validation, the settle/compaction pass,
-and tolerant load/merge/clamp — is unit-tested via `node:test`, same
-TDD style as every other pure module this session. Drag, resize, settle,
-persistence, and reset are verified live per view against `mock-duet`,
-same as Tasks 4-7.
+math for resize, clamped-move validation, and tolerant load/merge/clamp —
+is unit-tested via `node:test`, same TDD style as every other pure module
+this session. Drag, resize, persistence, and reset are verified live per
+view against `mock-duet`, same as Tasks 4-7.
 
 ## Out of scope
 
