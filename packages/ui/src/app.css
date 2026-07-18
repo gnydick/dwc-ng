@@ -252,11 +252,11 @@
 .panel-scroll-nub:hover { opacity: 0.8; }
 .panel-scroll-nub.up {
 	top: 0;
-	box-shadow: inset 0 8px 8px -6px var(--copper-bright);
+	box-shadow: inset 0 8px 8px -6px var(--accent-blue);
 }
 .panel-scroll-nub.down {
 	bottom: 0;
-	box-shadow: inset 0 -8px 8px -6px var(--copper-bright);
+	box-shadow: inset 0 -8px 8px -6px var(--accent-blue);
 }
 .panel-scroll-nub:active { opacity: 1; filter: brightness(1.3); }
 
