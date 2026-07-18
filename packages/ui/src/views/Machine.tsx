@@ -293,17 +293,27 @@ export default function Machine() {
 								</div>
 							}
 						>
-							<div class="sensor-h-row">
-								<For each={sensorList()}>
-									{row => (
-										<div class="sensor-h-cell">
-											<span class={`sensor-dot ${row.ok ? "ok" : "warn"}`} />
-											<span class="sensor-h-label">{row.label}</span>
-											<span class="sensor-state">{row.state}</span>
-										</div>
-									)}
-								</For>
-							</div>
+							<table class="sensor-h-table">
+								<thead>
+									<tr>
+										<For each={sensorList()}>
+											{row => (
+												<th scope="col">
+													<span class={`sensor-dot ${row.ok ? "ok" : "warn"}`} />
+													{row.label}
+												</th>
+											)}
+										</For>
+									</tr>
+								</thead>
+								<tbody>
+									<tr>
+										<For each={sensorList()}>
+											{row => <td classList={{ ok: row.ok, warn: !row.ok }}>{row.state}</td>}
+										</For>
+									</tr>
+								</tbody>
+							</table>
 						</Show>
 					</Show>
 				</Panel>

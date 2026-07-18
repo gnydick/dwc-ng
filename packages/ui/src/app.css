@@ -539,19 +539,43 @@
 	font-size: 13px;
 }
 .sensor-dot {
+	display: inline-block;
 	width: 8px;
 	height: 8px;
 	border-radius: 50%;
+	vertical-align: middle;
 }
 .sensor-dot.ok { background: var(--ok); }
 .sensor-dot.warn { background: var(--gold); }
 .sensor-label { overflow-wrap: anywhere; }
 
-/* Horizontal Sensors layout (orientationToggle) — one compact cell per
-   sensor instead of a full-width row. */
-.sensor-h-row { display: flex; flex-wrap: wrap; gap: 8px 18px; }
-.sensor-h-cell { display: flex; align-items: center; gap: 8px; font-size: 13px; }
-.sensor-h-label { white-space: nowrap; }
+/* Horizontal Sensors layout (orientationToggle) — sensor names as column
+   headers, one row of states underneath, instead of a stack of full-width
+   rows. Scrolls horizontally (panel-body's existing overflow: auto) if
+   there are more sensors than fit the card's width. */
+.sensor-h-table { border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.sensor-h-table th {
+	font-family: var(--font-display);
+	font-weight: 600;
+	font-size: 10.5px;
+	letter-spacing: 0.1em;
+	text-transform: uppercase;
+	color: var(--silk-dim);
+	text-align: left;
+	white-space: nowrap;
+	padding: 0 22px 8px 0;
+	border-bottom: 1px solid var(--hairline);
+}
+.sensor-h-table th .sensor-dot { margin-right: 7px; }
+.sensor-h-table td {
+	padding: 9px 22px 0 0;
+	font-family: var(--font-display);
+	font-weight: 700;
+	font-size: 15px;
+	color: var(--silk-dim);
+}
+.sensor-h-table td.ok { color: var(--ok); }
+.sensor-h-table td.warn { color: var(--gold); }
 
 .sensor-state {
 	font-family: var(--font-display);
