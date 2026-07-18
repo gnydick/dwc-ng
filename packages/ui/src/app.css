@@ -3,7 +3,11 @@
 
 .app {
 	display: grid;
-	grid-template-columns: 188px 1fr;
+	/* minmax(0, …) so .main can't grow to match a wide child (the panel-canvas's
+	   fixed 2490px grid track) — without it, a flex sibling like the header
+	   would stretch to that width too and its right-aligned content would
+	   render off-screen. */
+	grid-template-columns: 188px minmax(0, 1fr);
 	min-height: 100vh;
 }
 
@@ -51,9 +55,23 @@
 	display: flex;
 	flex-direction: column;
 	min-height: 100vh;
+	min-width: 0;
 }
 
-.main > .panel-canvas { flex: 1; align-content: start; }
+/* Scopes horizontal scrolling to the routed view only — the fixed-width
+   panel-canvas can be wider than the viewport, but that must never drag
+   the header (a .main sibling) along with it. Stays a flex column (like
+   .main used to be directly) so .panel-canvas is still a flex ITEM: only
+   flex/grid items get the "auto minimum size = min-content" behavior that
+   lets panel-canvas's fixed 46px tracks hold their width instead of being
+   squeezed to fit — an ordinary block child would just shrink to fill. */
+.view-scroll { flex: 1; min-width: 0; overflow-x: auto; display: flex; flex-direction: column; }
+/* align-self: flex-start opts panel-canvas out of the column's default
+   cross-axis stretch — stretch would clamp it to view-scroll's width
+   outright, bypassing the min-content floor that keeps its 46px tracks
+   from being squeezed and letting it hold its true (possibly wider than
+   viewport) intrinsic size instead. */
+.view-scroll .panel-canvas { flex: 1; align-self: flex-start; align-content: start; }
 
 .preflight-actions { margin-left: auto; display: flex; align-items: center; gap: 10px; }
 

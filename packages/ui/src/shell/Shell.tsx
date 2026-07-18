@@ -119,14 +119,16 @@ export default function Shell() {
 					</div>
 				</header>
 
-				<Switch>
-					<Match when={route() === "machine"}><Machine /></Match>
-					<Match when={route() === "control"}><Control /></Match>
-					<Match when={route() === "jobs"}><Jobs /></Match>
-					<Match when={route() === "macros"}><Macros /></Match>
-					<Match when={route() === "system"}><System /></Match>
-					<Match when={route() === "settings"}><Settings /></Match>
-				</Switch>
+				<div class="view-scroll">
+					<Switch>
+						<Match when={route() === "machine"}><Machine /></Match>
+						<Match when={route() === "control"}><Control /></Match>
+						<Match when={route() === "jobs"}><Jobs /></Match>
+						<Match when={route() === "macros"}><Macros /></Match>
+						<Match when={route() === "system"}><System /></Match>
+						<Match when={route() === "settings"}><Settings /></Match>
+					</Switch>
+				</div>
 			</div>
 		</div>
 	);
