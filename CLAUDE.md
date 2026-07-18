@@ -19,6 +19,7 @@ with no rework above the connector abstraction.
   lightweight status polls, watch `seqs` counters, re-fetch changed
   subtrees via chunked `rr_model` queries (depth/frequency flags, array
   offsets). Merge = wholesale subtree replacement.
+- nothing should be able to break by construction
 
 ## Stack (already decided, do not relitigate)
 
