@@ -396,7 +396,12 @@
 /* table-layout: fixed + explicit numeric widths → a heater climbing 22°→200°
    gains a digit without reflowing any column. The Heater column takes the
    rest. Widths are sized for the worst case (3-digit temp, "standby"). */
-.heat-table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; table-layout: fixed; }
+/* min-width matches the name column's own grid (84+58+12=154px) plus the
+   four fixed data columns below (88+62+62+68=280px) — table-layout: fixed
+   otherwise proportionally squeezes those fixed widths to fit a narrower
+   container instead of overflowing it, and squeezed content overlaps
+   rather than just needing a horizontal scroll. */
+.heat-table { width: 100%; min-width: 434px; border-collapse: collapse; font-variant-numeric: tabular-nums; table-layout: fixed; }
 /* Widths carry slack past the widest content: cells have no horizontal
    padding, so a column sized exactly to its text leaves adjacent right-aligned
    labels touching ("ACTIVESTANDBY"). */
