@@ -103,7 +103,7 @@ export default function Shell() {
 						<button
 							class="ghost-btn"
 							aria-pressed={app.config.config.camera.pinned}
-							title="Show the camera panel on the current view"
+							title="Show the camera panel (each view places it independently)"
 							onClick={() => app.config.setCamera({ pinned: !app.config.config.camera.pinned })}
 						>
 							Camera
