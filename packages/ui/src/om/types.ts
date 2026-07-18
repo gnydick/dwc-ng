@@ -96,11 +96,19 @@ export interface Job {
 	timesLeft: { filament: number | null; file: number | null; slicer: number | null };
 }
 
+/** reference/objectmodel/src/fans/Fan.ts (FanThermostaticControl) */
+export interface FanThermostaticControl {
+	/** Sensor indices driving this fan automatically; non-empty means the
+	 *  firmware controls it, not the user. */
+	sensors: number[];
+}
+
 /** reference/objectmodel/src/fans/Fan.ts */
 export interface Fan {
 	name: string;
 	actualValue: number;
 	requestedValue: number;
+	thermostatic: FanThermostaticControl;
 }
 
 /** reference/objectmodel/src/sensors/index.ts (GpInputPort) */

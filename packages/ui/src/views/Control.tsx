@@ -1,5 +1,6 @@
 import { For, Show, createMemo, createSignal } from "solid-js";
 import { useApp } from "../shell/context.ts";
+import type { Fan } from "../om/types.ts";
 import { cmd } from "../control/commands.ts";
 import { GcodeButton } from "../control/GcodeButton.tsx";
 import { Panel } from "../shell/Panel.tsx";
@@ -19,7 +20,10 @@ const STEPS = [0.1, 1, 10, 100];
  */
 export default function Control() {
 	const app = useApp();
-	const hasFans = createMemo(() => app.om.om.fans.some(f => f !== null));
+	/** Thermostatic fans are driven by the firmware from a sensor trigger —
+	 *  not something to hand-set from the UI, so they're excluded here. */
+	const isManualFan = (fan: Fan | null): fan is Fan => fan !== null && fan.thermostatic.sensors.length === 0;
+	const hasFans = createMemo(() => app.om.om.fans.some(isManualFan));
 	const canvas = createPanelCanvas("dwc-ng.canvas.control", CONTROL_PANEL_DEFAULTS, id => {
 		if (id === "camera") return app.config.config.camera.pinned;
 		if (id === "fans") return hasFans();
@@ -176,7 +180,7 @@ export default function Control() {
 						<div class="heater-list">
 							<For each={app.om.om.fans}>
 								{(fan, i) => (
-									<Show when={fan}>
+									<Show when={isManualFan(fan) ? fan : undefined}>
 										{f => <FanControl label={f().name || `Fan ${i()}`} index={i()} value={f().actualValue} />}
 									</Show>
 								)}
