@@ -31,17 +31,18 @@ order + a span cap of 2.
 
 ## Grid & data model
 
-- CSS Grid, `grid-template-columns: repeat(24, minmax(0, 1fr))` — 24 equal
-  proportional columns, scaling with viewport width exactly like today's
-  2-column grid does. This is what makes "no fixed number of columns"
-  true for panels (they can span 1-24, not capped at 2) while the grid
-  itself has a stable, well-understood track count.
+- CSS Grid, `grid-template-columns: repeat(48, minmax(0, 1fr))` — 48 equal
+  proportional columns (bumped from 24 on 2026-07-18, see "Column count"
+  below), scaling with viewport width exactly like today's 2-column grid
+  does. This is what makes "no fixed number of columns" true for panels
+  (they can span 1-48, not capped at 2) while the grid itself has a
+  stable, well-understood track count.
 - `grid-auto-rows: 24px` — a fixed-pixel row unit. Rows are unbounded;
   the canvas grows as tall as its content requires and the page scrolls.
   Fixed height (not `auto`) is what fixes the "resize does nothing
   visually" bug: spanning N rows is always N × 24px, regardless of what
   else occupies those rows.
-- Per-panel state: `{ col: 0-23, row: ≥0, colSpan: 1-24, rowSpan: ≥1 }`.
+- Per-panel state: `{ col: 0-47, row: ≥0, colSpan: 1-48, rowSpan: ≥1 }`.
 - Every view's panel set now includes **`console`** and **`camera`** as
   two more entries alongside its existing cards — these are no longer
   global overlays. Console/camera *data* (message log, stream URL,
@@ -49,6 +50,27 @@ order + a span cap of 2.
   their on-screen *placement* becomes per-view and independent (you
   could pin console at the top on Machine, tucked in a corner on
   Control, and they don't share a position).
+
+## Column count (revised 2026-07-18)
+
+Bumped from 24 to 48 columns so more cards fit side by side on a wide
+monitor, without shrinking individual cells — the two only work together
+because `.main`'s `max-width: 1240px` cap was removed in the same change;
+on a screen wide enough to matter, the doubled column count and the freed-up
+container width roughly cancel out, so a cell ends up close to its old size
+instead of half as wide. All 6 views' coded `PANEL_DEFAULTS` had their
+`col`/`colSpan` doubled (row/rowSpan untouched) so the shipped default
+layouts look identical at the new resolution.
+
+Already-persisted (localStorage) canvases predate this and were saved
+against the 24-column grid, so loading one unchanged would render every
+panel at half its intended width. `serializeCanvas`/`parseStoredCanvas`
+(panelCanvas.ts) now wrap stored state in a small versioned envelope
+(`{ v: 2, state }`); anything found *without* that envelope is treated as
+legacy and has its col/colSpan doubled once on load, then re-saved in the
+new wrapped format on the next persist. `mergeCanvas` itself is unaware of
+any of this — the migration happens earlier, in `parseStoredCanvas`, so
+its existing collision/clamping contract and tests didn't need to change.
 
 ## Interactions
 

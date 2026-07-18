@@ -1,5 +1,5 @@
 /**
- * 24-column collision-based grid canvas: panels sit at explicit
+ * 48-column collision-based grid canvas: panels sit at explicit
  * (col, row, colSpan, rowSpan) and never move or resize except by direct
  * drag — a move is rejected outright if it would collide or run off-grid,
  * a resize stops dead at the first collision or boundary, and nothing
@@ -11,7 +11,7 @@
 
 import { createSignal } from "solid-js";
 
-export const GRID_COLS = 24;
+export const GRID_COLS = 48;
 export const ROW_UNIT_PX = 24;
 export const GAP_PX = 6;
 
@@ -140,18 +140,52 @@ function isPanelRect(value: unknown): value is PanelRect {
 		&& typeof (value as PanelRect).rowSpan === "number";
 }
 
-/** Tolerant parse: anything unexpected yields null, never a throw. */
+/** Bump whenever a stored canvas needs a one-time migration to stay valid
+ *  under a new grid shape (see migrateLegacyDoubleWidth below). */
+const CANVAS_FORMAT_VERSION = 2;
+
+interface StoredCanvasEnvelope {
+	v: number;
+	state: unknown;
+}
+
+function isEnvelope(value: unknown): value is StoredCanvasEnvelope {
+	return typeof value === "object" && value !== null && "v" in value && "state" in value;
+}
+
+/**
+ * One-time migration for canvases saved before GRID_COLS doubled (24 -> 48):
+ * every stored col/colSpan was chosen against the old, wider-celled grid, so
+ * doubling both lands each panel in the same visual spot at the new, finer
+ * resolution. Only the legacy unwrapped shape (no version envelope) is
+ * migrated — anything already carrying the current envelope is left as-is.
+ */
+function migrateLegacyDoubleWidth(value: unknown): unknown {
+	if (typeof value !== "object" || value === null) return value;
+	const out: Record<string, unknown> = {};
+	for (const [id, entry] of Object.entries(value as Record<string, unknown>)) {
+		out[id] = isPanelRect(entry) ? { ...entry, col: entry.col * 2, colSpan: entry.colSpan * 2 } : entry;
+	}
+	return out;
+}
+
+/** Tolerant parse: anything unexpected yields null, never a throw. Applies
+ *  migrateLegacyDoubleWidth to anything not already carrying the current
+ *  version envelope. */
 export function parseStoredCanvas(raw: string | null): unknown {
 	if (raw === null || raw === "") return null;
+	let parsed: unknown;
 	try {
-		return JSON.parse(raw);
+		parsed = JSON.parse(raw);
 	} catch {
 		return null;
 	}
+	if (isEnvelope(parsed) && parsed.v === CANVAS_FORMAT_VERSION) return parsed.state;
+	return migrateLegacyDoubleWidth(parsed);
 }
 
 export function serializeCanvas(state: CanvasState): string {
-	return JSON.stringify(state);
+	return JSON.stringify({ v: CANVAS_FORMAT_VERSION, state } satisfies StoredCanvasEnvelope);
 }
 
 /**
