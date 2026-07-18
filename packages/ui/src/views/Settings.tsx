@@ -1,4 +1,4 @@
-import { For, Show, createMemo } from "solid-js";
+import { For, Show, createMemo, createSignal } from "solid-js";
 import { useApp } from "../shell/context.ts";
 import { CONFIG_FILE } from "../config/types.ts";
 import { Panel } from "../shell/Panel.tsx";
@@ -19,8 +19,13 @@ export default function Settings() {
 
 	const visibleAxes = createMemo(() => app.om.om.move.axes.filter(a => a.visible));
 
+	const [saveError, setSaveError] = createSignal<string | null>(null);
+
 	const save = (): void => {
-		void app.config.saveToMachine(app.connector).catch(() => undefined);
+		setSaveError(null);
+		void app.config.saveToMachine(app.connector).catch((err: unknown) => {
+			setSaveError(err instanceof Error ? err.message : String(err));
+		});
 	};
 
 	return (
@@ -155,8 +160,15 @@ export default function Settings() {
 			</PanelCanvas>
 
 			<div class="save-bar">
-				<Show when={app.config.dirty} fallback={<span class="hint">All changes saved.</span>}>
-					<span class="hint unsaved">Unsaved changes</span>
+				<Show
+					when={saveError()}
+					fallback={
+						<Show when={app.config.dirty} fallback={<span class="hint">All changes saved.</span>}>
+							<span class="hint unsaved">Unsaved changes</span>
+						</Show>
+					}
+				>
+					{msg => <span class="hint unsaved">Save failed: {msg()}</span>}
 				</Show>
 				<button class="primary-btn" disabled={!app.config.dirty} onClick={save}>
 					Save to machine
