@@ -49,6 +49,15 @@ export function createScene(canvas: HTMLCanvasElement, width: number, height: nu
 	const material = new LineMaterial({
 		vertexColors: true,
 		transparent: true,
+		// Translucent (not-yet-printed) segments must never block opaque
+		// ones drawn behind them: with the default depthWrite:true, a
+		// translucent fragment still writes a full depth value, so the
+		// depth test rejects — entirely discards, not just dims — any
+		// later-drawn opaque segment that's farther from the camera at
+		// that pixel. depthWrite:false keeps depthTest respecting real
+		// scene depth while letting every segment's own alpha (not an
+		// earlier translucent segment's depth) decide what's visible.
+		depthWrite: false,
 		worldUnits: true,
 		linewidth: 1, // neutral multiplier — real mm width comes from the per-segment instanceWidthScale attribute
 	});
