@@ -1,38 +1,60 @@
 /**
- * Per-mode vertex-color computation for the toolpath LineSegments mesh.
- * "Dim" is a darker shade rather than alpha transparency — avoids
- * transparent-material depth-sorting complexity for what's a preview, not a
- * physically-accurate render. Recomputing colors is O(segmentCount) and
- * runs on every live filePosition tick; it never touches geometry/position
- * data, only the color attribute (see scene.ts's updateColors).
+ * Per-mode ALPHA computation for the toolpath mesh — color (hue) comes
+ * from hueColors.ts, this only decides how see-through each segment is.
+ * "Not yet printed" / "not the focused layer" segments become genuinely
+ * translucent (real alpha, via the forked LineMaterial — see
+ * src/gcode/lineMaterial/) rather than a darker shade, so GcodeViewer.tsx
+ * can combine any color mode with any reveal mode. Recomputing alpha is
+ * O(segmentCount) and runs on every live filePosition tick; it never
+ * touches geometry/position/hue data, only the alpha channel (see
+ * scene.ts's updateColors).
  */
 
 export type RenderMode = "progressive" | "static" | "layer-focus";
 
-const BRIGHT: readonly [number, number, number] = [0.85, 0.55, 0.25];
-const DIM: readonly [number, number, number] = [0.18, 0.2, 0.24];
+const OPAQUE = 1.0;
+const TRANSLUCENT = 0.15;
 
-export function computeSegmentColors(
+export function computeSegmentAlpha(
 	segmentCount: number,
 	layerIndex: Uint16Array,
 	liveSegmentIndex: number,
 	mode: RenderMode,
 ): Float32Array {
-	const colors = new Float32Array(segmentCount * 6);
+	const alpha = new Float32Array(segmentCount * 2); // 1 value per vertex
 	const liveLayer = liveSegmentIndex >= 0 && liveSegmentIndex < layerIndex.length
 		? layerIndex[liveSegmentIndex]!
 		: -1;
 
 	for (let i = 0; i < segmentCount; i++) {
-		let bright: boolean;
-		if (mode === "static") bright = true;
-		else if (mode === "layer-focus") bright = layerIndex[i] === liveLayer;
-		else bright = i <= liveSegmentIndex; // progressive
+		let opaque: boolean;
+		if (mode === "static") opaque = true;
+		else if (mode === "layer-focus") opaque = layerIndex[i] === liveLayer;
+		else opaque = i <= liveSegmentIndex; // progressive
 
-		const [r, g, b] = bright ? BRIGHT : DIM;
-		const base = i * 6;
-		colors[base] = r; colors[base + 1] = g; colors[base + 2] = b;
-		colors[base + 3] = r; colors[base + 4] = g; colors[base + 5] = b;
+		const a = opaque ? OPAQUE : TRANSLUCENT;
+		alpha[i * 2] = a;
+		alpha[i * 2 + 1] = a;
 	}
-	return colors;
+	return alpha;
+}
+
+/** Interleaves hueColors.ts's per-vertex RGB with this module's per-vertex
+ *  alpha into the RGBA the forked LineSegmentsGeometry.setColors expects. */
+export function combineRGBA(rgb: Float32Array, alpha: Float32Array): Float32Array {
+	const segmentCount = alpha.length / 2;
+	const rgba = new Float32Array(segmentCount * 8);
+	for (let i = 0; i < segmentCount; i++) {
+		const rgbBase = i * 6;
+		const rgbaBase = i * 8;
+		rgba[rgbaBase] = rgb[rgbBase]!;
+		rgba[rgbaBase + 1] = rgb[rgbBase + 1]!;
+		rgba[rgbaBase + 2] = rgb[rgbBase + 2]!;
+		rgba[rgbaBase + 3] = alpha[i * 2]!;
+		rgba[rgbaBase + 4] = rgb[rgbBase + 3]!;
+		rgba[rgbaBase + 5] = rgb[rgbBase + 4]!;
+		rgba[rgbaBase + 6] = rgb[rgbBase + 5]!;
+		rgba[rgbaBase + 7] = alpha[i * 2 + 1]!;
+	}
+	return rgba;
 }
