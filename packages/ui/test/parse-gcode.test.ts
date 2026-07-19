@@ -59,6 +59,13 @@ test("byteOffset is monotonically non-decreasing and tracks cumulative line leng
 	assert.equal(result.byteOffset[0], "G1 X1 E1".length + 1);
 });
 
+test("byteOffset does not overcount the final line when the text has no trailing newline", () => {
+	const gcode = "G1 X1 E1\nG1 X2 E2"; // note: no trailing \n
+	const result = parseGcode(gcode);
+	assert.equal(result.byteOffset[0], "G1 X1 E1".length + 1);
+	assert.equal(result.byteOffset[1], gcode.length); // no +1 — nothing follows the last line
+});
+
 test("strips ; and (...) comments without producing segments for comment-only lines", () => {
 	const gcode = "; header comment\nG1 X10 E1 ; move to 10\n(a paren comment)\nG1 X20 E2\n";
 	const result = parseGcode(gcode);
