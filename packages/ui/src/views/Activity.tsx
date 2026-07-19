@@ -2,6 +2,8 @@ import { PanelCanvas } from "../shell/PanelCanvas.tsx";
 import { ConsolePanel } from "../shell/ConsolePanel.tsx";
 import { CameraPanel } from "../shell/CameraPanel.tsx";
 import { createPanelCanvas } from "../shell/panelCanvas.ts";
+import { PositionCard } from "../cards/PositionCard.tsx";
+import { ActiveJobCard } from "../cards/ActiveJobCard.tsx";
 import { ACTIVITY_PANEL_DEFAULTS } from "./activity.panelDefaults.ts";
 
 /** Activity: live Position + Job progress + G-code toolpath in one place. */
@@ -14,6 +16,8 @@ export default function Activity() {
 				<button class="layout-reset" onClick={() => canvas.reset()}>↺ Reset layout</button>
 			</div>
 			<PanelCanvas>
+				<PositionCard canvas={canvas} />
+				<ActiveJobCard canvas={canvas} />
 				<ConsolePanel canvas={canvas} />
 				<CameraPanel canvas={canvas} />
 			</PanelCanvas>
