@@ -3,13 +3,22 @@
  * GcodeViewer.tsx) so the whole Three.js bundle stays out of the initial
  * load — it only ships once Activity's G-code card actually mounts, same
  * lazy-load pattern as src/editor/setup.ts for CodeMirror.
+ *
+ * Uses the forked LineSegments2/LineSegmentsGeometry/LineMaterial (see
+ * ./lineMaterial/) instead of stock THREE.LineSegments — stock Three.js
+ * supports neither real per-vertex alpha nor per-segment width, both
+ * required here (see docs/superpowers/specs/
+ * 2026-07-19-gcode-viewer-colorize-thick-lines-design.md).
  */
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { LineSegments2 } from "./lineMaterial/LineSegments2.ts";
+import { LineSegmentsGeometry } from "./lineMaterial/LineSegmentsGeometry.ts";
+import { LineMaterial } from "./lineMaterial/LineMaterial.ts";
 
 export interface SceneHandle {
 	/** (Re)builds the mesh from scratch — called once per parsed file. */
-	setGeometry(positions: Float32Array, colors: Float32Array): void;
+	setGeometry(positions: Float32Array, colors: Float32Array, widths: Float32Array): void;
 	/** Rewrites only the color attribute — called on every live position tick. */
 	updateColors(colors: Float32Array): void;
 	resize(width: number, height: number): void;
@@ -30,7 +39,21 @@ export function createScene(canvas: HTMLCanvasElement, width: number, height: nu
 	const controls = new OrbitControls(camera, renderer.domElement);
 	controls.enableDamping = true;
 
-	let mesh: THREE.LineSegments | null = null;
+	// One shared material across file loads — vertexColors/worldUnits/
+	// linewidth never change per-load, only the per-segment geometry
+	// attributes (color, width) do, via a fresh LineSegmentsGeometry each
+	// time. LineSegments2's own onBeforeRender keeps the material's
+	// resolution uniform in sync with the renderer's viewport on every
+	// frame automatically — no manual wiring needed beyond
+	// renderer.setSize() in resize() below.
+	const material = new LineMaterial({
+		vertexColors: true,
+		transparent: true,
+		worldUnits: true,
+		linewidth: 1, // neutral multiplier — real mm width comes from the per-segment instanceWidthScale attribute
+	});
+
+	let mesh: LineSegments2 | null = null;
 	let raf = 0;
 	const animate = (): void => {
 		controls.update();
@@ -43,23 +66,22 @@ export function createScene(canvas: HTMLCanvasElement, width: number, height: nu
 		if (mesh === null) return;
 		scene.remove(mesh);
 		mesh.geometry.dispose();
-		(mesh.material as THREE.Material).dispose();
 		mesh = null;
 	};
 
 	return {
-		setGeometry(positions, colors) {
+		setGeometry(positions, colors, widths) {
 			disposeMesh();
-			const geometry = new THREE.BufferGeometry();
-			geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-			geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
-			const material = new THREE.LineBasicMaterial({ vertexColors: true });
-			mesh = new THREE.LineSegments(geometry, material);
+			const geometry = new LineSegmentsGeometry();
+			geometry.setPositions(positions);
+			geometry.setColors(colors);
+			geometry.setWidths(widths);
+			mesh = new LineSegments2(geometry, material);
 			scene.add(mesh);
 		},
 		updateColors(colors) {
 			if (mesh === null) return;
-			mesh.geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+			(mesh.geometry as LineSegmentsGeometry).setColors(colors);
 		},
 		resize(w, h) {
 			renderer.setSize(w, h, false);
@@ -70,6 +92,7 @@ export function createScene(canvas: HTMLCanvasElement, width: number, height: nu
 			cancelAnimationFrame(raf);
 			controls.dispose();
 			disposeMesh();
+			material.dispose();
 			renderer.dispose();
 		},
 	};

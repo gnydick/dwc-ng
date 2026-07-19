@@ -3,24 +3,37 @@ import { useApp } from "../shell/context.ts";
 import { Card } from "../shell/Card.tsx";
 import type { PanelCanvasController } from "../shell/panelCanvas.ts";
 import { findSegmentIndex } from "./findSegmentIndex.ts";
-import { computeSegmentColors, type RenderMode } from "./renderModes.ts";
+import { computeSegmentAlpha, combineRGBA, type RenderMode } from "./renderModes.ts";
+import { computeHueColors, colorModeAvailable, type ColorMode } from "./hueColors.ts";
+import { computeSegmentWidths } from "./segmentWidth.ts";
 import type { ParsedToolpath } from "./parseGcode.ts";
 import type { SceneHandle } from "./scene.ts";
 import type { WorkerResponse } from "./parseGcode.worker.ts";
 
 type Status = "empty" | "loading" | "ready" | "error";
 
-const MODES: readonly RenderMode[] = ["progressive", "static", "layer-focus"];
-const MODE_LABEL: Record<RenderMode, string> = {
+const DEFAULT_FILAMENT_DIAMETER_MM = 1.75;
+
+const REVEAL_MODES: readonly RenderMode[] = ["progressive", "static", "layer-focus"];
+const REVEAL_MODE_LABEL: Record<RenderMode, string> = {
 	progressive: "Progressive",
 	static: "Static",
 	"layer-focus": "Layer",
 };
 
+const COLOR_MODES: readonly ColorMode[] = ["feature-type", "speed", "layer-time"];
+const COLOR_MODE_LABEL: Record<ColorMode, string> = {
+	"feature-type": "Feature",
+	speed: "Speed",
+	"layer-time": "Layer time",
+};
+
 /** Live 3D toolpath of the active job — downloaded and parsed once per
  *  file, then only recolored (never re-fetched or re-parsed) as
- *  job.filePosition advances. See docs/superpowers/specs/
- *  2026-07-18-activity-view-gcode-viewer-design.md. */
+ *  job.filePosition advances. Color mode (feature-type/speed/layer-time)
+ *  picks each segment's hue; reveal mode (progressive/static/layer-focus)
+ *  picks its alpha — the two are independent axes, combined every tick.
+ *  See docs/superpowers/specs/2026-07-19-gcode-viewer-colorize-thick-lines-design.md. */
 export function GcodeViewer(props: { canvas: PanelCanvasController }) {
 	const app = useApp();
 	let canvasEl!: HTMLCanvasElement;
@@ -32,7 +45,8 @@ export function GcodeViewer(props: { canvas: PanelCanvasController }) {
 
 	const [status, setStatus] = createSignal<Status>("empty");
 	const [message, setMessage] = createSignal("");
-	const [mode, setMode] = createSignal<RenderMode>("progressive");
+	const [revealMode, setRevealMode] = createSignal<RenderMode>("progressive");
+	const [colorMode, setColorMode] = createSignal<ColorMode>("feature-type");
 	const [lastPath, setLastPath] = createSignal<string | null>(null);
 
 	const activeFileName = (): string | null => {
@@ -40,11 +54,15 @@ export function GcodeViewer(props: { canvas: PanelCanvasController }) {
 		return f !== null && typeof f.fileName === "string" && f.fileName.length > 0 ? f.fileName : null;
 	};
 
+	const filamentDiameter = (): number => app.om.om.move.extruders[0]?.filamentDiameter || DEFAULT_FILAMENT_DIAMETER_MM;
+
 	const recolor = (): void => {
 		if (toolpath === null || scene === null) return;
 		const fp = app.om.om.job.filePosition;
 		const liveIndex = fp === null ? -1 : findSegmentIndex(toolpath.byteOffset, fp);
-		scene.updateColors(computeSegmentColors(toolpath.segmentCount, toolpath.layerIndex, liveIndex, mode()));
+		const hue = computeHueColors(toolpath, colorMode());
+		const alpha = computeSegmentAlpha(toolpath.segmentCount, toolpath.layerIndex, liveIndex, revealMode());
+		scene.updateColors(combineRGBA(hue, alpha));
 	};
 
 	const load = async (path: string): Promise<void> => {
@@ -68,7 +86,13 @@ export function GcodeViewer(props: { canvas: PanelCanvasController }) {
 					return;
 				}
 				toolpath = res.toolpath;
-				scene!.setGeometry(toolpath.positions, computeSegmentColors(toolpath.segmentCount, toolpath.layerIndex, -1, mode()));
+				const widths = computeSegmentWidths(
+					toolpath.positions, toolpath.deltaE, toolpath.extruding,
+					toolpath.layerIndex, toolpath.layerHeights, filamentDiameter(),
+				);
+				const hue = computeHueColors(toolpath, colorMode());
+				const alpha = computeSegmentAlpha(toolpath.segmentCount, toolpath.layerIndex, -1, revealMode());
+				scene!.setGeometry(toolpath.positions, combineRGBA(hue, alpha), widths);
 				setStatus("ready");
 				recolor();
 			};
@@ -101,7 +125,8 @@ export function GcodeViewer(props: { canvas: PanelCanvasController }) {
 	// Live sync: recolor (never re-parse) on every filePosition/mode change.
 	createEffect(() => {
 		app.om.om.job.filePosition;
-		mode();
+		revealMode();
+		colorMode();
 		recolor();
 	});
 
@@ -124,16 +149,31 @@ export function GcodeViewer(props: { canvas: PanelCanvasController }) {
 	return (
 		<Card id="gcode-viewer" canvas={props.canvas} ariaLabel="G-code toolpath" title="Toolpath" tip="job.file · job.filePosition">
 			<div class="gcode-viewer" ref={hostEl}>
-				<div class="gcode-viewer-modes" role="group" aria-label="Render mode">
-					<For each={MODES}>
+				<div class="gcode-viewer-modes gcode-viewer-modes-color" role="group" aria-label="Color mode">
+					<For each={COLOR_MODES}>
 						{m => (
 							<button
 								type="button"
 								class="mode-btn"
-								classList={{ active: mode() === m }}
-								onClick={() => setMode(m)}
+								classList={{ active: colorMode() === m }}
+								disabled={status() === "ready" && !colorModeAvailable(toolpath!, m)}
+								onClick={() => setColorMode(m)}
 							>
-								{MODE_LABEL[m]}
+								{COLOR_MODE_LABEL[m]}
+							</button>
+						)}
+					</For>
+				</div>
+				<div class="gcode-viewer-modes gcode-viewer-modes-reveal" role="group" aria-label="Reveal mode">
+					<For each={REVEAL_MODES}>
+						{m => (
+							<button
+								type="button"
+								class="mode-btn"
+								classList={{ active: revealMode() === m }}
+								onClick={() => setRevealMode(m)}
+							>
+								{REVEAL_MODE_LABEL[m]}
 							</button>
 						)}
 					</For>
