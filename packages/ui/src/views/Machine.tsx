@@ -4,6 +4,7 @@ import type { Heater } from "../om/types.ts";
 import { sensorRows } from "./machine.sensors.ts";
 import { TemperatureChart, type ChartSeries } from "../charts/TemperatureChart.tsx";
 import { Card } from "../shell/Card.tsx";
+import { PositionCard } from "../cards/PositionCard.tsx";
 import { PanelCanvas } from "../shell/PanelCanvas.tsx";
 import { ConsolePanel } from "../shell/ConsolePanel.tsx";
 import { CameraPanel } from "../shell/CameraPanel.tsx";
@@ -17,8 +18,6 @@ const TOOL_COLORS = ["#f0a050", "#6fbf8f", "#5aa9e6", "#c88ce0", "#e0b84a", "#8f
 export default function Machine() {
 	const app = useApp();
 	const canvas = createPanelCanvas("dwc-ng.canvas.machine", MACHINE_PANEL_DEFAULTS);
-
-	const visibleAxes = createMemo(() => app.om.om.move.axes.filter(a => a.visible));
 
 	const heaterAt = (index: number): Heater | null => app.om.om.heat.heaters[index] ?? null;
 	const bedHeaterIndex = createMemo(() => app.om.om.heat.bedHeaters.find(i => i >= 0) ?? -1);
@@ -62,51 +61,7 @@ export default function Machine() {
 				<button class="layout-reset" onClick={() => canvas.reset()}>↺ Reset layout</button>
 			</div>
 			<PanelCanvas>
-				<Card id="position" canvas={canvas} ariaLabel="Position" title="Position" tip="move.axes" orientationToggle>
-					<Show when={visibleAxes().length} fallback={<p class="job-empty">Waiting for the machine…</p>}>
-						<Show
-							when={canvas.orientationFor("position") === "horizontal"}
-							fallback={
-								<For each={visibleAxes()}>
-									{axis => (
-										<div class="dro-row" classList={{ unhomed: !axis.homed }}>
-											<span class="dro-axis">
-												{axis.letter}
-												<Show when={app.config.config.axisRoles[axis.letter]}>
-													{role => <span class="dro-role">{role()}</span>}
-												</Show>
-											</span>
-											<span class="dro-val">
-												{(axis.machinePosition ?? 0).toFixed(2)}<small>mm</small>
-											</span>
-											<span class="homed-tag" classList={{ yes: axis.homed, no: !axis.homed }}>
-												{axis.homed ? "homed" : "unhomed"}
-											</span>
-										</div>
-									)}
-								</For>
-							}
-						>
-							<div class="dro-h-row">
-								<For each={visibleAxes()}>
-									{axis => (
-										<div class="dro-h-cell" classList={{ unhomed: !axis.homed }}>
-											<span class="dro-h-axis">
-												{axis.letter}
-												<Show when={app.config.config.axisRoles[axis.letter]}>
-													{role => <span class="dro-role">{role()}</span>}
-												</Show>
-											</span>
-											<span class="dro-h-val">
-												{(axis.machinePosition ?? 0).toFixed(2)}<small>mm</small>
-											</span>
-										</div>
-									)}
-								</For>
-							</div>
-						</Show>
-					</Show>
-				</Card>
+				<PositionCard canvas={canvas} />
 
 				<Card id="tools-heaters" canvas={canvas} ariaLabel="Tools and heaters" title="Tools & heaters" tip="tools · heat.heaters" orientationToggle>
 					<Show
