@@ -64,8 +64,17 @@
    .main used to be directly) so .panel-canvas is still a flex ITEM: only
    flex/grid items get the "auto minimum size = min-content" behavior that
    lets panel-canvas's fixed 46px tracks hold their width instead of being
-   squeezed to fit — an ordinary block child would just shrink to fill. */
-.view-scroll { flex: 1; min-width: 0; overflow-x: auto; display: flex; flex-direction: column; }
+   squeezed to fit — an ordinary block child would just shrink to fill.
+   Deliberately NOT flex:1 — setting overflow-x forces the browser to also
+   compute overflow-y as auto (a CSS rule: if one axis is a scrolling value
+   and the other is visible, visible gets silently promoted to auto), so if
+   this box's height were flex-grown to fill .main's leftover space, taller
+   views would scroll INSIDE this box instead of growing .main/the page
+   like every other view's height always has. Leaving height at its default
+   (auto, sized to content) means it never gets shorter than its content,
+   so that forced overflow-y:auto never actually triggers — only the width
+   constraint (min-width: 0) and overflow-x matter here. */
+.view-scroll { min-width: 0; overflow-x: auto; display: flex; flex-direction: column; }
 /* align-self: flex-start opts panel-canvas out of the column's default
    cross-axis stretch — stretch would clamp it to view-scroll's width
    outright, bypassing the min-content floor that keeps its 46px tracks
