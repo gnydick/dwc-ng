@@ -27,6 +27,11 @@ ctx.onmessage = (event: MessageEvent<string>) => {
 			toolpath.layerIndex.buffer,
 			toolpath.byteOffset.buffer,
 			toolpath.extruding.buffer,
+			toolpath.deltaE.buffer,
+			toolpath.speed.buffer,
+			toolpath.featureType.buffer,
+			toolpath.layerHeights.buffer,
+			toolpath.layerTimeMinutes.buffer,
 		];
 		ctx.postMessage({ ok: true, toolpath }, transfer);
 	} catch (err) {
