@@ -557,10 +557,13 @@ test("parses linear G1 moves into one segment per move", () => {
 	const result = parseGcode(gcode);
 	assert.equal(result.segmentCount, 2);
 	assert.equal(result.positions.length, 2 * 6);
+	// Expected values are round-tripped through Float32Array too, so the
+	// comparison is exact despite 0.2 not being representable in binary
+	// floating point (both sides lose the same precision the same way).
 	// segment 0: (0,0,0) -> (10,0,0.2)
-	assert.deepEqual(Array.from(result.positions.slice(0, 6)), [0, 0, 0, 10, 0, 0.2]);
+	assert.deepEqual(Array.from(result.positions.slice(0, 6)), Array.from(new Float32Array([0, 0, 0, 10, 0, 0.2])));
 	// segment 1: (10,0,0.2) -> (10,10,0.2)
-	assert.deepEqual(Array.from(result.positions.slice(6, 12)), [10, 0, 0.2, 10, 10, 0.2]);
+	assert.deepEqual(Array.from(result.positions.slice(6, 12)), Array.from(new Float32Array([10, 0, 0.2, 10, 10, 0.2])));
 });
 
 test("marks moves with increasing E as extruding, others as travel", () => {
@@ -854,8 +857,12 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { computeSegmentColors } from "../src/gcode/renderModes.ts";
 
-const BRIGHT = [0.85, 0.55, 0.25];
-const DIM = [0.18, 0.2, 0.24];
+// Round-tripped through Float32Array so comparisons against `colors`
+// (also a Float32Array) are exact — 0.85 etc. aren't exactly representable
+// in binary floating point, so comparing against plain float64 literals
+// would fail even when the underlying values are "the same" number.
+const BRIGHT = Array.from(new Float32Array([0.85, 0.55, 0.25]));
+const DIM = Array.from(new Float32Array([0.18, 0.2, 0.24]));
 
 test("static mode: every segment is bright regardless of live index", () => {
 	const layerIndex = new Uint16Array([0, 0, 1, 1]);
