@@ -25,11 +25,17 @@ export interface Axis {
 	visible: boolean;
 }
 
+/** reference/objectmodel/src/move/Extruder.ts */
+export interface Extruder {
+	filamentDiameter: number;
+}
+
 /** reference/objectmodel/src/move/index.ts (Move) */
 export interface Move {
 	axes: Axis[];
 	currentMove: { requestedSpeed: number; topSpeed: number };
 	speedFactor: number;
+	extruders: Extruder[];
 }
 
 /** reference/objectmodel/src/heat/Heater.ts */
@@ -164,7 +170,7 @@ export function emptyModel(): ObjectModel {
 		fans: [],
 		heat: { bedHeaters: [], chamberHeaters: [], heaters: [] },
 		job: { file: null, filePosition: null, duration: null, layer: null, lastFileName: null, timesLeft: { filament: null, file: null, slicer: null } },
-		move: { axes: [], currentMove: { requestedSpeed: 0, topSpeed: 0 }, speedFactor: 1 },
+		move: { axes: [], currentMove: { requestedSpeed: 0, topSpeed: 0 }, speedFactor: 1, extruders: [] },
 		sensors: { gpIn: [], endstops: [], filamentMonitors: [], probes: [] },
 		state: { status: "disconnected", currentTool: -1, machineMode: "FFF", displayMessage: "", upTime: 0 },
 		tools: [],
