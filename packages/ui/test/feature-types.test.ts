@@ -20,6 +20,35 @@ test("maps SuperSlicer's diverged labels to the same bucket as PrusaSlicer's equ
 	assert.equal(mapLabelToFeatureType("Skirt"), mapLabelToFeatureType("Skirt/Brim"));
 });
 
+test("maps OrcaSlicer's renamed labels to the matching PrusaSlicer-equivalent bucket", () => {
+	assert.equal(mapLabelToFeatureType("Inner wall"), mapLabelToFeatureType("Perimeter"));
+	assert.equal(mapLabelToFeatureType("Outer wall"), mapLabelToFeatureType("External perimeter"));
+	assert.equal(mapLabelToFeatureType("Overhang wall"), mapLabelToFeatureType("Overhang perimeter"));
+	assert.equal(mapLabelToFeatureType("Sparse infill"), mapLabelToFeatureType("Internal infill"));
+	assert.equal(mapLabelToFeatureType("Internal solid infill"), mapLabelToFeatureType("Solid infill"));
+	assert.equal(mapLabelToFeatureType("Top surface"), mapLabelToFeatureType("Top solid infill"));
+	assert.equal(mapLabelToFeatureType("Bridge"), mapLabelToFeatureType("Bridge infill"));
+	assert.equal(mapLabelToFeatureType("Gap infill"), mapLabelToFeatureType("Gap fill"));
+	assert.equal(mapLabelToFeatureType("Brim"), mapLabelToFeatureType("Skirt"));
+	assert.equal(mapLabelToFeatureType("Support"), mapLabelToFeatureType("Support material"));
+	assert.equal(mapLabelToFeatureType("Support interface"), mapLabelToFeatureType("Support material interface"));
+	assert.equal(mapLabelToFeatureType("Prime tower"), mapLabelToFeatureType("Wipe tower"));
+	assert.notEqual(mapLabelToFeatureType("Flush"), UNKNOWN_FEATURE_TYPE);
+});
+
+test("OrcaSlicer/BambuStudio roles with no bucket equivalent still resolve to a defined index, not undefined", () => {
+	for (const label of ["Internal Bridge", "Support transition", "Support ironing", "Floating vertical shell"]) {
+		const idx = mapLabelToFeatureType(label);
+		assert.equal(typeof idx, "number");
+		assert.ok(idx >= 0 && idx < FEATURE_TYPE_NAMES.length, `${label} -> ${idx} out of range`);
+	}
+});
+
+test("erMixed/erNone labels ('Multiple', 'Undefined') map to Unknown", () => {
+	assert.equal(mapLabelToFeatureType("Multiple"), UNKNOWN_FEATURE_TYPE);
+	assert.equal(mapLabelToFeatureType("Undefined"), UNKNOWN_FEATURE_TYPE);
+});
+
 test("unrecognized or empty labels map to Unknown", () => {
 	assert.equal(mapLabelToFeatureType("Something else entirely"), UNKNOWN_FEATURE_TYPE);
 	assert.equal(mapLabelToFeatureType(""), UNKNOWN_FEATURE_TYPE);

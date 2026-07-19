@@ -1,12 +1,31 @@
 /**
- * PrusaSlicer/SuperSlicer feature-type (;TYPE:) label -> color-mode bucket
- * mapping. Verified directly against both slicers' current source (see
- * docs/superpowers/specs/2026-07-19-gcode-viewer-colorize-thick-lines-design.md):
- * exact tag format is ";TYPE:<label>" (no space), one tag governs every
- * extrusion move until the next tag. SuperSlicer diverges on two labels
- * only ("Internal perimeter" vs PrusaSlicer's "Perimeter", "Skirt" vs
- * "Skirt/Brim") — both folded into the same bucket as their PrusaSlicer
- * equivalent.
+ * Feature-type (;TYPE:) label -> color-mode bucket mapping. Covers
+ * PrusaSlicer, SuperSlicer, and OrcaSlicer (all forks of the same
+ * ExtrusionRole lineage, verified directly against each's current
+ * source):
+ *
+ * PrusaSlicer/SuperSlicer — see docs/superpowers/specs/
+ * 2026-07-19-gcode-viewer-colorize-thick-lines-design.md. SuperSlicer
+ * diverges on two labels only ("Internal perimeter" vs PrusaSlicer's
+ * "Perimeter", "Skirt" vs "Skirt/Brim").
+ *
+ * OrcaSlicer renamed most role labels (verified against
+ * OrcaSlicer/src/libslic3r/ExtrusionEntity.cpp's role_to_string): "Outer
+ * wall"/"Inner wall" for perimeters, "Sparse infill"/"Internal solid
+ * infill"/"Top surface" for infill, "Gap infill", "Bridge", "Prime tower".
+ * Its `;TYPE:` tag (no space after the colon, same format as PrusaSlicer)
+ * is only emitted when Orca is configured with a non-Bambu-native printer
+ * profile (OrcaSlicer/src/libslic3r/GCode/GCodeProcessor.cpp's
+ * Reserved_Tags_compatible) — BambuStudio itself never emits `;TYPE:` at
+ * all (it always writes `; FEATURE: <label>` instead), so real BambuStudio
+ * output won't be colorized by this mapping; that's a distinct format
+ * this parser doesn't target.
+ *
+ * A handful of OrcaSlicer/BambuStudio roles have no PrusaSlicer-bucket
+ * equivalent (Brim, Bottom surface, Support transition, Internal Bridge,
+ * Floating vertical shell, Flush, Multiple/Undefined) — each is folded
+ * into its nearest existing bucket rather than growing the palette for
+ * roles this app doesn't need to distinguish visually.
  */
 
 export const UNKNOWN_FEATURE_TYPE = 0;
@@ -65,6 +84,29 @@ const LABEL_TO_INDEX: Readonly<Record<string, number>> = {
 	"Ironing": 12,
 	"Wipe tower": 13,
 	"Custom": 14,
+
+	// OrcaSlicer (and, for the roles it shares, BambuStudio's own enum —
+	// though BambuStudio never actually emits a ;TYPE: tag, see header).
+	"Inner wall": 1,               // -> Perimeter
+	"Outer wall": 2,               // -> External perimeter
+	"Overhang wall": 3,            // -> Overhang perimeter
+	"Sparse infill": 4,            // -> Internal infill
+	"Internal solid infill": 5,    // -> Solid infill
+	"Bottom surface": 5,           // -> Solid infill (nearest concept; no dedicated PrusaSlicer bucket)
+	"Top surface": 6,              // -> Top solid infill
+	"Bridge": 7,                   // -> Bridge infill
+	"Internal Bridge": 7,          // -> Bridge infill (OrcaSlicer-only sub-variant)
+	"Gap infill": 8,               // -> Gap fill
+	"Brim": 9,                     // -> Skirt (PrusaSlicer's own "Skirt/Brim" already combines these)
+	"Support": 10,                 // -> Support material
+	"Support transition": 10,      // -> Support material (nearest concept)
+	"Support interface": 11,       // -> Support material interface
+	"Support ironing": 12,         // -> Ironing (support variant)
+	"Prime tower": 13,             // -> Wipe tower
+	"Flush": 14,                   // -> Custom (a deliberate, named operation, not truly unclassified)
+	"Floating vertical shell": 2,  // -> External perimeter (nearest concept; BambuStudio-only wall variant)
+	"Multiple": UNKNOWN_FEATURE_TYPE, // erMixed — genuinely ambiguous, no single bucket fits
+	"Undefined": UNKNOWN_FEATURE_TYPE, // erNone
 };
 
 export function mapLabelToFeatureType(label: string): number {
