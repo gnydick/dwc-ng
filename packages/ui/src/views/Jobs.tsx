@@ -1,4 +1,4 @@
-﻿import { For, Show, Switch, Match, createMemo, createResource, createSignal } from "solid-js";
+import { For, Show, Switch, Match, createMemo, createResource, createSignal } from "solid-js";
 import { useApp } from "../shell/context.ts";
 import { Thumbnail } from "../thumbnails/Thumbnail.tsx";
 import type { FileListEntry } from "../connector/types.ts";
