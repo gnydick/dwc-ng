@@ -1,4 +1,4 @@
-import { For, Show, Switch, Match, createMemo, createResource, createSignal } from "solid-js";
+﻿import { For, Show, Switch, Match, createMemo, createResource, createSignal } from "solid-js";
 import { useApp } from "../shell/context.ts";
 import { Thumbnail } from "../thumbnails/Thumbnail.tsx";
 import type { FileListEntry } from "../connector/types.ts";
@@ -114,7 +114,7 @@ export default function Jobs() {
 					<Switch>
 						<Match when={entries.loading}><p class="job-empty">Loading…</p></Match>
 						<Match when={entries.error}>
-							<p class="job-empty">Couldn't list {dir()}. <button class="link-btn" onClick={() => void refetchEntries()}>Retry</button></p>
+							<p class="job-empty">Couldn’t list {dir()}. <button class="link-btn" onClick={() => void refetchEntries()}>Retry</button></p>
 						</Match>
 						<Match when={sorted().length === 0}><p class="job-empty">Empty folder.</p></Match>
 						<Match when={true}>

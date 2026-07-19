@@ -53,9 +53,9 @@ export function ActiveJobCard(props: { canvas: PanelCanvasController }) {
 									<Fact label="Remaining">{fmtDuration(job().timesLeft.file!)}</Fact>
 								</Show>
 							</div>
-							{/* job-toggle reserves the wider label's width so Cancel can't
-    slide under the pointer when the job changes state. */}
 							<div class="btn-row">
+								{/* job-toggle reserves the wider label's width so Cancel can't
+								    slide under the pointer when the job changes state. */}
 								<Switch>
 									<Match when={app.om.om.state.status === "paused"}>
 										<button class="btn job-toggle" onClick={() => void app.connector.sendCode("M24")}>Resume</button>
