@@ -11,6 +11,7 @@ import Jobs from "../views/Jobs.tsx";
 import Macros from "../views/Macros.tsx";
 import System from "../views/System.tsx";
 import Settings from "../views/Settings.tsx";
+import Activity from "../views/Activity.tsx";
 
 const NAV: Array<{ route: Route; label: string }> = [
 	{ route: "machine", label: "Machine" },
@@ -19,6 +20,7 @@ const NAV: Array<{ route: Route; label: string }> = [
 	{ route: "macros", label: "Macros" },
 	{ route: "system", label: "System" },
 	{ route: "settings", label: "Settings" },
+	{ route: "activity", label: "Activity" },
 ];
 
 export default function Shell() {
@@ -127,6 +129,7 @@ export default function Shell() {
 						<Match when={route() === "macros"}><Macros /></Match>
 						<Match when={route() === "system"}><System /></Match>
 						<Match when={route() === "settings"}><Settings /></Match>
+						<Match when={route() === "activity"}><Activity /></Match>
 					</Switch>
 				</div>
 			</div>
