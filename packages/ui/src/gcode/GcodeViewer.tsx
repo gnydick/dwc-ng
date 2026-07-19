@@ -70,6 +70,7 @@ export function GcodeViewer(props: { canvas: PanelCanvasController }) {
 				toolpath = res.toolpath;
 				scene!.setGeometry(toolpath.positions, computeSegmentColors(toolpath.segmentCount, toolpath.layerIndex, -1, mode()));
 				setStatus("ready");
+				recolor();
 			};
 			worker.postMessage(text);
 		} catch (err) {
