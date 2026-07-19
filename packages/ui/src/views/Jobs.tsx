@@ -1,4 +1,4 @@
-﻿import { For, Show, Switch, Match, createMemo, createResource, createSignal } from "solid-js";
+import { For, Show, Switch, Match, createMemo, createResource, createSignal } from "solid-js";
 import { useApp } from "../shell/context.ts";
 import { Thumbnail } from "../thumbnails/Thumbnail.tsx";
 import type { FileListEntry } from "../connector/types.ts";
@@ -16,7 +16,7 @@ const GCODES_ROOT = "0:/gcodes";
 const ACTIVE_STATUSES = new Set(["processing", "paused", "pausing", "resuming", "cancelling", "simulating"]);
 
 /**
- * Jobs â€” this domain owns the gcodes listing (no central Files section). A
+ * Jobs — this domain owns the gcodes listing (no central Files section). A
  * click OPENS a file (metadata + thumbnail), it never runs it; starting a
  * print is an explicit control-surface action. When a job is on the machine,
  * an Active-job card gives progress and pause/resume/cancel.
@@ -39,7 +39,7 @@ export default function Jobs() {
 		d => app.connector.list(d),
 	);
 
-	// dirs first, then files newest-first â€” the way you actually hunt for a job.
+	// dirs first, then files newest-first — the way you actually hunt for a job.
 	const sorted = createMemo(() => {
 		const list = entries() ?? [];
 		return [...list].sort((a, b) => {
@@ -92,7 +92,7 @@ export default function Jobs() {
 	return (
 		<>
 			<div class="layout-toolbar">
-				<button class="layout-reset" onClick={() => canvas.reset()}>â†º Reset layout</button>
+				<button class="layout-reset" onClick={() => canvas.reset()}>↺ Reset layout</button>
 			</div>
 			<PanelCanvas class="jobs">
 				<ActiveJobCard canvas={canvas} />
@@ -112,9 +112,9 @@ export default function Jobs() {
 					</nav>
 
 					<Switch>
-						<Match when={entries.loading}><p class="job-empty">Loadingâ€¦</p></Match>
+						<Match when={entries.loading}><p class="job-empty">Loading…</p></Match>
 						<Match when={entries.error}>
-							<p class="job-empty">Couldnâ€™t list {dir()}. <button class="link-btn" onClick={() => void refetchEntries()}>Retry</button></p>
+							<p class="job-empty">Couldn't list {dir()}. <button class="link-btn" onClick={() => void refetchEntries()}>Retry</button></p>
 						</Match>
 						<Match when={sorted().length === 0}><p class="job-empty">Empty folder.</p></Match>
 						<Match when={true}>
@@ -127,7 +127,7 @@ export default function Jobs() {
 												classList={{ dir: entry.type === "d", selected: selected() === `${dir()}/${entry.name}` }}
 												onClick={() => openEntry(entry)}
 											>
-												<span class="file-icon" aria-hidden="true">{entry.type === "d" ? "â–¸" : "â–¤"}</span>
+												<span class="file-icon" aria-hidden="true">{entry.type === "d" ? "▸" : "▤"}</span>
 												<span class="file-name">{entry.name}</span>
 												<Show when={entry.type === "f"}>
 													<span class="file-meta">{fmtSize(entry.size)}</span>
@@ -145,14 +145,14 @@ export default function Jobs() {
 				<Show when={selected()}>
 					<Card id="job-details" canvas={canvas} ariaLabel="Job details" class="jobs-detail" title={baseName(selected()!)} tip="rr_fileinfo">
 						<Switch>
-							<Match when={info.loading}><p class="job-empty">Reading metadataâ€¦</p></Match>
+							<Match when={info.loading}><p class="job-empty">Reading metadata…</p></Match>
 							<Match when={info.error}><p class="job-empty">No metadata for this file.</p></Match>
 							<Match when={info()}>
 								<div class="detail-body">
 									<div class="thumb-frame">
 										<Switch>
 											<Match when={thumb()}>{t => <Thumbnail bytes={t().bytes} format={t().format} alt={`Preview of ${baseName(selected()!)}`} />}</Match>
-											<Match when={thumb.loading}><span class="thumb-placeholder">â€¦</span></Match>
+											<Match when={thumb.loading}><span class="thumb-placeholder">…</span></Match>
 											<Match when={true}><span class="thumb-placeholder">no preview</span></Match>
 										</Switch>
 									</div>
@@ -209,7 +209,7 @@ function fmtDuration(seconds: number): string {
 function fmtFilament(perExtruder: number[]): string {
 	const totalMm = perExtruder.reduce((a, b) => a + b, 0);
 	const meters = (totalMm / 1000).toFixed(2);
-	return perExtruder.length > 1 ? `${meters} m Â· ${perExtruder.length} tools` : `${meters} m`;
+	return perExtruder.length > 1 ? `${meters} m · ${perExtruder.length} tools` : `${meters} m`;
 }
 
 function fmtSize(bytes: number): string {
