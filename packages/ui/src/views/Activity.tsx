@@ -6,6 +6,7 @@ import { CameraPanel } from "../shell/CameraPanel.tsx";
 import { createPanelCanvas } from "../shell/panelCanvas.ts";
 import { PositionCard } from "../cards/PositionCard.tsx";
 import { ActiveJobCard } from "../cards/ActiveJobCard.tsx";
+import { GcodeViewer } from "../gcode/GcodeViewer.tsx";
 import { ACTIVITY_PANEL_DEFAULTS } from "./activity.panelDefaults.ts";
 
 /** RRF statuses where a job is on the machine and controllable. */
@@ -38,6 +39,7 @@ export default function Activity() {
 			<PanelCanvas>
 				<PositionCard canvas={canvas} />
 				<ActiveJobCard canvas={canvas} />
+				<GcodeViewer canvas={canvas} />
 				<ConsolePanel canvas={canvas} />
 				<CameraPanel canvas={canvas} />
 			</PanelCanvas>

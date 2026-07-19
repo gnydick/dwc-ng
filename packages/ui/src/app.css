@@ -889,6 +889,24 @@
 .fact-label { color: var(--silk-dim); font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }
 .fact-val { color: var(--silk); font-size: 15px; font-variant-numeric: tabular-nums; }
 
+/* ---------- gcode viewer ---------- */
+.gcode-viewer { position: relative; width: 100%; height: 100%; min-height: 240px; }
+.gcode-canvas { display: block; width: 100%; height: 100%; }
+.gcode-viewer-modes {
+	position: absolute; top: 8px; left: 8px; z-index: 1;
+	display: flex; gap: 4px;
+}
+.gcode-viewer-modes .mode-btn {
+	font-size: 11px; padding: 4px 8px; border-radius: var(--radius);
+	border: 1px solid var(--hairline); background: var(--mask-700); color: var(--silk-dim);
+}
+.gcode-viewer-modes .mode-btn.active { color: var(--silk); border-color: var(--copper); }
+.gcode-overlay {
+	position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+	color: var(--silk-dim); font-size: 13px; text-align: center; padding: 12px;
+}
+.gcode-overlay.err { color: var(--fault); }
+
 @media (max-width: 900px) {
 	.detail-body { grid-template-columns: 1fr; }
 }
