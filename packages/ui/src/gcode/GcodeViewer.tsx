@@ -3,7 +3,7 @@ import { useApp } from "../shell/context.ts";
 import { Card } from "../shell/Card.tsx";
 import type { PanelCanvasController } from "../shell/panelCanvas.ts";
 import { findSegmentIndex } from "./findSegmentIndex.ts";
-import { computeSegmentAlpha, combineRGBA, type RenderMode } from "./renderModes.ts";
+import { computeOpaqueRange, computeGhostRanges, type RenderMode, type GhostMode } from "./renderModes.ts";
 import { computeHueColors, colorModeAvailable, type ColorMode } from "./hueColors.ts";
 import { computeSegmentWidths } from "./segmentWidth.ts";
 import type { ParsedToolpath } from "./parseGcode.ts";
@@ -28,11 +28,24 @@ const COLOR_MODE_LABEL: Record<ColorMode, string> = {
 	"layer-time": "Layer time",
 };
 
+const GHOST_MODES: readonly GhostMode[] = ["show", "hidden"];
+const GHOST_MODE_LABEL: Record<GhostMode, string> = {
+	show: "Preview",
+	hidden: "Hide",
+};
+
+/** Travel (non-extruding) moves are hidden by default and, when shown, use
+ *  their own fixed color rather than the active color mode's hue (see scene.ts). */
+const DEFAULT_SHOW_TRAVEL = false;
+
 /** Live 3D toolpath of the active job — downloaded and parsed once per
  *  file, then only recolored (never re-fetched or re-parsed) as
  *  job.filePosition advances. Color mode (feature-type/speed/layer-time)
  *  picks each segment's hue; reveal mode (progressive/static/layer-focus)
- *  picks its alpha — the two are independent axes, combined every tick.
+ *  picks which contiguous range is opaque vs. a translucent ghost preview
+ *  (see renderModes.ts) — the two are independent axes, recombined every
+ *  tick. Rendered as real instanced 3D tube geometry with Three.js's own
+ *  lighting (see scene.ts), not a custom shader.
  *  See docs/superpowers/specs/2026-07-19-gcode-viewer-colorize-thick-lines-design.md. */
 export function GcodeViewer(props: { canvas: PanelCanvasController }) {
 	const app = useApp();
@@ -47,7 +60,30 @@ export function GcodeViewer(props: { canvas: PanelCanvasController }) {
 	const [message, setMessage] = createSignal("");
 	const [revealMode, setRevealMode] = createSignal<RenderMode>("progressive");
 	const [colorMode, setColorMode] = createSignal<ColorMode>("feature-type");
+	const [ghostMode, setGhostMode] = createSignal<GhostMode>("show");
+	const [showTravel, setShowTravel] = createSignal(DEFAULT_SHOW_TRAVEL);
 	const [lastPath, setLastPath] = createSignal<string | null>(null);
+
+	const bedCenter = (): { x: number; y: number } => {
+		const axes = app.om.om.move.axes;
+		const x = axes[0];
+		const y = axes[1];
+		return {
+			x: x ? (x.min + x.max) / 2 : 150,
+			y: y ? (y.min + y.max) / 2 : 150,
+		};
+	};
+
+	/** Farthest any real geometry can be from bedCenter (at build height 0):
+	 *  half the bed's XY diagonal, plus the full Z axis travel — a real
+	 *  upper bound from the machine's own reported limits, not a guess. */
+	const bedExtent = (): number => {
+		const axes = app.om.om.move.axes;
+		const x = axes[0], y = axes[1], z = axes[2];
+		const halfDiagonal = x && y ? Math.hypot((x.max - x.min) / 2, (y.max - y.min) / 2) : 150;
+		const zTravel = z ? z.max - z.min : 300;
+		return halfDiagonal + zTravel;
+	};
 
 	const activeFileName = (): string | null => {
 		const f = app.om.om.job.file;
@@ -60,9 +96,20 @@ export function GcodeViewer(props: { canvas: PanelCanvasController }) {
 		if (toolpath === null || scene === null) return;
 		const fp = app.om.om.job.filePosition;
 		const liveIndex = fp === null ? -1 : findSegmentIndex(toolpath.byteOffset, fp);
+		const opaqueRange = computeOpaqueRange(toolpath.segmentCount, toolpath.layerIndex, liveIndex, revealMode());
+		const ghostRanges = computeGhostRanges(toolpath.segmentCount, opaqueRange, ghostMode());
 		const hue = computeHueColors(toolpath, colorMode());
-		const alpha = computeSegmentAlpha(toolpath.segmentCount, toolpath.layerIndex, liveIndex, revealMode());
-		scene.updateColors(combineRGBA(hue, alpha));
+		scene.updateColors(hue, opaqueRange, ghostRanges);
+
+		// The marker tracks the actual head position independent of reveal
+		// mode (progressive/static/layer-focus only affect which segments
+		// look opaque, not where the tool physically is right now).
+		if (liveIndex >= 0 && liveIndex < toolpath.segmentCount) {
+			const base = liveIndex * 6;
+			scene.setToolPosition([toolpath.positions[base + 3]!, toolpath.positions[base + 4]!, toolpath.positions[base + 5]!]);
+		} else {
+			scene.setToolPosition(null);
+		}
 	};
 
 	const load = async (path: string): Promise<void> => {
@@ -73,7 +120,7 @@ export function GcodeViewer(props: { canvas: PanelCanvasController }) {
 		try {
 			const [text, sceneMod] = await Promise.all([app.connector.download(path), import("./scene.ts")]);
 			if (gen !== generation) return;
-			scene ??= sceneMod.createScene(canvasEl, hostEl.clientWidth, hostEl.clientHeight);
+			scene ??= sceneMod.createScene(canvasEl, hostEl.clientWidth, hostEl.clientHeight, bedCenter(), bedExtent());
 
 			worker?.terminate();
 			worker = new Worker(new URL("./parseGcode.worker.ts", import.meta.url), { type: "module" });
@@ -90,9 +137,11 @@ export function GcodeViewer(props: { canvas: PanelCanvasController }) {
 					toolpath.positions, toolpath.deltaE, toolpath.extruding,
 					toolpath.layerIndex, toolpath.layerHeights, filamentDiameter(),
 				);
+				const opaqueRange = computeOpaqueRange(toolpath.segmentCount, toolpath.layerIndex, -1, revealMode());
+				const ghostRanges = computeGhostRanges(toolpath.segmentCount, opaqueRange, ghostMode());
 				const hue = computeHueColors(toolpath, colorMode());
-				const alpha = computeSegmentAlpha(toolpath.segmentCount, toolpath.layerIndex, -1, revealMode());
-				scene!.setGeometry(toolpath.positions, combineRGBA(hue, alpha), widths);
+				scene!.setGeometry(toolpath.positions, hue, widths, toolpath.extruding, opaqueRange, ghostRanges);
+				scene!.setTravelVisible(showTravel());
 				setStatus("ready");
 				recolor();
 			};
@@ -127,7 +176,14 @@ export function GcodeViewer(props: { canvas: PanelCanvasController }) {
 		app.om.om.job.filePosition;
 		revealMode();
 		colorMode();
+		ghostMode();
 		recolor();
+	});
+
+	// Travel visibility is a pure show/hide on an already-built mesh — no
+	// recolor/rebuild needed (see scene.ts's setTravelVisible).
+	createEffect(() => {
+		scene?.setTravelVisible(showTravel());
 	});
 
 	// Panels are user-resizable (drag grip, see Panel.tsx) with no resize
@@ -177,6 +233,30 @@ export function GcodeViewer(props: { canvas: PanelCanvasController }) {
 							</button>
 						)}
 					</For>
+				</div>
+				<div class="gcode-viewer-modes gcode-viewer-modes-ghost" role="group" aria-label="Not-yet-printed preview">
+					<For each={GHOST_MODES}>
+						{m => (
+							<button
+								type="button"
+								class="mode-btn"
+								classList={{ active: ghostMode() === m }}
+								onClick={() => setGhostMode(m)}
+							>
+								{GHOST_MODE_LABEL[m]}
+							</button>
+						)}
+					</For>
+				</div>
+				<div class="gcode-viewer-modes gcode-viewer-modes-travel" role="group" aria-label="Travel moves">
+					<button
+						type="button"
+						class="mode-btn"
+						classList={{ active: showTravel() }}
+						onClick={() => setShowTravel(v => !v)}
+					>
+						Travel
+					</button>
 				</div>
 				<canvas ref={canvasEl} class="gcode-canvas" />
 				<Show when={status() === "empty"}><div class="gcode-overlay">No active job</div></Show>

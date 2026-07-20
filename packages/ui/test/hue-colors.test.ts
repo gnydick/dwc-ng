@@ -22,13 +22,22 @@ function makeToolpath(overrides: Partial<ParsedToolpath> & { segmentCount: numbe
 	};
 }
 
-test("feature-type mode colors each segment by its FEATURE_TYPE_COLORS entry", () => {
+// The forked LineMaterial's fragment shader ends in Three.js's standard
+// linear->sRGB output conversion, so every color reaching it must already
+// be linear — writeSegment converts from FEATURE_TYPE_COLORS' sRGB values
+// via the sRGB EOTF before writing. Mirrored here rather than imported so
+// this test independently verifies the conversion actually happens.
+function srgbToLinear(c: number): number {
+	return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+}
+
+test("feature-type mode colors each segment by its FEATURE_TYPE_COLORS entry, converted from sRGB to linear", () => {
 	const toolpath = makeToolpath({ segmentCount: 2, featureType: new Uint8Array([1, 2]) });
 	const colors = computeHueColors(toolpath, "feature-type");
-	const expected1 = Array.from(new Float32Array(FEATURE_TYPE_COLORS[1]!));
-	const expected2 = Array.from(new Float32Array(FEATURE_TYPE_COLORS[2]!));
-	assert.deepEqual(Array.from(colors.slice(0, 3)), expected1);
-	assert.deepEqual(Array.from(colors.slice(6, 9)), expected2);
+	const expected1 = new Float32Array(FEATURE_TYPE_COLORS[1]!.map(srgbToLinear));
+	const expected2 = new Float32Array(FEATURE_TYPE_COLORS[2]!.map(srgbToLinear));
+	assert.deepEqual(Array.from(colors.slice(0, 3)), Array.from(expected1));
+	assert.deepEqual(Array.from(colors.slice(6, 9)), Array.from(expected2));
 });
 
 test("speed mode: slowest and fastest segments (normalized per file) get visibly different colors", () => {

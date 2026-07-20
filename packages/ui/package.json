@@ -10,6 +10,7 @@
     "test": "node --test \"test/*.test.ts\""
   },
   "dependencies": {
+    "@babylonjs/core": "^9.17.0",
     "@codemirror/commands": "^6.10.4",
     "@codemirror/lang-json": "^6.0.2",
     "@codemirror/language": "^6.12.4",
@@ -18,7 +19,6 @@
     "@lezer/highlight": "^1.2.3",
     "codemirror": "^6.0.2",
     "solid-js": "^1.9.14",
-    "three": "^0.185.1",
     "uplot": "^1.6.32"
   },
   "devDependencies": {

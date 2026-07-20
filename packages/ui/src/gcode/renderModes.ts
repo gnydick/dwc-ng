@@ -1,60 +1,81 @@
 /**
- * Per-mode ALPHA computation for the toolpath mesh — color (hue) comes
- * from hueColors.ts, this only decides how see-through each segment is.
- * "Not yet printed" / "not the focused layer" segments become genuinely
- * translucent (real alpha, via the forked LineMaterial — see
- * src/gcode/lineMaterial/) rather than a darker shade, so GcodeViewer.tsx
- * can combine any color mode with any reveal mode. Recomputing alpha is
- * O(segmentCount) and runs on every live filePosition tick; it never
- * touches geometry/position/hue data, only the alpha channel (see
- * scene.ts's updateColors).
+ * Reveal-mode logic: which segments count as "opaque" (already printed /
+ * in focus) right now, and which remaining segments get a translucent
+ * ghost preview. Both are always CONTIGUOUS ranges over the segment array
+ * — layerIndex is monotonically non-decreasing by construction (slicers
+ * never interleave layers), so any single-layer or single-prefix
+ * classification is a contiguous run, never a scattered set. scene.ts
+ * relies on this to slice which segments go into which of its instanced
+ * meshes (opaque/ghost-before/ghost-after).
+ *
+ * Ghost segments cover the WHOLE rest of the model (every remaining move),
+ * not a bounded lookahead window — an earlier version of this file bounded
+ * it to dodge alpha-blending compounding (N overlapping translucent draws
+ * push toward 1-(1-a)^N, saturating near-opaque for a tall model where
+ * many upper layers project onto the same screen pixels as lower ones).
+ * That's solved properly now instead: scene.ts's ghost material writes
+ * real depth (not just tests it), so the GPU's own depth test resolves
+ * "nearest ghost fragment wins" per pixel — no compounding regardless of
+ * how many ghost segments overlap, so there's no need to bound the range.
+ * See docs/superpowers/specs/2026-07-19-gcode-viewer-colorize-thick-lines-design.md.
  */
 
 export type RenderMode = "progressive" | "static" | "layer-focus";
 
-const OPAQUE = 1.0;
-const TRANSLUCENT = 0.15;
+/** Whether the ghost (non-opaque) segments are previewed or hidden entirely. */
+export type GhostMode = "show" | "hidden";
 
-export function computeSegmentAlpha(
-	segmentCount: number,
-	layerIndex: Uint16Array,
-	liveSegmentIndex: number,
-	mode: RenderMode,
-): Float32Array {
-	const alpha = new Float32Array(segmentCount * 2); // 1 value per vertex
-	const liveLayer = liveSegmentIndex >= 0 && liveSegmentIndex < layerIndex.length
-		? layerIndex[liveSegmentIndex]!
-		: -1;
-
-	for (let i = 0; i < segmentCount; i++) {
-		let opaque: boolean;
-		if (mode === "static") opaque = true;
-		else if (mode === "layer-focus") opaque = layerIndex[i] === liveLayer;
-		else opaque = i <= liveSegmentIndex; // progressive
-
-		const a = opaque ? OPAQUE : TRANSLUCENT;
-		alpha[i * 2] = a;
-		alpha[i * 2 + 1] = a;
-	}
-	return alpha;
+/** [start, end) over segment indices — half-open, may be empty (start === end). */
+export interface SegmentRange {
+	start: number;
+	end: number;
 }
 
-/** Interleaves hueColors.ts's per-vertex RGB with this module's per-vertex
- *  alpha into the RGBA the forked LineSegmentsGeometry.setColors expects. */
-export function combineRGBA(rgb: Float32Array, alpha: Float32Array): Float32Array {
-	const segmentCount = alpha.length / 2;
-	const rgba = new Float32Array(segmentCount * 8);
-	for (let i = 0; i < segmentCount; i++) {
-		const rgbBase = i * 6;
-		const rgbaBase = i * 8;
-		rgba[rgbaBase] = rgb[rgbBase]!;
-		rgba[rgbaBase + 1] = rgb[rgbBase + 1]!;
-		rgba[rgbaBase + 2] = rgb[rgbBase + 2]!;
-		rgba[rgbaBase + 3] = alpha[i * 2]!;
-		rgba[rgbaBase + 4] = rgb[rgbBase + 3]!;
-		rgba[rgbaBase + 5] = rgb[rgbBase + 4]!;
-		rgba[rgbaBase + 6] = rgb[rgbBase + 5]!;
-		rgba[rgbaBase + 7] = alpha[i * 2 + 1]!;
+export interface GhostRanges {
+	before: SegmentRange;
+	after: SegmentRange;
+}
+
+function lowerBound(layerIndex: Uint16Array, value: number): number {
+	let lo = 0;
+	let hi = layerIndex.length;
+	while (lo < hi) {
+		const mid = (lo + hi) >>> 1;
+		if (layerIndex[mid]! < value) lo = mid + 1; else hi = mid;
 	}
-	return rgba;
+	return lo;
+}
+
+/** The contiguous range of segments this reveal mode currently counts as opaque. */
+export function computeOpaqueRange(
+	segmentCount: number, layerIndex: Uint16Array, liveSegmentIndex: number, mode: RenderMode,
+): SegmentRange {
+	if (segmentCount === 0) return { start: 0, end: 0 };
+	if (mode === "static") return { start: 0, end: segmentCount };
+	if (mode === "progressive") {
+		const end = Math.min(segmentCount, Math.max(0, liveSegmentIndex + 1));
+		return { start: 0, end };
+	}
+	// layer-focus
+	if (liveSegmentIndex < 0 || liveSegmentIndex >= segmentCount) return { start: 0, end: 0 };
+	const liveLayer = layerIndex[liveSegmentIndex]!;
+	return { start: lowerBound(layerIndex, liveLayer), end: lowerBound(layerIndex, liveLayer + 1) };
+}
+
+/**
+ * The ranges immediately before/after the opaque range that get a
+ * translucent ghost preview — everything NOT opaque, when ghostMode is
+ * "show". "before" is only ever non-empty in layer-focus mode
+ * (progressive/static already start their opaque range at 0, so there's
+ * nothing before it); "after" is the rest of the not-yet-printed model.
+ */
+export function computeGhostRanges(segmentCount: number, opaqueRange: SegmentRange, ghostMode: GhostMode): GhostRanges {
+	const empty = (at: number): SegmentRange => ({ start: at, end: at });
+	if (ghostMode === "hidden" || segmentCount === 0) {
+		return { before: empty(opaqueRange.start), after: empty(opaqueRange.end) };
+	}
+	return {
+		before: { start: 0, end: opaqueRange.start },
+		after: { start: opaqueRange.end, end: segmentCount },
+	};
 }

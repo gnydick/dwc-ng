@@ -898,6 +898,8 @@
 }
 .gcode-viewer-modes-color { top: 8px; left: 8px; }
 .gcode-viewer-modes-reveal { top: 8px; right: 8px; }
+.gcode-viewer-modes-ghost { top: 36px; right: 8px; }
+.gcode-viewer-modes-travel { top: 64px; right: 8px; }
 .gcode-viewer-modes .mode-btn {
 	font-size: 11px; padding: 4px 8px; border-radius: var(--radius);
 	border: 1px solid var(--hairline); background: var(--mask-700); color: var(--silk-dim);

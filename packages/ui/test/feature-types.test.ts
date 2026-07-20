@@ -7,8 +7,8 @@ import {
 test("maps every verified PrusaSlicer label to a non-Unknown index", () => {
 	const prusaLabels = [
 		"Perimeter", "External perimeter", "Overhang perimeter", "Internal infill",
-		"Solid infill", "Top solid infill", "Bridge infill", "Gap fill", "Skirt/Brim",
-		"Support material", "Support material interface", "Ironing", "Wipe tower", "Custom",
+		"Solid infill", "Top solid infill", "Ironing", "Bridge infill", "Gap fill", "Skirt/Brim",
+		"Support material", "Support material interface", "Wipe tower", "Custom",
 	];
 	for (const label of prusaLabels) {
 		assert.notEqual(mapLabelToFeatureType(label), UNKNOWN_FEATURE_TYPE, `expected ${label} to map to a known type`);
@@ -29,23 +29,32 @@ test("maps OrcaSlicer's renamed labels to the matching PrusaSlicer-equivalent bu
 	assert.equal(mapLabelToFeatureType("Top surface"), mapLabelToFeatureType("Top solid infill"));
 	assert.equal(mapLabelToFeatureType("Bridge"), mapLabelToFeatureType("Bridge infill"));
 	assert.equal(mapLabelToFeatureType("Gap infill"), mapLabelToFeatureType("Gap fill"));
-	assert.equal(mapLabelToFeatureType("Brim"), mapLabelToFeatureType("Skirt"));
 	assert.equal(mapLabelToFeatureType("Support"), mapLabelToFeatureType("Support material"));
 	assert.equal(mapLabelToFeatureType("Support interface"), mapLabelToFeatureType("Support material interface"));
 	assert.equal(mapLabelToFeatureType("Prime tower"), mapLabelToFeatureType("Wipe tower"));
 	assert.notEqual(mapLabelToFeatureType("Flush"), UNKNOWN_FEATURE_TYPE);
 });
 
-test("OrcaSlicer/BambuStudio roles with no bucket equivalent still resolve to a defined index, not undefined", () => {
-	for (const label of ["Internal Bridge", "Support transition", "Support ironing", "Floating vertical shell"]) {
-		const idx = mapLabelToFeatureType(label);
-		assert.equal(typeof idx, "number");
-		assert.ok(idx >= 0 && idx < FEATURE_TYPE_NAMES.length, `${label} -> ${idx} out of range`);
-	}
+test("OrcaSlicer roles that libvgcode gives a genuinely distinct bucket/color get their own index, not folded into Skirt/Bridge/etc", () => {
+	assert.notEqual(mapLabelToFeatureType("Brim"), mapLabelToFeatureType("Skirt"));
+	assert.notEqual(mapLabelToFeatureType("Bottom surface"), mapLabelToFeatureType("Solid infill"));
+	assert.notEqual(mapLabelToFeatureType("Internal Bridge"), UNKNOWN_FEATURE_TYPE);
+	assert.notEqual(mapLabelToFeatureType("Support transition"), mapLabelToFeatureType("Support material"));
 });
 
-test("erMixed/erNone labels ('Multiple', 'Undefined') map to Unknown", () => {
-	assert.equal(mapLabelToFeatureType("Multiple"), UNKNOWN_FEATURE_TYPE);
+test("OrcaSlicer/BambuStudio roles with no dedicated libvgcode slot fold into their nearest real bucket", () => {
+	assert.equal(mapLabelToFeatureType("Support ironing"), mapLabelToFeatureType("Ironing"));
+	assert.equal(mapLabelToFeatureType("Floating vertical shell"), mapLabelToFeatureType("External perimeter"));
+	assert.equal(mapLabelToFeatureType("Flush"), mapLabelToFeatureType("Custom"));
+});
+
+test("'Multiple' (erMixed) maps to its own Mixed bucket, distinct from Unknown", () => {
+	const idx = mapLabelToFeatureType("Multiple");
+	assert.notEqual(idx, UNKNOWN_FEATURE_TYPE);
+	assert.equal(FEATURE_TYPE_NAMES[idx], "Mixed");
+});
+
+test("'Undefined' (erNone) maps to Unknown", () => {
 	assert.equal(mapLabelToFeatureType("Undefined"), UNKNOWN_FEATURE_TYPE);
 });
 
@@ -60,4 +69,10 @@ test("FEATURE_TYPE_COLORS has exactly one entry per FEATURE_TYPE_NAMES entry", (
 
 test("FEATURE_TYPE_NAMES[UNKNOWN_FEATURE_TYPE] is literally \"Unknown\"", () => {
 	assert.equal(FEATURE_TYPE_NAMES[UNKNOWN_FEATURE_TYPE], "Unknown");
+});
+
+test("every color channel is within [0,1]", () => {
+	for (const [r, g, b] of FEATURE_TYPE_COLORS) {
+		for (const c of [r, g, b]) assert.ok(c >= 0 && c <= 1, `channel ${c} out of range`);
+	}
 });
