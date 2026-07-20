@@ -85,6 +85,16 @@ export function GcodeViewer(props: { canvas: PanelCanvasController }) {
 		return halfDiagonal + zTravel;
 	};
 
+	/** The machine's actual XY bed footprint (mm), for the reference/shadow plane. */
+	const bedSize = (): { x: number; y: number } => {
+		const axes = app.om.om.move.axes;
+		const x = axes[0], y = axes[1];
+		return {
+			x: x ? x.max - x.min : 300,
+			y: y ? y.max - y.min : 300,
+		};
+	};
+
 	const activeFileName = (): string | null => {
 		const f = app.om.om.job.file;
 		return f !== null && typeof f.fileName === "string" && f.fileName.length > 0 ? f.fileName : null;
@@ -120,7 +130,7 @@ export function GcodeViewer(props: { canvas: PanelCanvasController }) {
 		try {
 			const [text, sceneMod] = await Promise.all([app.connector.download(path), import("./scene.ts")]);
 			if (gen !== generation) return;
-			scene ??= sceneMod.createScene(canvasEl, hostEl.clientWidth, hostEl.clientHeight, bedCenter(), bedExtent());
+			scene ??= sceneMod.createScene(canvasEl, hostEl.clientWidth, hostEl.clientHeight, bedCenter(), bedExtent(), bedSize());
 
 			worker?.terminate();
 			worker = new Worker(new URL("./parseGcode.worker.ts", import.meta.url), { type: "module" });
@@ -140,7 +150,7 @@ export function GcodeViewer(props: { canvas: PanelCanvasController }) {
 				const opaqueRange = computeOpaqueRange(toolpath.segmentCount, toolpath.layerIndex, -1, revealMode());
 				const ghostRanges = computeGhostRanges(toolpath.segmentCount, opaqueRange, ghostMode());
 				const hue = computeHueColors(toolpath, colorMode());
-				scene!.setGeometry(toolpath.positions, hue, widths, toolpath.extruding, opaqueRange, ghostRanges);
+				scene!.setGeometry(toolpath.positions, hue, widths, toolpath.extruding, toolpath.layerIndex, opaqueRange, ghostRanges);
 				scene!.setTravelVisible(showTravel());
 				setStatus("ready");
 				recolor();

@@ -73,6 +73,7 @@ import { SpotLight } from "@babylonjs/core/Lights/spotLight.js";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder.js";
 import "@babylonjs/core/Meshes/Builders/cylinderBuilder.js"; // registers MeshBuilder.CreateCylinder (nozzle marker)
 import "@babylonjs/core/Meshes/Builders/boxBuilder.js"; // registers MeshBuilder.CreateBox (toolpath tube cross-section)
+import "@babylonjs/core/Meshes/Builders/groundBuilder.js"; // registers MeshBuilder.CreateGround (reference bed plane)
 // Bare side-effect imports: Babylon's per-feature tree-shaking pattern
 // silently INSTALLS A NO-OP STUB for methods like Mesh.prototype.clone /
 // thinInstanceSetBuffer unless the module that provides the real
@@ -87,9 +88,10 @@ import "@babylonjs/core/Meshes/mesh.js";
 import "@babylonjs/core/Meshes/thinInstanceMesh.js";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial.js";
 import type { Mesh } from "@babylonjs/core/Meshes/mesh.js";
-import { Vector3, Quaternion, Matrix } from "@babylonjs/core/Maths/math.vector.js";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector.js";
 import { Color3, Color4 } from "@babylonjs/core/Maths/math.color.js";
 import type { GhostRanges, SegmentRange } from "./renderModes.ts";
+import { mergeExtrudingRuns } from "./mergeSegments.ts";
 
 const TRAVEL_COLOR = new Color3(0.85, 0.85, 0.9);
 // Ghost opacity: the real GPU alpha applied to each not-yet-printed segment.
@@ -100,9 +102,10 @@ const toBabylon = (x: number, y: number, z: number): Vector3 => new Vector3(x, z
 
 export interface SceneHandle {
 	/** (Re)builds every mesh from scratch, including the travel mesh — called once per parsed file.
-	 *  `hue` is per-segment RGB (3 floats/segment, already linear — see hueColors.ts), NOT the old per-vertex RGBA. */
+	 *  `hue` is per-segment RGB (6 floats/segment, RGB duplicated, already linear — see hueColors.ts).
+	 *  `layerIndex` (per segment) bounds collinear-run merging so a merged run never crosses a layer. */
 	setGeometry(
-		positions: Float32Array, hue: Float32Array, widths: Float32Array, extruding: Uint8Array,
+		positions: Float32Array, hue: Float32Array, widths: Float32Array, extruding: Uint8Array, layerIndex: Uint16Array,
 		opaqueRange: SegmentRange, ghostRanges: GhostRanges,
 	): void;
 	/** Rewrites colors and re-splits the opaque/ghost meshes — called on every live position tick. Travel's own mesh is untouched (its geometry/color never changes tick to tick). */
@@ -115,24 +118,9 @@ export interface SceneHandle {
 	destroy(): void;
 }
 
-/** Shortest-arc rotation quaternion taking unit vector `from` onto unit vector `to`. */
-function quaternionBetween(from: Vector3, to: Vector3): Quaternion {
-	const dot = Vector3.Dot(from, to);
-	if (dot < -0.999999) {
-		// Antipodal: any perpendicular axis works for a 180° turn.
-		let axis = Vector3.Cross(Vector3.Right(), from);
-		if (axis.lengthSquared() < 1e-9) axis = Vector3.Cross(Vector3.Up(), from);
-		axis.normalize();
-		return Quaternion.RotationAxis(axis, Math.PI);
-	}
-	const axis = Vector3.Cross(from, to);
-	const s = Math.sqrt((1 + dot) * 2);
-	const invs = 1 / s;
-	return new Quaternion(axis.x * invs, axis.y * invs, axis.z * invs, s * 0.5);
-}
-
 export function createScene(
-	canvas: HTMLCanvasElement, width: number, height: number, bedCenter: { x: number; y: number }, bedExtent: number,
+	canvas: HTMLCanvasElement, width: number, height: number,
+	bedCenter: { x: number; y: number }, bedExtent: number, bedSize: { x: number; y: number },
 ): SceneHandle {
 	const engine = new Engine(canvas, true, { preserveDrawingBuffer: false, stencil: false }, true);
 	engine.setSize(width, height);
@@ -248,6 +236,59 @@ export function createScene(
 	};
 	setOrthoFrustum(width, height);
 
+	// Keyboard navigation. Gated on the pointer being over the viewer so it
+	// never hijacks keys typed elsewhere in the app, and it ignores modified
+	// chords (Ctrl/Cmd/Alt) so browser shortcuts still work. WASD pans the
+	// view across the bed, Q/E orbit CCW/CW, R/F tilt forward/reverse, T/G
+	// zoom in/out (radius, same knob the wheel/pinch drive).
+	let pointerOverCanvas = false;
+	const onPointerEnter = (): void => { pointerOverCanvas = true; };
+	const onPointerLeave = (): void => { pointerOverCanvas = false; };
+	canvas.addEventListener("pointerenter", onPointerEnter);
+	canvas.addEventListener("pointerleave", onPointerLeave);
+
+	const ROTATE_STEP = 0.08; // radians per keypress
+	const PAN_FRACTION = 0.06; // of the current view height per keypress
+	const KEY_ZOOM_STEP = 1.12; // radius multiplier per keypress
+	const handleKey = (event: KeyboardEvent): void => {
+		if (!pointerOverCanvas || event.ctrlKey || event.metaKey || event.altKey) return;
+		const size = FRUSTUM_SIZE * camera.radius / INITIAL_RADIUS; // current ortho height (mm)
+		const pan = size * PAN_FRACTION;
+		// WASD pans across the BED plane, not the screen: flatten the camera's
+		// heading onto the ground (Babylon XZ) so W/S move away/toward along
+		// the bed and A/D move across it, regardless of how the view is tilted.
+		const view = camera.target.subtract(camera.position);
+		let fx = view.x, fz = view.z;
+		let flen = Math.hypot(fx, fz);
+		if (flen < 1e-4) { // near top-down: heading is vertical, use screen-up's ground projection
+			const su = camera.getDirection(Vector3.Up());
+			fx = su.x; fz = su.z; flen = Math.hypot(fx, fz) || 1;
+		}
+		fx /= flen; fz /= flen;
+		const groundFwd = new Vector3(fx, 0, fz);
+		const groundRight = new Vector3(fz, 0, -fx); // cross(worldUp, groundFwd)
+		let handled = true;
+		switch (event.key.toLowerCase()) {
+			case "a": camera.target.addInPlace(groundRight.scale(-pan)); break;
+			case "d": camera.target.addInPlace(groundRight.scale(pan)); break;
+			case "w": camera.target.addInPlace(groundFwd.scale(pan)); break;
+			case "s": camera.target.addInPlace(groundFwd.scale(-pan)); break;
+			case "q": camera.alpha -= ROTATE_STEP; break; // CCW
+			case "e": camera.alpha += ROTATE_STEP; break; // CW
+			case "r": camera.beta += ROTATE_STEP; break; // forward tilt
+			case "f": camera.beta -= ROTATE_STEP; break; // reverse tilt
+			case "t": camera.radius = Math.max(camera.lowerRadiusLimit ?? 1e-3, camera.radius / KEY_ZOOM_STEP); break; // zoom in
+			case "g": camera.radius = Math.min(camera.upperRadiusLimit ?? Infinity, camera.radius * KEY_ZOOM_STEP); break; // zoom out
+			default: handled = false;
+		}
+		if (!handled) return;
+		event.preventDefault();
+		camera.beta = Math.max(0.01, Math.min(Math.PI - 0.01, camera.beta)); // keep off the poles (gimbal flip)
+		setOrthoFrustum(currentWidth, currentHeight);
+		requestRender();
+	};
+	window.addEventListener("keydown", handleKey);
+
 	// One shared light position for the whole scene.
 	const LIGHT_POSITION = toBabylon(bedCenter.x, bedCenter.y, 600);
 
@@ -271,6 +312,24 @@ export function createScene(
 	const spotDirection = target.subtract(LIGHT_POSITION).normalize();
 	const spotLight = new SpotLight("spot", LIGHT_POSITION, spotDirection, Math.PI / 2, 2, scene);
 	spotLight.intensity = 4;
+
+	// Bed plane at build height 0 — a world-anchored reference so
+	// orbiting/panning reads as the CAMERA moving around a fixed scene, not
+	// the model tumbling in empty space. Sized to the machine's actual XY bed
+	// footprint, dropped a hair below 0 so it doesn't z-fight the first layer.
+	// It's a flat plane facing the spotlight head-on, so it's EXCLUDED from
+	// that light (it would otherwise blow out to bright blue) and lit only by
+	// the flat ambient — a quiet dark reference, not a lit surface. There's no
+	// projected shadow map: the shadows in the view are incidental, coming
+	// from the spotlight's own directional shading of the real geometry (faces
+	// toward the light bright, away from it dark), not an artificial cast.
+	const bed = MeshBuilder.CreateGround("bed", { width: bedSize.x, height: bedSize.y }, scene);
+	bed.position = new Vector3(bedCenter.x, -0.1, bedCenter.y);
+	const bedMaterial = new StandardMaterial("bedMat", scene);
+	bedMaterial.diffuseColor = new Color3(0x12 / 255, 0x1e / 255, 0x2a / 255);
+	bedMaterial.specularColor = Color3.Black();
+	bed.material = bedMaterial;
+	spotLight.excludedMeshes.push(bed);
 
 	// Real lit materials for the toolpath itself — low specular, moderate
 	// roughness, reading as glossy plastic rather than the nozzle marker's
@@ -350,8 +409,15 @@ export function createScene(
 	tubeTemplate.setEnabled(false);
 	tubeTemplate.isVisible = false;
 
-	let instanceMatrices: Float32Array | null = null;
-	let fullExtruding: Uint8Array | null = null;
+	// Extruding geometry is MERGED into collinear runs (see mergeSegments.ts):
+	// one box instance per run, far fewer than one per raw segment. These are
+	// computed once at setGeometry (geometry is fixed) and never rebuilt —
+	// only which runs are opaque vs ghost (by segStart) and their colors
+	// change per tick. mergedSegStart is ascending, so any contiguous
+	// original-segment range maps to a contiguous slice of merged instances.
+	let mergedMatrices: Float32Array | null = null; // 16 floats per merged run
+	let mergedSegStart: Uint32Array | null = null; // first original segment index of each run (split classification)
+	let mergedColorSeg: Uint32Array | null = null; // original segment index each run samples its color from
 	let opaqueMesh: Mesh | null = null;
 	let ghostBeforeMesh: Mesh | null = null;
 	let ghostAfterMesh: Mesh | null = null;
@@ -376,84 +442,112 @@ export function createScene(
 		travelMesh = null;
 	};
 
-	/** One 4x4 transform per segment: position at its midpoint, oriented from local +Y onto the segment's own direction, scaled to its real length/width. */
-	const computeInstanceMatrices = (positions: Float32Array, widths: Float32Array): Float32Array => {
-		const segmentCount = widths.length;
-		const matrices = new Float32Array(segmentCount * 16);
-		const yAxis = Vector3.Up();
-		const scratch = new Matrix();
-		for (let i = 0; i < segmentCount; i++) {
-			const base = i * 6;
-			const start = toBabylon(positions[base]!, positions[base + 1]!, positions[base + 2]!);
-			const end = toBabylon(positions[base + 3]!, positions[base + 4]!, positions[base + 5]!);
-			const mid = start.add(end).scale(0.5);
-			const dir = end.subtract(start);
-			const length = dir.length();
-			let rotation: Quaternion;
-			if (length > 1e-6) {
-				dir.scaleInPlace(1 / length);
-				rotation = quaternionBetween(yAxis, dir);
-			} else {
-				rotation = Quaternion.Identity();
-			}
-			const width = widths[i]!;
-			const scaling = new Vector3(width, Math.max(length, 1e-4), width);
-			Matrix.ComposeToRef(scaling, rotation, mid, scratch);
-			scratch.copyToArray(matrices, i * 16);
+	/** One box transform from a gcode start point to an end point, written column-major into `out` at `offset`.
+	 *
+	 *  The box's local axes are built explicitly rather than via a
+	 *  shortest-arc rotation: aligning only the length axis to the segment
+	 *  direction leaves the roll about it undefined, which tilts the bead's
+	 *  flat faces to a random diagonal. Here local Y = segment direction,
+	 *  local X (width) = the HORIZONTAL perpendicular to it (in the bed
+	 *  plane), and local Z = their cross product — so the bead sits flat, its
+	 *  wide faces roughly parallel to the bed rather than canted. */
+	const writeBoxMatrix = (
+		out: Float32Array, offset: number,
+		sx: number, sy: number, sz: number, ex: number, ey: number, ez: number,
+		width: number,
+	): void => {
+		// gcode (x,y,z) -> Babylon (x, z, y): build height z becomes Babylon Y (up).
+		const bsx = sx, bsy = sz, bsz = sy;
+		const bex = ex, bey = ez, bez = ey;
+		const mx = (bsx + bex) / 2, my = (bsy + bey) / 2, mz = (bsz + bez) / 2;
+		let dx = bex - bsx, dy = bey - bsy, dz = bez - bsz;
+		let length = Math.hypot(dx, dy, dz);
+		if (length < 1e-6) { dx = 0; dy = 1; dz = 0; length = 1e-4; }
+		else { dx /= length; dy /= length; dz /= length; }
+
+		// right = normalize(cross(worldUp(0,1,0), dir)) = normalize((dz, 0, -dx))
+		let rx = dz, ry = 0, rz = -dx;
+		let rlen = Math.hypot(rx, ry, rz);
+		if (rlen < 1e-6) { rx = 1; ry = 0; rz = 0; rlen = 1; } // near-vertical move: any horizontal width axis
+		else { rx /= rlen; ry /= rlen; rz /= rlen; }
+		// up = cross(right, dir). NOTE the argument order: cross(dir, right)
+		// would give a LEFT-handed basis (negative determinant), which mirrors
+		// the box and inverts its face winding — outward faces get backface-
+		// culled, so only the inner side faces and end caps render (no top or
+		// bottom). cross(right, dir) keeps the basis right-handed / winding
+		// intact. (It happens to point "down", but the box is symmetric so
+		// which perpendicular is +Z doesn't matter — only the handedness does.)
+		const ux = ry * dz - rz * dy;
+		const uy = rz * dx - rx * dz;
+		const uz = rx * dy - ry * dx;
+
+		out[offset] = rx * width; out[offset + 1] = ry * width; out[offset + 2] = rz * width; out[offset + 3] = 0;
+		out[offset + 4] = dx * length; out[offset + 5] = dy * length; out[offset + 6] = dz * length; out[offset + 7] = 0;
+		out[offset + 8] = ux * width; out[offset + 9] = uy * width; out[offset + 10] = uz * width; out[offset + 11] = 0;
+		out[offset + 12] = mx; out[offset + 13] = my; out[offset + 14] = mz; out[offset + 15] = 1;
+	};
+
+	/** Merge extruding segments into collinear runs and build one box matrix per run; store the run→segment maps for split classification and coloring. */
+	const computeMergedGeometry = (positions: Float32Array, widths: Float32Array, extruding: Uint8Array, layerIndex: Uint16Array): void => {
+		const runs = mergeExtrudingRuns(positions, widths, extruding, layerIndex);
+		const count = runs.length;
+		const matrices = new Float32Array(count * 16);
+		const segStart = new Uint32Array(count);
+		const colorSeg = new Uint32Array(count);
+		for (let idx = 0; idx < count; idx++) {
+			const r = runs[idx]!;
+			const sb = r.start * 6;
+			const eb = (r.end - 1) * 6;
+			writeBoxMatrix(
+				matrices, idx * 16,
+				positions[sb]!, positions[sb + 1]!, positions[sb + 2]!,
+				positions[eb + 3]!, positions[eb + 4]!, positions[eb + 5]!,
+				widths[r.start]!,
+			);
+			segStart[idx] = r.start;
+			colorSeg[idx] = r.start;
+		}
+		mergedMatrices = matrices;
+		mergedSegStart = segStart;
+		mergedColorSeg = colorSeg;
+	};
+
+	/** Per-segment box matrices for the NON-extruding (travel) moves only — travel isn't merged (it's hidden by default and low-count). */
+	const computeTravelMatrices = (positions: Float32Array, widths: Float32Array, extruding: Uint8Array): Float32Array => {
+		let n = 0;
+		for (let i = 0; i < extruding.length; i++) if (extruding[i] !== 1) n++;
+		const matrices = new Float32Array(n * 16);
+		let o = 0;
+		for (let i = 0; i < extruding.length; i++) {
+			if (extruding[i] === 1) continue;
+			const b = i * 6;
+			writeBoxMatrix(matrices, o * 16, positions[b]!, positions[b + 1]!, positions[b + 2]!, positions[b + 3]!, positions[b + 4]!, positions[b + 5]!, widths[i]!);
+			o++;
 		}
 		return matrices;
 	};
 
-	/** hueColors.ts writes 2 (duplicate) vertices per segment; an instance only needs one color, so take the first. */
-	const extractInstanceColors = (hue: Float32Array, segmentCount: number): Float32Array => {
-		const colors = new Float32Array(segmentCount * 4);
-		for (let i = 0; i < segmentCount; i++) {
-			const base = i * 6;
-			colors[i * 4] = hue[base]!; colors[i * 4 + 1] = hue[base + 1]!; colors[i * 4 + 2] = hue[base + 2]!;
-			colors[i * 4 + 3] = 1;
+	/** Per-merged-run RGBA from the current hue (6 floats/segment, RGB duplicated — see hueColors.ts), sampled at each run's representative segment. */
+	const extractMergedColors = (hue: Float32Array, colorSeg: Uint32Array): Float32Array => {
+		const count = colorSeg.length;
+		const colors = new Float32Array(count * 4);
+		for (let idx = 0; idx < count; idx++) {
+			const base = colorSeg[idx]! * 6;
+			colors[idx * 4] = hue[base]!; colors[idx * 4 + 1] = hue[base + 1]!; colors[idx * 4 + 2] = hue[base + 2]!;
+			colors[idx * 4 + 3] = 1;
 		}
 		return colors;
 	};
 
-	/** Fills (or refills) a thin-instanced clone of the tube template from `range`, filtered down to segments whose `extruding` flag matches `wantExtruding`.
-	 *  Travel moves are scattered throughout every contiguous range, so this is an actual filter (a copy), not a zero-copy subarray.
-	 *
-	 *  Reuses `existing` in place (just rewriting its thin-instance buffers)
-	 *  rather than disposing and cloning a fresh mesh every call. Measured
-	 *  live: building a brand-new mesh (clone + first buffer upload) itself
-	 *  only took ~250ms, but scene.isReady() then took another ~650-700ms
-	 *  to confirm — a real, roughly fixed per-NEW-mesh cost (first-ever
-	 *  submesh/effect binding validation), not something proportional to
-	 *  instance count. Since a live print's recolor() tick fires about
-	 *  once a second, and the opaque/ghost split is rebuilt every tick, a
-	 *  fresh clone every tick meant the old mesh was disposed immediately
-	 *  but the new one didn't confirm ready until ~900ms later — visible
-	 *  as the model flashing hidden/revealed on a ~1s cycle, forever, since
-	 *  the next tick's dispose landed right as the previous one finally
-	 *  became visible. A mesh that already rendered once doesn't pay that
-	 *  cost again just because its buffer *content* changes. */
-	const buildMesh = (
-		existing: Mesh | null,
-		matrices: Float32Array, colors: Float32Array | null, extruding: Uint8Array,
-		range: SegmentRange, wantExtruding: boolean, material: StandardMaterial, name: string,
-	): Mesh | null => {
-		let matchCount = 0;
-		for (let i = range.start; i < range.end; i++) if ((extruding[i] === 1) === wantExtruding) matchCount++;
-		if (matchCount === 0) {
-			existing?.setEnabled(false);
-			return existing;
-		}
+	/** First merged-run index whose segStart >= value (mergedSegStart is ascending). */
+	const lowerBoundRun = (segStart: Uint32Array, value: number): number => {
+		let lo = 0, hi = segStart.length;
+		while (lo < hi) { const mid = (lo + hi) >>> 1; if (segStart[mid]! < value) lo = mid + 1; else hi = mid; }
+		return lo;
+	};
 
-		const outMatrices = new Float32Array(matchCount * 16);
-		const outColors = colors !== null ? new Float32Array(matchCount * 4) : null;
-		let o = 0;
-		for (let i = range.start; i < range.end; i++) {
-			if ((extruding[i] === 1) !== wantExtruding) continue;
-			outMatrices.set(matrices.subarray(i * 16, i * 16 + 16), o * 16);
-			if (outColors !== null && colors !== null) outColors.set(colors.subarray(i * 4, i * 4 + 4), o * 4);
-			o++;
-		}
-
+	/** Attaches thin-instance matrix/color buffers to a mesh (reusing `existing` in place), giving a fresh clone its own private geometry on first build. */
+	const applyInstances = (existing: Mesh | null, outMatrices: Float32Array, outColors: Float32Array | null, material: StandardMaterial, name: string): Mesh => {
 		const mesh = existing ?? tubeTemplate.clone(name);
 		if (existing === null) {
 			// CRITICAL: clone() SHARES the underlying geometry with the
@@ -491,13 +585,34 @@ export function createScene(
 		return mesh;
 	};
 
-	const rebuild = (colors: Float32Array, opaqueRange: SegmentRange, ghostRanges: GhostRanges): void => {
-		if (instanceMatrices === null || fullExtruding === null) return;
-		// Ghost and opaque share the same real per-segment colors — the
-		// ghost's translucency comes from ghostMaterial's real alpha.
-		opaqueMesh = buildMesh(opaqueMesh, instanceMatrices, colors, fullExtruding, opaqueRange, true, opaqueMaterial, "opaque");
-		ghostBeforeMesh = buildMesh(ghostBeforeMesh, instanceMatrices, colors, fullExtruding, ghostRanges.before, true, ghostMaterial, "ghostBefore");
-		ghostAfterMesh = buildMesh(ghostAfterMesh, instanceMatrices, colors, fullExtruding, ghostRanges.after, true, ghostMaterial, "ghostAfter");
+	/** Builds/refills a mesh from the merged runs whose first segment falls in [rangeStart, rangeEnd).
+	 *  Because mergedSegStart is ascending, that's a contiguous slice of merged instances — so a run
+	 *  straddling the live-print boundary is classified whole (by its first segment) into one side. */
+	const buildRunMesh = (
+		existing: Mesh | null, rangeStart: number, rangeEnd: number,
+		mergedColors: Float32Array, material: StandardMaterial, name: string,
+	): Mesh | null => {
+		if (mergedMatrices === null || mergedSegStart === null) return existing;
+		const lo = lowerBoundRun(mergedSegStart, rangeStart);
+		const hi = lowerBoundRun(mergedSegStart, rangeEnd);
+		if (hi <= lo) {
+			existing?.setEnabled(false);
+			return existing;
+		}
+		// Contiguous slices → standalone copies (each mesh owns its buffer).
+		const outMatrices = mergedMatrices.slice(lo * 16, hi * 16);
+		const outColors = mergedColors.slice(lo * 4, hi * 4);
+		return applyInstances(existing, outMatrices, outColors, material, name);
+	};
+
+	const rebuild = (hue: Float32Array, opaqueRange: SegmentRange, ghostRanges: GhostRanges): void => {
+		if (mergedColorSeg === null) return;
+		// One color per merged run, sampled from its representative segment;
+		// ghost translucency comes from ghostMaterial's real alpha, not color.
+		const mergedColors = extractMergedColors(hue, mergedColorSeg);
+		opaqueMesh = buildRunMesh(opaqueMesh, opaqueRange.start, opaqueRange.end, mergedColors, opaqueMaterial, "opaque");
+		ghostBeforeMesh = buildRunMesh(ghostBeforeMesh, ghostRanges.before.start, ghostRanges.before.end, mergedColors, ghostMaterial, "ghostBefore");
+		ghostAfterMesh = buildRunMesh(ghostAfterMesh, ghostRanges.after.start, ghostRanges.after.end, mergedColors, ghostMaterial, "ghostAfter");
 		requestRender();
 		// A freshly built mesh's material shader compiles asynchronously —
 		// on-demand rendering (no continuous runRenderLoop) means the render
@@ -506,28 +621,24 @@ export function createScene(
 		// nothing to prompt a later retry. executeWhenReady's callback fires
 		// once every pending resource (including shader compilation) is
 		// actually ready, so this guarantees the real first paint happens.
-		// This only matters the first time a mesh is created now (buildMesh
-		// reuses existing meshes on every later call), so it's a one-time
-		// cost per mesh instead of a recurring one on every tick.
+		// This only matters the first time a mesh is created (applyInstances
+		// reuses existing meshes after), so it's a one-time cost per mesh.
 		scene.executeWhenReady(requestRender);
 	};
 
 	return {
-		setGeometry(positions, hue, widths, extruding, opaqueRange, ghostRanges) {
-			instanceMatrices = computeInstanceMatrices(positions, widths);
-			fullExtruding = extruding;
-			const instanceColors = extractInstanceColors(hue, extruding.length);
+		setGeometry(positions, hue, widths, extruding, layerIndex, opaqueRange, ghostRanges) {
+			computeMergedGeometry(positions, widths, extruding, layerIndex);
 
 			disposeTravel();
-			travelMesh = buildMesh(null, instanceMatrices, null, extruding, { start: 0, end: extruding.length }, false, travelMaterial, "travel");
+			const travelMatrices = computeTravelMatrices(positions, widths, extruding);
+			travelMesh = travelMatrices.length > 0 ? applyInstances(null, travelMatrices, null, travelMaterial, "travel") : null;
 			if (travelMesh !== null) travelMesh.setEnabled(false);
 
-			rebuild(instanceColors, opaqueRange, ghostRanges);
+			rebuild(hue, opaqueRange, ghostRanges);
 		},
 		updateColors(hue, opaqueRange, ghostRanges) {
-			if (fullExtruding === null) return;
-			const instanceColors = extractInstanceColors(hue, fullExtruding.length);
-			rebuild(instanceColors, opaqueRange, ghostRanges);
+			rebuild(hue, opaqueRange, ghostRanges);
 		},
 		setTravelVisible(visible) {
 			travelMesh?.setEnabled(visible);
@@ -546,6 +657,9 @@ export function createScene(
 		destroy() {
 			cancelAnimationFrame(pendingFrame);
 			camera.onViewMatrixChangedObservable.removeCallback(onCameraChanged);
+			window.removeEventListener("keydown", handleKey);
+			canvas.removeEventListener("pointerenter", onPointerEnter);
+			canvas.removeEventListener("pointerleave", onPointerLeave);
 			disposeAll();
 			disposeTravel();
 			tubeTemplate.dispose();
@@ -554,7 +668,7 @@ export function createScene(
 			travelMaterial.dispose();
 			marker.dispose();
 			markerMaterial.dispose();
-			scene.dispose();
+			scene.dispose(); // disposes the bed, its material, and the lights
 			engine.dispose();
 		},
 	};
