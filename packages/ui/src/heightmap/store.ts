@@ -90,7 +90,9 @@ export function createHeightMapStore(connector: Connector): HeightMapStore {
 		setPending(next);
 	};
 
-	const discard = (): void => setPending(new Map());
+	// Braced, not a concise arrow: setPending returns the new Map, and a
+	// concise body would make this () => Map while declaring (): void.
+	const discard = (): void => { setPending(new Map()); };
 
 	const save = async (): Promise<OpResult> => {
 		const current = map();
