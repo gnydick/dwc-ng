@@ -79,3 +79,29 @@ test("isEmergencyStop matches only a bare M112", () => {
 	assert.equal(isEmergencyStop("M999"), false);
 	assert.equal(isEmergencyStop("G28"), false);
 });
+
+// The STOP button sends halt-and-reset as ONE payload so the reset can't be
+// stranded by the halt (reference/dwc/.../EmergencyBtn.vue:2 does the same).
+// The guard has to recognise that exact pair, or it fails closed on the real
+// board in the default unarmed state — blocking the one code it must never block.
+test("isEmergencyStop matches the M112+M999 halt-and-reset pair", () => {
+	assert.equal(isEmergencyStop("M112\nM999"), true);
+	assert.equal(isEmergencyStop("m112\r\nm999"), true);
+	assert.equal(isEmergencyStop("  M112  \n  M999  "), true);
+	assert.equal(isEmergencyStop("M112 ; halt\nM999 ; reset"), true);
+});
+
+test("isEmergencyStop still refuses anything smuggled alongside the pair", () => {
+	assert.equal(isEmergencyStop("M112\nM999\nG28"), false);
+	assert.equal(isEmergencyStop("M112\nG28\nM999"), false);
+	// order matters: a reset is not an e-stop, whichever side it sits on
+	assert.equal(isEmergencyStop("M999\nM112"), false);
+	assert.equal(isEmergencyStop("M999\nM999"), false);
+	assert.equal(isEmergencyStop("M112\nM112"), false);
+});
+
+test("real + unarmed: the M112+M999 pair passes — the STOP button must work", async () => {
+	const { c, seen } = guard({ real: true, armed: false });
+	await c.sendCode("M112\nM999");
+	assert.deepEqual(seen, ["sendCode:M112\nM999"]);
+});

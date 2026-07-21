@@ -24,13 +24,23 @@ export class RealWriteBlockedError extends Error {
 }
 
 /**
- * True only for a bare emergency stop. An e-stop must never be blocked — a
- * guard that swallows M112 is more dangerous than the thing it guards. Kept
- * strict so it can't be used to smuggle other codes through in the same call.
+ * True only for an emergency stop: a bare M112, or the M112+M999 halt-and-reset
+ * pair the STOP button sends as a single payload. An e-stop must never be
+ * blocked — a guard that swallows it is more dangerous than the thing it
+ * guards — so this has to track what the button actually sends, or it fails
+ * closed on the real board in the default unarmed state.
+ *
+ * Still strict: the pair must be exactly those two codes in that order, so this
+ * can't be used to smuggle anything else through in the same call.
  */
 export function isEmergencyStop(code: string): boolean {
-	const stripped = code.replace(/;.*$/gm, "").trim();
-	return /^m112$/i.test(stripped);
+	const lines = code
+		.replace(/;.*$/gm, "")
+		.split("\n")
+		.map(line => line.trim().toUpperCase())
+		.filter(line => line !== "");
+	if (lines[0] !== "M112") return false;
+	return lines.length === 1 || (lines.length === 2 && lines[1] === "M999");
 }
 
 export interface GuardOptions {

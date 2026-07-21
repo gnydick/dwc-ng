@@ -35,9 +35,11 @@ export default function Shell() {
 		app.om.om.heat.heaters.some(h => h !== null && h.state === "fault"));
 
 	const emergencyStop = (): void => {
-		// M112 halts immediately; M999 resets so the board comes back
-		void app.connector.sendCode("M112").catch(() => undefined);
-		void app.connector.sendCode("M999").catch(() => undefined);
+		// M112 halts immediately; M999 resets so the board comes back. ONE payload,
+		// not two calls: as two un-awaited requests they race (order not guaranteed)
+		// and the reset has to reach a board that just halted. Matches DWC —
+		// reference/dwc/src/components/buttons/EmergencyBtn.vue:2 sends 'M112\nM999'.
+		void app.connector.sendCode("M112\nM999").catch(() => undefined);
 	};
 
 	return (
