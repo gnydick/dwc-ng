@@ -4,7 +4,7 @@ import { FileNotFoundError } from "../connector/types.ts";
 import {
 	CONFIG_CACHE_KEY, CONFIG_FILE, CONFIG_VERSION, DEFAULT_CONFIG, MAX_SNAPSHOTS,
 	type CameraConfig, type ConfigOverlay, type ConfigSnapshot, type DockSensorRef,
-	type MacrosConfig, type UiConfig,
+	type BedConfig, type MacrosConfig, type UiConfig,
 } from "./types.ts";
 
 export interface ConfigStore {
@@ -22,6 +22,7 @@ export interface ConfigStore {
 	setSensorName(key: string, name: string): void;
 	clearSensorName(key: string): void;
 	setMacros(patch: Partial<MacrosConfig>): void;
+	setBed(patch: Partial<BedConfig>): void;
 
 	/** Drop one section's overlay — that section returns to defaults. */
 	resetSection(section: keyof UiConfig): void;
@@ -82,6 +83,9 @@ export function createConfigStore(): ConfigStore {
 		},
 		setMacros(patch) {
 			apply(draft => { draft.macros = { ...draft.macros, ...patch }; });
+		},
+		setBed(patch) {
+			apply(draft => { draft.bed = { ...draft.bed, ...patch }; });
 		},
 
 		resetSection(section) {

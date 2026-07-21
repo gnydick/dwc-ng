@@ -36,6 +36,19 @@ export interface MacrosConfig {
 	autoConfirmRun: boolean;
 }
 
+export interface BedConfig {
+	/**
+	 * Command sent to re-probe one height-map point. {x}/{y} are replaced with
+	 * the cell's bed coordinates.
+	 *
+	 * A macro by default: the motion — and the preconditions this machine's
+	 * mesh.g already enforces, like refusing to probe with a tool undocked —
+	 * belongs in the operator's own config, not in this UI. A default that is
+	 * wrong for a machine is fixed here rather than in a release.
+	 */
+	probePointCommand: string;
+}
+
 export interface UiConfig {
 	/** Axis letter → human role label ("U" → "Z motor 1"). RRF has no
 	 * notion of axis roles; this is per-machine UI metadata. */
@@ -50,6 +63,7 @@ export interface UiConfig {
 	 * Sensors card wherever set. */
 	sensorNames: Record<string, string>;
 	macros: MacrosConfig;
+	bed: BedConfig;
 }
 
 export type DeepPartial<T> = {
@@ -71,6 +85,7 @@ export const DEFAULT_CONFIG: UiConfig = {
 	sensorNames: {},
 	// Off by default: a fresh install asks before firing a macro at the machine.
 	macros: { autoConfirmRun: false },
+	bed: { probePointCommand: 'M98 P"0:/macros/dwc-ng/reprobe.g" X{x} Y{y}' },
 };
 
 /** Where the overlay lives on the machine's SD card. */
