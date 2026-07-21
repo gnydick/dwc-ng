@@ -94,6 +94,19 @@ export interface Connector {
 	download(path: string): Promise<string>;
 	/** List a directory. */
 	list(dir: string): Promise<FileListEntry[]>;
+	/** Create a directory. Rejects if it already exists or the parent is missing. */
+	mkdir(path: string): Promise<void>;
+	/**
+	 * Rename or move. Rejects rather than clobbering an existing destination
+	 * unless `overwrite` is set — losing a file to a name collision should take
+	 * a deliberate act, not a default.
+	 */
+	move(from: string, to: string, overwrite?: boolean): Promise<void>;
+	/**
+	 * Delete a file, or a directory when `recursive` is set. A non-empty
+	 * directory rejects without it.
+	 */
+	remove(path: string, recursive?: boolean): Promise<void>;
 	/** Parse a job file's metadata (height, filament, layers, thumbnails). */
 	getFileInfo(path: string): Promise<GcodeFileInfo>;
 	/**

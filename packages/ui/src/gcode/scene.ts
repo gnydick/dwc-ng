@@ -490,7 +490,6 @@ export function createScene(
 	let mergedMatrices: Float32Array | null = null; // 16 floats per merged run, PRINT order
 	let mergedSegStart: Uint32Array | null = null; // first original segment index of each run (split classification)
 	let mergedColorSeg: Uint32Array | null = null; // original segment index each run samples its color from
-	let runCount = 0;                              // number of merged runs
 
 	// The ghost is a 50%-alpha preview of what hasn't printed yet, so it does not
 	// need the opaque set's fidelity. It gets its OWN run table at a much looser
@@ -632,7 +631,6 @@ export function createScene(
 		mergedMatrices = matrices;
 		mergedSegStart = segStart;
 		mergedColorSeg = colorSeg;
-		runCount = count;
 
 		// Ghost: its own, coarser table.
 		const gRuns = mergeExtrudingRuns(positions, widths, extruding, layerIndex, GHOST_TOLERANCE_MM);

@@ -16,6 +16,9 @@ function fakeConnector() {
 		list: async (dir: string) => { seen.push(`list:${dir}`); return []; },
 		getFileInfo: async (path: string) => { seen.push(`fileInfo:${path}`); return {} as never; },
 		getThumbnail: async (path: string) => { seen.push(`thumb:${path}`); return new Uint8Array(); },
+		mkdir: async (path: string) => { seen.push(`mkdir:${path}`); },
+		move: async (from: string, to: string) => { seen.push(`move:${from}->${to}`); },
+		remove: async (path: string) => { seen.push(`remove:${path}`); },
 	} as unknown as Connector;
 	return { inner, seen };
 }
@@ -104,4 +107,44 @@ test("real + unarmed: the M112+M999 pair passes — the STOP button must work", 
 	const { c, seen } = guard({ real: true, armed: false });
 	await c.sendCode("M112\nM999");
 	assert.deepEqual(seen, ["sendCode:M112\nM999"]);
+});
+
+// Destructive file operations are exactly what the guard exists for. A delete
+// that reaches the real board cannot be undone, and these three were added to
+// the Connector interface AFTER the guard was written — the failure mode is
+// that new mutations silently default to unguarded.
+test("real + unarmed: destructive file operations are blocked", async () => {
+	const { c, seen } = guard({ real: true, armed: false });
+	await assert.rejects(() => c.remove("0:/gcodes/a.gcode"), RealWriteBlockedError);
+	await assert.rejects(() => c.move("0:/gcodes/a.gcode", "0:/gcodes/b.gcode"), RealWriteBlockedError);
+	await assert.rejects(() => c.mkdir("0:/gcodes/parts"), RealWriteBlockedError);
+	assert.deepEqual(seen, [], "nothing reached the board");
+});
+
+test("real + armed: destructive file operations pass through", async () => {
+	const { c, seen } = guard({ real: true, armed: true });
+	await c.remove("0:/gcodes/a.gcode", true);
+	await c.move("0:/gcodes/a.gcode", "0:/gcodes/b.gcode");
+	await c.mkdir("0:/gcodes/parts");
+	assert.deepEqual(seen, [
+		"remove:0:/gcodes/a.gcode", "move:0:/gcodes/a.gcode->0:/gcodes/b.gcode", "mkdir:0:/gcodes/parts",
+	]);
+});
+
+// Guarding must not silently drop arguments: a recursive delete that arrives
+// as non-recursive would fail confusingly, and one that arrives recursive when
+// it shouldn't would take the whole directory.
+test("the guard forwards file-operation arguments unchanged", async () => {
+	const calls: unknown[][] = [];
+	const inner = {
+		status: "connected",
+		remove: async (...args: unknown[]) => { calls.push(["remove", ...args]); },
+		move: async (...args: unknown[]) => { calls.push(["move", ...args]); },
+	} as unknown as Connector;
+	const c = guardWrites(inner, { isReal: () => false, isArmed: () => false });
+
+	await c.remove("0:/gcodes/batch", true);
+	await c.move("0:/a", "0:/b", true);
+
+	assert.deepEqual(calls, [["remove", "0:/gcodes/batch", true], ["move", "0:/a", "0:/b", true]]);
 });

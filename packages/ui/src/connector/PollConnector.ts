@@ -271,6 +271,35 @@ export class PollConnector implements Connector {
 		}
 	}
 
+	/**
+	 * The mutating file operations. All three answer HTTP 200 with { err } in
+	 * the body, so success has to be read from `err` — a connector that trusts
+	 * the status code reports every failure as a success.
+	 */
+	async mkdir(path: string): Promise<void> {
+		await this.fileOp(`rr_mkdir?dir=${encodeURIComponent(path)}`, `create ${path}`);
+	}
+
+	async move(from: string, to: string, overwrite = false): Promise<void> {
+		await this.fileOp(
+			`rr_move?old=${encodeURIComponent(from)}&new=${encodeURIComponent(to)}`
+			+ `&deleteexisting=${overwrite ? "yes" : "no"}`,
+			`move ${from} to ${to}`,
+		);
+	}
+
+	async remove(path: string, recursive = false): Promise<void> {
+		await this.fileOp(
+			`rr_delete?name=${encodeURIComponent(path)}&recursive=${recursive ? "yes" : "no"}`,
+			`delete ${path}`,
+		);
+	}
+
+	private async fileOp(query: string, what: string): Promise<void> {
+		const body = await this.getJson(query, "low") as { err?: number };
+		if (body.err) throw new OperationFailedError(`could not ${what} (err ${body.err})`);
+	}
+
 	async getFileInfo(path: string): Promise<GcodeFileInfo> {
 		const res = await this.getJson(`rr_fileinfo?name=${encodeURIComponent(path)}`, "low") as
 			Partial<GcodeFileInfo> & { err?: number };

@@ -284,3 +284,97 @@ test("getFileInfo surfaces a missing file as a rejection, not empty data", async
 		await h.close();
 	}
 });
+
+// --- file management: rr_mkdir / rr_move / rr_delete ---
+// These are the only mutating file operations besides upload. Every one of
+// them returns { err } in the body with HTTP 200, so a connector that only
+// checks res.ok reports success for every failure. That is the bug these
+// tests exist to prevent.
+
+test("mkdir creates a directory that then lists", async () => {
+	const h = await startHarness();
+	try {
+		await h.connector.connect();
+		await h.connector.mkdir("0:/gcodes/parts");
+		const entries = await h.connector.list("0:/gcodes");
+		assert.ok(entries.some(e => e.name === "parts" && e.type === "d"), "new directory must appear");
+	} finally {
+		await h.close();
+	}
+});
+
+test("mkdir surfaces a firmware error instead of resolving silently", async () => {
+	const h = await startHarness();
+	try {
+		await h.connector.connect();
+		await h.connector.mkdir("0:/gcodes/parts");
+		// Creating the same directory twice fails on the board — err 1, HTTP 200.
+		await assert.rejects(() => h.connector.mkdir("0:/gcodes/parts"));
+	} finally {
+		await h.close();
+	}
+});
+
+test("move renames a file", async () => {
+	const h = await startHarness();
+	try {
+		await h.connector.connect();
+		await h.connector.upload("0:/gcodes/before.gcode", "G28\n");
+		await h.connector.move("0:/gcodes/before.gcode", "0:/gcodes/after.gcode");
+
+		const names = (await h.connector.list("0:/gcodes")).map(e => e.name);
+		assert.ok(names.includes("after.gcode"), "renamed file present");
+		assert.ok(!names.includes("before.gcode"), "old name gone");
+	} finally {
+		await h.close();
+	}
+});
+
+test("move refuses to clobber unless told to", async () => {
+	const h = await startHarness();
+	try {
+		await h.connector.connect();
+		await h.connector.upload("0:/gcodes/a.gcode", "G28\n");
+		await h.connector.upload("0:/gcodes/b.gcode", "G29\n");
+
+		await assert.rejects(
+			() => h.connector.move("0:/gcodes/a.gcode", "0:/gcodes/b.gcode"),
+			"overwriting must not be the default",
+		);
+		await h.connector.move("0:/gcodes/a.gcode", "0:/gcodes/b.gcode", true);
+		assert.equal(await h.connector.download("0:/gcodes/b.gcode"), "G28\n");
+	} finally {
+		await h.close();
+	}
+});
+
+test("remove deletes a file", async () => {
+	const h = await startHarness();
+	try {
+		await h.connector.connect();
+		await h.connector.upload("0:/gcodes/doomed.gcode", "G28\n");
+		await h.connector.remove("0:/gcodes/doomed.gcode");
+		const names = (await h.connector.list("0:/gcodes")).map(e => e.name);
+		assert.ok(!names.includes("doomed.gcode"));
+	} finally {
+		await h.close();
+	}
+});
+
+// A non-empty directory must NOT vanish because the caller forgot a flag.
+test("remove needs recursive to delete a non-empty directory", async () => {
+	const h = await startHarness();
+	try {
+		await h.connector.connect();
+		await h.connector.mkdir("0:/gcodes/batch");
+		await h.connector.upload("0:/gcodes/batch/one.gcode", "G28\n");
+
+		await assert.rejects(() => h.connector.remove("0:/gcodes/batch"));
+		await h.connector.remove("0:/gcodes/batch", true);
+
+		const names = (await h.connector.list("0:/gcodes")).map(e => e.name);
+		assert.ok(!names.includes("batch"));
+	} finally {
+		await h.close();
+	}
+});

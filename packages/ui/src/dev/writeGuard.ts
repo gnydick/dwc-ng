@@ -55,7 +55,7 @@ export interface GuardOptions {
  * (model polling, download, list, fileinfo, thumbnails) always pass.
  */
 export function guardWrites(inner: Connector, opts: GuardOptions): Connector {
-	const blocked = (what: string): boolean => opts.isReal() && !opts.isArmed();
+	const blocked = (): boolean => opts.isReal() && !opts.isArmed();
 
 	return {
 		get status() { return inner.status; },
@@ -63,15 +63,32 @@ export function guardWrites(inner: Connector, opts: GuardOptions): Connector {
 		disconnect: () => inner.disconnect(),
 
 		// --- mutations: fail closed on real unless armed ---
+		// Every Connector mutation must appear here. The compiler enforces that
+		// nothing is MISSING (the return type is the full Connector, so a new
+		// method fails to typecheck until it's listed) but it cannot tell a
+		// mutation from a read — that judgement is the one thing to get right
+		// when adding to the interface.
 		sendCode: async (code: string) => {
-			if (!isEmergencyStop(code) && blocked(code)) {
+			if (!isEmergencyStop(code) && blocked()) {
 				throw new RealWriteBlockedError(code.split("\n")[0] ?? code);
 			}
 			return inner.sendCode(code);
 		},
 		upload: async (path: string, content: Uint8Array | string) => {
-			if (blocked(path)) throw new RealWriteBlockedError(`upload ${path}`);
+			if (blocked()) throw new RealWriteBlockedError(`upload ${path}`);
 			return inner.upload(path, content);
+		},
+		mkdir: async (path: string) => {
+			if (blocked()) throw new RealWriteBlockedError(`mkdir ${path}`);
+			return inner.mkdir(path);
+		},
+		move: async (from: string, to: string, overwrite?: boolean) => {
+			if (blocked()) throw new RealWriteBlockedError(`move ${from} to ${to}`);
+			return inner.move(from, to, overwrite);
+		},
+		remove: async (path: string, recursive?: boolean) => {
+			if (blocked()) throw new RealWriteBlockedError(`delete ${path}`);
+			return inner.remove(path, recursive);
 		},
 
 		// --- reads: always allowed ---
