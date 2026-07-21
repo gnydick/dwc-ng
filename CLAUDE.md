@@ -21,6 +21,23 @@ with no rework above the connector abstraction.
   offsets). Merge = wholesale subtree replacement.
 - nothing should be able to break by construction
 
+## Reference source: read-only, never copy (HARD AND FAST RULE)
+
+- ALL vendored and example third-party source we read — everything under
+  reference/ (DWC, @duet3d/*, the M409 docs), any installed dep we open to
+  study (e.g. @sindarius/gcodeviewer, Babylon examples), and any code seen
+  on a board, in a repo, or on the web — is REFERENCE ONLY. It exists to
+  help us understand HOW a problem was solved and WHAT edge cases exist.
+- You may NEVER copy, port, transcribe, translate, or line-by-line
+  paraphrase vendor/example code into this repo. Every implementation here
+  must be our own novel work: take the understanding, then write it from
+  scratch to fit our architecture (Solid store + reconcile, connector
+  abstraction, lean plain-data types, hand-rolled CSS, our conventions).
+- Citing reference by file/line to explain a decision is encouraged;
+  lifting its code is forbidden. This is a standing project rule, not
+  license-driven caution to be waived — it holds regardless of the vendor's
+  license. If a solution seems to require copying, STOP and ask.
+
 ## Stack (already decided, do not relitigate)
 
 - SolidJS + TypeScript + Vite, pnpm workspaces
