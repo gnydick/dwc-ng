@@ -86,7 +86,11 @@ export default function Control() {
 				<ActiveJobCard canvas={canvas} />
 
 				<Card id="homing" canvas={canvas} ariaLabel="Homing" title="Homing" tip="G28 · M84">
-					<div class="ctl-wrap">
+					{/* A grid, not a wrap: axis labels differ in length ("Home All" vs
+					    "Home U · Z motor 1"), so flex-wrapping produced six different
+					    button widths and six different left edges. Equal columns give
+					    one width and aligned rows regardless of what the axes are called. */}
+					<div class="ctl-grid">
 						<GcodeButton label="Home All" variant="go" command={cmd.homeAll()} />
 						<For each={axes()}>
 							{axis => (
