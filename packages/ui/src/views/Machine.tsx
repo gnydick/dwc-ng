@@ -5,6 +5,7 @@ import { sensorRows } from "./machine.sensors.ts";
 import { TemperatureChart, type ChartSeries } from "../charts/TemperatureChart.tsx";
 import { Card } from "../shell/Card.tsx";
 import { PositionCard } from "../cards/PositionCard.tsx";
+import { ActiveJobCard } from "../cards/ActiveJobCard.tsx";
 import { HeaterState } from "../cards/HeaterState.tsx";
 import { PanelCanvas } from "../shell/PanelCanvas.tsx";
 import { ConsolePanel } from "../shell/ConsolePanel.tsx";
@@ -51,12 +52,6 @@ export default function Machine() {
 			label: bedSet.has(i) ? "Bed" : toolByHeater.get(i) ?? `Heater ${i}`,
 			stroke: bedSet.has(i) ? "#c9a227" : TOOL_COLORS[i % TOOL_COLORS.length]!,
 		}));
-	});
-
-	const jobProgress = createMemo(() => {
-		const job = app.om.om.job;
-		if (job.file === null || job.filePosition === null || job.file.size === 0) return null;
-		return (job.filePosition / job.file.size) * 100;
 	});
 
 	return (
@@ -194,29 +189,7 @@ export default function Machine() {
 					</Show>
 				</Card>
 
-				<Card id="job" canvas={canvas} ariaLabel="Job" title="Job" tip="job">
-					<Show
-						when={app.om.om.job.file}
-						fallback={
-							<p class="job-empty">
-								No job running.
-								<Show when={app.om.om.job.lastFileName}> Last: {app.om.om.job.lastFileName}</Show>
-							</p>
-						}
-					>
-						{file => (
-							<div class="job-line">
-								<span class="fname">{file().fileName}</span>
-								<Show when={app.om.om.job.layer !== null}>
-									<span class="heat-set">layer {app.om.om.job.layer} / {file().numLayers}</span>
-								</Show>
-								<Show when={jobProgress() !== null}>
-									<span class="pct">{jobProgress()!.toFixed(1)}%</span>
-								</Show>
-							</div>
-						)}
-					</Show>
-				</Card>
+				<ActiveJobCard canvas={canvas} />
 
 				<Card id="sensors" canvas={canvas} ariaLabel="Sensors" title="Sensors" tip="sensors.endstops · filamentMonitors · probes" orientationToggle>
 					<Show when={sensorList().length} fallback={<p class="job-empty">No sensors configured.</p>}>

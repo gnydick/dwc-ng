@@ -7,6 +7,7 @@ import { Card } from "../shell/Card.tsx";
 import { PanelCanvas } from "../shell/PanelCanvas.tsx";
 import { ConsolePanel } from "../shell/ConsolePanel.tsx";
 import { CameraPanel } from "../shell/CameraPanel.tsx";
+import { ActiveJobCard } from "../cards/ActiveJobCard.tsx";
 import { createPanelCanvas } from "../shell/panelCanvas.ts";
 import { CONTROL_PANEL_DEFAULTS } from "./control.panelDefaults.ts";
 
@@ -53,6 +54,8 @@ export default function Control() {
 				<button class="layout-reset" onClick={() => canvas.reset()}>↺ Reset layout</button>
 			</div>
 			<PanelCanvas class="control">
+				<ActiveJobCard canvas={canvas} />
+
 				<Card id="homing" canvas={canvas} ariaLabel="Homing" title="Homing" tip="G28">
 					<div class="ctl-wrap">
 						<GcodeButton label="Home All" variant="go" command={cmd.homeAll()} />

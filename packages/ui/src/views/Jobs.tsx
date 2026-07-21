@@ -8,7 +8,6 @@ import { ConsolePanel } from "../shell/ConsolePanel.tsx";
 import { CameraPanel } from "../shell/CameraPanel.tsx";
 import { createPanelCanvas } from "../shell/panelCanvas.ts";
 import { JOBS_PANEL_DEFAULTS } from "./jobs.panelDefaults.ts";
-import { ActiveJobCard } from "../cards/ActiveJobCard.tsx";
 
 const GCODES_ROOT = "0:/gcodes";
 
@@ -24,7 +23,6 @@ const ACTIVE_STATUSES = new Set(["processing", "paused", "pausing", "resuming", 
 export default function Jobs() {
 	const app = useApp();
 	const canvas = createPanelCanvas("dwc-ng.canvas.jobs", JOBS_PANEL_DEFAULTS, id => {
-		if (id === "active-job") return isActive();
 		if (id === "camera") return app.config.config.camera.pinned;
 		if (id === "job-details") return selected() !== null;
 		return true;
@@ -96,8 +94,6 @@ export default function Jobs() {
 				<button class="layout-reset" onClick={() => canvas.reset()}>↺ Reset layout</button>
 			</div>
 			<PanelCanvas class="jobs">
-				<ActiveJobCard canvas={canvas} />
-
 				<Card id="job-files" canvas={canvas} ariaLabel="Job files" class="jobs-browse" title="Jobs" tip={dir()}>
 
 					<nav class="crumbs" aria-label="Folder">

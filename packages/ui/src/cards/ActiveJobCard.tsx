@@ -6,9 +6,16 @@ import type { PanelCanvasController } from "../shell/panelCanvas.ts";
 /** RRF statuses where a job is on the machine and controllable. */
 const ACTIVE_STATUSES = new Set(["processing", "paused", "pausing", "resuming", "cancelling", "simulating"]);
 
-/** The active-print progress card — used on Jobs and Activity. Renders
- *  nothing when no job is active (Jobs.tsx's panelCanvas isActive callback
- *  for "active-job" should key off the same condition — see callers). */
+/**
+ * The print card — progress and pause/resume/cancel. It lives on the surfaces
+ * where you WATCH or DRIVE the machine (Machine, Control, Activity), not on
+ * Jobs: Jobs owns the file listing, and running a job is a control action, not
+ * a property of a file.
+ *
+ * It renders in every state rather than vanishing when idle. That keeps one
+ * card as the single answer to "what is the machine printing?", and means the
+ * panel does not pop in and out of a layout the operator arranged.
+ */
 export function ActiveJobCard(props: { canvas: PanelCanvasController }) {
 	const app = useApp();
 	const job = () => app.om.om.job;
@@ -25,7 +32,17 @@ export function ActiveJobCard(props: { canvas: PanelCanvasController }) {
 	});
 
 	return (
-		<Show when={isActive()}>
+		<Show
+			when={isActive()}
+			fallback={
+				<Card id="active-job" canvas={props.canvas} ariaLabel="Active job" class="job-active" title="Printing" tip="job · state">
+					<p class="job-empty">
+						No job running.
+						<Show when={app.om.om.job.lastFileName}> Last: {baseName(app.om.om.job.lastFileName)}</Show>
+					</p>
+				</Card>
+			}
+		>
 			<Card id="active-job" canvas={props.canvas} ariaLabel="Active job" class="job-active" title="Printing" tip="job · state">
 				<Show when={jobFile()} fallback={<p class="job-empty">{app.om.om.state.status}…</p>}>
 					{file => (
