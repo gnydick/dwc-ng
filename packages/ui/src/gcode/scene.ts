@@ -108,8 +108,10 @@ export interface SceneHandle {
 		positions: Float32Array, hue: Float32Array, widths: Float32Array, extruding: Uint8Array, layerIndex: Uint16Array,
 		opaqueRange: SegmentRange, ghostRanges: GhostRanges,
 	): void;
-	/** Rewrites colors and re-splits the opaque/ghost meshes — called on every live position tick. Travel's own mesh is untouched (its geometry/color never changes tick to tick). */
+	/** Rebuilds the per-run color buffers (color MODE changed) and re-applies the split. Infrequent — not the live tick. */
 	updateColors(hue: Float32Array, opaqueRange: SegmentRange, ghostRanges: GhostRanges): void;
+	/** The live hot path: re-applies the opaque/ghost split for a new position/reveal/ghost mode. In the prefix case this is just two thinInstanceCount updates — no geometry or color upload. */
+	updatePosition(opaqueRange: SegmentRange, ghostRanges: GhostRanges): void;
 	/** Shows or hides the (always-built, separately-colored) travel-move mesh. */
 	setTravelVisible(visible: boolean): void;
 	/** Moves the tool-position marker to the current head position, or hides it (null — nothing printing/no live position). */
@@ -415,13 +417,32 @@ export function createScene(
 	// only which runs are opaque vs ghost (by segStart) and their colors
 	// change per tick. mergedSegStart is ascending, so any contiguous
 	// original-segment range maps to a contiguous slice of merged instances.
-	let mergedMatrices: Float32Array | null = null; // 16 floats per merged run
+	let mergedMatrices: Float32Array | null = null; // 16 floats per merged run, PRINT order
 	let mergedSegStart: Uint32Array | null = null; // first original segment index of each run (split classification)
 	let mergedColorSeg: Uint32Array | null = null; // original segment index each run samples its color from
+	let runCount = 0;                              // number of merged runs
+
+	// Build-once instance buffers. The whole toolpath is uploaded to the GPU a
+	// single time; a live tick then only changes thinInstanceCount — how many
+	// instances draw — never re-slices or re-uploads (the reference GCodeViewer's
+	// speed comes from exactly this: build once, drive progress with a scalar).
+	//   - opaque* : PRINT order, so the printed prefix [0, printed) is a count.
+	//   - ghost*  : REVERSE print order, so the NOT-yet-printed suffix is ALSO a
+	//     prefix ([0, total-printed)) — the two sets stay disjoint (no z-fight)
+	//     and each is a single count, no offset needed.
+	let ghostMatrices: Float32Array | null = null; // 16 floats per run, REVERSE order
+	let opaqueColors: Float32Array | null = null;  // 4 floats per run, PRINT order (rebuilt only on colorMode change)
+	let ghostColors: Float32Array | null = null;   // 4 floats per run, REVERSE order
+
 	let opaqueMesh: Mesh | null = null;
-	let ghostBeforeMesh: Mesh | null = null;
+	let ghostBeforeMesh: Mesh | null = null; // only used by the band (layer-focus) path
 	let ghostAfterMesh: Mesh | null = null;
 	let travelMesh: Mesh | null = null;
+
+	// Which buffers the opaque/ghostAfter meshes currently hold, so a hot-path
+	// tick can tell whether it may just set counts (already "prefix") or must
+	// (re)upload the full/sliced buffers first (coming from "band"/"none").
+	let splitConfig: "none" | "prefix" | "band" = "none";
 
 	const onCameraChanged = (): void => {
 		setOrthoFrustum(currentWidth, currentHeight);
@@ -510,6 +531,13 @@ export function createScene(
 		mergedMatrices = matrices;
 		mergedSegStart = segStart;
 		mergedColorSeg = colorSeg;
+		runCount = count;
+		// The ghost draws its instances in REVERSE print order, so the
+		// not-yet-printed suffix becomes a prefix drivable by thinInstanceCount
+		// (see the buffer declarations above). Reverse the per-run matrix blocks.
+		const rev = new Float32Array(count * 16);
+		for (let r = 0; r < count; r++) rev.set(matrices.subarray((count - 1 - r) * 16, (count - 1 - r) * 16 + 16), r * 16);
+		ghostMatrices = rev;
 	};
 
 	/** Per-segment box matrices for the NON-extruding (travel) moves only — travel isn't merged (it's hidden by default and low-count). */
@@ -577,9 +605,10 @@ export function createScene(
 		}
 		mesh.setEnabled(true);
 		mesh.isVisible = true;
-		// staticBuffer=false: these buffers legitimately get rewritten every
-		// recolor() tick (a live print's opaque/ghost split moves), unlike
-		// travel's build-once-at-load buffer below.
+		// These full/sliced buffers are uploaded once per geometry/color change (or
+		// per band re-slice), NOT per live tick — the hot path only changes
+		// thinInstanceCount. staticBuffer=false because they still get rewritten on
+		// those infrequent events (colorMode switch, reveal-mode switch, new file).
 		mesh.thinInstanceSetBuffer("matrix", outMatrices, 16, false);
 		if (outColors !== null) mesh.thinInstanceSetBuffer("color", outColors, 4, false);
 		return mesh;
@@ -605,40 +634,109 @@ export function createScene(
 		return applyInstances(existing, outMatrices, outColors, material, name);
 	};
 
-	const rebuild = (hue: Float32Array, opaqueRange: SegmentRange, ghostRanges: GhostRanges): void => {
+	// --- Build-once split: opaque prefix / ghost suffix via thinInstanceCount ---
+	// Sets how many of a build-once mesh's instances draw, or hides it at 0.
+	const setMeshCount = (mesh: Mesh | null, count: number): void => {
+		if (mesh === null) return;
+		if (count <= 0) { mesh.setEnabled(false); return; }
+		mesh.thinInstanceCount = count;
+		mesh.setEnabled(true);
+		mesh.isVisible = true;
+	};
+
+	// Uploads the persistent FULL buffers (all runs) onto the opaque (print
+	// order) and ghostAfter (reverse order) meshes. Called only when geometry or
+	// colors change, or when returning from the band path — never on a plain
+	// live-position tick, which just moves the two counts (no upload).
+	const loadFullBuffers = (): void => {
+		if (mergedMatrices === null || ghostMatrices === null || opaqueColors === null || ghostColors === null) return;
+		opaqueMesh = applyInstances(opaqueMesh, mergedMatrices, opaqueColors, opaqueMaterial, "opaque");
+		ghostAfterMesh = applyInstances(ghostAfterMesh, ghostMatrices, ghostColors, ghostMaterial, "ghostAfter");
+		ghostBeforeMesh?.setEnabled(false);
+	};
+
+	// Recomputes the full per-run color buffers (print + reverse order) from the
+	// current hue. Called when the color MODE changes (infrequent), not per tick.
+	const loadColors = (hue: Float32Array): void => {
 		if (mergedColorSeg === null) return;
-		// One color per merged run, sampled from its representative segment;
-		// ghost translucency comes from ghostMaterial's real alpha, not color.
-		const mergedColors = extractMergedColors(hue, mergedColorSeg);
-		opaqueMesh = buildRunMesh(opaqueMesh, opaqueRange.start, opaqueRange.end, mergedColors, opaqueMaterial, "opaque");
-		ghostBeforeMesh = buildRunMesh(ghostBeforeMesh, ghostRanges.before.start, ghostRanges.before.end, mergedColors, ghostMaterial, "ghostBefore");
-		ghostAfterMesh = buildRunMesh(ghostAfterMesh, ghostRanges.after.start, ghostRanges.after.end, mergedColors, ghostMaterial, "ghostAfter");
+		const fwd = extractMergedColors(hue, mergedColorSeg);
+		const n = runCount;
+		const rev = new Float32Array(n * 4);
+		for (let r = 0; r < n; r++) {
+			const s = (n - 1 - r) * 4;
+			rev[r * 4] = fwd[s]!; rev[r * 4 + 1] = fwd[s + 1]!; rev[r * 4 + 2] = fwd[s + 2]!; rev[r * 4 + 3] = fwd[s + 3]!;
+		}
+		opaqueColors = fwd;
+		ghostColors = rev;
+	};
+
+	// Applies the current opaque/ghost split. Two paths:
+	//   PREFIX (opaqueRange.start === 0: progressive, static, first-layer focus)
+	//     — the fast live path. The printed opaque prefix and the not-yet-printed
+	//     ghost suffix are each a single instance count on the build-once meshes,
+	//     so a tick just sets those two counts — no slicing, no GPU upload.
+	//   BAND (opaqueRange.start > 0: layer-focus above layer 0) — the cold path.
+	//     A middle band can't be a prefix, so opaque + both ghost pieces are
+	//     re-sliced/uploaded. Only on manual mode use / a layer change.
+	const applySplit = (opaqueRange: SegmentRange, ghostRanges: GhostRanges): void => {
+		if (mergedMatrices === null || mergedSegStart === null || opaqueColors === null) return;
+
+		if (opaqueRange.start === 0) {
+			if (splitConfig !== "prefix") {
+				// The meshes may currently hold band slices — reload the full buffers.
+				loadFullBuffers();
+				splitConfig = "prefix";
+			}
+			const opaqueCount = lowerBoundRun(mergedSegStart, opaqueRange.end); // runs [0, opaqueCount)
+			// Ghost is in reverse order, so its first (total - opaqueCount) instances
+			// are the not-yet-printed suffix. Hidden ghost → after range empty → 0.
+			const ghostCount = lowerBoundRun(mergedSegStart, ghostRanges.after.end) - lowerBoundRun(mergedSegStart, ghostRanges.after.start);
+			setMeshCount(opaqueMesh, opaqueCount);
+			setMeshCount(ghostAfterMesh, Math.max(0, ghostCount));
+		} else {
+			// Band path: re-slice opaque band + ghost before/after (forward order).
+			opaqueMesh = buildRunMesh(opaqueMesh, opaqueRange.start, opaqueRange.end, opaqueColors, opaqueMaterial, "opaque");
+			ghostBeforeMesh = buildRunMesh(ghostBeforeMesh, ghostRanges.before.start, ghostRanges.before.end, opaqueColors, ghostMaterial, "ghostBefore");
+			ghostAfterMesh = buildRunMesh(ghostAfterMesh, ghostRanges.after.start, ghostRanges.after.end, opaqueColors, ghostMaterial, "ghostAfter");
+			splitConfig = "band";
+		}
+
 		requestRender();
-		// A freshly built mesh's material shader compiles asynchronously —
-		// on-demand rendering (no continuous runRenderLoop) means the render
-		// just triggered above can fire before that compile finishes, and
-		// Babylon silently skips drawing any mesh that isn't ready yet with
-		// nothing to prompt a later retry. executeWhenReady's callback fires
-		// once every pending resource (including shader compilation) is
-		// actually ready, so this guarantees the real first paint happens.
-		// This only matters the first time a mesh is created (applyInstances
-		// reuses existing meshes after), so it's a one-time cost per mesh.
+		// A freshly built mesh's material shader compiles asynchronously; on-demand
+		// rendering can fire the render above before that finishes, and Babylon
+		// silently skips a not-yet-ready mesh with nothing to prompt a retry.
+		// executeWhenReady re-renders once every pending resource (incl. shader
+		// compile) is ready — guarantees the real first paint per new mesh.
 		scene.executeWhenReady(requestRender);
 	};
 
 	return {
 		setGeometry(positions, hue, widths, extruding, layerIndex, opaqueRange, ghostRanges) {
+			// New geometry → fresh meshes (each needs its own private geometry via
+			// makeGeometryUnique) and a forced full-buffer (re)load on next split.
+			disposeAll();
+			splitConfig = "none";
 			computeMergedGeometry(positions, widths, extruding, layerIndex);
+			loadColors(hue);
 
 			disposeTravel();
 			const travelMatrices = computeTravelMatrices(positions, widths, extruding);
 			travelMesh = travelMatrices.length > 0 ? applyInstances(null, travelMatrices, null, travelMaterial, "travel") : null;
 			if (travelMesh !== null) travelMesh.setEnabled(false);
 
-			rebuild(hue, opaqueRange, ghostRanges);
+			applySplit(opaqueRange, ghostRanges);
 		},
 		updateColors(hue, opaqueRange, ghostRanges) {
-			rebuild(hue, opaqueRange, ghostRanges);
+			// Color MODE changed: rebuild the color buffers and force a full reload
+			// (splitConfig "none" makes applySplit re-upload the new colors).
+			loadColors(hue);
+			splitConfig = "none";
+			applySplit(opaqueRange, ghostRanges);
+		},
+		updatePosition(opaqueRange, ghostRanges) {
+			// Live-position / reveal / ghost-mode tick — the hot path. In the prefix
+			// case this is just two thinInstanceCount assignments, no upload.
+			applySplit(opaqueRange, ghostRanges);
 		},
 		setTravelVisible(visible) {
 			travelMesh?.setEnabled(visible);

@@ -55,6 +55,11 @@ export function GcodeViewer(props: { canvas: PanelCanvasController }) {
 	let worker: Worker | null = null;
 	let toolpath: ParsedToolpath | null = null;
 	let generation = 0;
+	// Cached per-segment hue: recomputed and re-uploaded only when the color MODE
+	// changes, so a live position tick stays on the cheap build-once split path
+	// (updatePosition) instead of rebuilding colors every poll.
+	let cachedHue: Float32Array | null = null;
+	let cachedColorMode: ColorMode | null = null;
 
 	const [status, setStatus] = createSignal<Status>("empty");
 	const [message, setMessage] = createSignal("");
@@ -108,8 +113,18 @@ export function GcodeViewer(props: { canvas: PanelCanvasController }) {
 		const liveIndex = fp === null ? -1 : findSegmentIndex(toolpath.byteOffset, fp);
 		const opaqueRange = computeOpaqueRange(toolpath.segmentCount, toolpath.layerIndex, liveIndex, revealMode());
 		const ghostRanges = computeGhostRanges(toolpath.segmentCount, opaqueRange, ghostMode());
-		const hue = computeHueColors(toolpath, colorMode());
-		scene.updateColors(hue, opaqueRange, ghostRanges);
+
+		// Colors only change with the color MODE. On a mode change recompute + let
+		// the scene re-upload; otherwise this is a plain position/reveal/ghost tick,
+		// which just moves the split (two thinInstanceCount updates — no upload).
+		const mode = colorMode();
+		if (cachedHue === null || cachedColorMode !== mode) {
+			cachedHue = computeHueColors(toolpath, mode);
+			cachedColorMode = mode;
+			scene.updateColors(cachedHue, opaqueRange, ghostRanges);
+		} else {
+			scene.updatePosition(opaqueRange, ghostRanges);
+		}
 
 		// The marker tracks the actual head position independent of reveal
 		// mode (progressive/static/layer-focus only affect which segments
@@ -127,6 +142,7 @@ export function GcodeViewer(props: { canvas: PanelCanvasController }) {
 		setStatus("loading");
 		setMessage("");
 		toolpath = null;
+		cachedHue = null; // new file → force a fresh hue computation on first color
 		try {
 			const [text, sceneMod] = await Promise.all([app.connector.download(path), import("./scene.ts")]);
 			if (gen !== generation) return;
@@ -151,6 +167,10 @@ export function GcodeViewer(props: { canvas: PanelCanvasController }) {
 				const ghostRanges = computeGhostRanges(toolpath.segmentCount, opaqueRange, ghostMode());
 				const hue = computeHueColors(toolpath, colorMode());
 				scene!.setGeometry(toolpath.positions, hue, widths, toolpath.extruding, toolpath.layerIndex, opaqueRange, ghostRanges);
+				// Prime the cache so the recolor() below takes the cheap position path
+				// (setGeometry already uploaded this hue).
+				cachedHue = hue;
+				cachedColorMode = colorMode();
 				scene!.setTravelVisible(showTravel());
 				setStatus("ready");
 				recolor();
