@@ -71,7 +71,7 @@ nobody closes them by accident.
 | Jog with step sizes (`G91`/`G0`) | ✅ | ✅ | `M120 · G91 · M121` wrapped |
 | Babystepping (`M290`) | ✅ | ✅ | |
 | Workplace coordinate selection (G54–G59) | ✅ | ❌ | |
-| **Disable motors** (`M18`/`M84`) | ✅ | ❌ | |
+| **Disable motors** (`M84`) | 🚫 (console only) | ✅ | All + per axis in Homing. DWC has no such panel — `M84` appears there only as a console autocomplete hint (`store/machine/cache.ts:54`). |
 | Mesh bed compensation run (`G29`) | ✅ | ❌ | see §8 Height map |
 | CNC axes/movement panels | ✅ | 🚫 | FFF-focused appliance |
 
@@ -98,7 +98,7 @@ nobody closes them by accident.
 | Start print (`M32`) | ✅ | ✅ | |
 | Pause / resume (`M25`/`M24`) | ✅ | ✅ | |
 | Cancel (`M0`) | ✅ | ✅ | |
-| Simulate (`M37`) | ✅ | 🟡 | Simulations run and display; verify we can *start* one from the UI |
+| Simulate (`M37`) | ✅ | ✅ | Start button beside Start print (`M37 P"<file>"`) |
 | **Cancel individual object** (`M486`) | ✅ (viewer object selection) | ❌ | DWC's viewer supports per-object cancel |
 | Repeat / re-run last job | ✅ | ❌ | |
 | Job file thumbnails | ✅ | ✅ | QOI decoder, `thumbnails/` |
@@ -157,7 +157,7 @@ nobody closes them by accident.
 | **Firmware update** (`M997`, `FirmwareUpdateDialog`) | ✅ | ❌ | |
 | **Emergency stop** (`M112`) | ✅ | ✅ | |
 | **Board reset** (`M999`) | ✅ | ✅ | |
-| ATX power on/off (`M80`/`M81`) | ✅ (`ATXPanel`) | ❌ | |
+| ATX power on/off (`M80`/`M81`) | ✅ (`ATXPanel`) | ✅ | Shown only when `state.atxPower !== null`; Gabe's board has no PS_ON port so it stays hidden |
 | Communication/electronics info panels | ✅ | 🟡 | Some surfaced via OM inspector |
 | Hide menu items / list customisation | ✅ | 🚫 | Superseded by our panel grid |
 | Config-updated / incompatible-version prompts | ✅ | ❌ | |
@@ -174,10 +174,12 @@ nobody closes them by accident.
 **P1 — routine operation gaps**
 3. ✅ **File create / rename / delete / mkdir** (2026-07-21). One shared browser
    across Jobs/Macros/System; traversal is a compile error, not a check.
-4. **Filament load/unload** (`M701`/`M702`) and filament assignment. ← next
-5. **Disable motors** (`M18`/`M84`).
-6. **ATX power** (`M80`/`M81`) if the machine has it.
-7. Verify **simulation start** (`M37`) is reachable from the UI.
+   Recursive delete states its item count first; unrecoverable files need their
+   name typed back.
+4. ✅ **Disable motors** (`M84`) — all + per axis (2026-07-21).
+5. ✅ **ATX power** (`M80`/`M81`) — OM-gated, hidden on this machine (2026-07-21).
+6. ✅ **Simulation start** (`M37`) (2026-07-21).
+7. **Filament load/unload** (`M701`/`M702`) and filament assignment. ← next
 
 **P2 — visibility**
 8. **Height map** viewer (`G29` mesh) — biggest remaining visualisation gap.
