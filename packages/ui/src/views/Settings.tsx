@@ -16,7 +16,10 @@ import { SETTINGS_PANEL_DEFAULTS } from "./settings.panelDefaults.ts";
  */
 export default function Settings() {
 	const app = useApp();
-	const canvas = createPanelCanvas("dwc-ng.canvas.settings", SETTINGS_PANEL_DEFAULTS);
+	const canvas = createPanelCanvas("dwc-ng.canvas.settings", SETTINGS_PANEL_DEFAULTS,
+		// The camera panel is Show-gated on camera.pinned; when hidden it must
+		// not block a visible panel from being moved or resized into its cells.
+		id => (id === "camera" ? app.config.config.camera.pinned : true));
 
 	const visibleAxes = createMemo(() => app.om.om.move.axes.filter(a => a.visible));
 	const sensorList = createMemo(() => sensorRows(app.om.om.sensors, app.om.om.move.axes));

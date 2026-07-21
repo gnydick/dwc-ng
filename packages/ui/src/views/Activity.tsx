@@ -28,6 +28,7 @@ export default function Activity() {
 
 	const canvas = createPanelCanvas("dwc-ng.canvas.activity", ACTIVITY_PANEL_DEFAULTS, id => {
 		if (id === "active-job") return isActive();
+		if (id === "camera") return app.config.config.camera.pinned;
 		return true;
 	});
 

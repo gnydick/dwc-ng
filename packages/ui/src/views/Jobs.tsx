@@ -25,6 +25,7 @@ export default function Jobs() {
 	const app = useApp();
 	const canvas = createPanelCanvas("dwc-ng.canvas.jobs", JOBS_PANEL_DEFAULTS, id => {
 		if (id === "active-job") return isActive();
+		if (id === "camera") return app.config.config.camera.pinned;
 		if (id === "job-details") return selected() !== null;
 		return true;
 	});

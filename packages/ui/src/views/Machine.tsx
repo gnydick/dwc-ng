@@ -17,7 +17,10 @@ const TOOL_COLORS = ["#f0a050", "#6fbf8f", "#5aa9e6", "#c88ce0", "#e0b84a", "#8f
 /** The Machine view: live DRO, tools & heaters, current job. */
 export default function Machine() {
 	const app = useApp();
-	const canvas = createPanelCanvas("dwc-ng.canvas.machine", MACHINE_PANEL_DEFAULTS);
+	const canvas = createPanelCanvas("dwc-ng.canvas.machine", MACHINE_PANEL_DEFAULTS,
+		// The camera panel is Show-gated on camera.pinned; when hidden it must
+		// not block a visible panel from being moved or resized into its cells.
+		id => (id === "camera" ? app.config.config.camera.pinned : true));
 
 	const heaterAt = (index: number): Heater | null => app.om.om.heat.heaters[index] ?? null;
 	const bedHeaterIndex = createMemo(() => app.om.om.heat.bedHeaters.find(i => i >= 0) ?? -1);

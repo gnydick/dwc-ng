@@ -23,7 +23,10 @@ const SYS_ROOT = "0:/sys";
  */
 export default function System() {
 	const app = useApp();
-	const canvas = createPanelCanvas("dwc-ng.canvas.system", SYSTEM_PANEL_DEFAULTS);
+	const canvas = createPanelCanvas("dwc-ng.canvas.system", SYSTEM_PANEL_DEFAULTS,
+		// The camera panel is Show-gated on camera.pinned; when hidden it must
+		// not block a visible panel from being moved or resized into its cells.
+		id => (id === "camera" ? app.config.config.camera.pinned : true));
 	const connected = (): boolean => app.om.connection.status === "connected";
 
 	const [dir, setDir] = createSignal(SYS_ROOT);
