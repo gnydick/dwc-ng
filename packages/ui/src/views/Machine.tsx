@@ -5,6 +5,7 @@ import { sensorRows } from "./machine.sensors.ts";
 import { TemperatureChart, type ChartSeries } from "../charts/TemperatureChart.tsx";
 import { Card } from "../shell/Card.tsx";
 import { PositionCard } from "../cards/PositionCard.tsx";
+import { HeaterState } from "../cards/HeaterState.tsx";
 import { PanelCanvas } from "../shell/PanelCanvas.tsx";
 import { ConsolePanel } from "../shell/ConsolePanel.tsx";
 import { CameraPanel } from "../shell/CameraPanel.tsx";
@@ -109,7 +110,7 @@ export default function Machine() {
 																	<td><HeaterCurrent heater={h()} /></td>
 																	<td><span class="heat-set"><b>{h().active}</b>°</span></td>
 																	<td><span class="heat-set">{h().standby}°</span></td>
-																	<td><span class={`heat-state ${h().state}`}>{h().state}</span></td>
+																	<td><HeaterState heater={h()} index={t().heaters[0] ?? -1} /></td>
 																</>
 															)}
 														</Show>
@@ -131,7 +132,7 @@ export default function Machine() {
 												<td><span class="heat-set"><b>{h().active}</b>°</span></td>
 												{/* the bed has no standby mode — no standby cell, ever */}
 												<td><span class="heat-set">—</span></td>
-												<td><span class={`heat-state ${h().state}`}>{h().state}</span></td>
+												<td><HeaterState heater={h()} index={bedHeaterIndex()} /></td>
 											</tr>
 										)}
 									</Show>
@@ -164,7 +165,7 @@ export default function Machine() {
 															<HeaterCurrent heater={h()} />
 															<span class="heat-h-meta">
 																<b>{h().active}</b>°&nbsp;/&nbsp;{h().standby}°
-																<span class={`heat-state ${h().state}`}>{h().state}</span>
+																<HeaterState heater={h()} index={t().heaters[0] ?? -1} />
 															</span>
 														</>
 													)}
@@ -184,7 +185,7 @@ export default function Machine() {
 										<HeaterCurrent heater={h()} />
 										<span class="heat-h-meta">
 											<b>{h().active}</b>°&nbsp;/&nbsp;—
-											<span class={`heat-state ${h().state}`}>{h().state}</span>
+											<HeaterState heater={h()} index={bedHeaterIndex()} />
 										</span>
 									</div>
 								)}

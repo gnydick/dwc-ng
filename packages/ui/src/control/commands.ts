@@ -46,6 +46,13 @@ export const cmd = {
 	// --- fans ---
 	fan: (index: number, percent: number): string => `M106 P${index} S${(percent / 100).toFixed(2)}`,
 
+	/**
+	 * Clear a heater fault. P is the HEATER INDEX (heat.heaters), not a tool
+	 * number — they differ on a toolchanger (reference/dwc
+	 * ResetHeaterFaultDialog.vue:58).
+	 */
+	resetHeaterFault: (heater: number): string => `M562 P${heater}`,
+
 	// --- tuning ---
 	speedFactor: (percent: number): string => `M220 S${n(percent)}`,
 	flowFactor: (percent: number): string => `M221 S${n(percent)}`,

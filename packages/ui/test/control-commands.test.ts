@@ -55,3 +55,11 @@ test("coupler lock/unlock run the real macros", () => {
 	assert.equal(cmd.couplerLock(), 'M98 P"/macros/tool_lock"');
 	assert.equal(cmd.couplerUnlock(), 'M98 P"/macros/tool_unlock"');
 });
+
+// M562 P<heater> clears a heater fault. The parameter is the HEATER INDEX, not
+// a tool number — on a toolchanger those differ, and resetting the wrong one
+// leaves a genuinely faulted heater armed while clearing a healthy one.
+test("reset heater fault", () => {
+	assert.equal(cmd.resetHeaterFault(0), "M562 P0");
+	assert.equal(cmd.resetHeaterFault(3), "M562 P3");
+});

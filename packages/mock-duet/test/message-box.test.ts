@@ -111,3 +111,31 @@ test("raising a box bumps seqs.state so a polling client refetches", async t => 
 
 	assert.ok(after > before, `state seq must advance (${before} -> ${after})`);
 });
+
+// --- M562: clearing a latched heater fault ---
+
+test("M562 P<n> clears exactly that heater's fault", async t => {
+	const mock = await startMock();
+	t.after(() => mock.close());
+	const key = await mock.connect();
+
+	mock.machine.faultHeater(0);
+	mock.machine.faultHeater(1);
+
+	await mock.getJson(gcode("M562 P1"), key);
+
+	const heat = (await mock.getJson("rr_model?key=heat&flags=d99vno", key)).result;
+	assert.notEqual(heat.heaters[1].state, "fault", "heater 1 cleared");
+	assert.equal(heat.heaters[0].state, "fault", "the bed's fault must be untouched");
+});
+
+test("M562 on a healthy heater is a no-op, not an error", async t => {
+	const mock = await startMock();
+	t.after(() => mock.close());
+	const key = await mock.connect();
+
+	const before = (await mock.getJson("rr_model?key=heat&flags=d99vno", key)).result.heaters[1].state;
+	await mock.getJson(gcode("M562 P1"), key);
+	const after = (await mock.getJson("rr_model?key=heat&flags=d99vno", key)).result.heaters[1].state;
+	assert.equal(after, before);
+});

@@ -144,6 +144,22 @@ function executeLine(machine: Machine, line: string): string {
 		case "M2":
 			if (om.state.status === "paused" || om.state.status === "processing") machine.finishJob(true);
 			return "";
+		// Clear a latched heater fault. RRF refuses to heat until this runs, so
+		// a mock that ignores it would make the UI's reset look like it worked.
+		case "M562": {
+			const index = param("P");
+			const heaters = om.heat.heaters as Array<{ state: string } | null>;
+			if (index === null) {
+				for (const h of heaters) if (h?.state === "fault") h.state = "off";
+			} else {
+				const heater = heaters[index];
+				if (!heater) return `Error: Heater ${index} does not exist`;
+				if (heater.state !== "fault") return "";
+				heater.state = "off";
+			}
+			machine.bump("heat");
+			return "";
+		}
 		case "M112":
 			om.state.status = "halted";
 			machine.bump("state");
