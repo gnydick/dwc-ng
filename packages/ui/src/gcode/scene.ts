@@ -71,7 +71,7 @@ import { Camera } from "@babylonjs/core/Cameras/camera.js";
 import { HemisphericLight } from "@babylonjs/core/Lights/hemisphericLight.js";
 import { SpotLight } from "@babylonjs/core/Lights/spotLight.js";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder.js";
-import "@babylonjs/core/Meshes/Builders/cylinderBuilder.js"; // registers MeshBuilder.CreateCylinder (nozzle marker)
+import "@babylonjs/core/Meshes/Builders/cylinderBuilder.js"; // registers MeshBuilder.CreateCylinder (bead cross-section + nozzle marker)
 import "@babylonjs/core/Meshes/Builders/boxBuilder.js"; // registers MeshBuilder.CreateBox (toolpath tube cross-section)
 import "@babylonjs/core/Meshes/Builders/groundBuilder.js"; // registers MeshBuilder.CreateGround (reference bed plane)
 // Bare side-effect imports: Babylon's per-feature tree-shaking pattern
@@ -404,15 +404,27 @@ export function createScene(
 	marker.material = markerMaterial;
 	marker.setEnabled(false);
 
-	// Unit box (rectangular cross-section, 1×1×1 so scaling.x/z = the
-	// segment's real width and scaling.y = its real length directly) — a
-	// hidden template each mesh clones. A box instead of a round cylinder is
-	// both cheaper (8 verts / 12 tris vs a tessellated cylinder's many more)
-	// and a better match for a real FDM bead, which is a flat-topped
-	// rectangle, not a circle. Fewer, flatter faces also give the dense
-	// parallel runs less fine edge detail to shimmer against the pixel grid.
-	const tubeTemplate = MeshBuilder.CreateBox("tubeTemplate", {
-		width: 1, height: 1, depth: 1,
+	// Unit CYLINDER (round cross-section, height/diameter 1 so the instance
+	// matrix's columns are width / length / width directly — Babylon's cylinder
+	// axis is +Y, which is the column writeBoxMatrix puts the segment direction
+	// in, so no bake/rotate is needed).
+	//
+	// This was a flat box, chosen as cheaper (12 tris) and "closer to a real
+	// flat-topped FDM bead". That reasoning is superseded: a box has four flat
+	// faces and therefore no radial normals, so it cannot carry a specular
+	// highlight along the bead — and that highlight is what makes SEAMS visible,
+	// which is diagnostic information about the print, not decoration. The
+	// reference viewer (@sindarius/gcodeviewer, studied per CLAUDE.md — never
+	// copied) thin-instances a cylinder for exactly this reason; its geometry
+	// architecture is otherwise the same as ours.
+	//
+	// TESSELLATION is the quality/cost knob: tris per instance ≈ 4·T − 4 with
+	// caps (T=8 → 28, T=12 → 44) against the box's 12. Caps are kept because
+	// each bead is extended half a width at both ends, so open ends could show
+	// through at a run's extremities.
+	const TUBE_TESSELLATION = 12;
+	const tubeTemplate = MeshBuilder.CreateCylinder("tubeTemplate", {
+		height: 1, diameter: 1, tessellation: TUBE_TESSELLATION,
 	}, scene);
 	tubeTemplate.setEnabled(false);
 	tubeTemplate.isVisible = false;
