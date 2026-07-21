@@ -102,8 +102,19 @@ export function SpeedSlider(props: { currentPct: number }) {
 
 	const release = (): void => {
 		if (!dragging()) return;
+		// Read the dragged value BEFORE touching `dragging`, and claim the commit
+		// before clearing it.
+		//
+		// Solid runs dependent effects SYNCHRONOUSLY on a signal write, so
+		// `setDragging(false)` re-enters the follow-the-machine effect inside that
+		// very call. With the old order that effect overwrote value() with the
+		// machine's stale reading, and the send that followed shipped the
+		// pre-drag number: you could drag the handle anywhere and it always sent
+		// where it started.
+		const dragged = value();
+		setTarget(dragged);
 		setDragging(false);
-		void send(value());
+		void send(dragged);
 	};
 
 	/** Thumb width — stops line up with where the thumb centre can actually reach. */
