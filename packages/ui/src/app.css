@@ -1478,11 +1478,20 @@
 
 /* ---------- speed factor slider (M220) ---------- */
 .speed-row { display: flex; align-items: center; gap: 10px; height: var(--ctl-h); }
-.speed-track { position: relative; flex: 1; min-width: 120px; height: var(--ctl-h); display: flex; align-items: center; }
+/* The bar and its stops are stacked, NOT overlaid. The scale is always
+   0..2x current, so the handle sits permanently at the midpoint — and the
+   middle stop marks the current value, which is the same point. Overlaid, the
+   dot owned that pixel and the thumb could never be grabbed at all. Two
+   controls cannot share a point; they get separate rows. */
+.speed-track {
+	position: relative; flex: 1; min-width: 120px; height: var(--ctl-h);
+	display: flex; flex-direction: column; justify-content: flex-start;
+}
 
 .speed-input {
 	appearance: none; -webkit-appearance: none;
-	width: 100%; height: 100%; margin: 0; background: none; cursor: pointer;
+	/* 18px of the 28px row: leaves the bottom clear for the stops. */
+	width: 100%; height: 18px; margin: 0; background: none; cursor: pointer;
 }
 .speed-input::-webkit-slider-runnable-track {
 	height: 6px; border-radius: 3px;
@@ -1509,11 +1518,13 @@
 
 /* Stops sit ON the bar. The layer ignores pointer events so dragging the track
    still works; only the dots themselves are clickable. */
-.speed-stops { position: absolute; inset: 0; pointer-events: none; }
+/* A tick row under the bar. The layer ignores pointer events so it can never
+   steal a drag; only the dots themselves are clickable. */
+.speed-stops { position: absolute; left: 0; right: 0; bottom: 0; height: 9px; pointer-events: none; }
 .speed-stop {
-	position: absolute; top: 50%;
-	width: 8px; height: 8px; padding: 0;
-	transform: translate(-50%, -50%);
+	position: absolute; top: 1px;
+	width: 7px; height: 7px; padding: 0;
+	transform: translateX(-50%);
 	border-radius: 50%;
 	background: var(--mask-500); border: 1px solid var(--silk-dim);
 	cursor: pointer; pointer-events: auto;

@@ -1,78 +1,112 @@
-import { For, createEffect, createSignal } from "solid-js";
+import { For, createEffect, createSignal, onCleanup } from "solid-js";
 import { useApp } from "../shell/context.ts";
 import { cmd } from "./commands.ts";
 import { GcodeButton } from "./GcodeButton.tsx";
 import { speedScale, type SpeedScale } from "./speedScale.ts";
 
+type SendState = "idle" | "sending" | "sent" | "failed";
+
 /**
- * Speed factor (M220) as a slider whose scale is always 0 .. 2x the machine's
- * current speed, so the handle sits mid-bar and the control gives its finest
- * resolution around wherever the machine actually is. Quarter-scale stops sit
- * on the bar as snap targets; the middle one is always the current speed.
+ * Speed factor (M220) as a slider whose scale is always 0 .. 2x the current
+ * speed, so the handle sits mid-bar and the control gives its finest resolution
+ * around wherever the machine actually is. Quarter-scale stops sit beneath the
+ * bar as snap targets.
  *
- * Two things this has to get right:
+ * **Order of events on release** — this is the whole design:
  *
- *  - The scale is FROZEN while you drag. It is derived from the current speed,
- *    and the current speed is what the drag changes — left live, the bar would
- *    rescale under the finger mid-gesture and the handle would run away.
- *  - The command is sent on release, not on every input event. RRF tolerates
- *    very few requests; streaming one per pixel would flood the board with
- *    M220s the operator never asked for. The dots and the reset send at once,
- *    because those are single deliberate acts.
+ *   1. the dragged value becomes the centre immediately,
+ *   2. the scale recalculates around it (so the handle is mid-bar again),
+ *   3. the machine catches up on a later poll, and the hand-off is invisible
+ *      because the scale it then derives already equals the one on screen.
+ *
+ * Unfreezing at step 1 instead — which is what this did first — reverts the
+ * scale to the OLD centre, snaps the handle back, and then jumps a second time
+ * when the poll lands: three visible states where there should be one.
+ *
+ * The scale is also frozen DURING the drag, for the same reason in miniature:
+ * it derives from the current speed and the drag is what changes that speed, so
+ * a live scale would rescale under the finger.
+ *
+ * The command is sent on release, not per input event: RRF tolerates very few
+ * requests and streaming one M220 per pixel would flood it. Stops and the reset
+ * send at once, being single deliberate acts.
  */
 export function SpeedSlider(props: { currentPct: number }) {
 	const app = useApp();
 	const [dragging, setDragging] = createSignal(false);
-	const [frozen, setFrozen] = createSignal<SpeedScale | null>(null);
 	const [value, setValue] = createSignal(props.currentPct);
-	const [state, setState] = createSignal<"idle" | "sending" | "sent" | "failed">("idle");
+	const [state, setState] = createSignal<SendState>("idle");
 	const [error, setError] = createSignal("");
 
-	const scale = (): SpeedScale => frozen() ?? speedScale(props.currentPct);
+	/**
+	 * The centre the scale is built around while we are ahead of the machine:
+	 * during a drag, and after one until the machine reports the new speed.
+	 * null means "follow the machine".
+	 */
+	const [centre, setCentre] = createSignal<number | null>(null);
+	/** What we asked the machine for, so we can tell when it has caught up. */
+	const [target, setTarget] = createSignal<number | null>(null);
 
-	// Follow the machine whenever the operator isn't holding the handle.
+	let ackTimer: ReturnType<typeof setTimeout> | undefined;
+	onCleanup(() => clearTimeout(ackTimer));
+
+	const scale = (): SpeedScale => speedScale(centre() ?? props.currentPct);
+
+	// Follow the machine, except while the operator is holding the handle or a
+	// commanded change is still in flight — either would clobber the value the
+	// operator is looking at with a reading we know to be stale.
 	createEffect(() => {
 		const live = props.currentPct;
-		if (!dragging()) setValue(live);
+		if (!dragging() && target() === null) setValue(live);
 	});
 
-	/**
-	 * Send, and SAY SO. The first version swallowed every rejection
-	 * (`.catch(() => undefined)`), so a command the board refused - or the dev
-	 * write guard blocked - produced no visible change at all: the handle sprang
-	 * back to the machine's unchanged value and the control read as dead. A
-	 * control that cannot report its own failure is worse than one that has none.
-	 */
+	// The machine caught up: hand back to it. No jump, because the scale it
+	// derives from `live` is the scale already on screen.
+	createEffect(() => {
+		const live = props.currentPct;
+		const want = target();
+		if (want !== null && Math.round(live) === Math.round(want)) {
+			setTarget(null);
+			setCentre(null);
+		}
+	});
+
 	const send = async (pct: number): Promise<void> => {
+		clearTimeout(ackTimer);
 		setState("sending");
 		setError("");
+		// Step 1 and 2: the requested value IS the centre now, and the scale
+		// recalculates around it before the machine has said anything.
+		setValue(pct);
+		setCentre(pct);
+		setTarget(pct);
 		try {
 			await app.connector.sendCode(cmd.speedFactor(pct));
 			setState("sent");
-			window.setTimeout(() => setState("idle"), 1100);
+			ackTimer = setTimeout(() => setState("idle"), 1100);
 		} catch (err) {
+			// It never took. Go back to what the machine actually has rather than
+			// leaving a speed on screen that nothing is running at.
 			setState("failed");
 			setError(err instanceof Error ? err.message : String(err));
-			// Snap back to what the machine actually has: the requested value
-			// never took, and leaving the handle where it was dropped would show
-			// a speed the machine is not running.
+			setTarget(null);
+			setCentre(null);
 			setValue(props.currentPct);
 		}
 	};
 
 	const grab = (): void => {
-		setFrozen(speedScale(props.currentPct));
+		setCentre(props.currentPct); // freeze the scale for the duration of the drag
 		setDragging(true);
 	};
 
 	const release = (): void => {
 		if (!dragging()) return;
 		setDragging(false);
-		setFrozen(null);
 		void send(value());
 	};
 
-	/** Thumb width — the dots must sit where the thumb CENTRE can actually reach. */
+	/** Thumb width — stops line up with where the thumb centre can actually reach. */
 	const THUMB_PX = 14;
 	const stopOffset = (stop: number): string => {
 		const fraction = scale().max === 0 ? 0 : stop / scale().max;
@@ -99,14 +133,12 @@ export function SpeedSlider(props: { currentPct: number }) {
 					onInput={e => setValue(Number(e.currentTarget.value))}
 					onChange={release}
 				/>
-				{/* Snap stops, drawn over the track at quarters of the scale. Rendered
-				    after the input so they take the clicks that land on them. */}
 				<div class="speed-stops">
 					<For each={scale().stops}>
 						{stop => (
 							<button
 								class="speed-stop"
-								classList={{ current: stop === Math.round(props.currentPct) }}
+								classList={{ current: stop === Math.round(value()) }}
 								style={{ left: stopOffset(stop) }}
 								title={`M220 S${stop}`}
 								aria-label={`Set speed to ${stop} percent`}
@@ -118,7 +150,10 @@ export function SpeedSlider(props: { currentPct: number }) {
 			</div>
 			{/* Tabular figures and a reserved width: this changes on every poll and
 			    must not shove the track around as the digit count changes. */}
-			<span class="speed-value" classList={{ "is-sent": state() === "sent", "is-failed": state() === "failed" }}>
+			<span
+				class="speed-value"
+				classList={{ "is-sent": state() === "sent", "is-failed": state() === "failed" }}
+			>
 				{Math.round(value())}%
 			</span>
 			{/* Always present so a refusal cannot reflow the row it appears in. */}
