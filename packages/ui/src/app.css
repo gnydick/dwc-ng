@@ -247,11 +247,21 @@
 }
 .panel-body::-webkit-scrollbar { display: none; }
 
-.panel-grip {
+/* Both panel controls live in one absolutely-positioned cluster at the top
+   right. Previously each carried its own corner offset and the orientation
+   toggle used top/left — putting it directly on top of the card title. With
+   one cluster their spacing is a gap, not two coordinates that can disagree. */
+.panel-tools {
 	position: absolute;
 	top: 6px;
 	right: 10px;
 	z-index: 2;
+	display: flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.panel-grip {
 	background: var(--mask-700);
 	border: 1px solid var(--hairline);
 	border-radius: 4px;
@@ -266,10 +276,6 @@
 .panel-grip:active { cursor: grabbing; }
 
 .panel-orientation-toggle {
-	position: absolute;
-	top: 6px;
-	left: 10px;
-	z-index: 2;
 	background: var(--mask-700);
 	border: 1px solid var(--hairline);
 	border-radius: 4px;

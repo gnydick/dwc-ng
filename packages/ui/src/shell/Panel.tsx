@@ -73,26 +73,31 @@ export function Panel(props: {
 			data-panel-id={props.id}
 			style={props.canvas.styleFor(props.id)}
 		>
-			<button
-				type="button"
-				class="panel-grip"
-				title="Drag to move"
-				aria-label={`Move ${props.ariaLabel}`}
-				onPointerDown={event => props.canvas.startMove(props.id, event)}
-			>
-				⠿
-			</button>
-			<Show when={props.orientationToggle}>
+			{/* One cluster, so the toggle sits a fixed gap from the grab handle
+			    instead of carrying its own corner offset. The toggle used to live
+			    at top-LEFT, on top of the card title. */}
+			<div class="panel-tools">
+				<Show when={props.orientationToggle}>
+					<button
+						type="button"
+						class="panel-orientation-toggle"
+						title={props.canvas.orientationFor(props.id) === "vertical" ? "Switch to horizontal layout" : "Switch to vertical layout"}
+						aria-label={`Toggle ${props.ariaLabel} layout direction`}
+						onClick={() => props.canvas.toggleOrientation(props.id)}
+					>
+						{props.canvas.orientationFor(props.id) === "vertical" ? "⇄" : "⇅"}
+					</button>
+				</Show>
 				<button
 					type="button"
-					class="panel-orientation-toggle"
-					title={props.canvas.orientationFor(props.id) === "vertical" ? "Switch to horizontal layout" : "Switch to vertical layout"}
-					aria-label={`Toggle ${props.ariaLabel} layout direction`}
-					onClick={() => props.canvas.toggleOrientation(props.id)}
+					class="panel-grip"
+					title="Drag to move"
+					aria-label={`Move ${props.ariaLabel}`}
+					onPointerDown={event => props.canvas.startMove(props.id, event)}
 				>
-					{props.canvas.orientationFor(props.id) === "vertical" ? "⇄" : "⇅"}
+					⠿
 				</button>
-			</Show>
+			</div>
 			<Show when={canScrollUp()}>
 				<button
 					type="button"
