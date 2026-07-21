@@ -1,6 +1,8 @@
 import type { JSX } from "solid-js";
 import { Show, createSignal, onCleanup, onMount } from "solid-js";
 import type { PanelCanvasController } from "./panelCanvas.ts";
+import { CardTip } from "./CardTip.tsx";
+import { PanelTools } from "./PanelTools.tsx";
 
 const SCROLL_EDGE_EPSILON_PX = 1;
 const HOLD_SCROLL_PX_PER_FRAME = 10;
@@ -21,6 +23,12 @@ export function Panel(props: {
 	 *  direction (canvas.orientationFor/toggleOrientation) — opt-in per
 	 *  card, since not every card's content can meaningfully flip. */
 	orientationToggle?: boolean;
+	/** Header left zone. */
+	title?: string;
+	/** Header float-left zone: the small tag naming what powers the card. */
+	tip?: JSX.Element;
+	/** Header float-right zone: the card's own controls (close, save, reset…). */
+	actions?: JSX.Element;
 	children: JSX.Element;
 }) {
 	let bodyEl!: HTMLDivElement;
@@ -73,31 +81,6 @@ export function Panel(props: {
 			data-panel-id={props.id}
 			style={props.canvas.styleFor(props.id)}
 		>
-			{/* One cluster, so the toggle sits a fixed gap from the grab handle
-			    instead of carrying its own corner offset. The toggle used to live
-			    at top-LEFT, on top of the card title. */}
-			<div class="panel-tools">
-				<Show when={props.orientationToggle}>
-					<button
-						type="button"
-						class="panel-orientation-toggle"
-						title={props.canvas.orientationFor(props.id) === "vertical" ? "Switch to horizontal layout" : "Switch to vertical layout"}
-						aria-label={`Toggle ${props.ariaLabel} layout direction`}
-						onClick={() => props.canvas.toggleOrientation(props.id)}
-					>
-						{props.canvas.orientationFor(props.id) === "vertical" ? "⇄" : "⇅"}
-					</button>
-				</Show>
-				<button
-					type="button"
-					class="panel-grip"
-					title="Drag to move"
-					aria-label={`Move ${props.ariaLabel}`}
-					onPointerDown={event => props.canvas.startMove(props.id, event)}
-				>
-					⠿
-				</button>
-			</div>
 			<Show when={canScrollUp()}>
 				<button
 					type="button"
@@ -106,7 +89,20 @@ export function Panel(props: {
 					onPointerDown={event => startHoldScroll(-1, event)}
 				/>
 			</Show>
-			<div class="panel-body" ref={bodyEl}>{props.children}</div>
+			<div class="panel-body" ref={bodyEl}>
+				{/* The header, in four zones. The grip+toggle (right, sacred) are a
+				    real child here — not a floating overlay — so nothing can sit to
+				    their right by construction. See CardHead's doc for the zones. */}
+				<div class="card-head">
+					<Show when={props.title}>{t => <h2 class="card-title">{t()}</h2>}</Show>
+					<Show when={props.tip}>{tip => <CardTip>{tip()}</CardTip>}</Show>
+					<div class="card-head-right">
+						<Show when={props.actions}>{a => <div class="card-actions">{a()}</div>}</Show>
+						<PanelTools id={props.id} canvas={props.canvas} ariaLabel={props.ariaLabel} orientationToggle={props.orientationToggle} />
+					</div>
+				</div>
+				{props.children}
+			</div>
 			<Show when={canScrollDown()}>
 				<button
 					type="button"

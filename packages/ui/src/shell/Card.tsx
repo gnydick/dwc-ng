@@ -1,6 +1,5 @@
 import type { JSX } from "solid-js";
 import { Panel } from "./Panel.tsx";
-import { CardHead } from "./CardHead.tsx";
 import type { PanelCanvasController } from "./panelCanvas.ts";
 
 /**
@@ -23,8 +22,16 @@ export function Card(props: {
 	children: JSX.Element;
 }) {
 	return (
-		<Panel id={props.id} canvas={props.canvas} ariaLabel={props.ariaLabel} class={props.class} orientationToggle={props.orientationToggle}>
-			<CardHead title={props.title} tip={props.tip} actions={props.actions} />
+		<Panel
+			id={props.id}
+			canvas={props.canvas}
+			ariaLabel={props.ariaLabel}
+			class={props.class}
+			orientationToggle={props.orientationToggle}
+			title={props.title}
+			tip={props.tip}
+			actions={props.actions}
+		>
 			{props.children}
 		</Panel>
 	);

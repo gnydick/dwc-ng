@@ -8,7 +8,6 @@ import { Card } from "../shell/Card.tsx";
 import { PanelCanvas } from "../shell/PanelCanvas.tsx";
 import { ConsolePanel } from "../shell/ConsolePanel.tsx";
 import { CameraPanel } from "../shell/CameraPanel.tsx";
-import { CardHead } from "../shell/CardHead.tsx";
 import { createPanelCanvas } from "../shell/panelCanvas.ts";
 import { createFileBrowser } from "../files/browser.ts";
 import { FileBrowserView } from "../files/FileBrowserView.tsx";
@@ -61,22 +60,19 @@ export default function System() {
 					</Show>
 				</Card>
 
-				<Panel id="editor" canvas={canvas} ariaLabel="Editor" class="editor-card">
-					<Show
-						when={selected()}
-						fallback={
-							<>
-								<CardHead title="Editor" />
-								<p class="job-empty">
-									Select a system file to view or edit it. These run when the firmware
-									calls them — config.g at boot, homeall.g on G28.
-								</p>
-							</>
-						}
-					>
-						{path => <FileEditor path={path()} lang={langOf(path())} onClose={() => setSelected(null)} />}
-					</Show>
-				</Panel>
+				<Show
+					when={selected()}
+					fallback={
+						<Panel id="editor" canvas={canvas} ariaLabel="Editor" class="editor-card" title="Editor">
+							<p class="job-empty">
+								Select a system file to view or edit it. These run when the firmware
+								calls them — config.g at boot, homeall.g on G28.
+							</p>
+						</Panel>
+					}
+				>
+					{path => <FileEditor id="editor" canvas={canvas} path={path()} lang={langOf(path())} onClose={() => setSelected(null)} />}
+				</Show>
 
 				<Card id="object-model" canvas={canvas} ariaLabel="Object model" class="om-card" title="Object model" tip="live · rr_model">
 					<Show when={connected()} fallback={<p class="job-empty">Not connected.</p>}>

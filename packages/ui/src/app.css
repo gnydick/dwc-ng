@@ -215,22 +215,17 @@
 	align-items: center;
 	gap: 8px;
 	margin-bottom: 8px;
-	padding-top: 4px;
-	/* Reserve the right end for the sacred grip cluster (Panel's .panel-tools,
-	   absolutely pinned there). Without this a float-right control would slide
-	   under the grab handle. The toggle, when present, widens the cluster —
-	   :has() bumps the reserve so the two never collide. */
-	padding-right: 26px;
 	position: sticky;
 	top: 0;
 	z-index: 1;
 	background: var(--mask-700);
 }
-.card.panel:has(.panel-orientation-toggle) .card-head { padding-right: 58px; }
-
-/* float-right zone: the card's own controls, pushed to the right edge of the
-   reserved content area — i.e. immediately left of the sacred grip cluster. */
-.card-actions { margin-left: auto; display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+/* The right end of every header: the card's own controls (float-right), then
+   the sacred grip cluster, pinned to the edge. The grip is a REAL child now,
+   not a floating overlay, so nothing can sit to its right by construction —
+   no reserved padding, no :has() bump. */
+.card-head-right { margin-left: auto; display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+.card-actions { display: flex; align-items: center; gap: 6px; }
 .card-actions > * { flex: 0 0 auto; }
 
 .card-title {
@@ -260,13 +255,9 @@
 
 /* Both panel controls live in one absolutely-positioned cluster at the top
    right. Previously each carried its own corner offset and the orientation
-   toggle used top/left — putting it directly on top of the card title. With
-   one cluster their spacing is a gap, not two coordinates that can disagree. */
+   toggle used top/left — putting it directly on top of the card title. It now
+   lives in the header's right zone as a real child, not an overlay. */
 .panel-tools {
-	position: absolute;
-	top: 6px;
-	right: 10px;
-	z-index: 2;
 	display: flex;
 	align-items: center;
 	gap: 4px;
@@ -1167,16 +1158,19 @@
 .run-btn:hover { color: var(--ok); border-color: rgba(111, 191, 143, 0.5); }
 .run-btn.armed { color: var(--mask-900); background: var(--gold); border-color: var(--gold); }
 
-.editor { display: flex; flex-direction: column; height: 70vh; min-height: 340px; }
-/* The editor's own toolbar is its header — reserve the same right end for the
-   sacred grip cluster so Close/Save sit to its left, not under it. */
-.editor-bar { display: flex; align-items: center; gap: 12px; padding-bottom: 10px; padding-right: 26px; border-bottom: 1px solid var(--hairline); margin-bottom: 10px; }
-.editor-path { font: 600 12.5px/1 ui-monospace, "Cascadia Code", Consolas, monospace; color: var(--silk); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The editor is a card now: its path is the card title (so, monospace and not
+   letterspaced-uppercase like a normal title), and Revert/Save/Close live in
+   the header's float-right zone. */
+.editor-card .card-title {
+	font: 600 12.5px/1 ui-monospace, "Cascadia Code", Consolas, monospace;
+	text-transform: none; letter-spacing: 0; color: var(--silk);
+	overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;
+}
 .editor-dirty { font: 600 10.5px/1 var(--font-display); text-transform: uppercase; letter-spacing: 0.1em; color: var(--gold); }
 .editor-msg { font-size: 12px; color: var(--silk-dim); white-space: nowrap; }
 .editor-msg.err { color: var(--fault); }
-.editor-actions { margin-left: auto; display: flex; gap: 8px; }
-.editor-actions .btn { padding: 7px 14px; }
+/* Header action buttons stay within the 28px header. */
+.card-actions .btn { padding: 3px 10px; font-size: 12px; }
 .btn.primary { background: rgba(217, 133, 59, 0.16); border-color: var(--copper); color: var(--copper-bright); }
 .btn.primary:hover:not(:disabled) { background: rgba(217, 133, 59, 0.26); }
 .editor-host { position: relative; flex: 1; min-height: 0; border: 1px solid var(--hairline); border-radius: var(--radius); overflow: hidden; }
@@ -1457,7 +1451,9 @@
    without it a card resized small squeezed its own head from 20px to 18px and
    the title crept upward as you dragged. Nothing inside a card may move while
    the card is resized. */
-.card-head { padding-top: 0; margin-bottom: 8px; height: 20px; flex: 0 0 20px; }
+/* Taller than the old 20px so the grab handle and header buttons have room to
+   breathe; 28px keeps it on the 4px rhythm (== --ctl-h). */
+.card-head { padding-top: 0; margin-bottom: 8px; height: 28px; flex: 0 0 28px; }
 .card-title { font-size: 12px; }
 
 /* The card is sitting exactly on its content. A visible edge for the detent you

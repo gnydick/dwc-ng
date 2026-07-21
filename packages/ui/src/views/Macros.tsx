@@ -7,7 +7,6 @@ import { Card } from "../shell/Card.tsx";
 import { PanelCanvas } from "../shell/PanelCanvas.tsx";
 import { ConsolePanel } from "../shell/ConsolePanel.tsx";
 import { CameraPanel } from "../shell/CameraPanel.tsx";
-import { CardHead } from "../shell/CardHead.tsx";
 import { createPanelCanvas } from "../shell/panelCanvas.ts";
 import { createFileBrowser } from "../files/browser.ts";
 import { FileBrowserView } from "../files/FileBrowserView.tsx";
@@ -98,22 +97,19 @@ export default function Macros() {
 					</Show>
 				</Card>
 
-				<Panel id="editor" canvas={canvas} ariaLabel="Editor" class="editor-card">
-					<Show
-						when={selected()}
-						fallback={
-							<>
-								<CardHead title="Editor" />
-								<p class="job-empty">
-									Select a macro to view or edit it. Opening never runs it — use the
-									explicit ▶ Run button (click twice to confirm).
-								</p>
-							</>
-						}
-					>
-						{path => <FileEditor path={path()} lang="gcode" onClose={() => setSelected(null)} />}
-					</Show>
-				</Panel>
+				<Show
+					when={selected()}
+					fallback={
+						<Panel id="editor" canvas={canvas} ariaLabel="Editor" class="editor-card" title="Editor">
+							<p class="job-empty">
+								Select a macro to view or edit it. Opening never runs it — use the
+								explicit ▶ Run button (click twice to confirm).
+							</p>
+						</Panel>
+					}
+				>
+					{path => <FileEditor id="editor" canvas={canvas} path={path()} lang="gcode" onClose={() => setSelected(null)} />}
+				</Show>
 
 				<ConsolePanel canvas={canvas} />
 				<CameraPanel canvas={canvas} />
