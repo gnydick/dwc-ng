@@ -193,8 +193,12 @@
 	row-gap: 0;
 }
 /* The vertical gutter, moved off the grid and onto the item. A card spanning
-   n rows therefore renders (4n - 6)px tall. */
-.panel-canvas > * { margin-bottom: 6px; }
+   n rows renders (4n - 8)px tall — still a multiple of 4, so a card height can
+   land exactly on a content height. Every vertical value in a card (head, its
+   margin, the body's padding) is a multiple of 4 for the same reason: with any
+   one of them off-grid, content totals sit permanently between two achievable
+   card heights and an exact fit becomes impossible at ANY increment. */
+.panel-canvas > * { margin-bottom: 8px; }
 
 .card {
 	background: var(--mask-700);
@@ -236,7 +240,7 @@
 	flex: 1;
 	min-height: 0;
 	overflow: auto;
-	padding: 0 16px 10px;
+	padding: 0 16px 8px;
 	display: flex;
 	flex-direction: column;
 	scrollbar-width: none;
@@ -1429,5 +1433,7 @@
 .ctl-wrap, .release-row, .btn-cluster, .btn-row, .step-row { gap: var(--ctl-gap); }
 
 /* The card head cost 27px of type plus 12px of frame on cards only ~150px tall. */
-.card-head { padding-top: 0; margin-bottom: 6px; }
+/* Explicit height: left to the font it measured 18px, which put the whole
+   card 2px off the 4px rhythm. */
+.card-head { padding-top: 0; margin-bottom: 8px; height: 20px; }
 .card-title { font-size: 12px; }
