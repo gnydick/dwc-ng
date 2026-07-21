@@ -246,9 +246,9 @@
 	flex: 1;
 	min-height: 0;
 	overflow: auto;
-	/* Top padding gives the header breathing room above it; the sticky header
-	   parks against this padding edge, so the gap persists while scrolling. */
-	padding: 12px 16px 8px;
+	/* A little top padding so the header isn't flush with the card edge; the
+	   sticky header parks against this padding edge, so it persists on scroll. */
+	padding: 6px 16px 8px;
 	display: flex;
 	flex-direction: column;
 	scrollbar-width: none;
