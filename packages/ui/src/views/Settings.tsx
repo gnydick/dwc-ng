@@ -3,6 +3,7 @@ import { useApp } from "../shell/context.ts";
 import { CONFIG_FILE } from "../config/types.ts";
 import { sensorRows } from "./machine.sensors.ts";
 import { Panel } from "../shell/Panel.tsx";
+import { CardHead } from "../shell/CardHead.tsx";
 import { PanelCanvas } from "../shell/PanelCanvas.tsx";
 import { ConsolePanel } from "../shell/ConsolePanel.tsx";
 import { CameraPanel } from "../shell/CameraPanel.tsx";
@@ -40,10 +41,10 @@ export default function Settings() {
 			</div>
 			<PanelCanvas class="settings">
 				<Panel id="axis-roles" canvas={canvas} ariaLabel="Axis roles">
-					<div class="card-head">
-						<h2 class="card-title">Axis roles</h2>
-						<button class="link-btn" onClick={() => app.config.resetSection("axisRoles")}>Reset</button>
-					</div>
+					<CardHead
+						title="Axis roles"
+						actions={<button class="link-btn" onClick={() => app.config.resetSection("axisRoles")}>Reset</button>}
+					/>
 					<p class="hint">
 						Label what each axis physically is on this machine — the firmware only
 						knows letters. Labels appear in the position readout and jog controls.
@@ -70,10 +71,10 @@ export default function Settings() {
 				</Panel>
 
 				<Panel id="tool-dock-sensors" canvas={canvas} ariaLabel="Tool dock sensors">
-					<div class="card-head">
-						<h2 class="card-title">Tool dock sensors</h2>
-						<button class="link-btn" onClick={() => app.config.resetSection("dockSensors")}>Reset</button>
-					</div>
+					<CardHead
+						title="Tool dock sensors"
+						actions={<button class="link-btn" onClick={() => app.config.resetSection("dockSensors")}>Reset</button>}
+					/>
 					<p class="hint">
 						If a tool has a presence switch in its dock, map it here (sensors.gpIn
 						index). The sensor reports docked or away — it cannot know "mounted".
@@ -120,10 +121,10 @@ export default function Settings() {
 				</Panel>
 
 				<Panel id="bed-probe" canvas={canvas} ariaLabel="Bed probing">
-					<div class="card-head">
-						<h2 class="card-title">Bed probing</h2>
-						<button class="link-btn" onClick={() => app.config.resetSection("bed")}>Reset</button>
-					</div>
+					<CardHead
+						title="Bed probing"
+						actions={<button class="link-btn" onClick={() => app.config.resetSection("bed")}>Reset</button>}
+					/>
 					<p class="hint">
 						Sent to re-probe one height-map point on the Bed view. <code>{"{x}"}</code> and{" "}
 						<code>{"{y}"}</code> become that point's bed coordinates. The motion belongs in your
@@ -141,10 +142,10 @@ export default function Settings() {
 				</Panel>
 
 				<Panel id="camera-config" canvas={canvas} ariaLabel="Camera">
-					<div class="card-head">
-						<h2 class="card-title">Camera</h2>
-						<button class="link-btn" onClick={() => app.config.resetSection("camera")}>Reset</button>
-					</div>
+					<CardHead
+						title="Camera"
+						actions={<button class="link-btn" onClick={() => app.config.resetSection("camera")}>Reset</button>}
+					/>
 					<p class="hint">Pin the camera (top-right, on any view) to show it as a panel on that view — position and size are set independently per view.</p>
 					<label class="field">
 						<span class="field-label">Stream URL</span>
@@ -158,10 +159,10 @@ export default function Settings() {
 				</Panel>
 
 				<Panel id="sensor-names" canvas={canvas} ariaLabel="Sensor names">
-					<div class="card-head">
-						<h2 class="card-title">Sensor names</h2>
-						<button class="link-btn" onClick={() => app.config.resetSection("sensorNames")}>Reset</button>
-					</div>
+					<CardHead
+						title="Sensor names"
+						actions={<button class="link-btn" onClick={() => app.config.resetSection("sensorNames")}>Reset</button>}
+					/>
 					<p class="hint">
 						Name the endstops, filament monitors, and probes that show up on the
 						Machine view's Sensors card — RRF only knows them by index.
@@ -188,9 +189,7 @@ export default function Settings() {
 				</Panel>
 
 				<Panel id="saved-versions" canvas={canvas} ariaLabel="Saved versions">
-					<div class="card-head">
-						<h2 class="card-title">Saved versions</h2>
-					</div>
+					<CardHead title="Saved versions" />
 					<p class="hint">
 						Every save keeps a version here — experiment freely and go back with
 						one click. Settings live on the SD card ({CONFIG_FILE}), so they

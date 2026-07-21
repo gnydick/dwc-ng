@@ -16,13 +16,15 @@ export function Card(props: {
 	ariaLabel: string;
 	title: string;
 	tip?: JSX.Element;
+	/** The card's own header controls (float-right zone) — close, save, reset… */
+	actions?: JSX.Element;
 	class?: string;
 	orientationToggle?: boolean;
 	children: JSX.Element;
 }) {
 	return (
 		<Panel id={props.id} canvas={props.canvas} ariaLabel={props.ariaLabel} class={props.class} orientationToggle={props.orientationToggle}>
-			<CardHead title={props.title} tip={props.tip} />
+			<CardHead title={props.title} tip={props.tip} actions={props.actions} />
 			{props.children}
 		</Panel>
 	);

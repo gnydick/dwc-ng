@@ -1,6 +1,7 @@
 import { Show, createEffect, onCleanup } from "solid-js";
 import { useApp } from "./context.ts";
 import { Panel } from "./Panel.tsx";
+import { CardHead } from "./CardHead.tsx";
 import type { PanelCanvasController } from "./panelCanvas.ts";
 import { cameraViewState, setCameraViewState } from "./cameraViewState.ts";
 
@@ -45,10 +46,12 @@ export function CameraPanel(props: { canvas: PanelCanvasController }) {
 	return (
 		<Show when={app.config.config.camera.pinned}>
 			<Panel id="camera" canvas={props.canvas} ariaLabel="Camera" class="cam-panel">
-				<div class="card-head">
-					<h2 class="card-title">Camera</h2>
-					<button title="Hide camera" onClick={() => app.config.setCamera({ pinned: false })}>✕</button>
-				</div>
+				<CardHead
+					title="Camera"
+					actions={
+						<button class="card-act" title="Hide camera" aria-label="Hide camera" onClick={() => app.config.setCamera({ pinned: false })}>✕</button>
+					}
+				/>
 				<div class="cam-body" classList={{ native: cameraViewState().native }} ref={bodyEl} onScroll={onScroll}>
 					<Show
 						when={app.config.config.camera.streamUrl !== ""}

@@ -1,6 +1,7 @@
 import { For, Show, createEffect, createSignal } from "solid-js";
 import { useApp } from "./context.ts";
 import { Panel } from "./Panel.tsx";
+import { CardHead } from "./CardHead.tsx";
 import type { PanelCanvasController } from "./panelCanvas.ts";
 
 /**
@@ -12,7 +13,7 @@ import type { PanelCanvasController } from "./panelCanvas.ts";
 export function ConsolePanel(props: { canvas: PanelCanvasController }) {
 	return (
 		<Panel id="console" canvas={props.canvas} ariaLabel="Console" class="console-panel">
-			<div class="card-head"><h2 class="card-title">Console</h2></div>
+			<CardHead title="Console" />
 			<ConsoleHistory />
 			<ConsoleForm />
 		</Panel>

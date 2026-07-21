@@ -212,15 +212,26 @@
    scrolled content doesn't show through. */
 .card-head {
 	display: flex;
-	align-items: baseline;
-	gap: 10px;
+	align-items: center;
+	gap: 8px;
 	margin-bottom: 8px;
 	padding-top: 4px;
+	/* Reserve the right end for the sacred grip cluster (Panel's .panel-tools,
+	   absolutely pinned there). Without this a float-right control would slide
+	   under the grab handle. The toggle, when present, widens the cluster —
+	   :has() bumps the reserve so the two never collide. */
+	padding-right: 26px;
 	position: sticky;
 	top: 0;
 	z-index: 1;
 	background: var(--mask-700);
 }
+.card.panel:has(.panel-orientation-toggle) .card-head { padding-right: 58px; }
+
+/* float-right zone: the card's own controls, pushed to the right edge of the
+   reserved content area — i.e. immediately left of the sacred grip cluster. */
+.card-actions { margin-left: auto; display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+.card-actions > * { flex: 0 0 auto; }
 
 .card-title {
 	font-family: var(--font-display);
@@ -1157,7 +1168,9 @@
 .run-btn.armed { color: var(--mask-900); background: var(--gold); border-color: var(--gold); }
 
 .editor { display: flex; flex-direction: column; height: 70vh; min-height: 340px; }
-.editor-bar { display: flex; align-items: center; gap: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--hairline); margin-bottom: 10px; }
+/* The editor's own toolbar is its header — reserve the same right end for the
+   sacred grip cluster so Close/Save sit to its left, not under it. */
+.editor-bar { display: flex; align-items: center; gap: 12px; padding-bottom: 10px; padding-right: 26px; border-bottom: 1px solid var(--hairline); margin-bottom: 10px; }
 .editor-path { font: 600 12.5px/1 ui-monospace, "Cascadia Code", Consolas, monospace; color: var(--silk); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .editor-dirty { font: 600 10.5px/1 var(--font-display); text-transform: uppercase; letter-spacing: 0.1em; color: var(--gold); }
 .editor-msg { font-size: 12px; color: var(--silk-dim); white-space: nowrap; }
@@ -1680,3 +1693,11 @@
 	font: 600 10px/1 var(--font-display); letter-spacing: 0.08em; text-transform: uppercase;
 	color: var(--fault);
 }
+
+/* A compact icon control in the float-right zone (e.g. Camera's hide ✕). */
+.card-act {
+	background: none; border: 1px solid transparent; border-radius: 4px;
+	color: var(--silk-dim); font-size: 13px; line-height: 1;
+	padding: 1px 6px; cursor: pointer;
+}
+.card-act:hover { color: var(--silk); border-color: var(--hairline); }
