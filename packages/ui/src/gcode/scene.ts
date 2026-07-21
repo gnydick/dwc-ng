@@ -149,14 +149,42 @@ export function createScene(
 	// before the camera/zoom setup below so the wheel handler can call it
 	// directly.
 	let pendingFrame = 0;
+	// Keep rendering while the camera still has motion left to apply. Babylon's
+	// ArcRotateCamera does NOT move when input arrives: pointer/wheel handlers
+	// only accumulate inertial*Offset, and those are applied in camera.update(),
+	// which runs INSIDE scene.render(). So with a purely on-demand loop driven by
+	// onViewMatrixChanged, input set the offsets, the matrix had not changed yet,
+	// no frame was scheduled, update() never ran — and nothing moved until some
+	// unrelated event (a poll tick) forced a render, which then applied the whole
+	// backlog at once. That is the "dead, then jumps" latency: a scheduling
+	// deadlock, not GPU cost. Inertia decay needs continuous frames too.
+	const SETTLE_EPS = 1e-4;
+	const cameraStillMoving = (): boolean =>
+		Math.abs(camera.inertialAlphaOffset) > SETTLE_EPS
+		|| Math.abs(camera.inertialBetaOffset) > SETTLE_EPS
+		|| Math.abs(camera.inertialRadiusOffset) > SETTLE_EPS
+		|| Math.abs(camera.inertialPanningX ?? 0) > SETTLE_EPS
+		|| Math.abs(camera.inertialPanningY ?? 0) > SETTLE_EPS;
 	const renderFrame = (): void => {
 		pendingFrame = 0;
 		scene.render();
+		if (cameraStillMoving()) requestRender();
 	};
 	const requestRender = (): void => {
 		if (pendingFrame !== 0) return;
 		pendingFrame = requestAnimationFrame(renderFrame);
 	};
+	// Drive frames straight from input so the first event is acted on, rather
+	// than waiting for a matrix change that cannot happen until we render.
+	let dragging = false;
+	const onPointerDown = (): void => { dragging = true; requestRender(); };
+	const onPointerUp = (): void => { dragging = false; requestRender(); };
+	const onPointerMove = (): void => { if (dragging) requestRender(); };
+	const onWheel = (): void => requestRender();
+	canvas.addEventListener("pointerdown", onPointerDown);
+	window.addEventListener("pointerup", onPointerUp);
+	canvas.addEventListener("pointermove", onPointerMove);
+	canvas.addEventListener("wheel", onWheel, { passive: true });
 
 	// PERSPECTIVE with a LONG focal length. Straight orthographic reads as a
 	// technical drawing and gives no depth cue; a normal ~45° game FOV distorts
@@ -858,6 +886,10 @@ export function createScene(
 		destroy() {
 			cancelAnimationFrame(pendingFrame);
 			camera.onViewMatrixChangedObservable.removeCallback(onCameraChanged);
+			canvas.removeEventListener("pointerdown", onPointerDown);
+			window.removeEventListener("pointerup", onPointerUp);
+			canvas.removeEventListener("pointermove", onPointerMove);
+			canvas.removeEventListener("wheel", onWheel);
 			window.removeEventListener("keydown", handleKey);
 			canvas.removeEventListener("pointerenter", onPointerEnter);
 			canvas.removeEventListener("pointerleave", onPointerLeave);
