@@ -153,6 +153,9 @@ export default function Control() {
 							/>
 						</label>
 						<span class="tool-p-decode">{describeToolP(toolPValue())}</span>
+						{/* Deselect belongs with the P box: P is what separates a plain T-1 from
+						    one that skips the tool-change macros, so the two are read together. */}
+						<GcodeButton label="Deselect" variant="quiet" command={cmd.deselectTool(toolPValue())} />
 					</div>
 					<div class="ctl-wrap">
 						<For each={app.om.om.tools}>
@@ -168,7 +171,6 @@ export default function Control() {
 								</Show>
 							)}
 						</For>
-						<GcodeButton label="Deselect" variant="quiet" command={cmd.deselectTool(toolPValue())} />
 					</div>
 				</Card>
 

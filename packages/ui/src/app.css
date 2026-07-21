@@ -1404,7 +1404,11 @@
 
 /* Tool-change macro bitmask (T… P<n>). Sits above the tool buttons so the
    parameter they will carry is visible before any of them is pressed. */
-.tool-p { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+.tool-p { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
+/* Deselect rides the right edge of the P row: the P value it carries is read
+   from the box beside it, but the action itself belongs with the other
+   controls' right-hand alignment. */
+.tool-p .gcode-btn { margin-left: auto; }
 .tool-p input { width: 62px; }
 .tool-p-decode {
 	font: 400 11.5px/16px var(--font-body); color: var(--silk-dim);
