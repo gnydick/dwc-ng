@@ -1,6 +1,6 @@
 import { For, Show, createSignal, type JSX } from "solid-js";
 import type { FileListEntry } from "../connector/types.ts";
-import type { FileBrowser, OpResult } from "./browser.ts";
+import type { FileBrowser, OpResult, RemovePlan } from "./browser.ts";
 import { parseFileName } from "./path.ts";
 
 /**
@@ -42,7 +42,10 @@ export function FileBrowserView(props: {
 	// stale object.
 	const [renaming, setRenaming] = createSignal<string | null>(null);
 	const [renameText, setRenameText] = createSignal("");
-	const [armed, setArmed] = createSignal<string | null>(null);
+	// The armed delete carries its plan, so the warning shown and the request
+	// sent come from the same object and cannot disagree.
+	const [armed, setArmed] = createSignal<RemovePlan | null>(null);
+	const [typedName, setTypedName] = createSignal("");
 	const [creating, setCreating] = createSignal<"dir" | "file" | null>(null);
 	const [createText, setCreateText] = createSignal("");
 	const [message, setMessage] = createSignal("");
@@ -85,14 +88,26 @@ export function FileBrowserView(props: {
 		report(result);
 	};
 
-	const confirmDelete = async (entry: FileListEntry): Promise<void> => {
-		const path = props.browser.pathOf(entry);
-		if (armed() !== path) {
-			setArmed(path);
-			return;
-		}
+	/**
+	 * Arming a delete PLANS it first, so what the operator is about to lose is
+	 * on screen before the second click — the item count for a directory, or a
+	 * name to type back for something unrecoverable.
+	 */
+	const armDelete = async (entry: FileListEntry): Promise<void> => {
+		setMessage("");
+		setRenaming(null);
+		const plan = await props.browser.planRemove(entry);
+		setArmed(plan);
+		setTypedName("");
+	};
+
+	const fireDelete = async (): Promise<void> => {
+		const plan = armed();
+		if (plan === null) return;
+		const result = await props.browser.remove(plan, typedName());
 		setArmed(null);
-		report(await props.browser.remove(entry));
+		setTypedName("");
+		report(result);
 	};
 
 	const startRename = (entry: FileListEntry): void => {
@@ -164,6 +179,44 @@ export function FileBrowserView(props: {
 			{/* Always present so surfacing an error never shifts the rows below it. */}
 			<p class="fb-msg" classList={{ show: message() !== "" }}>{message() || " "}</p>
 
+			{/* What the armed delete would actually destroy - stated before the
+			    second click, and read from the same plan object that will be sent,
+			    so the warning cannot describe something other than the action. */}
+			<Show when={armed()}>
+				{plan => (
+					<div class="fb-warn">
+						<Show when={plan().recursive && plan().itemCount !== 0}>
+							<p class="fb-warn-line">
+								<Show
+									when={plan().itemCount > 0}
+									fallback={<>Couldn't read <b>{plan().name}</b> - it may not be empty. Deleting removes everything inside it.</>}
+								>
+									Deleting <b>{plan().name}</b> also deletes the <b>{plan().itemCount}</b>
+									{" "}item{plan().itemCount === 1 ? "" : "s"} inside it.
+								</Show>
+							</p>
+						</Show>
+						<Show when={plan().protectedReason}>
+							{reason => (
+								<>
+									<p class="fb-warn-line">Deleting <b>{plan().name}</b> loses {reason()}.</p>
+									<label class="fb-warn-confirm">
+										<span>Type <b>{plan().name}</b> to confirm</span>
+										<input
+											class="fb-input"
+											value={typedName()}
+											onInput={e => setTypedName(e.currentTarget.value)}
+											onKeyDown={e => { if (e.key === "Enter") void fireDelete(); }}
+										/>
+									</label>
+								</>
+							)}
+						</Show>
+						<button class="fb-tool" onClick={() => { setArmed(null); setTypedName(""); }}>Cancel</button>
+					</div>
+				)}
+			</Show>
+
 			<ul class="file-list">
 				<For each={props.browser.entries()} fallback={<li class="job-empty">{props.emptyText}</li>}>
 					{entry => (
@@ -192,11 +245,15 @@ export function FileBrowserView(props: {
 										<button class="fb-act" title={`Rename ${entry.name}`} onClick={() => startRename(entry)}>Rename</button>
 										<button
 											class="fb-act danger"
-											classList={{ armed: armed() === props.browser.pathOf(entry) }}
+											classList={{ armed: armed()?.path === props.browser.pathOf(entry) }}
 											title={entry.type === "d" ? `Delete ${entry.name} and its contents` : `Delete ${entry.name}`}
-											onClick={() => void confirmDelete(entry)}
+											onClick={() =>
+												armed()?.path === props.browser.pathOf(entry)
+													? void fireDelete()
+													: void armDelete(entry)
+											}
 										>
-											{armed() === props.browser.pathOf(entry) ? "Confirm" : "Delete"}
+											{armed()?.path === props.browser.pathOf(entry) ? "Confirm" : "Delete"}
 										</button>
 									</>
 								}

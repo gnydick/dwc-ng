@@ -21,6 +21,7 @@
 import { createMemo, createResource, createSignal, type Accessor } from "solid-js";
 import type { Connector, FileListEntry } from "../connector/types.ts";
 import { childPath, parentDir, parseFileName } from "./path.ts";
+import { protectedReason } from "./safety.ts";
 
 /** Outcome of a file operation, in a form the UI can render directly. */
 export type OpResult = { ok: true } | { ok: false; error: string };
@@ -65,8 +66,38 @@ export interface FileBrowser {
 	createFile(rawName: string): Promise<OpResult>;
 	/** Rename an entry in place (same directory). */
 	rename(entry: FileListEntry, rawName: string): Promise<OpResult>;
-	/** Delete an entry; directories are removed with their contents. */
-	remove(entry: FileListEntry): Promise<OpResult>;
+	/**
+	 * Inspect what deleting `entry` would actually destroy. A directory is
+	 * listed first so its contents can be counted and shown; this is the only
+	 * way to obtain the RemovePlan that `remove` requires.
+	 */
+	planRemove(entry: FileListEntry): Promise<RemovePlan>;
+	/**
+	 * Carry out a planned delete. `typedName` is required only when the plan
+	 * says so, and must match the file's name.
+	 */
+	remove(plan: RemovePlan, typedName?: string): Promise<OpResult>;
+}
+
+/**
+ * A checked intent to delete something, describing what would be lost.
+ *
+ * `remove` accepts only this — never a bare entry — so a recursive delete
+ * cannot be issued without having first listed the directory and learned how
+ * many items are inside. The count the operator is shown and the `recursive`
+ * flag sent to the board come from the same object, so the warning cannot
+ * disagree with the action. The brand makes a hand-built plan a compile error.
+ */
+export interface RemovePlan {
+	readonly path: string;
+	readonly name: string;
+	/** Directories delete recursively; this is derived here, never passed in. */
+	readonly recursive: boolean;
+	/** Items inside a directory (0 for a file or an empty directory). */
+	readonly itemCount: number;
+	/** Set when the file's loss is unrecoverable — the name must be typed back. */
+	readonly protectedReason: string | null;
+	readonly __plan: unique symbol;
 }
 
 export function createFileBrowser(
@@ -161,8 +192,34 @@ export function createFileBrowser(
 		await connector.move(pathOf(entry), r.path);
 	});
 
-	const remove = withRefresh(async (entry: FileListEntry) => {
-		await connector.remove(pathOf(entry), entry.type === "d");
+	const planRemove = async (entry: FileListEntry): Promise<RemovePlan> => {
+		const path = pathOf(entry);
+		// Count a directory's contents before offering to delete it. A failed
+		// listing counts as "unknown, assume it has contents" rather than as
+		// empty — guessing low here is how a silent recursive wipe happens.
+		let itemCount = 0;
+		if (entry.type === "d") {
+			try {
+				itemCount = (await connector.list(path)).length;
+			} catch {
+				itemCount = -1;
+			}
+		}
+		return {
+			path,
+			name: entry.name,
+			recursive: entry.type === "d",
+			itemCount,
+			protectedReason: protectedReason(path),
+			// The brand exists only in the type system; nothing reads it.
+		} as RemovePlan;
+	};
+
+	const remove = withRefresh(async (plan: RemovePlan, typedName?: string) => {
+		if (plan.protectedReason !== null && typedName?.trim() !== plan.name) {
+			throw new Error(`Type "${plan.name}" to confirm deleting it.`);
+		}
+		await connector.remove(plan.path, plan.recursive);
 	});
 
 	return {
@@ -181,6 +238,7 @@ export function createFileBrowser(
 		createDir,
 		createFile,
 		rename,
+		planRemove,
 		remove,
 	};
 }

@@ -68,7 +68,7 @@ const MUTATIONS: { name: string; run: (b: FileBrowser) => Promise<unknown> }[] =
 	{ name: "createDir", run: b => b.createDir("newdir") },
 	{ name: "createFile", run: b => b.createFile("new.g") },
 	{ name: "rename", run: b => b.rename({ type: "f", name: "a.g", size: 1 }, "b.g") },
-	{ name: "remove", run: b => b.remove({ type: "f", name: "a.g", size: 1 }) },
+	{ name: "remove", run: async b => b.remove(await b.planRemove({ type: "f", name: "a.g", size: 1 })) },
 ];
 
 for (const mutation of MUTATIONS) {
@@ -138,12 +138,90 @@ test("renaming an entry to its own name touches nothing", async () => {
 
 test("deleting a directory is recursive; deleting a file is not", async () => {
 	await withBrowser(async (browser, calls) => {
-		await browser.remove({ type: "d", name: "sub", size: 0 });
-		await browser.remove({ type: "f", name: "a.g", size: 1 });
+		await browser.remove(await browser.planRemove({ type: "d", name: "sub", size: 0 }));
+		await browser.remove(await browser.planRemove({ type: "f", name: "a.g", size: 1 }));
 		assert.deepEqual(calls.remove, [
 			["0:/gcodes/sub", true],
 			["0:/gcodes/a.g", false],
 		]);
+	});
+});
+
+// --- data-loss guards: what a delete would actually destroy ---
+
+test("planning a directory delete counts what is inside it", async () => {
+	await withBrowser(
+		async browser => {
+			const plan = await browser.planRemove({ type: "d", name: "sub", size: 0 });
+			assert.equal(plan.itemCount, 3, "the operator must be told how much is at stake");
+			assert.equal(plan.recursive, true);
+		},
+		{
+			entries: [
+				{ type: "f", name: "a.g", size: 1 },
+				{ type: "f", name: "b.g", size: 1 },
+				{ type: "f", name: "c.g", size: 1 },
+			],
+		},
+	);
+});
+
+test("a file's plan is never recursive and counts nothing", async () => {
+	await withBrowser(async browser => {
+		const plan = await browser.planRemove({ type: "f", name: "a.g", size: 1 });
+		assert.equal(plan.recursive, false);
+		assert.equal(plan.itemCount, 0);
+		assert.equal(plan.protectedReason, null);
+	});
+});
+
+test("an unreadable directory reports unknown contents rather than empty", async () => {
+	// Guessing "empty" here is exactly how a silent recursive wipe happens.
+	const { connector } = fakeConnector();
+	let calls = 0;
+	const failing = {
+		...connector,
+		list: async (dir: string) => {
+			calls++;
+			if (calls > 1) throw new Error("unreadable");
+			return [];
+		},
+	} as unknown as Connector;
+	let dispose = (): void => {};
+	const browser = createRoot(d => {
+		dispose = d;
+		return createFileBrowser(ROOT, () => true, failing);
+	});
+	await settle();
+	const plan = await browser.planRemove({ type: "d", name: "sub", size: 0 });
+	assert.equal(plan.itemCount, -1, "unknown must not be reported as empty");
+	dispose();
+});
+
+test("a protected file refuses to delete without its name typed back", async () => {
+	await withBrowser(async (browser, calls) => {
+		const plan = await browser.planRemove({ type: "f", name: "config.g", size: 1 });
+		assert.ok(plan.protectedReason !== null);
+
+		const bare = await browser.remove(plan);
+		assert.equal(bare.ok, false);
+		assert.equal(calls.remove.length, 0, "no request may reach the board");
+
+		const wrong = await browser.remove(plan, "config");
+		assert.equal(wrong.ok, false);
+		assert.equal(calls.remove.length, 0);
+
+		const right = await browser.remove(plan, "config.g");
+		assert.deepEqual(right, { ok: true });
+		assert.deepEqual(calls.remove, [["0:/gcodes/config.g", false]]);
+	});
+});
+
+test("an ordinary file needs no typed name", async () => {
+	await withBrowser(async (browser, calls) => {
+		const plan = await browser.planRemove({ type: "f", name: "benchy.gcode", size: 1 });
+		assert.deepEqual(await browser.remove(plan), { ok: true });
+		assert.equal(calls.remove.length, 1);
 	});
 });
 

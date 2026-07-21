@@ -1331,3 +1331,18 @@
 	font: 400 11px/16px var(--font-body); letter-spacing: 0; text-transform: none;
 	color: var(--silk-dim); opacity: 0.75; min-height: 16px;
 }
+
+/* What an armed delete would destroy. Stated before the second click. */
+.fb-warn {
+	display: flex; flex-direction: column; gap: 8px; align-items: flex-start;
+	margin: 0 0 10px; padding: 10px;
+	background: rgba(224, 92, 74, 0.08);
+	border: 1px solid rgba(224, 92, 74, 0.35); border-radius: 6px;
+}
+.fb-warn-line { margin: 0; font: 400 12.5px/1.45 var(--font-body); color: var(--silk); }
+.fb-warn-line b { color: var(--fault); font-weight: 600; }
+.fb-warn-confirm {
+	display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+	font: 400 12px/1 var(--font-body); color: var(--silk-dim);
+}
+.fb-warn-confirm b { color: var(--silk); font-family: ui-monospace, "Cascadia Code", Consolas, monospace; }
