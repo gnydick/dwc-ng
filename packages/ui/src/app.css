@@ -1653,3 +1653,12 @@
 	color: var(--silk-dim); white-space: pre-wrap;
 }
 .hm-actions { display: flex; gap: 8px; }
+
+/* Manual nudge: adjust a probe point by hand, no machine command. */
+.hm-nudge { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.hm-nudge .fb-act {
+	/* Reserved: the label carries the step, so "− 0.01" and "− 0.005" differ in
+	   width and the buttons must not resize as the step is typed. */
+	min-width: 66px; font-variant-numeric: tabular-nums;
+}
+.hm-nudge .feed-field input { width: 62px; }

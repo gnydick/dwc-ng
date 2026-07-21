@@ -36,6 +36,8 @@ export default function Bed() {
 	const [reply, setReply] = createSignal("");
 	const [probed, setProbed] = createSignal<number | null>(null);
 	const [message, setMessage] = createSignal("");
+	/** Manual nudge step, mm. Matches the babystep control's granularity. */
+	const [step, setStep] = createSignal(0.01);
 
 	// Load when the connection is READY, not on mount. Mounting races rr_connect:
 	// the download went out before the session existed, came back 401, and the
@@ -91,6 +93,26 @@ export default function Bed() {
 		} finally {
 			setProbing(false);
 		}
+	};
+
+	/**
+	 * Adjust a point by hand, without probing. Sometimes you know a point is
+	 * wrong and by how much — a bed clip, a known low spot — and re-probing it
+	 * would only re-measure the same obstruction.
+	 *
+	 * This needs no accept step: unlike a probe, whose value comes from the
+	 * machine and may be nonsense, a nudge is already the operator's own
+	 * deliberate number. It still lands in the pending overlay, so nothing
+	 * reaches the card until Save.
+	 */
+	const nudge = (delta: number): void => {
+		const target = cell();
+		if (target === null) return;
+		const next = store.valueAt(target.row, target.col) + delta;
+		// Keep the file's own precision: the map is written to three decimals, so
+		// carrying more here would only be lost on save and confuse the display.
+		store.edit(target.row, target.col, Number(next.toFixed(3)));
+		clearProbe();
 	};
 
 	const accept = (): void => {
@@ -154,6 +176,23 @@ export default function Bed() {
 								<button class="fb-tool" disabled={probing()} onClick={() => void reprobe()}>
 									{probing() ? "Probing…" : "Re-probe"}
 								</button>
+
+								{/* Adjust by hand, no machine involved. */}
+								<div class="hm-nudge">
+									<button class="fb-act" onClick={() => nudge(-step())}>− {step()}</button>
+									<button class="fb-act" onClick={() => nudge(step())}>+ {step()}</button>
+									<label class="feed-field">
+										mm
+										<input
+											type="number"
+											step="0.005"
+											min="0"
+											value={step()}
+											aria-label="Nudge step in mm"
+											onInput={e => setStep(Math.abs(Number(e.currentTarget.value)) || 0.01)}
+										/>
+									</label>
+								</div>
 								<Show when={probed() !== null}>
 									<div class="hm-result">
 										<p class="hm-line">
