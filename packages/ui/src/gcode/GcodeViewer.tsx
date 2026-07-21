@@ -166,7 +166,7 @@ export function GcodeViewer(props: { canvas: PanelCanvasController }) {
 				const opaqueRange = computeOpaqueRange(toolpath.segmentCount, toolpath.layerIndex, -1, revealMode());
 				const ghostRanges = computeGhostRanges(toolpath.segmentCount, opaqueRange, ghostMode());
 				const hue = computeHueColors(toolpath, colorMode());
-				scene!.setGeometry(toolpath.positions, hue, widths, toolpath.extruding, toolpath.layerIndex, opaqueRange, ghostRanges);
+				scene!.setGeometry(toolpath.positions, hue, widths, toolpath.extruding, toolpath.layerIndex, toolpath.layerHeights, opaqueRange, ghostRanges);
 				// Prime the cache so the recolor() below takes the cheap position path
 				// (setGeometry already uploaded this hue).
 				cachedHue = hue;

@@ -112,7 +112,7 @@ export interface SceneHandle {
 	 *  `layerIndex` (per segment) bounds collinear-run merging so a merged run never crosses a layer. */
 	setGeometry(
 		positions: Float32Array, hue: Float32Array, widths: Float32Array, extruding: Uint8Array, layerIndex: Uint16Array,
-		opaqueRange: SegmentRange, ghostRanges: GhostRanges,
+		layerHeights: Float32Array, opaqueRange: SegmentRange, ghostRanges: GhostRanges,
 	): void;
 	/** Rebuilds the per-run color buffers (color MODE changed) and re-applies the split. Infrequent — not the live tick. */
 	updateColors(hue: Float32Array, opaqueRange: SegmentRange, ghostRanges: GhostRanges): void;
@@ -507,7 +507,7 @@ export function createScene(
 	const writeBoxMatrix = (
 		out: Float32Array, offset: number,
 		sx: number, sy: number, sz: number, ex: number, ey: number, ez: number,
-		width: number,
+		width: number, height: number,
 	): void => {
 		// gcode (x,y,z) -> Babylon (x, z, y): build height z becomes Babylon Y (up).
 		const bsx = sx, bsy = sz, bsz = sy;
@@ -534,20 +534,27 @@ export function createScene(
 		const uy = rz * dx - rx * dz;
 		const uz = rx * dy - ry * dx;
 
-		// Extend each bead by half its width at BOTH ends so consecutive boxes
-		// overlap through their shared joint. Without this a box spans exactly
-		// start→end with flat caps, leaving a wedge-shaped void on the outside of
-		// every direction change — ~(width/2)·tan(θ/2), i.e. half a bead at a 90°
-		// corner, which reads as a broken path. Costs no extra instances.
-		const drawLength = length + width;
+		// Beads span EXACTLY start→end. An earlier version extended each by half a
+		// width at both ends to close the wedge-shaped void on the outside of a
+		// turn; that was invisible on flat boxes but with a round, capped
+		// cross-section every bead visibly protrudes past its segment — reading as
+		// a chain of overflowing sausage ends rather than one continuous tube.
+		// Overlap is the wrong tool for joining round beads.
+		const drawLength = length;
+		// ELLIPTICAL cross-section: `width` across the bead, `height` (the layer
+		// height) vertically. A real FDM bead is ~0.4mm wide but only ~0.2mm tall;
+		// scaling both perpendicular axes by width made round beads twice as tall
+		// as they should be, which reads as fat sausages rather than extrusions.
+		// The reference viewer composes exactly this (scale = length × layerHeight
+		// × width) — studied per CLAUDE.md, never copied.
 		out[offset] = rx * width; out[offset + 1] = ry * width; out[offset + 2] = rz * width; out[offset + 3] = 0;
 		out[offset + 4] = dx * drawLength; out[offset + 5] = dy * drawLength; out[offset + 6] = dz * drawLength; out[offset + 7] = 0;
-		out[offset + 8] = ux * width; out[offset + 9] = uy * width; out[offset + 10] = uz * width; out[offset + 11] = 0;
+		out[offset + 8] = ux * height; out[offset + 9] = uy * height; out[offset + 10] = uz * height; out[offset + 11] = 0;
 		out[offset + 12] = mx; out[offset + 13] = my; out[offset + 14] = mz; out[offset + 15] = 1;
 	};
 
 	/** Merge extruding segments into collinear runs and build one box matrix per run; store the run→segment maps for split classification and coloring. */
-	const computeMergedGeometry = (positions: Float32Array, widths: Float32Array, extruding: Uint8Array, layerIndex: Uint16Array): void => {
+	const computeMergedGeometry = (positions: Float32Array, widths: Float32Array, extruding: Uint8Array, layerIndex: Uint16Array, heightOf: (seg: number) => number): void => {
 		const runs = mergeExtrudingRuns(positions, widths, extruding, layerIndex);
 		const count = runs.length;
 		const matrices = new Float32Array(count * 16);
@@ -561,7 +568,7 @@ export function createScene(
 				matrices, idx * 16,
 				positions[sb]!, positions[sb + 1]!, positions[sb + 2]!,
 				positions[eb + 3]!, positions[eb + 4]!, positions[eb + 5]!,
-				widths[r.start]!,
+				widths[r.start]!, heightOf(r.start),
 			);
 			segStart[idx] = r.start;
 			colorSeg[idx] = r.start;
@@ -585,7 +592,7 @@ export function createScene(
 				gMatrices, idx * 16,
 				positions[sb]!, positions[sb + 1]!, positions[sb + 2]!,
 				positions[eb + 3]!, positions[eb + 4]!, positions[eb + 5]!,
-				widths[r.start]!,
+				widths[r.start]!, heightOf(r.start),
 			);
 			gSegStart[idx] = r.start;
 			gColorSeg[idx] = r.start;
@@ -611,7 +618,7 @@ export function createScene(
 		for (let i = 0; i < extruding.length; i++) {
 			if (extruding[i] === 1) continue;
 			const b = i * 6;
-			writeBoxMatrix(matrices, o * 16, positions[b]!, positions[b + 1]!, positions[b + 2]!, positions[b + 3]!, positions[b + 4]!, positions[b + 5]!, widths[i]!);
+			writeBoxMatrix(matrices, o * 16, positions[b]!, positions[b + 1]!, positions[b + 2]!, positions[b + 3]!, positions[b + 4]!, positions[b + 5]!, widths[i]!, widths[i]!);
 			o++;
 		}
 		return matrices;
@@ -778,12 +785,17 @@ export function createScene(
 	};
 
 	return {
-		setGeometry(positions, hue, widths, extruding, layerIndex, opaqueRange, ghostRanges) {
+		setGeometry(positions, hue, widths, extruding, layerIndex, layerHeights, opaqueRange, ghostRanges) {
 			// New geometry → fresh meshes (each needs its own private geometry via
 			// makeGeometryUnique) and a forced full-buffer (re)load on next split.
 			disposeAll();
 			splitConfig = "none";
-			computeMergedGeometry(positions, widths, extruding, layerIndex);
+			// Fall back to the bead width if a layer height is missing/degenerate.
+			const heightOf = (seg: number): number => {
+				const h = layerHeights[layerIndex[seg]!];
+				return h !== undefined && h > 1e-4 ? h : widths[seg]!;
+			};
+			computeMergedGeometry(positions, widths, extruding, layerIndex, heightOf);
 			loadColors(hue);
 
 			disposeTravel();
