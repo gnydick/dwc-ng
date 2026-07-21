@@ -184,9 +184,17 @@
 .panel-canvas {
 	display: grid;
 	grid-template-columns: repeat(48, 46px);
-	grid-auto-rows: 24px;
-	gap: 6px;
+	/* 4px rows with NO row gap: the vertical quantum is now the greatest common
+	   divisor of the control heights, so a card can be sized to what it draws.
+	   The gap between stacked cards is a margin on the card (below) so that it
+	   does not add itself back into the quantum. Columns keep their gutter. */
+	grid-auto-rows: 4px;
+	column-gap: 6px;
+	row-gap: 0;
 }
+/* The vertical gutter, moved off the grid and onto the item. A card spanning
+   n rows therefore renders (4n - 6)px tall. */
+.panel-canvas > * { margin-bottom: 6px; }
 
 .card {
 	background: var(--mask-700);
@@ -1009,31 +1017,32 @@
 
 .gcode-btn {
 	position: relative;
-	display: inline-flex; flex-direction: column; align-items: flex-start; gap: 3px;
-	/* Raised off the card rather than flush with it: the old --mask-500 on a
-	   --mask-700 card with a 9%-opacity hairline read as a label, not a control,
-	   especially on rows that hide the mono stamp. */
+	/* One line, one height. The stamp sits beside the label rather than under
+	   it: as a second line it made this component 30px, 32px or 46px tall
+	   depending on whether the stamp showed and whether the label wrapped, and
+	   no card could be fitted to content that varied that way. */
+	display: inline-flex; flex-direction: row; align-items: center; gap: 8px;
+	height: var(--ctl-h); box-sizing: border-box;
 	background: linear-gradient(180deg, #24405f 0%, #1b3350 100%);
 	border: 1px solid rgba(233, 238, 244, 0.22);
 	box-shadow: inset 0 1px 0 rgba(233, 238, 244, 0.07), 0 1px 2px rgba(0, 0, 0, 0.32);
 	border-radius: var(--radius);
-	padding: 8px 12px; cursor: pointer; color: var(--silk); text-align: left;
+	padding: 0 10px; cursor: pointer; color: var(--silk); text-align: left;
+	white-space: nowrap;
 	transition: background 90ms ease, border-color 90ms ease, transform 60ms ease, box-shadow 90ms ease;
 }
 .gcode-btn:hover:not(:disabled) { border-color: var(--copper); background: linear-gradient(180deg, #2b4a6d 0%, #203a5c 100%); }
 .gcode-btn:focus-visible { outline: 2px solid var(--copper-bright); outline-offset: 2px; }
-/* A real press: the control moves under the finger, so a click is felt even
-   before the board answers. */
 .gcode-btn:active:not(:disabled) {
 	transform: translateY(1px);
 	box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.45);
 	background: linear-gradient(180deg, #1b3350 0%, #24405f 100%);
 }
 .gcode-btn:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: none; }
-.gcode-label { font: 600 13px/1.1 var(--font-display); letter-spacing: 0.04em; text-transform: uppercase; }
+.gcode-label { font: 600 12.5px/1 var(--font-display); letter-spacing: 0.04em; text-transform: uppercase; }
 .gcode-cmd {
-	font: 400 11px/1 ui-monospace, "Cascadia Code", "SF Mono", Menlo, Consolas, monospace;
-	color: var(--silk-dim); white-space: nowrap;
+	font: 400 10.5px/1 ui-monospace, "Cascadia Code", "SF Mono", Menlo, Consolas, monospace;
+	color: var(--silk-dim); white-space: nowrap; opacity: 0.75;
 }
 .gcode-go { border-color: rgba(111, 191, 143, 0.55); }
 .gcode-go .gcode-label { color: var(--ok); }
@@ -1044,16 +1053,14 @@
 /* Send acknowledgement. Absolutely positioned at a fixed size so no state
    change can alter the button's box - only colour moves. */
 .gcode-ack {
-	position: absolute; top: 5px; right: 5px;
-	width: 7px; height: 7px; border-radius: 50%;
+	position: absolute; top: 3px; right: 3px;
+	width: 6px; height: 6px; border-radius: 50%;
 	background: transparent;
 	transition: background 120ms ease, box-shadow 120ms ease;
 }
 .is-sending .gcode-ack { background: var(--silk-dim); animation: ack-pulse 700ms ease-in-out infinite; }
 .is-sent .gcode-ack { background: var(--ok); box-shadow: 0 0 0 3px rgba(111, 191, 143, 0.22); }
 .is-failed .gcode-ack { background: var(--fault); box-shadow: 0 0 0 3px rgba(224, 92, 74, 0.25); }
-/* The whole control answers, not just the dot - a 7px dot is easy to miss on a
-   machine you are standing next to. */
 .gcode-btn.is-sent { border-color: var(--ok); }
 .gcode-btn.is-failed { border-color: var(--fault); background: linear-gradient(180deg, #3a2430 0%, #2b1b26 100%); }
 
@@ -1403,3 +1410,24 @@
 /* Fixed width so the row's geometry does not depend on axis-letter width, and
    so adding an axis cannot reflow the keys already under the operator's finger. */
 .rel-key .gcode-label { font-size: 12px; min-width: 18px; text-align: center; }
+
+/* ---------- one control height, everywhere ---------- */
+/* Each of these previously picked its own height out of its padding and
+   line-height. Sharing --ctl-h is what makes a row of controls a knowable
+   size, which is what lets a card be fitted to its content. */
+.chip-btn, .rel-key, .fb-act, .fb-tool, .run-btn, .btn,
+.temp-field input, .feed-field input, .fb-input, .tool-p input {
+	height: var(--ctl-h);
+	box-sizing: border-box;
+	display: inline-flex; align-items: center; justify-content: center;
+	padding-top: 0; padding-bottom: 0;
+}
+.fb-input, .temp-field input, .feed-field input, .tool-p input { justify-content: flex-start; }
+/* The jog pad is the deliberate exception: a large square target you hit
+   without looking. Exactly 2x the base so it still lands on the same rhythm. */
+.jog-key { height: calc(var(--ctl-h) * 2); }
+.ctl-wrap, .release-row, .btn-cluster, .btn-row, .step-row { gap: var(--ctl-gap); }
+
+/* The card head cost 27px of type plus 12px of frame on cards only ~150px tall. */
+.card-head { padding-top: 0; margin-bottom: 6px; }
+.card-title { font-size: 12px; }

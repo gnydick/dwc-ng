@@ -94,14 +94,44 @@ test("parseStoredCanvas tolerates missing or corrupt storage", () => {
 	assert.equal(parseStoredCanvas("{not json"), null);
 });
 
-test("parseStoredCanvas migrates a legacy (pre-column-bump) unwrapped canvas by doubling col/colSpan", () => {
+test("parseStoredCanvas migrates a legacy unwrapped canvas: columns doubled AND rows regranulated", () => {
+	// Rows moved from a 30px pitch (24px row + 6px gap) to 4px, so an edge at
+	// row r lands at round(r * 30 / 4).
 	const legacy = JSON.stringify({ a: rect(2, 3, 4, 5), b: { not: "a rect" } });
-	assert.deepEqual(parseStoredCanvas(legacy), { a: rect(4, 3, 8, 5), b: { not: "a rect" } });
+	assert.deepEqual(parseStoredCanvas(legacy), { a: rect(4, 23, 8, 37), b: { not: "a rect" } });
+});
+
+/**
+ * The grid's whole contract is that panels never overlap. Migration converts
+ * edge-wise for exactly this reason: scaling row and rowSpan independently
+ * would round each to its own nearest cell, so two panels that were touching
+ * could round INTO each other. This asserts the property directly.
+ */
+test("row migration never turns adjacent panels into overlapping ones", () => {
+	// A sits directly on top of B, sharing an edge, at every odd span where
+	// naive independent rounding is most likely to drift.
+	for (let span = 1; span <= 12; span++) {
+		const stored = JSON.stringify({ v: 2, state: {
+			a: rect(0, 0, 4, span),
+			b: rect(0, span, 4, span),
+		} });
+		const out = parseStoredCanvas(stored) as Record<string, { row: number; rowSpan: number }>;
+		assert.equal(
+			out.a!.row + out.a!.rowSpan,
+			out.b!.row,
+			`span ${span}: B must start exactly where A ends - no gap, no overlap`,
+		);
+	}
 });
 
 test("parseStoredCanvas does not re-migrate a canvas already carrying the current version envelope", () => {
-	const current = JSON.stringify({ v: 2, state: { a: rect(2, 3, 4, 5) } });
+	const current = JSON.stringify({ v: 3, state: { a: rect(2, 3, 4, 5) } });
 	assert.deepEqual(parseStoredCanvas(current), { a: rect(2, 3, 4, 5) });
+});
+
+test("a v2 envelope still gets the row regranulation, but not the column doubling", () => {
+	const v2 = JSON.stringify({ v: 2, state: { a: rect(2, 3, 4, 5) } });
+	assert.deepEqual(parseStoredCanvas(v2), { a: rect(2, 23, 4, 37) });
 });
 
 test("mergeCanvas falls back to defaults when storage is corrupt, empty, or the wrong shape", () => {

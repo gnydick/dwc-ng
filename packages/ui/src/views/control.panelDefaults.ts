@@ -1,30 +1,30 @@
 import type { PanelDefault } from "../shell/panelCanvas.ts";
 
 /**
- * Row spans are sized to each card's ACTUAL content (measured in the running
- * app), not guessed. Grid rows are 24px with a 6px gap, so n rows = 30n - 6 px.
- * Cards that grow when the machine is busy (Printing gains a progress block,
- * Tools gains a row per tool) carry a little headroom; the rest are trimmed to
- * what they draw, because a card with 175px of empty space under its content
- * reads as broken rather than spacious.
+ * Row spans fitted to each card's measured content on the 4px grid.
+ *
+ * A card spanning n rows renders (4n - 6)px tall (the 6px is the inter-card
+ * margin that replaced the row gap). With every control exactly 28px — or 56px
+ * for the jog pad, deliberately 2x — a card's content height is knowable, so
+ * these are computed rather than guessed.
+ *
+ * The two cards that carry slack carry it on purpose: Printing grows a progress
+ * block, file name and time estimates once a job starts, and Heaters/Fans gain
+ * a row per tool or fan. Everything else is trimmed to what it draws.
  */
 export const CONTROL_PANEL_DEFAULTS: PanelDefault[] = [
-	// Headroom: gains a progress bar, file name and time estimates while printing.
-	{ id: "active-job", col: 0, row: 0, colSpan: 24, rowSpan: 6 },
-	// Two rows of keys: home per axis, then the compact release row.
-	{ id: "homing", col: 0, row: 6, colSpan: 12, rowSpan: 7 },
-	// Headroom: one key per tool, and the P-parameter row above them.
-	{ id: "tools", col: 12, row: 6, colSpan: 12, rowSpan: 6 },
-	// 10, not 8: a tool row per tool plus the bed overflowed at 8 on the
-	// 4-tool machine, and a scrollbar is worse than a little slack.
-	{ id: "heaters", col: 0, row: 13, colSpan: 12, rowSpan: 10 },
-	{ id: "movement", col: 12, row: 13, colSpan: 12, rowSpan: 17 },
-	{ id: "fans", col: 0, row: 23, colSpan: 12, rowSpan: 9 },
-	{ id: "tuning", col: 0, row: 32, colSpan: 12, rowSpan: 5 },
+	// Headroom for the progress block that appears while printing.
+	{ id: "active-job", col: 0, row: 0, colSpan: 24, rowSpan: 32 },
+	{ id: "homing", col: 0, row: 32, colSpan: 12, rowSpan: 46 },
+	{ id: "tools", col: 12, row: 32, colSpan: 12, rowSpan: 28 },
+	{ id: "heaters", col: 0, row: 78, colSpan: 12, rowSpan: 58 },
+	{ id: "movement", col: 12, row: 78, colSpan: 12, rowSpan: 117 },
+	{ id: "fans", col: 0, row: 136, colSpan: 12, rowSpan: 58 },
+	{ id: "tuning", col: 0, row: 194, colSpan: 12, rowSpan: 28 },
 	// Rendered only when the board reports an ATX port (state.atxPower !== null),
 	// but it needs a placement regardless: a panel the canvas has never heard of
 	// has nowhere to go.
-	{ id: "atx", col: 12, row: 30, colSpan: 12, rowSpan: 5 },
-	{ id: "console", col: 0, row: 37, colSpan: 24, rowSpan: 10 },
-	{ id: "camera", col: 0, row: 47, colSpan: 8, rowSpan: 10 },
+	{ id: "atx", col: 12, row: 195, colSpan: 12, rowSpan: 28 },
+	{ id: "console", col: 0, row: 223, colSpan: 24, rowSpan: 75 },
+	{ id: "camera", col: 0, row: 298, colSpan: 8, rowSpan: 75 },
 ];

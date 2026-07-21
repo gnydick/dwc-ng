@@ -16,7 +16,20 @@ import {
 } from "./panelOrientation.ts";
 
 export const GRID_COLS = 48;
-export const ROW_UNIT_PX = 24;
+/**
+ * Vertical granularity. Set to the greatest common divisor of the control
+ * heights the UI actually draws (every control is a multiple of 4px), so a
+ * card can be sized to its content instead of to the nearest coarse row.
+ *
+ * It used to be 24px with a 6px row gap - a 30px quantum - which meant up to
+ * 29px of dead space per card was baked in by construction, no matter how
+ * carefully the contents were measured. The row gap is now 0 and the visual
+ * separation between stacked cards comes from a margin on the card itself, so
+ * the gap no longer contributes to the quantum.
+ */
+export const ROW_UNIT_PX = 4;
+export const ROW_GAP_PX = 0;
+/** Horizontal gap only (columns still carry a visible gutter). */
 export const GAP_PX = 6;
 /** Fixed column width (matches app.css's .panel-canvas grid-template-columns)
  *  — columns don't scale with viewport width, so a card's pixel size only
@@ -151,7 +164,7 @@ function isPanelRect(value: unknown): value is PanelRect {
 
 /** Bump whenever a stored canvas needs a one-time migration to stay valid
  *  under a new grid shape (see migrateLegacyDoubleWidth below). */
-const CANVAS_FORMAT_VERSION = 2;
+const CANVAS_FORMAT_VERSION = 3;
 
 interface StoredCanvasEnvelope {
 	v: number;
@@ -178,6 +191,36 @@ function migrateLegacyDoubleWidth(value: unknown): unknown {
 	return out;
 }
 
+
+/**
+ * One-time migration for canvases saved against the old 24px row + 6px gap
+ * grid (a 30px pitch) now that rows are 4px with no gap.
+ *
+ * Positions are converted EDGE-WISE - the new top is derived from the old top
+ * and the new bottom from the old bottom, with the span taken as the
+ * difference - rather than scaling row and rowSpan independently. Scaling them
+ * separately would round each to its own nearest cell, and two panels that
+ * were exactly adjacent could round into each other, producing the one thing
+ * this grid forbids: an overlap. Deriving both edges from the same mapping
+ * keeps "B starts where A ends" exactly true.
+ */
+function migrateRowGranularity(value: unknown): unknown {
+	if (typeof value !== "object" || value === null) return value;
+	const OLD_PITCH = 30; // 24px row + 6px gap
+	const toNewEdge = (oldEdge: number): number => Math.round((oldEdge * OLD_PITCH) / ROW_UNIT_PX);
+	const out: Record<string, unknown> = {};
+	for (const [id, entry] of Object.entries(value as Record<string, unknown>)) {
+		if (!isPanelRect(entry)) {
+			out[id] = entry;
+			continue;
+		}
+		const top = toNewEdge(entry.row);
+		const bottom = toNewEdge(entry.row + entry.rowSpan);
+		out[id] = { ...entry, row: top, rowSpan: Math.max(1, bottom - top) };
+	}
+	return out;
+}
+
 /** Tolerant parse: anything unexpected yields null, never a throw. Applies
  *  migrateLegacyDoubleWidth to anything not already carrying the current
  *  version envelope. */
@@ -190,7 +233,10 @@ export function parseStoredCanvas(raw: string | null): unknown {
 		return null;
 	}
 	if (isEnvelope(parsed) && parsed.v === CANVAS_FORMAT_VERSION) return parsed.state;
-	return migrateLegacyDoubleWidth(parsed);
+	// Unversioned = pre-v2: needs the column doubling AND the row regranulation.
+	// A v2 envelope only needs the rows.
+	if (isEnvelope(parsed) && parsed.v === 2) return migrateRowGranularity(parsed.state);
+	return migrateRowGranularity(migrateLegacyDoubleWidth(parsed));
 }
 
 export function serializeCanvas(state: CanvasState): string {
@@ -347,7 +393,7 @@ export function createPanelCanvas(storageKey: string, defaults: PanelDefault[], 
 		const tick = (): void => {
 			const effectiveY = pointerY + (window.scrollY - originScrollY);
 			const deltaCol = Math.round((pointerX - originX) / (COL_UNIT_PX + GAP_PX));
-			const deltaRow = Math.round((effectiveY - originY) / (ROW_UNIT_PX + GAP_PX));
+			const deltaRow = Math.round((effectiveY - originY) / (ROW_UNIT_PX + ROW_GAP_PX));
 			const reachRow = Math.max(0, start.row + deltaRow) + start.rowSpan;
 			spacer.style.gridRow = `${reachRow + 1} / span 1`;
 
@@ -412,7 +458,7 @@ export function createPanelCanvas(storageKey: string, defaults: PanelDefault[], 
 				+ ((scroller?.scrollTop ?? 0) - originScrollTop);
 			const effectiveY = pointerY + scrolled;
 			const deltaColSpan = Math.round((pointerX - originX) / (COL_UNIT_PX + GAP_PX));
-			const deltaRowSpan = Math.round((effectiveY - originY) / (ROW_UNIT_PX + GAP_PX));
+			const deltaRowSpan = Math.round((effectiveY - originY) / (ROW_UNIT_PX + ROW_GAP_PX));
 			const next = tryResize(collidableState(id), id, start.colSpan + deltaColSpan, start.rowSpan + deltaRowSpan);
 			setState({ ...state(), [id]: next }); // live preview, persisted only on drop
 			raf = requestAnimationFrame(tick);

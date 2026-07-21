@@ -34,6 +34,15 @@
 	--font-display: "Rajdhani", "Segoe UI", system-ui, sans-serif;
 	--font-body: system-ui, "Segoe UI", Roboto, sans-serif;
 	--radius: 6px;
+
+	/* One control height for the whole UI. Every button, input and chip is
+	   exactly this tall, so a row of controls has a knowable height and a card
+	   can be sized to its content instead of to a guess. Before this there were
+	   SEVEN distinct control heights (25/27/30/31/32/46/60) - three of them
+	   coming from the same component depending on whether its stamp showed.
+	   The jog pad is the one deliberate exception, at exactly 2x. */
+	--ctl-h: 28px;
+	--ctl-gap: 8px;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
