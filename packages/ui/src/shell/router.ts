@@ -7,7 +7,7 @@ import { createSignal, onCleanup } from "solid-js";
  * ever matter, swapping this for @solidjs/router is an hour, not a rewrite.
  */
 
-export const ROUTES = ["machine", "control", "jobs", "macros", "system", "settings", "activity"] as const;
+export const ROUTES = ["machine", "control", "jobs", "macros", "system", "settings", "activity", "bed"] as const;
 export type Route = (typeof ROUTES)[number];
 
 function parse(hash: string): Route {

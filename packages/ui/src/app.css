@@ -1585,3 +1585,71 @@
 	visibility: hidden;
 }
 .speed-error.show { visibility: visible; }
+
+/* ---------- height map ---------- */
+.hm-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; height: var(--ctl-h); }
+.hm-msg {
+	font: 400 12px/16px var(--font-body); color: var(--silk-dim);
+	/* Reserved: this appears and disappears and must not move the grid. */
+	min-height: 16px; flex: 1; min-width: 0;
+	overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* The interpolated surface, with the probe points marked on top of it. Fits
+   its box in both directions: the map must fit the panel it is given, not
+   dictate it (square dots filling the card's width once overflowed by 274px). */
+.hm-surface {
+	position: relative;
+	/* A DEFINITE height from the flex parent, with width following the bed's
+	   aspect ratio. With only max-* constraints the box had nothing to resolve
+	   aspect-ratio against and collapsed to 97x86 — its absolutely-positioned
+	   contents give it no intrinsic size of their own. */
+	flex: 1 1 auto;
+	min-height: 0;
+	height: 100%;
+	width: auto;
+	max-width: 100%;
+	margin-inline: auto;
+	border: 1px solid var(--hairline); border-radius: var(--radius);
+	overflow: hidden;
+}
+.hm-canvas {
+	display: block; width: 100%; height: 100%;
+	/* Rendered at 96px and scaled up — the field is bilinear anyway, so the
+	   browser's smoothing does the enlargement instead of us computing it. */
+	image-rendering: auto;
+}
+
+/* Probe points: white, so they read as markers ON the surface rather than as
+   part of it. Centred on their coordinate, which is why the transform is here
+   and not baked into the percentage. */
+.hm-dot {
+	position: absolute;
+	width: 7px; height: 7px; padding: 0;
+	transform: translate(-50%, -50%);
+	border-radius: 50%;
+	background: rgba(255, 255, 255, 0.88);
+	border: 1px solid rgba(11, 22, 38, 0.55);
+	cursor: pointer;
+	transition: transform 80ms ease, background 80ms ease;
+}
+.hm-dot:hover { background: #fff; transform: translate(-50%, -50%) scale(1.5); }
+.hm-dot:focus-visible { outline: 2px solid var(--copper-bright); outline-offset: 2px; }
+/* A point carrying an unsaved re-probe. */
+.hm-dot.edited { background: var(--ok); border-color: var(--mask-900); }
+.hm-dot.selected {
+	background: var(--copper-bright); border-color: var(--mask-900);
+	transform: translate(-50%, -50%) scale(1.6);
+	box-shadow: 0 0 0 2px rgba(240, 160, 80, 0.35);
+}
+
+.hm-detail { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.hm-result { display: flex; flex-direction: column; gap: 6px; width: 100%; }
+.hm-line { margin: 0; font: 400 13px/1.4 var(--font-body); color: var(--silk); font-variant-numeric: tabular-nums; }
+.hm-line b { color: var(--copper-bright); }
+.hm-reply {
+	margin: 0; padding: 6px 8px; max-height: 72px; overflow: auto;
+	background: var(--mask-900); border: 1px solid var(--hairline); border-radius: 5px;
+	font: 400 11px/1.4 ui-monospace, "Cascadia Code", Consolas, monospace;
+	color: var(--silk-dim); white-space: pre-wrap;
+}
+.hm-actions { display: flex; gap: 8px; }

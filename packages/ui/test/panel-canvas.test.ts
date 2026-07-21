@@ -11,6 +11,7 @@ import { MACROS_PANEL_DEFAULTS } from "../src/views/macros.panelDefaults.ts";
 import { SYSTEM_PANEL_DEFAULTS } from "../src/views/system.panelDefaults.ts";
 import { CONTROL_PANEL_DEFAULTS } from "../src/views/control.panelDefaults.ts";
 import { SETTINGS_PANEL_DEFAULTS } from "../src/views/settings.panelDefaults.ts";
+import { BED_PANEL_DEFAULTS } from "../src/views/bed.panelDefaults.ts";
 
 const rect = (col: number, row: number, colSpan: number, rowSpan: number) => ({ col, row, colSpan, rowSpan });
 
@@ -254,4 +255,8 @@ test("it re-arms on the way back up so the detent is felt in both directions", (
 	const back = applyDetent(min - DETENT_BREAKAWAY_ROWS, min, broken.state);
 	assert.equal(back.span, min);
 	assert.equal(back.state.broken, false, "re-armed, so shrinking again must catch at the minimum");
+});
+
+test("Bed view's default panel layout is collision-free", () => {
+	assert.equal(hasCollisions(defaultCanvas(BED_PANEL_DEFAULTS)), false);
 });

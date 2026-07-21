@@ -7,6 +7,7 @@ import {
 } from "../dev/backend.ts";
 import Machine from "../views/Machine.tsx";
 import Control from "../views/Control.tsx";
+import Bed from "../views/Bed.tsx";
 import Jobs from "../views/Jobs.tsx";
 import Macros from "../views/Macros.tsx";
 import System from "../views/System.tsx";
@@ -22,6 +23,7 @@ const NAV: Array<{ route: Route; label: string }> = [
 	{ route: "system", label: "System" },
 	{ route: "settings", label: "Settings" },
 	{ route: "activity", label: "Activity" },
+	{ route: "bed", label: "Bed" },
 ];
 
 export default function Shell() {
@@ -136,6 +138,7 @@ export default function Shell() {
 						<Match when={route() === "system"}><System /></Match>
 						<Match when={route() === "settings"}><Settings /></Match>
 						<Match when={route() === "activity"}><Activity /></Match>
+						<Match when={route() === "bed"}><Bed /></Match>
 					</Switch>
 				</div>
 			</div>
