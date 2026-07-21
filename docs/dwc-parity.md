@@ -86,7 +86,7 @@ nobody closes them by accident.
 | Extrusion factor (`M221`) | ✅ | ✅ | |
 | Fans (`M106`) | ✅ | ✅ | |
 | **Reset heater fault** (`M562`) | ✅ (`ResetHeaterFaultDialog`) | ✅ | `cards/HeaterState.tsx`, two-step confirm |
-| **Filament load/unload** (`M701`/`M702`) | ✅ | ❌ | |
+| **Filament load/unload** (`M701`/`M702`) | ✅ | ✅ | Per tool, with a run-macros (P0) toggle; `M703` applies the filament config |
 | **Filament management** (assign/config per extruder) | ✅ (`Filaments.vue`, `FilamentDialog`) | ❌ | Belongs under machine management, not files |
 | Tool grouping / display config | ✅ (`SettingsToolGroupingPanel`) | ❌ | |
 | Spindle control (`M3`/`M4`/`M5`) | ✅ | 🚫 | CNC |
@@ -179,7 +179,11 @@ nobody closes them by accident.
 4. ✅ **Disable motors** (`M84`) — all + per axis (2026-07-21).
 5. ✅ **ATX power** (`M80`/`M81`) — OM-gated, hidden on this machine (2026-07-21).
 6. ✅ **Simulation start** (`M37`) (2026-07-21).
-7. **Filament load/unload** (`M701`/`M702`) and filament assignment. ← next
+7. ✅ **Filament load/unload** (`M701`/`M702`) (2026-07-21). Assignment/config
+   editing per filament is still open — see §4 "Filament management".
+
+**P1 is closed.** Next is P2 — visibility: height map, layer chart, viewer
+Z-clip and per-object cancel.
 
 **P2 — visibility**
 8. **Height map** viewer (`G29` mesh) — biggest remaining visualisation gap.
