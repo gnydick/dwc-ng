@@ -314,7 +314,7 @@ export function createScene(
 	// stays legible on faces angled away from the spotlight; the spotlight
 	// below still adds real directional shading on top.
 	const hemi = new HemisphericLight("ambient", new Vector3(0, 1, 0), scene);
-	hemi.intensity = 0.9;
+	hemi.intensity = 0.55;
 	// StandardMaterial's (non-PBR) lighting is NOT physically based: its
 	// default falloff is attenuation = max(0, 1 - distance/light.range),
 	// with `range` defaulting to ~1.8e308 (effectively infinite) — so at
@@ -329,7 +329,10 @@ export function createScene(
 	// contrast. A small, direct-multiplier-scale value here instead.
 	const spotDirection = target.subtract(LIGHT_POSITION).normalize();
 	const spotLight = new SpotLight("spot", LIGHT_POSITION, spotDirection, Math.PI / 2, 2, scene);
-	spotLight.intensity = 4;
+	// The reference viewer runs its lights at 0.8; 4 here blew highlights out and
+	// crushed the per-segment colours the view exists to show. Keep some
+	// directional shaping over the ambient, but in the same range.
+	spotLight.intensity = 1.1;
 
 	// Bed plane at build height 0 — a world-anchored reference so
 	// orbiting/panning reads as the CAMERA moving around a fixed scene, not
@@ -432,7 +435,14 @@ export function createScene(
 	// caps (T=8 → 28, T=12 → 44) against the box's 12. Caps are kept because
 	// each bead is extended half a width at both ends, so open ends could show
 	// through at a run's extremities.
-	const TUBE_TESSELLATION = 24;
+	// Tris per instance ≈ 4·T−4 with caps, times ~1.2M instances — the dominant
+	// GPU cost, and why interaction goes latent when this is raised (T=24 is
+	// ≈113M tris/frame on a real job, T=12 ≈54M). It was briefly raised to 24
+	// chasing "sharp ends", but those were the flat CAPS: tessellation
+	// subdivides the circumference and can never round an end. The fixes that
+	// actually worked were the elliptical cross-section and the 0.1mm joint
+	// overlap, so this is back where it was — the quality never came from here.
+	const TUBE_TESSELLATION = 12;
 	const tubeTemplate = MeshBuilder.CreateCylinder("tubeTemplate", {
 		height: 1, diameter: 1, tessellation: TUBE_TESSELLATION,
 	}, scene);
