@@ -54,7 +54,10 @@
 	padding: 0 24px 24px;
 	display: flex;
 	flex-direction: column;
-	min-height: 100vh;
+	/* CAP the height (was min-height) so a tall view scrolls INSIDE .view-scroll
+	   rather than growing .main and handing the scrollbar to the document. */
+	height: 100vh;
+	min-height: 0;
 	min-width: 0;
 }
 
@@ -74,13 +77,27 @@
    (auto, sized to content) means it never gets shorter than its content,
    so that forced overflow-y:auto never actually triggers — only the width
    constraint (min-width: 0) and overflow-x matter here. */
-.view-scroll { min-width: 0; overflow-x: auto; display: flex; flex-direction: column; }
+.view-scroll { min-width: 0; min-height: 0; flex: 1; overflow: auto; display: flex; flex-direction: column; }
 /* align-self: flex-start opts panel-canvas out of the column's default
    cross-axis stretch — stretch would clamp it to view-scroll's width
    outright, bypassing the min-content floor that keeps its 46px tracks
    from being squeezed and letting it hold its true (possibly wider than
    viewport) intrinsic size instead. */
 .view-scroll .panel-canvas { flex: 1; align-self: flex-start; align-content: start; }
+
+/* Room to grow INTO. `flex: 1` sizes the canvas to the scroll container, i.e.
+   the viewport, so a card being resized taller ran out of canvas and stopped —
+   the limit was the element's height, not the layout logic (panelCanvas.ts
+   clamps colSpan to GRID_COLS but leaves rowSpan unbounded). Trailing padding
+   extends the scrollable area past the last panel so there is always somewhere
+   to drag/resize into, and it grows the scroll range rather than the content. */
+.view-scroll .panel-canvas { padding-bottom: 720px; }
+
+/* No scrollbar chrome. The canvas is a fixed 48×46px + gaps = 2490px wide and
+   is meant to be panned/scrolled, but the bars themselves are visual noise on
+   what should read as one continuous surface. Still fully scrollable. */
+.view-scroll { scrollbar-width: none; -ms-overflow-style: none; }
+.view-scroll::-webkit-scrollbar { width: 0; height: 0; }
 
 .preflight-actions { margin-left: auto; display: flex; align-items: center; gap: 10px; }
 
