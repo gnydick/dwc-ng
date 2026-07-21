@@ -192,7 +192,7 @@
 	background: var(--mask-700);
 	border: 1px solid var(--hairline);
 	border-radius: var(--radius);
-	padding: 16px 18px;
+	padding: 12px 16px;
 }
 
 /* Sticky within .panel-body's own scroll — stays put while everything
@@ -202,8 +202,8 @@
 	display: flex;
 	align-items: baseline;
 	gap: 10px;
-	margin-bottom: 12px;
-	padding-top: 8px;
+	margin-bottom: 8px;
+	padding-top: 4px;
 	position: sticky;
 	top: 0;
 	z-index: 1;
@@ -228,7 +228,7 @@
 	flex: 1;
 	min-height: 0;
 	overflow: auto;
-	padding: 0 18px 16px;
+	padding: 0 16px 10px;
 	display: flex;
 	flex-direction: column;
 	scrollbar-width: none;
@@ -1008,22 +1008,60 @@
 /* ---------- Control view (controls wear their G-code) ---------- */
 
 .gcode-btn {
+	position: relative;
 	display: inline-flex; flex-direction: column; align-items: flex-start; gap: 3px;
-	background: var(--mask-500); border: 1px solid var(--hairline); border-radius: var(--radius);
+	/* Raised off the card rather than flush with it: the old --mask-500 on a
+	   --mask-700 card with a 9%-opacity hairline read as a label, not a control,
+	   especially on rows that hide the mono stamp. */
+	background: linear-gradient(180deg, #24405f 0%, #1b3350 100%);
+	border: 1px solid rgba(233, 238, 244, 0.22);
+	box-shadow: inset 0 1px 0 rgba(233, 238, 244, 0.07), 0 1px 2px rgba(0, 0, 0, 0.32);
+	border-radius: var(--radius);
 	padding: 8px 12px; cursor: pointer; color: var(--silk); text-align: left;
+	transition: background 90ms ease, border-color 90ms ease, transform 60ms ease, box-shadow 90ms ease;
 }
-.gcode-btn:hover:not(:disabled) { border-color: var(--copper); }
-.gcode-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.gcode-btn:hover:not(:disabled) { border-color: var(--copper); background: linear-gradient(180deg, #2b4a6d 0%, #203a5c 100%); }
+.gcode-btn:focus-visible { outline: 2px solid var(--copper-bright); outline-offset: 2px; }
+/* A real press: the control moves under the finger, so a click is felt even
+   before the board answers. */
+.gcode-btn:active:not(:disabled) {
+	transform: translateY(1px);
+	box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.45);
+	background: linear-gradient(180deg, #1b3350 0%, #24405f 100%);
+}
+.gcode-btn:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: none; }
 .gcode-label { font: 600 13px/1.1 var(--font-display); letter-spacing: 0.04em; text-transform: uppercase; }
 .gcode-cmd {
 	font: 400 11px/1 ui-monospace, "Cascadia Code", "SF Mono", Menlo, Consolas, monospace;
 	color: var(--silk-dim); white-space: nowrap;
 }
-.gcode-go { border-color: rgba(111, 191, 143, 0.4); }
+.gcode-go { border-color: rgba(111, 191, 143, 0.55); }
 .gcode-go .gcode-label { color: var(--ok); }
-.gcode-danger { border-color: rgba(224, 92, 74, 0.35); }
+.gcode-danger { border-color: rgba(224, 92, 74, 0.5); }
 .gcode-danger .gcode-label { color: var(--fault); }
 .gcode-quiet .gcode-label { color: var(--silk-dim); }
+
+/* Send acknowledgement. Absolutely positioned at a fixed size so no state
+   change can alter the button's box - only colour moves. */
+.gcode-ack {
+	position: absolute; top: 5px; right: 5px;
+	width: 7px; height: 7px; border-radius: 50%;
+	background: transparent;
+	transition: background 120ms ease, box-shadow 120ms ease;
+}
+.is-sending .gcode-ack { background: var(--silk-dim); animation: ack-pulse 700ms ease-in-out infinite; }
+.is-sent .gcode-ack { background: var(--ok); box-shadow: 0 0 0 3px rgba(111, 191, 143, 0.22); }
+.is-failed .gcode-ack { background: var(--fault); box-shadow: 0 0 0 3px rgba(224, 92, 74, 0.25); }
+/* The whole control answers, not just the dot - a 7px dot is easy to miss on a
+   machine you are standing next to. */
+.gcode-btn.is-sent { border-color: var(--ok); }
+.gcode-btn.is-failed { border-color: var(--fault); background: linear-gradient(180deg, #3a2430 0%, #2b1b26 100%); }
+
+@keyframes ack-pulse { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+	.gcode-btn { transition: none; }
+	.is-sending .gcode-ack { animation: none; opacity: 1; }
+}
 
 .ctl-wrap { display: flex; flex-wrap: wrap; gap: 8px; }
 .ctl-name { font: 600 13px/1 var(--font-display); text-transform: uppercase; letter-spacing: 0.03em; color: var(--silk); min-width: 74px; }
@@ -1346,3 +1384,22 @@
 	font: 400 12px/1 var(--font-body); color: var(--silk-dim);
 }
 .fb-warn-confirm b { color: var(--silk); font-family: ui-monospace, "Cascadia Code", Consolas, monospace; }
+
+/* Tool-change macro bitmask (T… P<n>). Sits above the tool buttons so the
+   parameter they will carry is visible before any of them is pressed. */
+.tool-p { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+.tool-p input { width: 62px; }
+.tool-p-decode {
+	font: 400 11.5px/16px var(--font-body); color: var(--silk-dim);
+	/* Decodes to strings of differing length; reserve the line so the tool
+	   buttons below never shift as the value is typed. */
+	min-height: 16px; min-width: 150px;
+}
+
+/* Per-axis motor release. Compact stamp-free keys: the full set is one key per
+   axis plus All, which as full-size stamped buttons would overflow the panel. */
+.release-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+.rel-key { padding: 6px 10px; }
+/* Fixed width so the row's geometry does not depend on axis-letter width, and
+   so adding an axis cannot reflow the keys already under the operator's finger. */
+.rel-key .gcode-label { font-size: 12px; min-width: 18px; text-align: center; }

@@ -378,3 +378,27 @@ test("remove needs recursive to delete a non-empty directory", async () => {
 		await h.close();
 	}
 });
+
+/**
+ * A command that produces no reply must settle promptly. sendCode once waited
+ * requestTimeoutMs (5s) for a reply that was never coming, conflating the HTTP
+ * request budget with the reply budget - so every silent command (M140, M106,
+ * M220) left its caller hanging. Nothing awaited sendCode at the time, so the
+ * stall was invisible until a button tried to report when its command landed.
+ */
+test("a command with no reply settles quickly instead of stalling", async () => {
+	const h = await startHarness();
+	try {
+		await h.connector.connect();
+		const started = Date.now();
+		const reply = await h.connector.sendCode("M140 P0 S40");
+		const elapsed = Date.now() - started;
+		assert.equal(reply, "", "a silent command reports no reply text");
+		assert.ok(
+			elapsed < 1500,
+			`sendCode took ${elapsed}ms for a silent command - it must not wait out the request timeout`,
+		);
+	} finally {
+		await h.close();
+	}
+});

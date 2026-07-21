@@ -46,6 +46,13 @@ const SKIPPED_KEYS = new Set(["messages", "plugins", "sbc"]);
 /** seqs members that are protocol state, not model keys. */
 const NON_MODEL_SEQS = new Set(["reply", "volChanges"]);
 
+/**
+ * How long sendCode waits for a reply AFTER the explicit drain has already
+ * asked for one. Most G-codes reply with nothing at all; this is the delay
+ * before we call it silent, not a request timeout.
+ */
+const REPLY_GRACE_MS = 250;
+
 export class PollConnector implements Connector {
 	status: ConnectionStatus = "disconnected";
 
@@ -226,17 +233,27 @@ export class PollConnector implements Connector {
 
 	async sendCode(code: string): Promise<string> {
 		if (this.status !== "connected") throw new DisconnectedError();
+		let settle!: (text: string) => void;
 		const replyPromise = new Promise<string>(resolve => {
+			settle = resolve;
 			this.replyWaiters.push(resolve);
-			// Replies are best-effort: resolve "" if nothing arrives in time
-			setTimeout(() => {
-				this.replyWaiters = this.replyWaiters.filter(w => w !== resolve);
-				resolve("");
-			}, this.requestTimeoutMs);
 		});
 		await this.getJson(`rr_gcode?gcode=${encodeURIComponent(code)}`, "high");
 		// Nudge the reply drain rather than waiting a full poll cycle
 		await this.drainReply();
+		// The drain above has ALREADY asked the board for whatever reply exists,
+		// so a reply that was coming has arrived. Give it only a short grace for
+		// one that lands just after, then resolve empty.
+		//
+		// This used to wait requestTimeoutMs (5s), conflating "how long an HTTP
+		// request may take" with "how long a reply might take" - so every silent
+		// command (M140, M106, M220 - most of them) left its caller hanging for
+		// five seconds. Nothing awaited sendCode, so it stayed invisible until a
+		// button tried to report when its command had actually landed.
+		setTimeout(() => {
+			this.replyWaiters = this.replyWaiters.filter(w => w !== settle);
+			settle("");
+		}, REPLY_GRACE_MS);
 		return replyPromise;
 	}
 

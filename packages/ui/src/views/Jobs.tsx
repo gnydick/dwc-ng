@@ -1,5 +1,6 @@
 import { Show, Switch, Match, createMemo, createResource, createSignal } from "solid-js";
 import { useApp } from "../shell/context.ts";
+import { cmd } from "../control/commands.ts";
 import { Thumbnail } from "../thumbnails/Thumbnail.tsx";
 import { Card } from "../shell/Card.tsx";
 import { PanelCanvas } from "../shell/PanelCanvas.tsx";
@@ -61,6 +62,16 @@ export default function Jobs() {
 		if (path !== null) void app.connector.sendCode(`M32 "${path}"`);
 	};
 
+	/**
+	 * Simulate: RRF runs the file without heating or moving and reports the time
+	 * it would take. Same two-step arm as any other machine action — it occupies
+	 * the machine for the duration, so it is not a free click.
+	 */
+	const simulate = () => {
+		const path = selected();
+		if (path !== null) void app.connector.sendCode(cmd.simulate(path));
+	};
+
 	return (
 		<>
 			<div class="layout-toolbar">
@@ -106,6 +117,7 @@ export default function Jobs() {
 								</div>
 								<div class="btn-row detail-actions">
 									<button class="btn btn-go" disabled={isActive()} onClick={startPrint}>Start print</button>
+									<button class="btn" disabled={isActive()} onClick={simulate} title="Run the file without heating or moving, to get RRF's own time estimate">Simulate</button>
 									<Show when={isActive()}><span class="job-empty">A job is already running.</span></Show>
 								</div>
 							</Match>

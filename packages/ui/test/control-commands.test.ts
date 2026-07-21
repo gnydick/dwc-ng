@@ -63,3 +63,40 @@ test("reset heater fault", () => {
 	assert.equal(cmd.resetHeaterFault(0), "M562 P0");
 	assert.equal(cmd.resetHeaterFault(3), "M562 P3");
 });
+
+// M84 releases the steppers. Bare M84 releases every motor; with axis letters
+// it releases only those, which is what a toolchanger wants when freeing one
+// carriage without dropping the gantry.
+test("release motors", () => {
+	assert.equal(cmd.releaseAllMotors(), "M84");
+	assert.equal(cmd.releaseAxis("U"), "M84 U");
+	assert.equal(cmd.releaseAxis("X"), "M84 X");
+});
+
+// ATX power. M80 on / M81 off, verified against reference/dwc
+// ATXPanel.vue:51 rather than from memory.
+test("ATX power", () => {
+	assert.equal(cmd.atxPower(true), "M80");
+	assert.equal(cmd.atxPower(false), "M81");
+});
+
+// M37 P"<file>" starts a simulation of that file (reference/dwc
+// JobFileList.vue:353). The path is quoted exactly like M32's.
+test("simulate a job file", () => {
+	assert.equal(cmd.simulate("0:/gcodes/benchy.gcode"), 'M37 P"0:/gcodes/benchy.gcode"');
+});
+
+// RRF's T-command P parameter is a BITMASK over the tool-change macros
+// (1 tfree | 2 tpre | 4 tpost), verified against reference/dwc
+// store/machine/settings.ts:309 — not a tool number, and not a boolean.
+// P0 suppresses all three, which is how you move a toolchanger whose change
+// macro would otherwise drive a broken axis.
+test("tool select/deselect carry the macro bitmask when asked", () => {
+	assert.equal(cmd.selectTool(2), "T2");
+	assert.equal(cmd.deselectTool(), "T-1");
+	assert.equal(cmd.selectTool(2, 0), "T2 P0");
+	assert.equal(cmd.deselectTool(0), "T-1 P0");
+	assert.equal(cmd.deselectTool(7), "T-1 P7");
+	// 0 must not be treated as absent — that is the whole point of the feature.
+	assert.notEqual(cmd.deselectTool(0), cmd.deselectTool());
+});

@@ -103,6 +103,11 @@ export interface MachineState {
 	upTime: number;
 	/** null whenever no prompt is open. */
 	messageBox: MessageBox | null;
+	/**
+	 * ATX PSU state, or null when the board has no PS_ON port configured —
+	 * null means "this machine has no such control", not "it is off".
+	 */
+	atxPower: boolean | null;
 }
 
 /** reference/objectmodel/src/boards/Board.ts */
@@ -201,7 +206,7 @@ export function emptyModel(): ObjectModel {
 		job: { file: null, filePosition: null, duration: null, layer: null, lastFileName: null, timesLeft: { filament: null, file: null, slicer: null } },
 		move: { axes: [], currentMove: { requestedSpeed: 0, topSpeed: 0 }, speedFactor: 1, extruders: [] },
 		sensors: { gpIn: [], endstops: [], filamentMonitors: [], probes: [] },
-		state: { status: "disconnected", currentTool: -1, machineMode: "FFF", displayMessage: "", upTime: 0, messageBox: null },
+		state: { status: "disconnected", currentTool: -1, machineMode: "FFF", displayMessage: "", upTime: 0, messageBox: null, atxPower: null },
 		tools: [],
 	};
 }

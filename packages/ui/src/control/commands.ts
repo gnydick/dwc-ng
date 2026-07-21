@@ -18,8 +18,17 @@ export const cmd = {
 	homeAxis: (axis: string): string => `G28 ${axis}`,
 
 	// --- tools ---
-	selectTool: (tool: number): string => `T${tool}`,
-	deselectTool: (): string => "T-1",
+	/**
+	 * Select a tool. `p` is RRF's tool-change macro BITMASK, not a tool number:
+	 * 1 = tfree, 2 = tpre, 4 = tpost (reference/dwc store/machine/settings.ts:309).
+	 * Omitted entirely when undefined, which lets the firmware run all three -
+	 * so "no P" and "P7" mean the same thing and we send the shorter form.
+	 * P0 runs none of them: the way to move a toolchanger when a change macro
+	 * would otherwise drive a broken axis.
+	 */
+	selectTool: (tool: number, p?: number): string =>
+		p === undefined ? `T${tool}` : `T${tool} P${p}`,
+	deselectTool: (p?: number): string => (p === undefined ? "T-1" : `T-1 P${p}`),
 
 	// --- tool heaters (M568): convenience compound sets setpoint AND state ---
 	toolActive: (tool: number, temp: number): string => `M568 P${tool} S${n(temp)} A2`,
@@ -42,6 +51,21 @@ export const cmd = {
 	extrude: (amount: number, feed: number): string => `M83\nG1 E${n(amount)} F${n(feed)}`,
 	couplerLock: (): string => 'M98 P"/macros/tool_lock"',
 	couplerUnlock: (): string => 'M98 P"/macros/tool_unlock"',
+
+	/**
+	 * Release the steppers (M84 — "stop idle hold"). Bare M84 releases every
+	 * motor; with axis letters it releases only those. Releasing Z on a machine
+	 * whose gantry is not self-locking lets it fall — that is the firmware's
+	 * business and the operator's, not something this UI second-guesses.
+	 */
+	releaseAllMotors: (): string => "M84",
+	releaseAxis: (axis: string): string => `M84 ${axis}`,
+
+	/** ATX PSU control (reference/dwc ATXPanel.vue:51). */
+	atxPower: (on: boolean): string => (on ? "M80" : "M81"),
+
+	/** Simulate a job file without moving (reference/dwc JobFileList.vue:353). */
+	simulate: (path: string): string => `M37 P"${path}"`,
 
 	// --- fans ---
 	fan: (index: number, percent: number): string => `M106 P${index} S${(percent / 100).toFixed(2)}`,

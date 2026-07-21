@@ -14,6 +14,20 @@ import { CONTROL_PANEL_DEFAULTS } from "./control.panelDefaults.ts";
 const STEPS = [0.1, 1, 10, 100];
 
 /**
+ * Human reading of RRF's tool-change macro bitmask (1 tfree | 2 tpre | 4 tpost).
+ * undefined means no P is sent at all, which lets the firmware run all three.
+ */
+function describeToolP(p: number | undefined): string {
+	if (p === undefined) return "all macros (no P sent)";
+	if (p === 0) return "no macros";
+	const parts: string[] = [];
+	if (p & 1) parts.push("tfree");
+	if (p & 2) parts.push("tpre");
+	if (p & 4) parts.push("tpost");
+	return parts.join(" · ");
+}
+
+/**
  * Control — the interactive surface (Machine stays a read-only glance). Every
  * control is 1:1 with G-code and wears its command (the signature). No
  * GUI-encoded safety: the firmware is the authority; rejected commands show
@@ -25,9 +39,15 @@ export default function Control() {
 	 *  not something to hand-set from the UI, so they're excluded here. */
 	const isManualFan = (fan: Fan | null): fan is Fan => fan !== null && fan.thermostatic.sensors.length === 0;
 	const hasFans = createMemo(() => app.om.om.fans.some(isManualFan));
+	/** state.atxPower is null on a board with no PS_ON port configured. */
+	const hasAtx = createMemo(() => app.om.om.state.atxPower !== null);
 	const canvas = createPanelCanvas("dwc-ng.canvas.control", CONTROL_PANEL_DEFAULTS, id => {
 		if (id === "camera") return app.config.config.camera.pinned;
 		if (id === "fans") return hasFans();
+		// Hidden on a board with no PS_ON port. It must be reported as hidden,
+		// not merely not-rendered, or its cells stay reserved and block the
+		// panels around it from being moved or resized into them.
+		if (id === "atx") return hasAtx();
 		return true;
 	});
 
@@ -41,6 +61,15 @@ export default function Control() {
 	const heaterActive = (modelIndex: number): number =>
 		app.om.om.heat.heaters[modelIndex]?.active ?? 0;
 	const bedModelIndex = createMemo(() => app.om.om.heat.bedHeaters.find(i => i >= 0) ?? -1);
+
+	// Blank means "send no P", which is not the same as P0 - see cmd.selectTool.
+	const [toolP, setToolP] = createSignal("");
+	const toolPValue = (): number | undefined => {
+		const raw = toolP().trim();
+		if (raw === "") return undefined;
+		const v = Number(raw);
+		return Number.isInteger(v) && v >= 0 && v <= 7 ? v : undefined;
+	};
 
 	const [step, setStep] = createSignal(1);
 	const [jogFeed, setJogFeed] = createSignal(6000);
@@ -56,7 +85,7 @@ export default function Control() {
 			<PanelCanvas class="control">
 				<ActiveJobCard canvas={canvas} />
 
-				<Card id="homing" canvas={canvas} ariaLabel="Homing" title="Homing" tip="G28">
+				<Card id="homing" canvas={canvas} ariaLabel="Homing" title="Homing" tip="G28 · M84">
 					<div class="ctl-wrap">
 						<GcodeButton label="Home All" variant="go" command={cmd.homeAll()} />
 						<For each={axes()}>
@@ -68,9 +97,59 @@ export default function Control() {
 							)}
 						</For>
 					</div>
+					{/* Releasing drops the homed state the row above establishes, so it
+					    belongs in this card. Compact and stamp-free: sixteen full-size
+					    buttons would not fit the panel, and the command is already named
+					    in the card tip (M84). */}
+					<div class="release-row">
+						<span class="ctl-name">Release</span>
+						<GcodeButton class="rel-key" label="All" variant="danger" command={cmd.releaseAllMotors()} stamp={false} />
+						<For each={axes()}>
+							{axis => (
+								<GcodeButton
+									class="rel-key"
+									label={axis.letter}
+									variant="quiet"
+									command={cmd.releaseAxis(axis.letter)}
+									stamp={false}
+								/>
+							)}
+						</For>
+					</div>
 				</Card>
 
+				{/* Only when the board actually reports an ATX port — state.atxPower is
+				    null on a machine without one, and a dead switch is worse than none. */}
+				<Show when={hasAtx()}>
+					<Card id="atx" canvas={canvas} ariaLabel="ATX power" title="ATX power" tip="M80 · M81">
+						<div class="ctl-wrap">
+							<GcodeButton label="PSU On" variant="go" command={cmd.atxPower(true)} />
+							<GcodeButton label="PSU Off" variant="danger" command={cmd.atxPower(false)} />
+						</div>
+					</Card>
+				</Show>
+
 				<Card id="tools" canvas={canvas} ariaLabel="Tools" title="Tools" tip="T · state.currentTool">
+					{/* RRF's tool-change macro bitmask. Blank sends no P at all, letting
+					    the firmware run tfree/tpre/tpost as usual; P0 suppresses all
+					    three. Kept as the raw number the G-code takes (1:1 with the
+					    command) with the meaning decoded beside it, rather than hidden
+					    behind three checkboxes that would have to be translated back. */}
+					<div class="tool-p">
+						<label class="feed-field">
+							P
+							<input
+								type="number"
+								min="0"
+								max="7"
+								placeholder="all"
+								value={toolP()}
+								onInput={e => setToolP(e.currentTarget.value)}
+								aria-label="Tool change macro bitmask"
+							/>
+						</label>
+						<span class="tool-p-decode">{describeToolP(toolPValue())}</span>
+					</div>
 					<div class="ctl-wrap">
 						<For each={app.om.om.tools}>
 							{tool => (
@@ -79,13 +158,13 @@ export default function Control() {
 										<GcodeButton
 											label={t().name || `Tool ${t().number}`}
 											variant={app.om.om.state.currentTool === t().number ? "go" : undefined}
-											command={cmd.selectTool(t().number)}
+											command={cmd.selectTool(t().number, toolPValue())}
 										/>
 									)}
 								</Show>
 							)}
 						</For>
-						<GcodeButton label="Deselect" variant="quiet" command={cmd.deselectTool()} />
+						<GcodeButton label="Deselect" variant="quiet" command={cmd.deselectTool(toolPValue())} />
 					</div>
 				</Card>
 
