@@ -85,7 +85,7 @@ nobody closes them by accident.
 | Speed factor (`M220`) | ✅ | ✅ | |
 | Extrusion factor (`M221`) | ✅ | ✅ | |
 | Fans (`M106`) | ✅ | ✅ | |
-| **Reset heater fault** (`M562`) | ✅ (`ResetHeaterFaultDialog`) | ❌ | Fault is surfaced in preflight but not clearable from UI |
+| **Reset heater fault** (`M562`) | ✅ (`ResetHeaterFaultDialog`) | ✅ | `cards/HeaterState.tsx`, two-step confirm |
 | **Filament load/unload** (`M701`/`M702`) | ✅ | ❌ | |
 | **Filament management** (assign/config per extruder) | ✅ (`Filaments.vue`, `FilamentDialog`) | ❌ | Belongs under machine management, not files |
 | Tool grouping / display config | ✅ (`SettingsToolGroupingPanel`) | ❌ | |
@@ -112,9 +112,9 @@ nobody closes them by accident.
 | System file listing + edit | ✅ | ✅ | CodeMirror 6, lazy-loaded |
 | Upload (with CRC verify) | ✅ | ✅ | |
 | Download | ✅ | ✅ | |
-| **Create directory / new file** | ✅ | ❌ | `NewDirectoryDialog`, `NewFileDialog` |
-| **Rename / move / delete** | ✅ | ❌ | Verify — no delete/rename path found |
-| **Directory breadcrumbs / nested navigation** | ✅ | 🟡 | Verify depth handling in each listing |
+| **Create directory / new file** | ✅ | ✅ | Inline in every listing (no dialogs) — `files/FileBrowserView.tsx` |
+| **Rename / move / delete** | ✅ | ✅ | Inline rename; delete is a two-step confirm; dirs delete recursively |
+| **Directory breadcrumbs / nested navigation** | ✅ | ✅ | One `createFileBrowser` shared by Jobs/Macros/System; `parentDir` clamps at the domain root |
 | **Bulk file transfer / progress UI** | ✅ (`FileTransferDialog`) | 🟡 | Single upload works; no queue/progress dialog |
 | Filament files | ✅ | ❌ | see §4 |
 
@@ -124,7 +124,7 @@ nobody closes them by accident.
 |---|---|---|---|
 | Console with command entry + reply | ✅ | ✅ | Console drawer on every view |
 | Command history | ✅ | 🟡 | Verify persistence |
-| **M291 message boxes + M292 acknowledge** | ✅ (`MessageBoxDialog.vue`) | ❌ | **Highest-priority gap — see below** |
+| **M291 message boxes + M292 acknowledge** | ✅ (`MessageBoxDialog.vue`) | ✅ | `messagebox/` — seq handshake, jog controls per the axis bitmap |
 | Notifications / toasts | ✅ (`NotificationDisplay`) | 🟡 | Verify error surfacing path |
 | Event/log list | ✅ (`EventList`) | 🟡 | `om/consoleLog.ts` exists; verify severity handling |
 
@@ -167,14 +167,14 @@ nobody closes them by accident.
 
 ## Priority backlog
 
-**P0 — correctness / live-print safety**
-1. **M291/M292 message boxes.** Model `state.messageBox`, render a blocking
-   prompt, send `M292`. Blocks toolchanger + filament-change workflows today.
-2. **Reset heater fault** (`M562`). We show the fault but can't clear it.
+**P0 — correctness / live-print safety** — ✅ **done 2026-07-21**
+1. ✅ **M291/M292 message boxes.**
+2. ✅ **Reset heater fault** (`M562`).
 
 **P1 — routine operation gaps**
-3. File **create / rename / delete / mkdir** — currently read+upload only.
-4. **Filament load/unload** (`M701`/`M702`) and filament assignment.
+3. ✅ **File create / rename / delete / mkdir** (2026-07-21). One shared browser
+   across Jobs/Macros/System; traversal is a compile error, not a check.
+4. **Filament load/unload** (`M701`/`M702`) and filament assignment. ← next
 5. **Disable motors** (`M18`/`M84`).
 6. **ATX power** (`M80`/`M81`) if the machine has it.
 7. Verify **simulation start** (`M37`) is reachable from the UI.
