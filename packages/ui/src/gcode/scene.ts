@@ -154,12 +154,16 @@ export function createScene(
 		pendingFrame = requestAnimationFrame(renderFrame);
 	};
 
-	// Orthographic, not perspective: no foreshortening, so parallel walls
-	// stay parallel and widths read consistently regardless of depth —
-	// closer to how a real slicer preview or technical drawing looks.
-	// FRUSTUM_SIZE is the initial visible height in mm; ArcRotateCamera
-	// zooms an orthographic camera via ortho{Left,Right,Top,Bottom} (not
-	// dolly distance), so resize() only needs to redo the aspect split.
+	// PERSPECTIVE with a LONG focal length. Straight orthographic reads as a
+	// technical drawing and gives no depth cue; a normal ~45° game FOV distorts
+	// a 300mm bed badly at the edges. A narrow FOV is the photographer's answer —
+	// a long lens compresses perspective, so verticals stay near-parallel and the
+	// foreshortening is just enough to read depth.
+	// FOV↔focal length (35mm-equivalent, 24mm frame height): fov = 2·atan(12/f);
+	// 15° ≈ a 90mm lens — gentle portrait-length compression.
+	// FRUSTUM_SIZE is the initial visible height in mm AT THE TARGET; under
+	// perspective that fixes the DISTANCE rather than an ortho box:
+	// height = 2·d·tan(fov/2)  ⇒  d = height / (2·tan(fov/2)).
 	// 200 didn't comfortably fit a real ~300mm bed (confirmed against the
 	// Position card's own Y-axis max) — too-tight orthographic bounds crop
 	// the model at the frustum's edge, which reads the same as "clipping"
@@ -167,15 +171,20 @@ export function createScene(
 	// below. The user can always zoom in further; this only sets the
 	// default, un-zoomed view.
 	const FRUSTUM_SIZE = 350;
+	const CAMERA_FOV = 15 * Math.PI / 180; // radians (vertical) — ≈90mm equivalent
+	/** Distance at which `viewHeightMm` fills the view height at this FOV. */
+	const distanceFor = (viewHeightMm: number): number => viewHeightMm / (2 * Math.tan(CAMERA_FOV / 2));
+	const INITIAL_RADIUS = distanceFor(FRUSTUM_SIZE);
 	const camera = new ArcRotateCamera(
 		"camera",
 		-Math.PI / 4, // alpha (matches the old (bedCenter+100, bedCenter+100, 150) 45°-ish vantage)
 		Math.PI / 3.2, // beta
-		250, // radius (orthographic ignores this for projection, but it's still the pivot distance for controls)
+		INITIAL_RADIUS, // real dolly distance now — perspective zoom IS radius
 		target,
 		scene,
 	);
-	camera.mode = Camera.ORTHOGRAPHIC_CAMERA;
+	camera.mode = Camera.PERSPECTIVE_CAMERA;
+	camera.fov = CAMERA_FOV; // vertical FOV (Babylon's default fovMode)
 	// attachControl's 2nd parameter is `noPreventDefault`, NOT the element
 	// (that's legacy-ignored — Babylon attaches to the canvas via the
 	// engine automatically). Passing `true` here was telling Babylon's own
@@ -203,7 +212,6 @@ export function createScene(
 	// truth Babylon's own inputs already drive (wheel, pinch-to-zoom,
 	// double-tap, whatever else it adds) and re-derive the ortho frustum
 	// from it on every camera change — one mechanism covers every input.
-	const INITIAL_RADIUS = 250;
 	const ZOOM_MIN = 0.05, ZOOM_MAX = 20;
 	camera.lowerRadiusLimit = INITIAL_RADIUS / ZOOM_MAX;
 	camera.upperRadiusLimit = INITIAL_RADIUS / ZOOM_MIN;
@@ -229,20 +237,18 @@ export function createScene(
 	// span and degrades into z-fighting/moiré if the span is bloated.
 	const MODEL_DEPTH_MARGIN = bedExtent * 1.2;
 
-	const setOrthoFrustum = (w: number, h: number): void => {
+	const setDepthRange = (w: number, h: number): void => {
 		currentWidth = w;
 		currentHeight = h;
-		camera.minZ = camera.radius - MODEL_DEPTH_MARGIN; // may be negative — valid and REQUIRED for ortho, see above
+		// PERSPECTIVE requires minZ > 0 — the negative near plane described above
+		// is an orthographic-only trick and would clip everything here. Keep the
+		// span tight around the model: perspective concentrates depth precision
+		// near the camera, so pushing the near plane as far out as the geometry
+		// allows is what keeps dense parallel beads from z-fighting.
+		camera.minZ = Math.max(camera.radius * 0.01, camera.radius - MODEL_DEPTH_MARGIN);
 		camera.maxZ = camera.radius + MODEL_DEPTH_MARGIN;
-		const zoomFactor = INITIAL_RADIUS / camera.radius;
-		const aspect = w / h;
-		const size = FRUSTUM_SIZE / zoomFactor;
-		camera.orthoLeft = -size * aspect / 2;
-		camera.orthoRight = size * aspect / 2;
-		camera.orthoTop = size / 2;
-		camera.orthoBottom = -size / 2;
 	};
-	setOrthoFrustum(width, height);
+	setDepthRange(width, height);
 
 	// Keyboard navigation. Gated on the pointer being over the viewer so it
 	// never hijacks keys typed elsewhere in the app, and it ignores modified
@@ -260,7 +266,7 @@ export function createScene(
 	const KEY_ZOOM_STEP = 1.12; // radius multiplier per keypress
 	const handleKey = (event: KeyboardEvent): void => {
 		if (!pointerOverCanvas || event.ctrlKey || event.metaKey || event.altKey) return;
-		const size = FRUSTUM_SIZE * camera.radius / INITIAL_RADIUS; // current ortho height (mm)
+		const size = 2 * camera.radius * Math.tan(CAMERA_FOV / 2); // current view height at the target (mm)
 		const pan = size * PAN_FRACTION;
 		// WASD pans across the BED plane, not the screen: flatten the camera's
 		// heading onto the ground (Babylon XZ) so W/S move away/toward along
@@ -292,7 +298,7 @@ export function createScene(
 		if (!handled) return;
 		event.preventDefault();
 		camera.beta = Math.max(0.01, Math.min(Math.PI - 0.01, camera.beta)); // keep off the poles (gimbal flip)
-		setOrthoFrustum(currentWidth, currentHeight);
+		setDepthRange(currentWidth, currentHeight);
 		requestRender();
 	};
 	window.addEventListener("keydown", handleKey);
@@ -477,7 +483,7 @@ export function createScene(
 	let splitConfig: "none" | "prefix" | "band" = "none";
 
 	const onCameraChanged = (): void => {
-		setOrthoFrustum(currentWidth, currentHeight);
+		setDepthRange(currentWidth, currentHeight);
 		requestRender();
 	};
 	camera.onViewMatrixChangedObservable.add(onCameraChanged);
@@ -828,7 +834,7 @@ export function createScene(
 		},
 		resize(w, h) {
 			engine.setSize(w, h);
-			setOrthoFrustum(w, h);
+			setDepthRange(w, h);
 			requestRender();
 		},
 		destroy() {
