@@ -140,6 +140,10 @@ export default function Control() {
 					    command) with the meaning decoded beside it, rather than hidden
 					    behind three checkboxes that would have to be translated back. */}
 					<div class="tool-p">
+						{/* First in the row: P is what separates a plain T-1 from one that skips
+						    the tool-change macros, so the button and the value it carries are read
+						    together - the action first, then the parameter qualifying it. */}
+						<GcodeButton label="Deselect" variant="quiet" command={cmd.deselectTool(toolPValue())} />
 						<label class="feed-field">
 							P
 							<input
@@ -153,9 +157,6 @@ export default function Control() {
 							/>
 						</label>
 						<span class="tool-p-decode">{describeToolP(toolPValue())}</span>
-						{/* Deselect belongs with the P box: P is what separates a plain T-1 from
-						    one that skips the tool-change macros, so the two are read together. */}
-						<GcodeButton label="Deselect" variant="quiet" command={cmd.deselectTool(toolPValue())} />
 					</div>
 					<div class="ctl-wrap">
 						<For each={app.om.om.tools}>
