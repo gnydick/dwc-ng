@@ -1,0 +1,65 @@
+/**
+ * The only place a file path is built from user input.
+ *
+ * The invariant: a name the operator typed can never reach outside the
+ * directory it was typed into. This is enforced by construction rather than by
+ * checking at each call site — `childPath` accepts only a `FileName`, and the
+ * sole way to obtain a `FileName` is `parseFileName`, which returns null for
+ * anything that could escape. A caller cannot forget the check, because
+ * skipping it leaves them holding a `string`, which `childPath` will not take.
+ *
+ * (Parse, don't validate: the unchecked value stops existing at the boundary.)
+ */
+
+/**
+ * A single path segment, proven safe to append to a directory. The brand is
+ * erased at runtime — its whole job is to make `childPath(dir, rawUserInput)`
+ * a compile error.
+ */
+export type FileName = string & { readonly __fileName: unique symbol };
+
+/** Characters RRF's FAT filesystem cannot store, plus both separators and the volume mark. */
+const FORBIDDEN = /[/\\:*?"<>|]/;
+
+/**
+ * Turn raw operator input into a `FileName`, or null if it could not be one.
+ * Surrounding whitespace is trimmed first — a trailing space is a typo, not an
+ * intent, and FAT would silently drop it anyway (leaving the UI showing a name
+ * the board doesn't have).
+ */
+export function parseFileName(raw: string): FileName | null {
+	const name = raw.trim();
+	if (name === "") return null;
+	// "." and ".." are traversal, not names. Rejected by identity rather than by
+	// scanning for "..", so a legitimate "v1..2.gcode" still passes.
+	if (name === "." || name === "..") return null;
+	if (FORBIDDEN.test(name)) return null;
+	// Anything below U+0020 is a control character; none belong in a filename
+	// and several would corrupt the rr_ query string they travel in.
+	for (let i = 0; i < name.length; i++) {
+		if (name.charCodeAt(i) < 0x20) return null;
+	}
+	// FAT drops a trailing dot, so accepting one would desynchronise the UI from
+	// the board. (A leading dot is fine — ".hidden" is a real name.)
+	if (name.endsWith(".")) return null;
+	return name as FileName;
+}
+
+/** Join a directory to a parsed name, collapsing the separator exactly once. */
+export function childPath(dir: string, name: FileName): string {
+	return `${dir.endsWith("/") ? dir.slice(0, -1) : dir}/${name}`;
+}
+
+/**
+ * The directory one level up, clamped at `root`. A listing is a view of one
+ * domain (0:/gcodes, 0:/macros, 0:/sys); walking above its root would show
+ * another domain's files inside it, so "up" from the root is a no-op rather
+ * than a surprise. A path outside the domain entirely falls back to the root.
+ */
+export function parentDir(dir: string, root: string): string {
+	if (dir === root || !dir.startsWith(root)) return root;
+	const cut = dir.lastIndexOf("/");
+	if (cut < 0) return root;
+	const up = dir.slice(0, cut);
+	return up.length < root.length ? root : up;
+}

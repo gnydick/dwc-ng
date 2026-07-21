@@ -1,4 +1,4 @@
-import { For, Show, Switch, Match, createMemo, createResource, createSignal } from "solid-js";
+import { Show, createSignal } from "solid-js";
 import { useApp } from "../shell/context.ts";
 import { FileEditor } from "../editor/FileEditor.tsx";
 import type { FileListEntry } from "../connector/types.ts";
@@ -9,6 +9,8 @@ import { ConsolePanel } from "../shell/ConsolePanel.tsx";
 import { CameraPanel } from "../shell/CameraPanel.tsx";
 import { CardHead } from "../shell/CardHead.tsx";
 import { createPanelCanvas } from "../shell/panelCanvas.ts";
+import { createFileBrowser } from "../files/browser.ts";
+import { FileBrowserView } from "../files/FileBrowserView.tsx";
 import { MACROS_PANEL_DEFAULTS } from "./macros.panelDefaults.ts";
 
 const MACROS_ROOT = "0:/macros";
@@ -18,6 +20,9 @@ const MACROS_ROOT = "0:/macros";
  * A click OPENS a macro in the editor; it never runs it. Running is a separate,
  * explicit ▶ Run button (M98), matching DWC's deliberate run-with-confirm and
  * the project's "files never run on click" rule.
+ *
+ * Navigation and file operations come from the shared browser, so they are the
+ * same here as in Jobs and System by construction.
  */
 export default function Macros() {
 	const app = useApp();
@@ -27,51 +32,26 @@ export default function Macros() {
 		id => (id === "camera" ? app.config.config.camera.pinned : true));
 	const connected = (): boolean => app.om.connection.status === "connected";
 
-	const [dir, setDir] = createSignal(MACROS_ROOT);
+	const browser = createFileBrowser(MACROS_ROOT, connected, app.connector);
 	const [selected, setSelected] = createSignal<string | null>(null);
 	const [armed, setArmed] = createSignal<string | null>(null); // path awaiting run-confirm
 
-	const [entries] = createResource(
-		() => (connected() ? dir() : false),
-		d => app.connector.list(d),
-	);
+	const autoConfirm = (): boolean => app.config.config.macros.autoConfirmRun;
 
-	const sorted = createMemo(() => {
-		const list = entries() ?? [];
-		return [...list].sort((a, b) => {
-			if (a.type !== b.type) return a.type === "d" ? -1 : 1;
-			return a.name.localeCompare(b.name);
-		});
-	});
-
-	const pathOf = (entry: FileListEntry): string => `${dir()}/${entry.name}`;
-
-	const open = (entry: FileListEntry): void => {
-		setArmed(null);
-		if (entry.type === "d") {
-			setSelected(null);
-			setDir(pathOf(entry));
-		} else {
-			setSelected(pathOf(entry));
-		}
-	};
-
-	// Two-step run: first click arms, second click fires — no modal, but no
-	// single-click machine action either.
+	/**
+	 * Two-step run by default: the first click arms, the second fires — no
+	 * modal, but no single-click machine action either. AutoConfirm collapses
+	 * that to one click; its checkbox sits next to the list so the mode is
+	 * always visible where the Run buttons are, never an invisible belief.
+	 */
 	const run = (entry: FileListEntry): void => {
-		const path = pathOf(entry);
-		if (armed() !== path) {
+		const path = browser.pathOf(entry);
+		if (!autoConfirm() && armed() !== path) {
 			setArmed(path);
 			return;
 		}
 		setArmed(null);
 		void app.connector.sendCode(`M98 P"${path}"`).catch(() => undefined);
-	};
-
-	const goUp = (): void => {
-		setSelected(null);
-		setArmed(null);
-		setDir(dir().slice(0, dir().lastIndexOf("/")) || MACROS_ROOT);
 	};
 
 	return (
@@ -80,37 +60,41 @@ export default function Macros() {
 				<button class="layout-reset" onClick={() => canvas.reset()}>↺ Reset layout</button>
 			</div>
 			<PanelCanvas class="macros">
-				<Card id="macros" canvas={canvas} ariaLabel="Macros" title="Macros" tip={dir()}>
+				<Card id="macros" canvas={canvas} ariaLabel="Macros" title="Macros" tip={browser.dir()}>
 					<Show when={connected()} fallback={<p class="job-empty">Not connected.</p>}>
-						<Show when={dir() !== MACROS_ROOT}>
-							<button class="link-btn" onClick={goUp}>← up a level</button>
-						</Show>
-						<ul class="file-list">
-							<For each={sorted()} fallback={<li class="job-empty">No macros here.</li>}>
-								{entry => (
-									<li class="file-row" classList={{ active: selected() === pathOf(entry) }}>
-										<Switch>
-											<Match when={entry.type === "d"}>
-												<button class="file-name is-dir" onClick={() => open(entry)}>
-													<span class="file-ico">▸</span>{entry.name}
-												</button>
-											</Match>
-											<Match when={entry.type === "f"}>
-												<button class="file-name" onClick={() => open(entry)}>{entry.name}</button>
-												<button
-													class="run-btn"
-													classList={{ armed: armed() === pathOf(entry) }}
-													title={`Run ${entry.name} (M98)`}
-													onClick={() => run(entry)}
-												>
-													{armed() === pathOf(entry) ? "Confirm" : "▶ Run"}
-												</button>
-											</Match>
-										</Switch>
-									</li>
-								)}
-							</For>
-						</ul>
+						<label class="macro-autoconfirm">
+							<input
+								type="checkbox"
+								checked={autoConfirm()}
+								onChange={e => {
+									// Leaving a row armed while switching modes would make the
+									// next click mean something different than it looks.
+									setArmed(null);
+									app.config.setMacros({ autoConfirmRun: e.currentTarget.checked });
+								}}
+							/>
+							<span>AutoConfirm</span>
+							<span class="macro-autoconfirm-hint">
+								{autoConfirm() ? "Run fires on the first click" : "Run asks twice"}
+							</span>
+						</label>
+						<FileBrowserView
+							browser={browser}
+							selected={selected()}
+							onOpen={entry => setSelected(browser.pathOf(entry))}
+							rootLabel="macros"
+							emptyText="No macros here."
+							rowActions={entry => (
+								<button
+									class="run-btn"
+									classList={{ armed: armed() === browser.pathOf(entry) }}
+									title={`Run ${entry.name} (M98)`}
+									onClick={() => run(entry)}
+								>
+									{armed() === browser.pathOf(entry) ? "Confirm" : "▶ Run"}
+								</button>
+							)}
+						/>
 					</Show>
 				</Card>
 

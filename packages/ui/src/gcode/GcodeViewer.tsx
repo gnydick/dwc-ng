@@ -38,6 +38,10 @@ const GHOST_MODE_LABEL: Record<GhostMode, string> = {
  *  their own fixed color rather than the active color mode's hue (see scene.ts). */
 const DEFAULT_SHOW_TRAVEL = false;
 
+/** Default to Hide: only the opaque layer is built (see scene.ts), so the view
+ *  opens showing just what has actually printed, with no ghost geometry. */
+const DEFAULT_GHOST_MODE: GhostMode = "hidden";
+
 /** Live 3D toolpath of the active job — downloaded and parsed once per
  *  file, then only recolored (never re-fetched or re-parsed) as
  *  job.filePosition advances. Color mode (feature-type/speed/layer-time)
@@ -65,7 +69,7 @@ export function GcodeViewer(props: { canvas: PanelCanvasController }) {
 	const [message, setMessage] = createSignal("");
 	const [revealMode, setRevealMode] = createSignal<RenderMode>("progressive");
 	const [colorMode, setColorMode] = createSignal<ColorMode>("feature-type");
-	const [ghostMode, setGhostMode] = createSignal<GhostMode>("show");
+	const [ghostMode, setGhostMode] = createSignal<GhostMode>(DEFAULT_GHOST_MODE);
 	const [showTravel, setShowTravel] = createSignal(DEFAULT_SHOW_TRAVEL);
 	const [lastPath, setLastPath] = createSignal<string | null>(null);
 

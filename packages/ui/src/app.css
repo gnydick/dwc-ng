@@ -1266,3 +1266,68 @@
 	.mbox-actions { justify-content: stretch; }
 	.mbox-btn { flex: 1 1 auto; }
 }
+
+/* --- file browser: create / rename / delete, shared by Jobs, Macros, System --- */
+
+.fb-tools {
+	display: flex; align-items: center; gap: 6px; margin-bottom: 8px;
+	/* The toolbar swaps two buttons for an input + two buttons. Reserving the
+	   row's height stops the list below it from jumping when it does. */
+	min-height: 30px;
+}
+.fb-tool {
+	font: 600 11px/1 var(--font-display); letter-spacing: 0.06em; text-transform: uppercase;
+	color: var(--silk-dim); background: var(--mask-700); border: 1px solid var(--hairline);
+	border-radius: 5px; padding: 6px 10px; cursor: pointer; white-space: nowrap;
+}
+.fb-tool:hover { color: var(--silk); border-color: rgba(233, 238, 244, 0.22); }
+.fb-tool.ok:not(:disabled) { color: var(--ok); border-color: rgba(111, 191, 143, 0.5); }
+.fb-tool:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.fb-input {
+	font: 400 13px/1 ui-monospace, "Cascadia Code", Consolas, monospace;
+	color: var(--silk); background: var(--mask-900);
+	border: 1px solid var(--hairline); border-radius: 5px; padding: 6px 8px; min-width: 0; width: 180px;
+}
+.fb-input.grow { flex: 1; width: auto; }
+.fb-input:focus { outline: none; border-color: var(--copper); }
+
+/* Always in the layout, only sometimes visible — an error must not reflow the
+   list underneath it (uniformity/positional stability is a hard rule here). */
+.fb-msg {
+	margin: 0 0 8px; min-height: 16px;
+	font: 400 12px/16px var(--font-body); color: var(--fault);
+	overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+	visibility: hidden;
+}
+.fb-msg.show { visibility: visible; }
+
+.fb-act {
+	font: 600 11px/1 var(--font-display); letter-spacing: 0.06em; text-transform: uppercase;
+	color: var(--silk-dim); background: var(--mask-700); border: 1px solid var(--hairline);
+	border-radius: 5px; padding: 5px 8px; cursor: pointer; white-space: nowrap;
+	/* "Delete" (46px) and "Confirm" (56px) differ; this is a two-step confirm,
+	   so the target must not move between the two clicks it asks for. */
+	min-width: 62px; text-align: center;
+}
+.fb-act:hover { color: var(--silk); border-color: rgba(233, 238, 244, 0.22); }
+.fb-act.ok:not(:disabled) { color: var(--ok); border-color: rgba(111, 191, 143, 0.5); }
+.fb-act:disabled { opacity: 0.4; cursor: not-allowed; }
+.fb-act.danger:hover { color: var(--fault); border-color: rgba(224, 92, 74, 0.5); }
+.fb-act.danger.armed { color: var(--mask-900); background: var(--fault); border-color: var(--fault); }
+
+/* Macros: AutoConfirm — visible wherever the Run buttons are, so the mode can
+   always be read off the screen rather than remembered. */
+.macro-autoconfirm {
+	display: flex; align-items: center; gap: 8px; margin-bottom: 10px;
+	font: 600 11px/1 var(--font-display); letter-spacing: 0.06em; text-transform: uppercase;
+	color: var(--silk-dim); cursor: pointer; user-select: none;
+}
+.macro-autoconfirm input { accent-color: var(--copper); cursor: pointer; margin: 0; }
+.macro-autoconfirm:hover { color: var(--silk); }
+/* The hint swaps between two different-length strings; reserving the row's
+   height keeps the list below it from twitching when the mode changes. */
+.macro-autoconfirm-hint {
+	font: 400 11px/16px var(--font-body); letter-spacing: 0; text-transform: none;
+	color: var(--silk-dim); opacity: 0.75; min-height: 16px;
+}

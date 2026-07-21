@@ -1,12 +1,13 @@
-import { For, Show, Switch, Match, createMemo, createResource, createSignal } from "solid-js";
+import { Show, Switch, Match, createMemo, createResource, createSignal } from "solid-js";
 import { useApp } from "../shell/context.ts";
 import { Thumbnail } from "../thumbnails/Thumbnail.tsx";
-import type { FileListEntry } from "../connector/types.ts";
 import { Card } from "../shell/Card.tsx";
 import { PanelCanvas } from "../shell/PanelCanvas.tsx";
 import { ConsolePanel } from "../shell/ConsolePanel.tsx";
 import { CameraPanel } from "../shell/CameraPanel.tsx";
 import { createPanelCanvas } from "../shell/panelCanvas.ts";
+import { createFileBrowser } from "../files/browser.ts";
+import { FileBrowserView } from "../files/FileBrowserView.tsx";
 import { JOBS_PANEL_DEFAULTS } from "./jobs.panelDefaults.ts";
 
 const GCODES_ROOT = "0:/gcodes";
@@ -30,23 +31,9 @@ export default function Jobs() {
 
 	const connected = () => app.om.connection.status === "connected";
 
-	const [dir, setDir] = createSignal(GCODES_ROOT);
+	// Files newest-first — the way you actually hunt for a job you just sliced.
+	const browser = createFileBrowser(GCODES_ROOT, connected, app.connector, "recent");
 	const [selected, setSelected] = createSignal<string | null>(null);
-
-	const [entries, { refetch: refetchEntries }] = createResource(
-		() => (connected() ? dir() : false),
-		d => app.connector.list(d),
-	);
-
-	// dirs first, then files newest-first — the way you actually hunt for a job.
-	const sorted = createMemo(() => {
-		const list = entries() ?? [];
-		return [...list].sort((a, b) => {
-			if (a.type !== b.type) return a.type === "d" ? -1 : 1;
-			if (a.type === "f") return (b.date ?? "").localeCompare(a.date ?? "");
-			return a.name.localeCompare(b.name);
-		});
-	});
 
 	const [info] = createResource(selected, path => app.connector.getFileInfo(path));
 
@@ -58,20 +45,6 @@ export default function Jobs() {
 		},
 		async ({ path, t }) => ({ bytes: await app.connector.getThumbnail(path, t.offset), format: t.format }),
 	);
-
-	const openEntry = (entry: FileListEntry) => {
-		if (entry.type === "d") {
-			setSelected(null);
-			setDir(`${dir()}/${entry.name}`);
-		} else {
-			setSelected(`${dir()}/${entry.name}`);
-		}
-	};
-
-	const crumbs = createMemo(() => {
-		const rel = dir().slice(GCODES_ROOT.length).split("/").filter(Boolean);
-		return rel.map((name, i) => ({ name, path: `${GCODES_ROOT}/${rel.slice(0, i + 1).join("/")}` }));
-	});
 
 	// ---- active job ----
 	const job = () => app.om.om.job;
@@ -94,49 +67,17 @@ export default function Jobs() {
 				<button class="layout-reset" onClick={() => canvas.reset()}>↺ Reset layout</button>
 			</div>
 			<PanelCanvas class="jobs">
-				<Card id="job-files" canvas={canvas} ariaLabel="Job files" class="jobs-browse" title="Jobs" tip={dir()}>
-
-					<nav class="crumbs" aria-label="Folder">
-						<button class="crumb" classList={{ active: dir() === GCODES_ROOT }} onClick={() => { setSelected(null); setDir(GCODES_ROOT); }}>gcodes</button>
-						<For each={crumbs()}>
-							{c => (
-								<>
-									<span class="crumb-sep">/</span>
-									<button class="crumb" onClick={() => { setSelected(null); setDir(c.path); }}>{c.name}</button>
-								</>
-							)}
-						</For>
-					</nav>
-
-					<Switch>
-						<Match when={entries.loading}><p class="job-empty">Loading…</p></Match>
-						<Match when={entries.error}>
-							<p class="job-empty">Couldn’t list {dir()}. <button class="link-btn" onClick={() => void refetchEntries()}>Retry</button></p>
-						</Match>
-						<Match when={sorted().length === 0}><p class="job-empty">Empty folder.</p></Match>
-						<Match when={true}>
-							<ul class="file-list">
-								<For each={sorted()}>
-									{entry => (
-										<li>
-											<button
-												class="file-row"
-												classList={{ dir: entry.type === "d", selected: selected() === `${dir()}/${entry.name}` }}
-												onClick={() => openEntry(entry)}
-											>
-												<span class="file-icon" aria-hidden="true">{entry.type === "d" ? "▸" : "▤"}</span>
-												<span class="file-name">{entry.name}</span>
-												<Show when={entry.type === "f"}>
-													<span class="file-meta">{fmtSize(entry.size)}</span>
-													<Show when={entry.date}><span class="file-meta file-date">{fmtDate(entry.date!)}</span></Show>
-												</Show>
-											</button>
-										</li>
-									)}
-								</For>
-							</ul>
-						</Match>
-					</Switch>
+				<Card id="job-files" canvas={canvas} ariaLabel="Job files" class="jobs-browse" title="Jobs" tip={browser.dir()}>
+					<Show when={connected()} fallback={<p class="job-empty">Not connected.</p>}>
+						<FileBrowserView
+							browser={browser}
+							selected={selected()}
+							onOpen={entry => setSelected(browser.pathOf(entry))}
+							rootLabel="gcodes"
+							emptyText="Empty folder."
+							showMeta
+						/>
+					</Show>
 				</Card>
 
 				<Show when={selected()}>
@@ -215,6 +156,3 @@ function fmtSize(bytes: number): string {
 	return `${bytes} B`;
 }
 
-function fmtDate(iso: string): string {
-	return iso.slice(0, 10);
-}

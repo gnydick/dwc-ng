@@ -24,6 +24,18 @@ export interface CameraConfig {
 	pinned: boolean;
 }
 
+export interface MacrosConfig {
+	/**
+	 * Run a macro on the first click instead of arming a confirm step.
+	 *
+	 * Deliberately persisted, unlike the dev write-arming flag: the checkbox is
+	 * visible on the Macros view whenever the list is, so its state can always
+	 * be read off the screen. The danger with write-arming was a belief that
+	 * outlived the tab and could not be seen; that does not apply here.
+	 */
+	autoConfirmRun: boolean;
+}
+
 export interface UiConfig {
 	/** Axis letter → human role label ("U" → "Z motor 1"). RRF has no
 	 * notion of axis roles; this is per-machine UI metadata. */
@@ -37,6 +49,7 @@ export interface UiConfig {
 	 * indices; this replaces the auto-generated label on the Machine view's
 	 * Sensors card wherever set. */
 	sensorNames: Record<string, string>;
+	macros: MacrosConfig;
 }
 
 export type DeepPartial<T> = {
@@ -56,6 +69,8 @@ export const DEFAULT_CONFIG: UiConfig = {
 	dockSensors: {},
 	camera: { streamUrl: "", pinned: false },
 	sensorNames: {},
+	// Off by default: a fresh install asks before firing a macro at the machine.
+	macros: { autoConfirmRun: false },
 };
 
 /** Where the overlay lives on the machine's SD card. */
