@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
 	GRID_COLS, clampRect, rectsOverlap, collidesWithAny, hasCollisions, inBounds,
 	tryMove, tryResize, defaultCanvas, parseStoredCanvas, serializeCanvas, mergeCanvas,
+	applyDetent, DETENT_BREAKAWAY_ROWS, type DetentState,
 } from "../src/shell/panelCanvas.ts";
 import { MACHINE_PANEL_DEFAULTS } from "../src/views/machine.panelDefaults.ts";
 import { JOBS_PANEL_DEFAULTS } from "../src/views/jobs.panelDefaults.ts";
@@ -194,4 +195,63 @@ test("Control view's default panel layout is collision-free", () => {
 
 test("Settings view's default panel layout is collision-free", () => {
 	assert.equal(hasCollisions(defaultCanvas(SETTINGS_PANEL_DEFAULTS)), false);
+});
+
+// --- the resize detent at a card's exact content fit ---
+
+const armed = (): DetentState => ({ broken: false });
+
+test("above the minimum the detent does nothing", () => {
+	assert.deepEqual(applyDetent(40, 20, armed()), { span: 40, state: { broken: false } });
+});
+
+test("the bottom edge sticks at the exact minimum while the pointer keeps moving", () => {
+	const min = 20;
+	for (let past = 0; past < DETENT_BREAKAWAY_ROWS; past++) {
+		const out = applyDetent(min - past, min, armed());
+		assert.equal(out.span, min, `still ${past} rows into the detent`);
+		assert.equal(out.state.broken, false);
+	}
+});
+
+test("pulling a little further releases it, and the release does not jump", () => {
+	const min = 20;
+	// The frame it breaks away, the span must still be exactly the minimum -
+	// otherwise the card snaps down by the breakaway distance the instant it lets go.
+	const atRelease = applyDetent(min - DETENT_BREAKAWAY_ROWS, min, armed());
+	assert.equal(atRelease.span, min);
+	assert.equal(atRelease.state.broken, true);
+
+	// And from there it tracks the pointer again, one row per row.
+	const next = applyDetent(min - DETENT_BREAKAWAY_ROWS - 1, min, atRelease.state);
+	assert.equal(next.span, min - 1);
+	assert.equal(applyDetent(min - DETENT_BREAKAWAY_ROWS - 4, min, next.state).span, min - 4);
+});
+
+test("the span never jumps by more than a row across a whole drag through the detent", () => {
+	// Sweep the pointer down through the detent and back up, asserting continuity.
+	const min = 20;
+	let state = armed();
+	let previous: number | null = null;
+	const sweep = [...Array(40).keys()].map(i => 30 - i).concat([...Array(40).keys()].map(i => -9 + i));
+	for (const rawSpan of sweep) {
+		const out = applyDetent(rawSpan, min, state);
+		state = out.state;
+		if (previous !== null) {
+			assert.ok(
+				Math.abs(out.span - previous) <= 1,
+				`span jumped from ${previous} to ${out.span} at rawSpan ${rawSpan}`,
+			);
+		}
+		previous = out.span;
+	}
+});
+
+test("it re-arms on the way back up so the detent is felt in both directions", () => {
+	const min = 20;
+	const broken = applyDetent(min - DETENT_BREAKAWAY_ROWS - 3, min, { broken: true });
+	assert.equal(broken.state.broken, true);
+	const back = applyDetent(min - DETENT_BREAKAWAY_ROWS, min, broken.state);
+	assert.equal(back.span, min);
+	assert.equal(back.state.broken, false, "re-armed, so shrinking again must catch at the minimum");
 });

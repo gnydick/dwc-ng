@@ -1433,7 +1433,15 @@
 .ctl-wrap, .release-row, .btn-cluster, .btn-row, .step-row { gap: var(--ctl-gap); }
 
 /* The card head cost 27px of type plus 12px of frame on cards only ~150px tall. */
-/* Explicit height: left to the font it measured 18px, which put the whole
-   card 2px off the 4px rhythm. */
-.card-head { padding-top: 0; margin-bottom: 8px; height: 20px; }
+/* Explicit height: left to the font it measured 18px, which put the whole card
+   2px off the 4px rhythm.
+   flex-shrink: 0 is load-bearing — the head is a flex child of .panel-body, so
+   without it a card resized small squeezed its own head from 20px to 18px and
+   the title crept upward as you dragged. Nothing inside a card may move while
+   the card is resized. */
+.card-head { padding-top: 0; margin-bottom: 8px; height: 20px; flex: 0 0 20px; }
 .card-title { font-size: 12px; }
+
+/* The card is sitting exactly on its content. A visible edge for the detent you
+   can already feel — so the minimum is findable by eye as well as by hand. */
+.card.at-min { border-color: var(--copper); box-shadow: 0 0 0 1px rgba(217, 133, 59, 0.35); }

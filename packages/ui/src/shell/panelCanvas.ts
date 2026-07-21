@@ -106,6 +106,76 @@ export function tryMove(state: CanvasState, id: string, candidateCol: number, ca
 	return candidate;
 }
 
+
+/**
+ * How far past the content-fit minimum you must drag before a card will shrink
+ * below it, in rows (5 x 4px = 20px of travel).
+ */
+export const DETENT_BREAKAWAY_ROWS = 5;
+
+/** Carried across frames of a single resize drag. */
+export interface DetentState {
+	/** True once the operator has pulled past the minimum this drag. */
+	broken: boolean;
+}
+
+/**
+ * A sticky detent at the card's exact content fit.
+ *
+ * Resizing down, the bottom edge STOPS at the minimum and stays there while
+ * the pointer keeps moving — so the exact fit is something you feel, not
+ * something you have to see. Pull a further DETENT_BREAKAWAY_ROWS and it
+ * releases and keeps shrinking (the content then scrolls, which is allowed —
+ * this is a detent, not a wall).
+ *
+ * The release is CONTINUOUS: at the moment it breaks away the span is exactly
+ * the minimum, and from there it tracks the pointer again with the breakaway
+ * distance subtracted. Without that the card would jump by the breakaway
+ * amount the instant it let go.
+ *
+ * Growing back up it re-arms at the same point, so the detent is felt in both
+ * directions rather than only on the way down.
+ */
+export function applyDetent(
+	rawSpan: number,
+	minSpan: number,
+	state: DetentState,
+): { span: number; state: DetentState } {
+	if (state.broken) {
+		const span = rawSpan + DETENT_BREAKAWAY_ROWS;
+		// Re-arm on the way back up, at exactly the point it released.
+		if (span >= minSpan) return { span: minSpan, state: { broken: false } };
+		return { span, state };
+	}
+	if (rawSpan >= minSpan) return { span: rawSpan, state };
+	if (minSpan - rawSpan < DETENT_BREAKAWAY_ROWS) return { span: minSpan, state };
+	return { span: rawSpan + DETENT_BREAKAWAY_ROWS, state: { broken: true } };
+}
+
+/**
+ * The smallest rowSpan that still contains a card's content, measured from the
+ * live DOM. Read from the children's own boxes rather than the body's
+ * scrollHeight: when the card is currently TALLER than its content, scrollHeight
+ * reports the box, not the content, and the minimum would come back wrong.
+ */
+export function contentRowSpan(cardEl: HTMLElement, gutterPx: number): number {
+	const body = cardEl.querySelector<HTMLElement>(".panel-body");
+	if (!body) return 1;
+	const kids = Array.from(body.children).filter(
+		(k): k is HTMLElement => k instanceof HTMLElement && k.getBoundingClientRect().height > 0,
+	);
+	if (kids.length === 0) return 1;
+	// Measured from the CARD's top to the last child's bottom. The card-head is
+	// itself a child of .panel-body, so adding its height separately counted it
+	// twice and put the minimum ~28px ABOVE the card's current height - the
+	// detent would have caught above where the card already was.
+	const last = kids[kids.length - 1]!.getBoundingClientRect();
+	const padBottom = parseFloat(getComputedStyle(body).paddingBottom || "0");
+	const borderBottom = parseFloat(getComputedStyle(cardEl).borderBottomWidth || "0");
+	const naturalPx = last.bottom - cardEl.getBoundingClientRect().top + padBottom + borderBottom;
+	return Math.max(1, Math.ceil((naturalPx + gutterPx) / ROW_UNIT_PX));
+}
+
 /**
  * Grows colSpan/rowSpan toward the desired size, one cell at a time,
  * stopping at the first collision or grid boundary in that direction —
@@ -437,6 +507,13 @@ export function createPanelCanvas(storageKey: string, defaults: PanelDefault[], 
 		// viewport: the pointer runs out of screen and scrolling goes unnoticed.
 		const scroller = canvasEl.closest<HTMLElement>(".view-scroll");
 		const originScrollTop = scroller?.scrollTop ?? 0;
+
+		// The smallest span that still contains this card's content, measured once
+		// at the start of the drag: the bottom edge catches here (see applyDetent).
+		const cardEl = grip.closest<HTMLElement>(".card");
+		const gutterPx = cardEl ? parseFloat(getComputedStyle(cardEl).marginBottom || "0") : 0;
+		const minRowSpan = cardEl ? contentRowSpan(cardEl, gutterPx) : 1;
+		let detent: DetentState = { broken: false };
 		let pointerX = event.clientX;
 		let pointerY = event.clientY;
 
@@ -459,7 +536,10 @@ export function createPanelCanvas(storageKey: string, defaults: PanelDefault[], 
 			const effectiveY = pointerY + scrolled;
 			const deltaColSpan = Math.round((pointerX - originX) / (COL_UNIT_PX + GAP_PX));
 			const deltaRowSpan = Math.round((effectiveY - originY) / (ROW_UNIT_PX + ROW_GAP_PX));
-			const next = tryResize(collidableState(id), id, start.colSpan + deltaColSpan, start.rowSpan + deltaRowSpan);
+			const detented = applyDetent(start.rowSpan + deltaRowSpan, minRowSpan, detent);
+			detent = detented.state;
+			cardEl?.classList.toggle("at-min", detented.span === minRowSpan);
+			const next = tryResize(collidableState(id), id, start.colSpan + deltaColSpan, detented.span);
 			setState({ ...state(), [id]: next }); // live preview, persisted only on drop
 			raf = requestAnimationFrame(tick);
 		};
@@ -471,6 +551,7 @@ export function createPanelCanvas(storageKey: string, defaults: PanelDefault[], 
 		};
 		const onUp = (): void => {
 			cancelAnimationFrame(raf);
+			cardEl?.classList.remove("at-min");
 			window.removeEventListener("pointermove", onMove);
 			window.removeEventListener("pointerup", onUp);
 			persist(state());
