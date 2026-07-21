@@ -66,6 +66,33 @@ export interface Tool {
 	state: string;
 }
 
+/**
+ * reference/objectmodel/src/state/MessageBox.ts
+ *
+ * A blocking prompt raised by M291. While one is present with mode >= okOnly
+ * the FIRMWARE IS WAITING for M292 — the machine looks hung until it is
+ * answered, so this is live-print state, not a notification.
+ */
+export interface MessageBox {
+	/** See MessageBoxMode in messagebox/ack.ts. */
+	mode: number;
+	/** Echoed back in M292; identifies WHICH box is being answered. */
+	seq: number;
+	title: string;
+	message: string;
+	/** Bitmap over move.axes INDEX — jog controls to show inside the prompt. */
+	axisControls: number | null;
+	cancelButton: boolean;
+	/** Button labels for multipleChoice; the M292 value is the chosen index. */
+	choices: string[] | null;
+	/** Seeds the input (or the highlighted choice index). */
+	default: number | string | null;
+	/** Input bounds: value range for numbers, length range for strings. */
+	min: number | null;
+	max: number | null;
+	timeout: number;
+}
+
 /** reference/objectmodel/src/state/index.ts (State) */
 export interface MachineState {
 	/** "idle" | "processing" | "paused" | "halted" | "busy" | … */
@@ -74,6 +101,8 @@ export interface MachineState {
 	machineMode: string;
 	displayMessage: string;
 	upTime: number;
+	/** null whenever no prompt is open. */
+	messageBox: MessageBox | null;
 }
 
 /** reference/objectmodel/src/boards/Board.ts */
@@ -172,7 +201,7 @@ export function emptyModel(): ObjectModel {
 		job: { file: null, filePosition: null, duration: null, layer: null, lastFileName: null, timesLeft: { filament: null, file: null, slicer: null } },
 		move: { axes: [], currentMove: { requestedSpeed: 0, topSpeed: 0 }, speedFactor: 1, extruders: [] },
 		sensors: { gpIn: [], endstops: [], filamentMonitors: [], probes: [] },
-		state: { status: "disconnected", currentTool: -1, machineMode: "FFF", displayMessage: "", upTime: 0 },
+		state: { status: "disconnected", currentTool: -1, machineMode: "FFF", displayMessage: "", upTime: 0, messageBox: null },
 		tools: [],
 	};
 }

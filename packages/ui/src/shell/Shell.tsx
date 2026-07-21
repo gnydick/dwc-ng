@@ -12,6 +12,7 @@ import Macros from "../views/Macros.tsx";
 import System from "../views/System.tsx";
 import Settings from "../views/Settings.tsx";
 import Activity from "../views/Activity.tsx";
+import { MessageBoxPrompt } from "../messagebox/MessageBoxPrompt.tsx";
 
 const NAV: Array<{ route: Route; label: string }> = [
 	{ route: "machine", label: "Machine" },
@@ -44,6 +45,9 @@ export default function Shell() {
 
 	return (
 		<div class="app">
+			{/* Outside the view switch on purpose: a blocking prompt that only
+			    renders on the view you happen to be on is the same bug as none. */}
+			<MessageBoxPrompt />
 			<aside class="rail">
 				<div class="wordmark">dwc<span>·</span>ng</div>
 				<nav aria-label="Main">

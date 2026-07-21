@@ -28,6 +28,15 @@ function executeLine(machine: Machine, line: string): string {
 		return match ? parseFloat(match[1]!) : null;
 	};
 	const quoted = (): string | null => /"([^"]*)"/.exec(code)?.[1] ?? null;
+	/** The quoted string belonging to one parameter letter, e.g. P"hi" in M291. */
+	const quotedParam = (letter: string): string | null =>
+		new RegExp(`(?:^|\\s)${letter}"([^"]*)"`, "i").exec(code)?.[1] ?? null;
+	/** An RRF array literal of strings, e.g. K{"Yes","No"}. */
+	const quotedList = (letter: string): string[] | null => {
+		const body = new RegExp(`(?:^|\\s)${letter}\\{([^}]*)\\}`, "i").exec(code)?.[1];
+		if (body === undefined) return null;
+		return [...body.matchAll(/"([^"]*)"/g)].map(m => m[1]!);
+	};
 	const om = machine.om;
 
 	// Tool change: T0 / T-1
@@ -148,6 +157,38 @@ function executeLine(machine: Machine, line: string): string {
 				om.network.name = name;
 				machine.bump("network");
 			}
+			return "";
+		}
+		// Blocking prompt. On a real board modes >= 2 SUSPEND the running macro
+		// until M292 arrives, so the mock has to model the wait, not just the text
+		// — otherwise a UI that never answers looks like it works.
+		case "M291": {
+			const mode = param("S") ?? 1;
+			om.state.messageBox = {
+				mode,
+				seq: machine.nextMessageBoxSeq(),
+				title: quotedParam("R") ?? "",
+				message: quotedParam("P") ?? "",
+				axisControls: param("J"),
+				cancelButton: mode === 3 || (param("B") ?? 0) === 1,
+				choices: quotedList("K"),
+				default: param("F"),
+				min: param("L"),
+				max: param("H"),
+				timeout: param("T") ?? 0,
+			};
+			machine.bump("state");
+			return "";
+		}
+		// RRF ignores an M292 whose S doesn't match the open box; mirroring that
+		// is the only way the UI's seq echoing is actually exercised here.
+		case "M292": {
+			const open = om.state.messageBox as { seq: number } | null;
+			if (open === null) return "";
+			const seq = param("S");
+			if (seq !== null && seq !== open.seq) return "";
+			om.state.messageBox = null;
+			machine.bump("state");
 			return "";
 		}
 		default:

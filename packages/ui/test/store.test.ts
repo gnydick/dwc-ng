@@ -98,3 +98,28 @@ test("end to end: poll → seqs → rr_model → reconcile, mock to store", asyn
 		await mock.close();
 	}
 });
+
+// A dismissed message box arrives as state.messageBox = null. If the live-patch
+// merge treated null as "no news" and skipped it, the blocking prompt would
+// stay up forever after the machine had already moved on — the operator would
+// be staring at a dialog for a box that no longer exists.
+test("a null in a live patch clears the value, it does not skip", () => {
+	const target: Record<string, unknown> = {
+		state: { status: "processing", messageBox: { seq: 3, mode: 2, message: "hi" } },
+	};
+	deepMergeInto(target, { state: { messageBox: null } });
+	assert.equal((target.state as Record<string, unknown>).messageBox, null);
+	assert.equal((target.state as Record<string, unknown>).status, "processing", "siblings survive");
+});
+
+test("a message box replaces wholesale rather than merging field-by-field", () => {
+	// Merging would leave the OLD choices attached to the NEW prompt.
+	const target: Record<string, unknown> = {
+		state: { messageBox: { seq: 3, mode: 4, message: "first", choices: ["a", "b"] } },
+	};
+	deepMergeInto(target, { state: { messageBox: null } });
+	deepMergeInto(target, { state: { messageBox: { seq: 4, mode: 2, message: "second" } } });
+	const box = (target.state as Record<string, unknown>).messageBox as Record<string, unknown>;
+	assert.equal(box.seq, 4);
+	assert.equal(box.choices, undefined, "stale choices must not survive into the new box");
+});

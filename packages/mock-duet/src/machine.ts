@@ -53,6 +53,7 @@ export class Machine {
 	private pendingEvents: ScenarioEvent[] = [];
 	private rngState = 0x2f6e2b1;
 	private bootTime = Date.parse("2026-07-12T12:00:00");
+	private messageBoxSeq = 0;
 
 	constructor(scenario?: Scenario, baseModel?: Om) {
 		this.pristine = baseModel ?? createBaseModel();
@@ -68,6 +69,12 @@ export class Machine {
 
 	bump(key: string): void {
 		this.seqs[key] = (this.seqs[key] ?? 0) + 1;
+	}
+
+	/** Monotonic across the machine's life: a stale M292 must never match a
+	 *  later box, so seqs are never reused even after a box is dismissed. */
+	nextMessageBoxSeq(): number {
+		return this.messageBoxSeq++;
 	}
 
 	bumpVolume(index = 0): void {
