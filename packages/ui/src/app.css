@@ -284,11 +284,9 @@
 	line-height: 1;
 	padding: 2px 6px;
 	cursor: pointer;
-	opacity: 0;
-	pointer-events: none;
-	transition: opacity 0.15s ease;
+	/* Always visible, like the grab handle beside it. Hover-only made the
+	   control undiscoverable — you had to already know it was there. */
 }
-.card.panel:hover .panel-orientation-toggle { opacity: 1; pointer-events: auto; }
 .panel-orientation-toggle:hover { color: var(--silk); border-color: var(--copper); }
 
 .panel-resize-grip {
@@ -1530,3 +1528,37 @@
 	/* Reserved: "0%" and "200%" differ in width and this updates every poll. */
 	min-width: 46px; text-align: right;
 }
+
+/* ---------- filament (M701 / M702 / M703) ---------- */
+.filament-macros {
+	display: flex; align-items: center; gap: 8px; margin-bottom: 8px;
+	font: 600 11px/1 var(--font-display); letter-spacing: 0.06em; text-transform: uppercase;
+	color: var(--silk-dim); cursor: pointer; user-select: none;
+}
+.filament-macros input { accent-color: var(--copper); cursor: pointer; margin: 0; }
+.filament-macros:hover { color: var(--silk); }
+.filament-macros-hint {
+	font: 400 11px/16px var(--font-body); letter-spacing: 0; text-transform: none;
+	color: var(--silk-dim); opacity: 0.75;
+	/* Two strings of different length; reserve the line so the rows below hold still. */
+	min-height: 16px; min-width: 148px;
+}
+
+.filament-list { display: flex; flex-direction: column; gap: var(--ctl-gap); }
+.filament-row { display: flex; align-items: center; gap: 8px; height: var(--ctl-h); }
+.filament-pick {
+	height: var(--ctl-h); box-sizing: border-box;
+	background: var(--mask-900); color: var(--silk);
+	border: 1px solid var(--hairline); border-radius: 5px;
+	padding: 0 6px; font: 400 12.5px/1 var(--font-body); cursor: pointer;
+	min-width: 0; flex: 1;
+}
+.filament-pick:focus-visible { outline: none; border-color: var(--copper); }
+.filament-loaded {
+	font: 600 12px/1 var(--font-display); color: var(--copper-bright);
+	/* Flips between a name and an em dash on every load — reserved so the row
+	   geometry never depends on what is loaded. */
+	min-width: 76px; text-align: right;
+	overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.filament-loaded.none { color: var(--silk-dim); }

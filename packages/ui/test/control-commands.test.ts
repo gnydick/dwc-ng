@@ -100,3 +100,34 @@ test("tool select/deselect carry the macro bitmask when asked", () => {
 	// 0 must not be treated as absent — that is the whole point of the feature.
 	assert.notEqual(cmd.deselectTool(0), cmd.deselectTool());
 });
+
+// Filament load/unload. Forms verified against reference/dwc
+// FilamentDialog.vue:94-103 — NOT from memory.
+//
+// M701/M702 act on the CURRENTLY SELECTED tool, so the tool is selected first
+// when it isn't already current. P0 suppresses the filament's load/unload
+// macros the same way it does for a tool change. M703 applies the newly loaded
+// filament's own config and is part of the load, not a separate action.
+test("unload filament", () => {
+	assert.equal(cmd.unloadFilament(), "M702");
+	assert.equal(cmd.unloadFilament({ runMacros: false }), "M702 P0");
+	assert.equal(cmd.unloadFilament({ selectTool: 2 }), "T2\nM702");
+	assert.equal(cmd.unloadFilament({ selectTool: 0, runMacros: false }), "T0\nM702 P0");
+});
+
+test("load filament", () => {
+	assert.equal(cmd.loadFilament("PLA"), 'M701 S"PLA"\nM703');
+	assert.equal(cmd.loadFilament("PETG", { runMacros: false }), 'M701 P0 S"PETG"\nM703');
+	assert.equal(cmd.loadFilament("PLA", { selectTool: 3 }), 'T3\nM701 S"PLA"\nM703');
+});
+
+test("a filament name is quoted, so spaces in it survive", () => {
+	// "Prusament PLA Galaxy Black" is a perfectly ordinary directory name.
+	assert.equal(cmd.loadFilament("Prusament PLA"), 'M701 S"Prusament PLA"\nM703');
+});
+
+test("selecting tool 0 is not mistaken for 'no tool'", () => {
+	// A falsy check on the tool number would drop the T0 line entirely and send
+	// the load to whatever tool happened to be selected.
+	assert.match(cmd.loadFilament("PLA", { selectTool: 0 }), /^T0\n/);
+});

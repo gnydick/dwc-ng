@@ -12,6 +12,22 @@
 /** Trim a number to a compact G-code literal (no trailing ".00"). */
 const n = (v: number): string => String(v);
 
+export interface FilamentOpts {
+	/** Select this tool first. Undefined = act on whatever is already selected. */
+	selectTool?: number;
+	/** Default true. False sends P0, skipping the filament's own macros. */
+	runMacros?: boolean;
+}
+
+/**
+ * Prepend a tool selection when one is named. Compared against undefined, not
+ * truthiness: tool 0 is a real tool, and a falsy test would silently drop its
+ * T-code and send the command to whatever was already selected.
+ */
+const withTool = (tool: number | undefined, code: string): string =>
+	tool === undefined ? code : `T${tool}
+${code}`;
+
 export const cmd = {
 	// --- homing ---
 	homeAll: (): string => "G28",
@@ -66,6 +82,26 @@ export const cmd = {
 
 	/** Simulate a job file without moving (reference/dwc JobFileList.vue:353). */
 	simulate: (path: string): string => `M37 P"${path}"`,
+
+	// --- filament (M701/M702/M703) ---
+	//
+	// Forms verified against reference/dwc FilamentDialog.vue:94-103.
+	// M701/M702 act on the CURRENTLY SELECTED tool, so `selectTool` prepends a
+	// T-code when the target isn't already current — without it the load would
+	// land on whatever tool happened to be selected. `runMacros: false` sends P0,
+	// suppressing the filament's own load/unload macros, exactly as P0 does for a
+	// tool change. M703 applies the newly loaded filament's config and is part of
+	// the load, not a separate step.
+
+	unloadFilament: (opts: FilamentOpts = {}): string =>
+		withTool(opts.selectTool, `M702${opts.runMacros === false ? " P0" : ""}`),
+
+	loadFilament: (filament: string, opts: FilamentOpts = {}): string =>
+		withTool(
+			opts.selectTool,
+			`M701${opts.runMacros === false ? " P0" : ""} S"${filament}"
+M703`,
+		),
 
 	// --- fans ---
 	fan: (index: number, percent: number): string => `M106 P${index} S${(percent / 100).toFixed(2)}`,

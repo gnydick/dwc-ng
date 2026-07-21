@@ -28,6 +28,8 @@ export interface Axis {
 /** reference/objectmodel/src/move/Extruder.ts */
 export interface Extruder {
 	filamentDiameter: number;
+	/** Name of the loaded filament; "" when nothing is loaded. */
+	filament: string;
 }
 
 /** reference/objectmodel/src/move/index.ts (Move) */
@@ -60,6 +62,8 @@ export interface Tool {
 	number: number;
 	name: string;
 	heaters: number[];
+	/** Index into move.extruders that this tool feeds; -1 when it has none. */
+	filamentExtruder: number;
 	active: number[];
 	standby: number[];
 	/** "off" | "active" | "standby" */

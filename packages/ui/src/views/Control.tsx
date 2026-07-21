@@ -4,6 +4,7 @@ import type { Fan } from "../om/types.ts";
 import { cmd } from "../control/commands.ts";
 import { GcodeButton } from "../control/GcodeButton.tsx";
 import { SpeedSlider } from "../control/SpeedSlider.tsx";
+import { FilamentCard } from "../control/FilamentCard.tsx";
 import { Card } from "../shell/Card.tsx";
 import { PanelCanvas } from "../shell/PanelCanvas.tsx";
 import { ConsolePanel } from "../shell/ConsolePanel.tsx";
@@ -42,6 +43,8 @@ export default function Control() {
 	const hasFans = createMemo(() => app.om.om.fans.some(isManualFan));
 	/** state.atxPower is null on a board with no PS_ON port configured. */
 	const hasAtx = createMemo(() => app.om.om.state.atxPower !== null);
+	/** A tool with no extruder cannot hold filament — hide the card entirely. */
+	const hasFilament = createMemo(() => app.om.om.tools.some(t => t !== null && t.filamentExtruder >= 0));
 	const canvas = createPanelCanvas("dwc-ng.canvas.control", CONTROL_PANEL_DEFAULTS, id => {
 		if (id === "camera") return app.config.config.camera.pinned;
 		if (id === "fans") return hasFans();
@@ -49,6 +52,7 @@ export default function Control() {
 		// not merely not-rendered, or its cells stay reserved and block the
 		// panels around it from being moved or resized into them.
 		if (id === "atx") return hasAtx();
+		if (id === "filament") return hasFilament();
 		return true;
 	});
 
@@ -175,6 +179,12 @@ export default function Control() {
 						</For>
 					</div>
 				</Card>
+
+				<Show when={hasFilament()}>
+					<Card id="filament" canvas={canvas} ariaLabel="Filament" title="Filament" tip="M701 · M702 · M703">
+						<FilamentCard tools={app.om.om.tools} />
+					</Card>
+				</Show>
 
 				<Card id="heaters" canvas={canvas} ariaLabel="Heaters" title="Heaters" tip="M568 · M140">
 					<div class="heater-list">
