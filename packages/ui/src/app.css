@@ -246,7 +246,9 @@
 	flex: 1;
 	min-height: 0;
 	overflow: auto;
-	padding: 0 16px 8px;
+	/* Top padding gives the header breathing room above it; the sticky header
+	   parks against this padding edge, so the gap persists while scrolling. */
+	padding: 12px 16px 8px;
 	display: flex;
 	flex-direction: column;
 	scrollbar-width: none;
@@ -1451,9 +1453,9 @@
    without it a card resized small squeezed its own head from 20px to 18px and
    the title crept upward as you dragged. Nothing inside a card may move while
    the card is resized. */
-/* Taller than the old 20px so the grab handle and header buttons have room to
-   breathe; 28px keeps it on the 4px rhythm (== --ctl-h). */
-.card-head { padding-top: 0; margin-bottom: 8px; height: 28px; flex: 0 0 28px; }
+/* Room for the grab handle, title and header buttons; 36px stays on the 4px
+   rhythm. */
+.card-head { padding-top: 0; margin-bottom: 8px; height: 36px; flex: 0 0 36px; }
 .card-title { font-size: 12px; }
 
 /* The card is sitting exactly on its content. A visible edge for the detent you

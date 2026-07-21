@@ -161,19 +161,18 @@ export function applyDetent(
 export function contentRowSpan(cardEl: HTMLElement, gutterPx: number): number {
 	const body = cardEl.querySelector<HTMLElement>(".panel-body");
 	if (!body) return 1;
-	const kids = Array.from(body.children).filter(
-		(k): k is HTMLElement => k instanceof HTMLElement && k.getBoundingClientRect().height > 0,
-	);
-	if (kids.length === 0) return 1;
-	// Measured from the CARD's top to the last child's bottom. The card-head is
-	// itself a child of .panel-body, so adding its height separately counted it
-	// twice and put the minimum ~28px ABOVE the card's current height - the
-	// detent would have caught above where the card already was.
-	const last = kids[kids.length - 1]!.getBoundingClientRect();
-	const padBottom = parseFloat(getComputedStyle(body).paddingBottom || "0");
-	const borderBottom = parseFloat(getComputedStyle(cardEl).borderBottomWidth || "0");
-	const naturalPx = last.bottom - cardEl.getBoundingClientRect().top + padBottom + borderBottom;
-	return Math.max(1, Math.ceil((naturalPx + gutterPx) / ROW_UNIT_PX));
+	// body.scrollHeight is the FULL content height of the body (header + content
+	// + its own padding), independent of the current scroll position AND of how
+	// large the card happens to be right now.
+	//
+	// The previous version measured the last child's getBoundingClientRect()
+	// bottom relative to the card top. That bottom is shifted UP by
+	// body.scrollTop whenever the content is already scrolled — which is exactly
+	// the state a card is in while you drag it smaller — so the minimum came out
+	// too small and the card snapped to a size whose content still scrolled. The
+	// card fills its body (padding 0), so min card height == scrollHeight, and
+	// card border-box height == 4*rowSpan - gutter.
+	return Math.max(1, Math.ceil((body.scrollHeight + gutterPx) / ROW_UNIT_PX));
 }
 
 /**
