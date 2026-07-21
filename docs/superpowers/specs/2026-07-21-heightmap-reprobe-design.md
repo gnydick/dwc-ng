@@ -1,7 +1,7 @@
 # Height map preview with single-point re-probing
 
 **Date:** 2026-07-21
-**Status:** approved, not yet implemented
+**Status:** implemented 2026-07-21
 
 ## Problem
 
@@ -123,7 +123,16 @@ clearance, probe deploy, tool state — lives in the operator's own macro, not i
 this UI. If the default is wrong for a machine, it is fixed in Settings rather
 than in a release.
 
-## The unverified conversion
+## The conversion — RESOLVED 2026-07-21
+
+**The trigger height IS the map value.** No conversion (confirmed by Gabe).
+RRF has already applied the probe's `G31 Z` offset by the time it reports,
+which is why a real map reads in hundredths of a millimetre rather than around
+the probe's standoff. The section below is kept for the reasoning that led to
+isolating it; the raw reply is still shown at the accept step, now to catch a
+bad *probe* rather than a bad formula.
+
+## The conversion, as it was reasoned about before that
 
 `sendCode` resolves with the reply text, so the probed height is read from
 RRF's response. **Converting that reply into a height-map value is not yet

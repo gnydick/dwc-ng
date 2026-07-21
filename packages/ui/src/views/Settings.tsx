@@ -119,6 +119,27 @@ export default function Settings() {
 					</For>
 				</Panel>
 
+				<Panel id="bed-probe" canvas={canvas} ariaLabel="Bed probing">
+					<div class="card-head">
+						<h2 class="card-title">Bed probing</h2>
+						<button class="link-btn" onClick={() => app.config.resetSection("bed")}>Reset</button>
+					</div>
+					<p class="hint">
+						Sent to re-probe one height-map point on the Bed view. <code>{"{x}"}</code> and{" "}
+						<code>{"{y}"}</code> become that point's bed coordinates. The motion belongs in your
+						macro, not here — including whatever preconditions it should honour, the way mesh.g
+						refuses to probe with a tool undocked.
+					</p>
+					<label class="field">
+						<span class="field-label">Probe point command</span>
+						<input
+							type="text"
+							value={app.config.config.bed.probePointCommand}
+							onChange={e => app.config.setBed({ probePointCommand: e.currentTarget.value.trim() })}
+						/>
+					</label>
+				</Panel>
+
 				<Panel id="camera-config" canvas={canvas} ariaLabel="Camera">
 					<div class="card-head">
 						<h2 class="card-title">Camera</h2>

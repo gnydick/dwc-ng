@@ -1,12 +1,14 @@
 /**
  * Extract the trigger height from a probe reply.
  *
- * This deliberately does ONLY the verifiable half. Turning a trigger height
- * into a height-map value depends on the probe's G31 trigger height and the
- * reference plane, and that relationship is not covered by anything vendored
- * under reference/ — so it is not guessed at here. The UI shows this raw reply
- * next to whatever value it computes, so a wrong conversion is visible on the
- * first probe rather than after a map has been corrupted.
+ * The trigger height IS the height-map value — no conversion (confirmed by
+ * Gabe, 2026-07-21). RRF has already applied the probe's G31 Z offset by the
+ * time it reports, which is why a real map reads in hundredths of a millimetre
+ * (-0.105 .. 0.150 on this machine) rather than around the probe's standoff.
+ *
+ * The UI still shows this raw reply beside the value it stores. That is no
+ * longer about an unverified conversion but about the probe itself: a reading
+ * that looks wrong should be visible before it is accepted into the map.
  */
 export interface ProbeResult {
 	/** Machine Z at which the probe triggered, in mm, as RRF reported it. */

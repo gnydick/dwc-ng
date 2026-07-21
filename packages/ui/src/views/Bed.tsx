@@ -20,10 +20,10 @@ import { BED_PANEL_DEFAULTS } from "./bed.panelDefaults.ts";
  * with must not be able to diverge.
  *
  * Re-probing sends ONE operator-configured command and reports what came back.
- * The raw reply is shown beside the value it produced because that conversion
- * is not verified against anything vendored — a wrong formula has to be visible
- * on the first probe, not after a map has been corrupted. Accepting is a
- * separate, deliberate act for the same reason.
+ * The reported trigger height IS the map value — RRF has already applied the
+ * probe's G31 Z offset. The raw reply is still shown beside it, and accepting
+ * is still a separate act: a probe can land on swarf or fail to trigger
+ * cleanly, and that should be visible before it enters the map.
  */
 export default function Bed() {
 	const app = useApp();
@@ -198,9 +198,9 @@ export default function Bed() {
 										<p class="hm-line">
 											{store.valueAt(target().row, target().col).toFixed(3)} → <b>{probed()!.toFixed(3)}</b> mm
 										</p>
-										{/* Shown because the trigger-height to map-value conversion is
-										    NOT verified: a wrong formula must be visible here, before
-										    anything is accepted, not after a map is corrupted. */}
+										{/* The machine's own words, kept beside the number taken from
+										    them: a probe that landed on swarf or failed to trigger
+										    cleanly should be visible before it enters the map. */}
 										<pre class="hm-reply">{reply()}</pre>
 										<div class="hm-actions">
 											<button class="fb-tool ok" onClick={accept}>Accept</button>

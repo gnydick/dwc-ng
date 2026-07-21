@@ -143,7 +143,7 @@ nobody closes them by accident.
 | Viewer: per-object selection/cancel | ✅ | ❌ | |
 | Viewer: Z-clip / layer slider | ✅ (`setZClipPlane`) | 🟡 | We have layer-focus mode; no free top/bottom clip sliders |
 | Viewer: render-quality tiers | ✅ (6 levels) | ❌ | We have one quality; merge tolerance is fixed |
-| **Height map** (`G29` mesh visualisation) | ✅ (`HeightMap` plugin) | ❌ | Notable gap for bed levelling |
+| **Height map** (`G29` mesh visualisation) | ✅ (`HeightMap` plugin) | ✅ | `views/Bed.tsx` — gradient surface + probe points. **Above DWC:** single-point re-probe and manual nudge, which the read-only plugin cannot do |
 | **Input shaping** (accelerometer plots) | ✅ (`InputShaping` plugin) | ❌ | |
 | Webcam | ✅ (`Job/Webcam.vue`) | ✅ | Floating pinnable camera tile |
 
@@ -186,7 +186,8 @@ nobody closes them by accident.
 Z-clip and per-object cancel.
 
 **P2 — visibility**
-8. **Height map** viewer (`G29` mesh) — biggest remaining visualisation gap.
+8. ✅ **Height map** viewer with single-point re-probing and manual nudge
+   (2026-07-21). Save is upload + `G29 S1` as one operation. ← done
 9. **Layer chart** (per-layer time/height).
 10. Viewer **Z-clip sliders** and per-object cancel (`M486`).
 
