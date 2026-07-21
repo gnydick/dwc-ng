@@ -131,3 +131,22 @@ test("selecting tool 0 is not mistaken for 'no tool'", () => {
 	// the load to whatever tool happened to be selected.
 	assert.match(cmd.loadFilament("PLA", { selectTool: 0 }), /^T0\n/);
 });
+
+// M486 per-object cancel. Forms verified against reference/dwc
+// GCodeViewer.vue:915 — P cancels, U un-cancels, both by object INDEX.
+//
+// Indexed explicitly rather than using M486 C ("cancel the current object"),
+// because the object you clicked is not necessarily the one being printed when
+// the command arrives.
+test("cancel and resume a build object", () => {
+	assert.equal(cmd.cancelObject(0), "M486 P0");
+	assert.equal(cmd.cancelObject(7), "M486 P7");
+	assert.equal(cmd.resumeObject(0), "M486 U0");
+	assert.equal(cmd.resumeObject(7), "M486 U7");
+});
+
+test("object 0 is a real object, not an absent one", () => {
+	// A falsy check on the index would silently address the wrong object.
+	assert.notEqual(cmd.cancelObject(0), cmd.cancelObject(1));
+	assert.match(cmd.cancelObject(0), /0$/);
+});

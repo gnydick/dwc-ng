@@ -1662,3 +1662,21 @@
 	min-width: 66px; font-variant-numeric: tabular-nums;
 }
 .hm-nudge .feed-field input { width: 62px; }
+
+/* ---------- build objects (M486) ---------- */
+.obj-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--ctl-gap); }
+.obj-row { display: flex; align-items: center; gap: 8px; height: var(--ctl-h); }
+/* Fixed width: the marker appears and disappears as printing moves between
+   objects, and must not shift the name beside it. */
+.obj-mark { width: 12px; text-align: center; color: var(--copper-bright); font-size: 11px; }
+.obj-name {
+	flex: 1; min-width: 0;
+	font: 400 13px/1 var(--font-body); color: var(--silk);
+	overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.obj-row.cancelled .obj-name { color: var(--silk-dim); text-decoration: line-through; }
+.obj-row.current .obj-name { color: var(--copper-bright); font-weight: 600; }
+.obj-state {
+	font: 600 10px/1 var(--font-display); letter-spacing: 0.08em; text-transform: uppercase;
+	color: var(--fault);
+}

@@ -83,6 +83,15 @@ export const cmd = {
 	/** Simulate a job file without moving (reference/dwc JobFileList.vue:353). */
 	simulate: (path: string): string => `M37 P"${path}"`,
 
+	// --- per-object cancel (M486) ---
+	//
+	// P cancels, U un-cancels, both by object INDEX (reference/dwc
+	// GCodeViewer.vue:915). Indexed explicitly rather than using M486 C, which
+	// cancels whichever object is current: the one the operator picked is not
+	// necessarily the one printing by the time the command lands.
+	cancelObject: (index: number): string => `M486 P${index}`,
+	resumeObject: (index: number): string => `M486 U${index}`,
+
 	// --- filament (M701/M702/M703) ---
 	//
 	// Forms verified against reference/dwc FilamentDialog.vue:94-103.

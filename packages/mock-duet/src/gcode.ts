@@ -121,6 +121,24 @@ function executeLine(machine: Machine, line: string): string {
 			if (s !== null && extruder) extruder.factor = s / 100;
 			return "";
 		}
+		// M486 P<n> cancels object n, U<n> un-cancels it (reference/dwc
+		// GCodeViewer.vue:915). Cancelling does not stop the print: RRF keeps
+		// going and skips that object's moves, which is the whole point.
+		case "M486": {
+			const objects = om.job?.build?.objects;
+			if (!Array.isArray(objects)) return "";
+			const cancel = param("P");
+			const resume = param("U");
+			let changed = false;
+			if (cancel !== null && objects[cancel]) { objects[cancel].cancelled = true; changed = true; }
+			if (resume !== null && objects[resume]) { objects[resume].cancelled = false; changed = true; }
+			// Bump the owning subtree's counter, as RRF does. Without it the
+			// mutation is invisible: the connector is seqs-driven and only
+			// re-fetches `job` when its sequence number moves, so the UI would
+			// keep showing the old cancelled flags forever.
+			if (changed) machine.bump("job");
+			return "";
+		}
 		case "M107": {
 			const fan = om.fans[0];
 			if (fan) fan.requestedValue = 0;

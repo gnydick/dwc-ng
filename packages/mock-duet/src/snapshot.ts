@@ -119,6 +119,19 @@ export function createBaseModel(): Om {
 			mkInput("Daemon"), mkInput("Autopause"),
 		],
 		job: {
+			// M486 build objects. A slicer only emits these when object markers are
+			// enabled, so a job legitimately has none — but with no model for them
+			// at all, per-object cancel could not be exercised here.
+			build: {
+				currentObject: 0,
+				m486names: true,
+				m486numbers: true,
+				objects: [
+					{ cancelled: false, name: "left bracket", x: [20, 80], y: [20, 80] },
+					{ cancelled: false, name: "right bracket", x: [120, 180], y: [20, 80] },
+					{ cancelled: false, name: null, x: [60, 140], y: [120, 200] },
+				],
+			},
 			duration: null,
 			file: null,
 			filePosition: null,

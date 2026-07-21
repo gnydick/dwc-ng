@@ -140,7 +140,7 @@ nobody closes them by accident.
 | Capability | DWC | dwc-ng | Notes |
 |---|---|---|---|
 | 3D G-code toolpath viewer | ✅ (`@sindarius/gcodeviewer`) | ✅ | Ours: Babylon, real 3D beads, feature/speed/layer-time colouring, progressive/static/layer reveal, ghost preview, build-once `thinInstanceCount` live path |
-| Viewer: per-object selection/cancel | ✅ | ❌ | |
+| Viewer: per-object selection/cancel | ✅ (in the viewer) | ✅ | `cards/BuildObjects.tsx` — a list on Activity rather than picking in the viewer; cancel/resume by index (`M486 P`/`U`) |
 | Viewer: Z-clip / layer slider | ✅ (`setZClipPlane`) | 🟡 | We have layer-focus mode; no free top/bottom clip sliders |
 | Viewer: render-quality tiers | ✅ (6 levels) | ❌ | We have one quality; merge tolerance is fixed |
 | **Height map** (`G29` mesh visualisation) | ✅ (`HeightMap` plugin) | ✅ | `views/Bed.tsx` — gradient surface + probe points. **Above DWC:** single-point re-probe and manual nudge, which the read-only plugin cannot do |
@@ -189,7 +189,9 @@ Z-clip and per-object cancel.
 8. ✅ **Height map** viewer with single-point re-probing and manual nudge
    (2026-07-21). Save is upload + `G29 S1` as one operation. ← done
 9. **Layer chart** (per-layer time/height).
-10. Viewer **Z-clip sliders** and per-object cancel (`M486`).
+10. ✅ **Per-object cancel** (`M486`) (2026-07-21) — as a list, not viewer
+    picking. Viewer **Z-clip sliders** deliberately not done: the G-code viewer
+    is good as it stands (Gabe, 2026-07-21).
 
 **P3 — lifecycle**
 11. **Firmware update** flow (`M997`).

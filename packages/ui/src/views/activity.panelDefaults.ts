@@ -12,6 +12,9 @@ export const ACTIVITY_PANEL_DEFAULTS: PanelDefault[] = [
 	{ id: "position", col: 0, row: 0, colSpan: 12, rowSpan: 89 },
 	{ id: "active-job", col: 12, row: 0, colSpan: 12, rowSpan: 40 },
 	{ id: "gcode-viewer", col: 0, row: 89, colSpan: 24, rowSpan: 180 },
+	// Hidden unless the job carries M486 objects; still needs a placement, or the
+	// canvas has nowhere to put it on a job that does.
+	{ id: "build-objects", col: 12, row: 40, colSpan: 12, rowSpan: 49 },
 	{ id: "console", col: 0, row: 269, colSpan: 24, rowSpan: 75 },
 	{ id: "camera", col: 0, row: 344, colSpan: 8, rowSpan: 75 },
 ];

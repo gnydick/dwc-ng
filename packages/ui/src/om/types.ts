@@ -125,6 +125,23 @@ export interface Board {
 	v12?: { current: number } | null;
 }
 
+/** reference/objectmodel/src/job/Build.ts (BuildObject) */
+export interface BuildObject {
+	cancelled: boolean;
+	/** null when the slicer emitted no M486 name for it. */
+	name: string | null;
+	/** Bounding box on each axis, [min, max]; entries may be null. */
+	x: (number | null)[];
+	y: (number | null)[];
+}
+
+/** reference/objectmodel/src/job/Build.ts (Build) */
+export interface Build {
+	/** Index of the object being printed; -1 between objects. */
+	currentObject: number;
+	objects: (BuildObject | null)[];
+}
+
 /** reference/objectmodel/src/job/index.ts (Job) */
 export interface Job {
 	file: {
@@ -138,6 +155,8 @@ export interface Job {
 	layer: number | null;
 	lastFileName: string | null;
 	timesLeft: { filament: number | null; file: number | null; slicer: number | null };
+	/** null when the job carries no M486 object information. */
+	build: Build | null;
 }
 
 /** reference/objectmodel/src/fans/Fan.ts (FanThermostaticControl) */
@@ -207,7 +226,7 @@ export function emptyModel(): ObjectModel {
 		boards: [],
 		fans: [],
 		heat: { bedHeaters: [], chamberHeaters: [], heaters: [] },
-		job: { file: null, filePosition: null, duration: null, layer: null, lastFileName: null, timesLeft: { filament: null, file: null, slicer: null } },
+		job: { file: null, filePosition: null, duration: null, layer: null, lastFileName: null, timesLeft: { filament: null, file: null, slicer: null }, build: null },
 		move: { axes: [], currentMove: { requestedSpeed: 0, topSpeed: 0 }, speedFactor: 1, extruders: [] },
 		sensors: { gpIn: [], endstops: [], filamentMonitors: [], probes: [] },
 		state: { status: "disconnected", currentTool: -1, machineMode: "FFF", displayMessage: "", upTime: 0, messageBox: null, atxPower: null },
