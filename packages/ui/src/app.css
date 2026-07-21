@@ -1477,3 +1477,56 @@
 	margin-left: 0;
 	min-width: 152px;
 }
+
+/* ---------- speed factor slider (M220) ---------- */
+.speed-row { display: flex; align-items: center; gap: 10px; height: var(--ctl-h); }
+.speed-track { position: relative; flex: 1; min-width: 120px; height: var(--ctl-h); display: flex; align-items: center; }
+
+.speed-input {
+	appearance: none; -webkit-appearance: none;
+	width: 100%; height: 100%; margin: 0; background: none; cursor: pointer;
+}
+.speed-input::-webkit-slider-runnable-track {
+	height: 6px; border-radius: 3px;
+	background: var(--mask-900); border: 1px solid var(--hairline);
+}
+.speed-input::-moz-range-track {
+	height: 6px; border-radius: 3px;
+	background: var(--mask-900); border: 1px solid var(--hairline);
+}
+.speed-input::-webkit-slider-thumb {
+	-webkit-appearance: none;
+	width: 14px; height: 14px; border-radius: 50%;
+	background: var(--copper-bright); border: 1px solid var(--mask-900);
+	margin-top: -5px; /* centre the 14px thumb on the 6px track */
+	cursor: grab;
+}
+.speed-input::-moz-range-thumb {
+	width: 14px; height: 14px; border-radius: 50%;
+	background: var(--copper-bright); border: 1px solid var(--mask-900);
+	cursor: grab;
+}
+.speed-input:active::-webkit-slider-thumb { cursor: grabbing; }
+.speed-input:focus-visible { outline: 2px solid var(--copper-bright); outline-offset: 3px; border-radius: 4px; }
+
+/* Stops sit ON the bar. The layer ignores pointer events so dragging the track
+   still works; only the dots themselves are clickable. */
+.speed-stops { position: absolute; inset: 0; pointer-events: none; }
+.speed-stop {
+	position: absolute; top: 50%;
+	width: 8px; height: 8px; padding: 0;
+	transform: translate(-50%, -50%);
+	border-radius: 50%;
+	background: var(--mask-500); border: 1px solid var(--silk-dim);
+	cursor: pointer; pointer-events: auto;
+}
+.speed-stop:hover { background: var(--copper); border-color: var(--copper-bright); }
+/* The stop the machine is actually sitting on. */
+.speed-stop.current { background: var(--copper-bright); border-color: var(--copper-bright); }
+
+.speed-value {
+	font: 600 13px/1 var(--font-display); color: var(--silk);
+	font-variant-numeric: tabular-nums;
+	/* Reserved: "0%" and "200%" differ in width and this updates every poll. */
+	min-width: 46px; text-align: right;
+}

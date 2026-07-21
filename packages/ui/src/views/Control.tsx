@@ -3,6 +3,7 @@ import { useApp } from "../shell/context.ts";
 import type { Fan } from "../om/types.ts";
 import { cmd } from "../control/commands.ts";
 import { GcodeButton } from "../control/GcodeButton.tsx";
+import { SpeedSlider } from "../control/SpeedSlider.tsx";
 import { Card } from "../shell/Card.tsx";
 import { PanelCanvas } from "../shell/PanelCanvas.tsx";
 import { ConsolePanel } from "../shell/ConsolePanel.tsx";
@@ -275,7 +276,7 @@ export default function Control() {
 
 				<Card id="tuning" canvas={canvas} ariaLabel="Tuning" title="Tuning" tip="M220 · M221 · M290">
 					<div class="heater-list">
-						<FactorControl label="Speed" build={cmd.speedFactor} current={Math.round((app.om.om.move.speedFactor ?? 1) * 100)} />
+						<SpeedSlider currentPct={Math.round((app.om.om.move.speedFactor ?? 1) * 100)} />
 						<div class="heater-ctl">
 							<span class="ctl-name">Babystep Z</span>
 							<label class="feed-field">mm <input type="number" step="0.01" value={babyStep()} onInput={e => setBabyStep(Number(e.currentTarget.value))} /></label>
@@ -328,22 +329,6 @@ function FanControl(props: { label: string; index: number; value: number }) {
 			<div class="btn-cluster">
 				<GcodeButton label="Set" command={cmd.fan(props.index, pct())} stamp={false} />
 				<GcodeButton label="Off" variant="quiet" command={cmd.fan(props.index, 0)} stamp={false} />
-			</div>
-		</div>
-	);
-}
-
-function FactorControl(props: { label: string; build: (pct: number) => string; current: number }) {
-	const [pct, setPct] = createSignal(props.current || 100);
-	return (
-		<div class="heater-ctl">
-			<span class="ctl-name">{props.label}</span>
-			<label class="temp-field">
-				<input type="number" value={pct()} onInput={e => setPct(Number(e.currentTarget.value))} aria-label={`${props.label} percent`} />
-				<span class="deg">%</span>
-			</label>
-			<div class="btn-cluster">
-				<GcodeButton label="Set" command={props.build(pct())} stamp={false} />
 			</div>
 		</div>
 	);
