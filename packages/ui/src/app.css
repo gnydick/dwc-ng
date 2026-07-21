@@ -1465,3 +1465,15 @@
    row reads as an even bank of keys rather than eight different sizes. */
 .rel-key { width: 44px; padding: 0; }
 .rel-key .gcode-label { min-width: 0; }
+
+/* Tuning: the action leads the row, as it does on the Tools card. Scoped to
+   this panel — Heaters and Fans keep their right-hand button alignment, where
+   the value being set is the thing you scan down the column for.
+   The cluster carries a fixed width so the labels after it line up: "Set" is
+   one button and babystep is two, which would otherwise start the two rows'
+   text at different x. */
+[data-panel-id="tuning"] .heater-ctl .btn-cluster {
+	order: -1;
+	margin-left: 0;
+	min-width: 152px;
+}
