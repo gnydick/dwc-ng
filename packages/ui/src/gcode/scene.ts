@@ -92,6 +92,7 @@ import { Vector3 } from "@babylonjs/core/Maths/math.vector.js";
 import { Color3, Color4 } from "@babylonjs/core/Maths/math.color.js";
 import type { GhostRanges, SegmentRange } from "./renderModes.ts";
 import { mergeExtrudingRuns } from "./mergeSegments.ts";
+import { createRenderPump } from "./renderPump.ts";
 
 const TRAVEL_COLOR = new Color3(0.85, 0.85, 0.9);
 // Ghost opacity: the real GPU alpha applied to each not-yet-printed segment.
@@ -136,15 +137,19 @@ export function createScene(
 	// on an unconditional 60fps loop (no engine.runRenderLoop). Declared
 	// before the camera/zoom setup below so the wheel handler can call it
 	// directly.
-	let pendingFrame = 0;
-	const renderFrame = (): void => {
-		pendingFrame = 0;
-		scene.render();
-	};
-	const requestRender = (): void => {
-		if (pendingFrame !== 0) return;
-		pendingFrame = requestAnimationFrame(renderFrame);
-	};
+	//
+	// requestRender() is the one-shot ("this changed, draw it") path.
+	// pump.interact() is the LIVE-INPUT path and is not optional: Babylon's
+	// camera inputs only accumulate pixel deltas, and the camera is moved by
+	// _checkInputs() inside scene.render() — so an unrendered frame is an
+	// unapplied drag. See renderPump.ts for the full mechanism.
+	// Arrow-wrapped, not passed bare: requestAnimationFrame/cancelAnimationFrame
+	// need `this === window` and throw "Illegal invocation" when detached.
+	const pump = createRenderPump(() => scene.render(), {
+		request: cb => requestAnimationFrame(cb),
+		cancel: handle => cancelAnimationFrame(handle),
+	});
+	const requestRender = (): void => pump.request();
 
 	// Orthographic, not perspective: no foreshortening, so parallel walls
 	// stay parallel and widths read consistently regardless of depth —
@@ -246,6 +251,38 @@ export function createScene(
 	const onPointerLeave = (): void => { pointerOverCanvas = false; };
 	canvas.addEventListener("pointerenter", onPointerEnter);
 	canvas.addEventListener("pointerleave", onPointerLeave);
+
+	// Live camera input -> frames. Babylon's own pointer/wheel/pinch handlers
+	// have already run by the time these fire (they only stash pixel deltas);
+	// all we do is guarantee the frames on which the camera actually consumes
+	// them, plus the trailing frames its inertia glides over. Passive
+	// listeners: we never preventDefault here — Babylon's own handlers own
+	// that decision (see the attachControl note below).
+	const onInteract = (): void => pump.interact();
+	// A drag that leaves the canvas still drives the camera, so once a drag is
+	// under way the move/up listeners live on `window`, not the canvas —
+	// otherwise the pump would settle to idle mid-drag and the camera would
+	// freeze exactly when the user is furthest into a gesture. `dragging`
+	// keeps this to real drags: a bare hover moves no camera and earns no
+	// frames.
+	let dragging = false;
+	const onWindowPointerMove = (): void => { if (dragging) pump.interact(); };
+	const onWindowPointerUp = (): void => {
+		if (!dragging) return;
+		dragging = false;
+		pump.interact(); // release with velocity left: keep drawing the glide
+	};
+	const onCanvasPointerDown = (): void => {
+		dragging = true;
+		pump.interact();
+	};
+	canvas.addEventListener("pointerdown", onCanvasPointerDown, { passive: true });
+	canvas.addEventListener("wheel", onInteract, { passive: true });
+	// Pointer events cover mouse, pen and touch drags; touch pinch-zoom arrives
+	// as multi-pointer moves through the same path, so no separate touch* wiring.
+	window.addEventListener("pointermove", onWindowPointerMove, { passive: true });
+	window.addEventListener("pointerup", onWindowPointerUp, { passive: true });
+	window.addEventListener("pointercancel", onWindowPointerUp, { passive: true });
 
 	const ROTATE_STEP = 0.08; // radians per keypress
 	const PAN_FRACTION = 0.06; // of the current view height per keypress
@@ -655,11 +692,16 @@ export function createScene(
 			requestRender();
 		},
 		destroy() {
-			cancelAnimationFrame(pendingFrame);
+			pump.dispose(); // cancels the pending frame and permanently retires the pump
 			camera.onViewMatrixChangedObservable.removeCallback(onCameraChanged);
 			window.removeEventListener("keydown", handleKey);
 			canvas.removeEventListener("pointerenter", onPointerEnter);
 			canvas.removeEventListener("pointerleave", onPointerLeave);
+			canvas.removeEventListener("pointerdown", onCanvasPointerDown);
+			canvas.removeEventListener("wheel", onInteract);
+			window.removeEventListener("pointermove", onWindowPointerMove);
+			window.removeEventListener("pointerup", onWindowPointerUp);
+			window.removeEventListener("pointercancel", onWindowPointerUp);
 			disposeAll();
 			disposeTravel();
 			tubeTemplate.dispose();
