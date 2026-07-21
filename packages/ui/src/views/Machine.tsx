@@ -2,6 +2,7 @@ import { For, Show, createMemo } from "solid-js";
 import { useApp } from "../shell/context.ts";
 import type { Heater } from "../om/types.ts";
 import { sensorRows } from "./machine.sensors.ts";
+import { heaterSeries } from "../om/heaterSeries.ts";
 import { TemperatureChart, type ChartSeries } from "../charts/TemperatureChart.tsx";
 import { Card } from "../shell/Card.tsx";
 import { PositionCard } from "../cards/PositionCard.tsx";
@@ -13,8 +14,6 @@ import { CameraPanel } from "../shell/CameraPanel.tsx";
 import { createPanelCanvas } from "../shell/panelCanvas.ts";
 import { MACHINE_PANEL_DEFAULTS } from "./machine.panelDefaults.ts";
 
-/** Distinct line colors for tool heaters; the bed gets gold (see below). */
-const TOOL_COLORS = ["#f0a050", "#6fbf8f", "#5aa9e6", "#c88ce0", "#e0b84a", "#8fd0c0"];
 
 /** The Machine view: live DRO, tools & heaters, current job. */
 export default function Machine() {
@@ -39,20 +38,17 @@ export default function Machine() {
 
 	const sensorList = createMemo(() => sensorRows(app.om.om.sensors, app.om.om.move.axes, app.config.config.sensorNames));
 
-	// One chart series per heater (index == heat.heaters index == chart series
-	// index), labeled and colored by tool/bed semantics.
-	const chartSeries = createMemo<ChartSeries[]>(() => {
-		const heaters = app.om.om.heat.heaters;
-		const bedSet = new Set(app.om.om.heat.bedHeaters);
-		const toolByHeater = new Map<number, string>();
-		for (const t of app.om.om.tools) {
-			if (t) for (const h of t.heaters) toolByHeater.set(h, t.name || `Tool ${t.number}`);
-		}
-		return heaters.map((_, i) => ({
-			label: bedSet.has(i) ? "Bed" : toolByHeater.get(i) ?? `Heater ${i}`,
-			stroke: bedSet.has(i) ? "#c9a227" : TOOL_COLORS[i % TOOL_COLORS.length]!,
-		}));
-	});
+	// One chart series per heater, in heater order — the chart aligns series to
+	// column index. Labels and colours come from heaterSeries.ts, which keeps
+	// the bed's gold out of the tool palette so no two lines can look alike.
+	const chartSeries = createMemo<ChartSeries[]>(() =>
+		heaterSeries({
+			heaters: app.om.om.heat.heaters,
+			bedHeaters: app.om.om.heat.bedHeaters,
+			chamberHeaters: app.om.om.heat.chamberHeaters,
+			tools: app.om.om.tools,
+		}),
+	);
 
 	return (
 		<>
