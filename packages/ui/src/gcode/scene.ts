@@ -428,7 +428,7 @@ export function createScene(
 	// caps (T=8 → 28, T=12 → 44) against the box's 12. Caps are kept because
 	// each bead is extended half a width at both ends, so open ends could show
 	// through at a run's extremities.
-	const TUBE_TESSELLATION = 12;
+	const TUBE_TESSELLATION = 24;
 	const tubeTemplate = MeshBuilder.CreateCylinder("tubeTemplate", {
 		height: 1, diameter: 1, tessellation: TUBE_TESSELLATION,
 	}, scene);
