@@ -385,17 +385,32 @@ export function createPanelCanvas(storageKey: string, defaults: PanelDefault[], 
 		const originX = event.clientX;
 		const originY = event.clientY;
 		const originScrollY = window.scrollY;
+		// The canvas scrolls INSIDE .view-scroll, not the document, so
+		// window.scrollY alone is always 0 and compensates for nothing. Track the
+		// real scroll container too, or a card can never be grown past the
+		// viewport: the pointer runs out of screen and scrolling goes unnoticed.
+		const scroller = canvasEl.closest<HTMLElement>(".view-scroll");
+		const originScrollTop = scroller?.scrollTop ?? 0;
 		let pointerX = event.clientX;
 		let pointerY = event.clientY;
 
-		// No programmatic auto-scroll — see startMove's comment. Growing
-		// taller than the viewport is handled by tryResize's own achieved
-		// size being applied every tick (unconditionally, clamped rather than
-		// rejected), which already grows the grid in step with the resize;
-		// the user scrolls manually if they need to see further down.
+		// Auto-scroll while the pointer sits near the container's bottom/right
+		// edge. Without it "drag to resize" is capped by the window: you cannot
+		// move the pointer below the screen, so a card that already fills the
+		// viewport can never be made taller. Only engages at the edge, so an
+		// ordinary resize is unaffected.
+		const EDGE_PX = 36;
+		const EDGE_STEP_PX = 18;
 		let raf = 0;
 		const tick = (): void => {
-			const effectiveY = pointerY + (window.scrollY - originScrollY);
+			if (scroller) {
+				const box = scroller.getBoundingClientRect();
+				if (pointerY > box.bottom - EDGE_PX) scroller.scrollTop += EDGE_STEP_PX;
+				if (pointerX > box.right - EDGE_PX) scroller.scrollLeft += EDGE_STEP_PX;
+			}
+			const scrolled = (window.scrollY - originScrollY)
+				+ ((scroller?.scrollTop ?? 0) - originScrollTop);
+			const effectiveY = pointerY + scrolled;
 			const deltaColSpan = Math.round((pointerX - originX) / (COL_UNIT_PX + GAP_PX));
 			const deltaRowSpan = Math.round((effectiveY - originY) / (ROW_UNIT_PX + GAP_PX));
 			const next = tryResize(collidableState(id), id, start.colSpan + deltaColSpan, start.rowSpan + deltaRowSpan);
