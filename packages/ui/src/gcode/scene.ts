@@ -96,9 +96,10 @@ import { mergeExtrudingRuns } from "./mergeSegments.ts";
 const TRAVEL_COLOR = new Color3(0.85, 0.85, 0.9);
 // Ghost opacity: the real GPU alpha applied to each not-yet-printed segment.
 const GHOST_ALPHA = 0.5;
-/** Fraction of a bead's width added to its length (split across both ends) so a
- *  neighbour buries its flat cap at a joint. See writeBoxMatrix. */
-const JOINT_OVERLAP = 0.35;
+/** Absolute mm added to every bead's length (centred, so half at each end) so a
+ *  neighbour buries its flat cap at a joint. Matches the reference viewer, which
+ *  passes exactly 0.1 as its `renderLinev4(width, t)` extension. */
+const JOINT_OVERLAP_MM = 0.1;
 /** Deviation bound for the GHOST run table. Far looser than the opaque set's
  *  (mergeSegments' DEFAULT_TOLERANCE_MM): the ghost is a 50%-alpha preview of
  *  unprinted toolpath, where sub-millimetre chord error is invisible, and it is
@@ -548,13 +549,12 @@ export function createScene(
 		// disc a finer polygon. What actually hides a cap is the neighbouring bead
 		// overlapping it, so beads are extended slightly at both ends.
 		//
-		// The size matters: an earlier version used half a bead WIDTH (~0.2mm),
-		// which on a 0.4mm bead is a 50% length increase and visibly overflowed at
-		// the true ends of a path. The overlap actually needed to bury a cap at a
-		// joint that turns by θ is only (width/2)·tan(θ/2) — so a small constant
-		// fraction covers ordinary turns while staying invisible where a path
-		// genuinely stops. JOINT_OVERLAP = 0.35 closes turns up to ~38°.
-		const drawLength = length + width * JOINT_OVERLAP;
+		// The size matters. An earlier version added half a bead WIDTH PER END
+		// (0.4mm total on a 0.4mm bead), which visibly overflowed where a path
+		// genuinely stops. The reference viewer extends by an absolute 0.1mm —
+		// `renderLinev4(width, .1)`, applied to `length()` about the midpoint —
+		// i.e. 0.05mm per end, a QUARTER of what we had. Match it.
+		const drawLength = length + JOINT_OVERLAP_MM;
 		// ELLIPTICAL cross-section: `width` across the bead, `height` (the layer
 		// height) vertically. A real FDM bead is ~0.4mm wide but only ~0.2mm tall;
 		// scaling both perpendicular axes by width made round beads twice as tall
