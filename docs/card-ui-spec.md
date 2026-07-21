@@ -115,8 +115,12 @@ detent at the card's exact content fit**:
    amount the instant it lets go.
 4. It **re-arms** on the way back up at the same point, so the detent is felt in
    both directions.
-5. While sitting at the minimum, the card shows a highlighted border — findable
-   by eye as well as by hand.
+
+The detent is felt through the frame catching, not shown with a colour: an
+earlier version highlighted the card border while at the minimum, but it fired
+on the row dimension even during a width resize, used a warning-adjacent colour,
+and lit up constantly once cards were fitted to their content minimum by
+default. The sticky hold is the cue; a border was noise.
 
 Computing the minimum: measure from the **card's own top** to the last child's
 bottom, plus body padding and border. Do not add the header separately if the

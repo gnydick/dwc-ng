@@ -537,7 +537,6 @@ export function createPanelCanvas(storageKey: string, defaults: PanelDefault[], 
 			const deltaRowSpan = Math.round((effectiveY - originY) / (ROW_UNIT_PX + ROW_GAP_PX));
 			const detented = applyDetent(start.rowSpan + deltaRowSpan, minRowSpan, detent);
 			detent = detented.state;
-			cardEl?.classList.toggle("at-min", detented.span === minRowSpan);
 			const next = tryResize(collidableState(id), id, start.colSpan + deltaColSpan, detented.span);
 			setState({ ...state(), [id]: next }); // live preview, persisted only on drop
 			raf = requestAnimationFrame(tick);
@@ -550,7 +549,6 @@ export function createPanelCanvas(storageKey: string, defaults: PanelDefault[], 
 		};
 		const onUp = (): void => {
 			cancelAnimationFrame(raf);
-			cardEl?.classList.remove("at-min");
 			window.removeEventListener("pointermove", onMove);
 			window.removeEventListener("pointerup", onUp);
 			persist(state());

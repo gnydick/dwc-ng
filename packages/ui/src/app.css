@@ -1468,7 +1468,6 @@
 
 /* The card is sitting exactly on its content. A visible edge for the detent you
    can already feel — so the minimum is findable by eye as well as by hand. */
-.card.at-min { border-color: var(--copper); box-shadow: 0 0 0 1px rgba(217, 133, 59, 0.35); }
 
 /* Equal-width control grid. Used where labels vary in length and a ragged
    flex-wrap would leave no two buttons sharing a width or an edge. */
