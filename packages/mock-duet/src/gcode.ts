@@ -107,6 +107,20 @@ function executeLine(machine: Machine, line: string): string {
 			if (fan) fan.requestedValue = Math.min(1, s > 1 ? s / 255 : s);
 			return "";
 		}
+		// Speed and extrusion factors. The object model carries them as
+		// FRACTIONS (1 = 100%) while the G-code takes percent, so S120 stores
+		// 1.2 - sending the percent straight through would report 12000%.
+		case "M220": {
+			const s = param("S");
+			if (s !== undefined) om.move.speedFactor = s / 100;
+			return "";
+		}
+		case "M221": {
+			const s = param("S");
+			const extruder = om.move.extruders[param("D") ?? 0];
+			if (s !== undefined && extruder) extruder.factor = s / 100;
+			return "";
+		}
 		case "M107": {
 			const fan = om.fans[0];
 			if (fan) fan.requestedValue = 0;

@@ -1562,3 +1562,15 @@
 	overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .filament-loaded.none { color: var(--silk-dim); }
+
+/* Speed slider send feedback. Colour only — the row's geometry is fixed so a
+   refusal cannot move the track the pointer is still over. */
+.speed-value.is-sent { color: var(--ok); }
+.speed-value.is-failed { color: var(--fault); }
+.speed-error {
+	font: 600 10px/1 var(--font-display); letter-spacing: 0.08em; text-transform: uppercase;
+	color: var(--fault);
+	min-width: 52px; text-align: right;
+	visibility: hidden;
+}
+.speed-error.show { visibility: visible; }

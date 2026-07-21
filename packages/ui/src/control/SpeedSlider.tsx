@@ -25,6 +25,8 @@ export function SpeedSlider(props: { currentPct: number }) {
 	const [dragging, setDragging] = createSignal(false);
 	const [frozen, setFrozen] = createSignal<SpeedScale | null>(null);
 	const [value, setValue] = createSignal(props.currentPct);
+	const [state, setState] = createSignal<"idle" | "sending" | "sent" | "failed">("idle");
+	const [error, setError] = createSignal("");
 
 	const scale = (): SpeedScale => frozen() ?? speedScale(props.currentPct);
 
@@ -34,8 +36,28 @@ export function SpeedSlider(props: { currentPct: number }) {
 		if (!dragging()) setValue(live);
 	});
 
-	const send = (pct: number): void => {
-		void app.connector.sendCode(cmd.speedFactor(pct)).catch(() => undefined);
+	/**
+	 * Send, and SAY SO. The first version swallowed every rejection
+	 * (`.catch(() => undefined)`), so a command the board refused - or the dev
+	 * write guard blocked - produced no visible change at all: the handle sprang
+	 * back to the machine's unchanged value and the control read as dead. A
+	 * control that cannot report its own failure is worse than one that has none.
+	 */
+	const send = async (pct: number): Promise<void> => {
+		setState("sending");
+		setError("");
+		try {
+			await app.connector.sendCode(cmd.speedFactor(pct));
+			setState("sent");
+			window.setTimeout(() => setState("idle"), 1100);
+		} catch (err) {
+			setState("failed");
+			setError(err instanceof Error ? err.message : String(err));
+			// Snap back to what the machine actually has: the requested value
+			// never took, and leaving the handle where it was dropped would show
+			// a speed the machine is not running.
+			setValue(props.currentPct);
+		}
 	};
 
 	const grab = (): void => {
@@ -47,7 +69,7 @@ export function SpeedSlider(props: { currentPct: number }) {
 		if (!dragging()) return;
 		setDragging(false);
 		setFrozen(null);
-		send(value());
+		void send(value());
 	};
 
 	/** Thumb width — the dots must sit where the thumb CENTRE can actually reach. */
@@ -88,7 +110,7 @@ export function SpeedSlider(props: { currentPct: number }) {
 								style={{ left: stopOffset(stop) }}
 								title={`M220 S${stop}`}
 								aria-label={`Set speed to ${stop} percent`}
-								onClick={() => send(stop)}
+								onClick={() => void send(stop)}
 							/>
 						)}
 					</For>
@@ -96,7 +118,13 @@ export function SpeedSlider(props: { currentPct: number }) {
 			</div>
 			{/* Tabular figures and a reserved width: this changes on every poll and
 			    must not shove the track around as the digit count changes. */}
-			<span class="speed-value">{Math.round(value())}%</span>
+			<span class="speed-value" classList={{ "is-sent": state() === "sent", "is-failed": state() === "failed" }}>
+				{Math.round(value())}%
+			</span>
+			{/* Always present so a refusal cannot reflow the row it appears in. */}
+			<span class="speed-error" classList={{ show: error() !== "" }} title={error()}>
+				{error() === "" ? " " : "refused"}
+			</span>
 		</div>
 	);
 }
