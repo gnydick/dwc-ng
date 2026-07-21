@@ -1,4 +1,4 @@
-import { createStore, reconcile } from "solid-js/store";
+import { createStore, reconcile, unwrap } from "solid-js/store";
 import type { Connector } from "../connector/types.ts";
 import { FileNotFoundError } from "../connector/types.ts";
 import {
@@ -95,7 +95,11 @@ export function createConfigStore(): ConfigStore {
 		revert(index) {
 			const snap = meta.snapshots[index];
 			if (snap === undefined) return;
-			overlay = structuredClone(snap.overlay);
+			// unwrap first: snapshots live in a Solid store, so snap.overlay is a
+			// proxy and structuredClone throws DataCloneError on it. (Node's
+			// server build of Solid hands back plain objects, which hid this —
+			// the tests now run with --conditions=browser so they can't again.)
+			overlay = structuredClone(unwrap(snap.overlay));
 			setConfig(reconcile(effective(overlay)));
 			setMeta("dirty", true);
 		},
