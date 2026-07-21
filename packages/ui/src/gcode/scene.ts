@@ -69,7 +69,6 @@ import { Scene } from "@babylonjs/core/scene.js";
 import { ArcRotateCamera } from "@babylonjs/core/Cameras/arcRotateCamera.js";
 import { Camera } from "@babylonjs/core/Cameras/camera.js";
 import { HemisphericLight } from "@babylonjs/core/Lights/hemisphericLight.js";
-import { SpotLight } from "@babylonjs/core/Lights/spotLight.js";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder.js";
 import "@babylonjs/core/Meshes/Builders/cylinderBuilder.js"; // registers MeshBuilder.CreateCylinder (bead cross-section + nozzle marker)
 import "@babylonjs/core/Meshes/Builders/boxBuilder.js"; // registers MeshBuilder.CreateBox (toolpath tube cross-section)
@@ -244,7 +243,12 @@ export function createScene(
 	// truth Babylon's own inputs already drive (wheel, pinch-to-zoom,
 	// double-tap, whatever else it adds) and re-derive the ortho frustum
 	// from it on every camera change — one mechanism covers every input.
-	const ZOOM_MIN = 0.05, ZOOM_MAX = 20;
+	// Near-infinite zoom IN. A bead is ~0.4mm, so filling the view with one at
+	// this FOV needs radius ≈ 0.4/(2·tan(fov/2)) ≈ 1.5mm — the old ZOOM_MAX of 20
+	// bottomed out at ~66mm, nowhere near it. The near plane scales WITH radius
+	// (see setDepthRange), so zooming in never clips: there is no fixed minZ to
+	// collide with.
+	const ZOOM_MIN = 0.05, ZOOM_MAX = 4000;
 	camera.lowerRadiusLimit = INITIAL_RADIUS / ZOOM_MAX;
 	camera.upperRadiusLimit = INITIAL_RADIUS / ZOOM_MIN;
 	let currentWidth = width, currentHeight = height;
@@ -277,7 +281,13 @@ export function createScene(
 		// span tight around the model: perspective concentrates depth precision
 		// near the camera, so pushing the near plane as far out as the geometry
 		// allows is what keeps dense parallel beads from z-fighting.
-		camera.minZ = Math.max(camera.radius * 0.01, camera.radius - MODEL_DEPTH_MARGIN);
+		// minZ is a FRACTION OF THE CURRENT DISTANCE, never a constant: that is what
+		// makes deep zoom clip-free — at radius 1mm the near plane is 0.002mm, at
+		// radius 1300mm it is 2.6mm, so geometry in front of the target is always
+		// inside the frustum. (Only when zoomed out far enough that
+		// radius − MODEL_DEPTH_MARGIN exceeds it does the tighter model-derived
+		// bound take over, which is better for depth precision.)
+		camera.minZ = Math.max(camera.radius * 0.002, camera.radius - MODEL_DEPTH_MARGIN);
 		camera.maxZ = camera.radius + MODEL_DEPTH_MARGIN;
 	};
 	setDepthRange(width, height);
@@ -335,32 +345,26 @@ export function createScene(
 	};
 	window.addEventListener("keydown", handleKey);
 
-	// One shared light position for the whole scene.
-	const LIGHT_POSITION = toBabylon(bedCenter.x, bedCenter.y, 600);
-
-	// Moderate ambient (hemispheric, angle-independent) so the base color
-	// stays legible on faces angled away from the spotlight; the spotlight
-	// below still adds real directional shading on top.
-	const hemi = new HemisphericLight("ambient", new Vector3(0, 1, 0), scene);
-	hemi.intensity = 0.55;
-	// StandardMaterial's (non-PBR) lighting is NOT physically based: its
-	// default falloff is attenuation = max(0, 1 - distance/light.range),
-	// with `range` defaulting to ~1.8e308 (effectively infinite) — so at
-	// our mm-scale distances there is NO meaningful distance falloff at
-	// all, and `intensity` is just a near-direct multiplier on the light's
-	// diffuse/specular contribution. A million-scale value (carried over
-	// from an earlier, unrelated physically-correct-units assumption)
-	// blew every lit surface out to pure white, crushing both the real
-	// per-segment colors and ghost's whole washed-toward-background fade
-	// into the same flat white — "high contrast" was actually total loss
-	// of color information on every lit face, not a genuine light/shadow
-	// contrast. A small, direct-multiplier-scale value here instead.
-	const spotDirection = target.subtract(LIGHT_POSITION).normalize();
-	const spotLight = new SpotLight("spot", LIGHT_POSITION, spotDirection, Math.PI / 2, 2, scene);
-	// The reference viewer runs its lights at 0.8; 4 here blew highlights out and
-	// crushed the per-segment colours the view exists to show. Keep some
-	// directional shaping over the ambient, but in the same range.
-	spotLight.intensity = 1.1;
+	// LIGHT FROM ALL AROUND — the reference viewer's entire rig is two
+	// hemispheric lights, one pointing up and one pointing down-and-left:
+	//
+	//   new HemisphericLight('light1', new Vector3(0, 1, 0), scene).intensity = .8
+	//   new HemisphericLight('light2', new Vector3(-1, -.5, 0), scene).intensity = .8
+	//
+	// A HemisphericLight fills its ENTIRE hemisphere (angle-independent), so two
+	// opposed ones wrap the model in light from every direction — including from
+	// below, which is what stops the undersides of overhangs and the inside of a
+	// part going flat black. Match it.
+	//
+	// This replaces a hemispheric + a SpotLight at intensity 4. The spot was a
+	// single harsh source: it blew out highlights on whatever faced it, left
+	// everything else dependent on ambient, and crushed the per-segment colours
+	// this view exists to show. Hemispherics are also cheaper — no cone test, no
+	// attenuation, no shadow map.
+	const hemi = new HemisphericLight("lightAbove", new Vector3(0, 1, 0), scene);
+	hemi.intensity = 0.8;
+	const hemiBelow = new HemisphericLight("lightBelow", new Vector3(-1, -0.5, 0), scene);
+	hemiBelow.intensity = 0.8;
 
 	// Bed plane at build height 0 — a world-anchored reference so
 	// orbiting/panning reads as the CAMERA moving around a fixed scene, not
@@ -378,7 +382,7 @@ export function createScene(
 	bedMaterial.diffuseColor = new Color3(0x12 / 255, 0x1e / 255, 0x2a / 255);
 	bedMaterial.specularColor = Color3.Black();
 	bed.material = bedMaterial;
-	spotLight.excludedMeshes.push(bed);
+	hemiBelow.excludedMeshes.push(bed); // keep the bed a quiet dark reference, not a lit surface
 
 	// Real lit materials for the toolpath itself — low specular, moderate
 	// roughness, reading as glossy plastic rather than the nozzle marker's
