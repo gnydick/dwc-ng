@@ -112,13 +112,13 @@ function executeLine(machine: Machine, line: string): string {
 		// 1.2 - sending the percent straight through would report 12000%.
 		case "M220": {
 			const s = param("S");
-			if (s !== undefined) om.move.speedFactor = s / 100;
+			if (s !== null) om.move.speedFactor = s / 100;
 			return "";
 		}
 		case "M221": {
 			const s = param("S");
 			const extruder = om.move.extruders[param("D") ?? 0];
-			if (s !== undefined && extruder) extruder.factor = s / 100;
+			if (s !== null && extruder) extruder.factor = s / 100;
 			return "";
 		}
 		case "M107": {

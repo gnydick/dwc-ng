@@ -7,7 +7,10 @@ import { loadCaptureFile } from "./capture.ts";
 const { values } = parseArgs({
 	options: {
 		scenario: { type: "string", short: "s", default: "idle" },
-		snapshot: { type: "string", default: "" },
+		// Defaults to the bundled capture of the machine this UI is built for.
+		// A bare synthetic board is rarely what you want to look at; pass
+		// --snapshot "" for one.
+		snapshot: { type: "string", default: "captures/om-snapshot-2026-07-12.json" },
 		port: { type: "string", short: "p", default: "8970" },
 		password: { type: "string", default: "" },
 		"busy-every": { type: "string", default: "0" },

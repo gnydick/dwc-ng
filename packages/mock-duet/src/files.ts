@@ -284,6 +284,21 @@ function seed(sd: VirtualSD) {
 	sd.write("0:/macros/preheat-pla.g", text("M140 S60\nM104 S210\n"), SEED_DATE);
 	sd.write("0:/macros/cooldown.g", text("M104 S0\nM140 S0\nM106 S0\n"), SEED_DATE);
 
+	// Filaments are DIRECTORIES, each holding the macros RRF runs for it. The
+	// UI lists these as materials to load (M701 S"<name>"), so an empty
+	// 0:/filaments makes the Filament card look broken rather than empty.
+	for (const [name, temps] of [["PLA", [60, 210]], ["PETG", [80, 240]], ["Prusament ASA", [100, 260]]] as const) {
+		sd.mkdir(`0:/filaments/${name}`, SEED_DATE);
+		sd.write(`0:/filaments/${name}/load.g`, text(`M291 P"Loading ${name}" S0 T2
+G1 E50 F300
+`), SEED_DATE);
+		sd.write(`0:/filaments/${name}/unload.g`, text(`G1 E-50 F300
+`), SEED_DATE);
+		sd.write(`0:/filaments/${name}/config.g`, text(`M140 S${temps[0]}
+M104 S${temps[1]}
+`), SEED_DATE);
+	}
+
 	// A fake sliced job file. Content is synthetic (a small square, not a
 	// boat) but spatially coherent and carries real per-layer ;TYPE: tags
 	// (PrusaSlicer's own vocabulary, matching the header below) — enough
