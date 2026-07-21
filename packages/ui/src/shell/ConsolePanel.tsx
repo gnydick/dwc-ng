@@ -34,7 +34,7 @@ function ConsoleHistory() {
 					{line => (
 						<div class="console-line">
 							<time>{new Date(line.receivedAt).toLocaleTimeString(undefined, { hour12: false })}</time>
-							<span>{line.text}</span>
+							<span class="console-text">{line.text}</span>
 						</div>
 					)}
 				</For>
