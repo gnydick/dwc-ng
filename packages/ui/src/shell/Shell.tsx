@@ -1,4 +1,4 @@
-import { For, Match, Show, Switch, createMemo, createSignal } from "solid-js";
+import { For, Match, Show, Suspense, Switch, createMemo, createSignal, lazy } from "solid-js";
 import { useApp } from "./context.ts";
 import { createRouter, type Route } from "./router.ts";
 import {
@@ -15,6 +15,10 @@ import Settings from "../views/Settings.tsx";
 import Activity from "../views/Activity.tsx";
 import { MessageBoxPrompt } from "../messagebox/MessageBoxPrompt.tsx";
 
+// Dev-only card test harness. lazy() keeps it in its own chunk that a
+// production build never fetches (the route and nav entry below are DEV-gated).
+const CardLab = lazy(() => import("../dev/CardLab.tsx"));
+
 const NAV: Array<{ route: Route; label: string }> = [
 	{ route: "machine", label: "Machine" },
 	{ route: "control", label: "Control" },
@@ -24,6 +28,7 @@ const NAV: Array<{ route: Route; label: string }> = [
 	{ route: "settings", label: "Settings" },
 	{ route: "activity", label: "Activity" },
 	{ route: "bed", label: "Bed" },
+	...(import.meta.env.DEV ? [{ route: "cards" as Route, label: "Card Lab" }] : []),
 ];
 
 export default function Shell() {
@@ -139,6 +144,9 @@ export default function Shell() {
 						<Match when={route() === "settings"}><Settings /></Match>
 						<Match when={route() === "activity"}><Activity /></Match>
 						<Match when={route() === "bed"}><Bed /></Match>
+						<Match when={route() === "cards" && import.meta.env.DEV}>
+							<Suspense fallback={<p class="job-empty">Loading Card Lab…</p>}><CardLab /></Suspense>
+						</Match>
 					</Switch>
 				</div>
 			</div>
