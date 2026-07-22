@@ -1706,3 +1706,18 @@
 	padding: 1px 6px; cursor: pointer;
 }
 .card-act:hover { color: var(--silk); border-color: var(--hairline); }
+
+/* Scroll containment: reaching a scroll area's own limit must not chain the
+   scroll onward to the canvas/page behind it. Applies to every inner scroller
+   — card bodies, the console, file lists, the editor (CodeMirror's .cm-scroller),
+   the object-model tree, the message box, the camera and the probe reply. */
+.panel-body,
+.console-history,
+.file-list,
+.om-tree,
+.cam-body,
+.hm-reply,
+.mbox-message,
+.cm-scroller {
+	overscroll-behavior: contain;
+}
