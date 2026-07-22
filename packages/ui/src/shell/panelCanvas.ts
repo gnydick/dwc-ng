@@ -140,16 +140,22 @@ export function applyDetent(
 	rawSpan: number,
 	minSpan: number,
 	state: DetentState,
-): { span: number; state: DetentState } {
+): { span: number; state: DetentState; held: boolean } {
 	if (state.broken) {
 		const span = rawSpan + DETENT_BREAKAWAY_ROWS;
 		// Re-arm on the way back up, at exactly the point it released.
-		if (span >= minSpan) return { span: minSpan, state: { broken: false } };
-		return { span, state };
+		if (span >= minSpan) return { span: minSpan, state: { broken: false }, held: false };
+		return { span, state, held: false };
 	}
-	if (rawSpan >= minSpan) return { span: rawSpan, state };
-	if (minSpan - rawSpan < DETENT_BREAKAWAY_ROWS) return { span: minSpan, state };
-	return { span: rawSpan + DETENT_BREAKAWAY_ROWS, state: { broken: true } };
+	if (rawSpan >= minSpan) return { span: rawSpan, state, held: false };
+	// Pushed below the content fit but not yet past breakaway: the edge is being
+	// HELD at the minimum against the pointer. `held` is true ONLY here — this is
+	// the one state that means "you are on the exact fit and it is resisting". It
+	// is false at rest (rawSpan >= minSpan) and during a width-only resize (the
+	// row span never dips below min then), which is precisely why the visible cue
+	// no longer flashes spuriously the way the old at-min border did.
+	if (minSpan - rawSpan < DETENT_BREAKAWAY_ROWS) return { span: minSpan, state, held: true };
+	return { span: rawSpan + DETENT_BREAKAWAY_ROWS, state: { broken: true }, held: false };
 }
 
 /**
@@ -537,6 +543,9 @@ export function createPanelCanvas(storageKey: string, defaults: PanelDefault[], 
 			const deltaRowSpan = Math.round((effectiveY - originY) / (ROW_UNIT_PX + ROW_GAP_PX));
 			const detented = applyDetent(start.rowSpan + deltaRowSpan, minRowSpan, detent);
 			detent = detented.state;
+			// The cue is DERIVED from the detent authority, never re-derived here:
+			// `held` is the single source of truth for "on the fit and resisting".
+			cardEl?.classList.toggle("at-detent", detented.held);
 			const next = tryResize(collidableState(id), id, start.colSpan + deltaColSpan, detented.span);
 			setState({ ...state(), [id]: next }); // live preview, persisted only on drop
 			raf = requestAnimationFrame(tick);
@@ -549,6 +558,7 @@ export function createPanelCanvas(storageKey: string, defaults: PanelDefault[], 
 		};
 		const onUp = (): void => {
 			cancelAnimationFrame(raf);
+			cardEl?.classList.remove("at-detent");
 			window.removeEventListener("pointermove", onMove);
 			window.removeEventListener("pointerup", onUp);
 			persist(state());

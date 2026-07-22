@@ -204,7 +204,41 @@ test("Settings view's default panel layout is collision-free", () => {
 const armed = (): DetentState => ({ broken: false });
 
 test("above the minimum the detent does nothing", () => {
-	assert.deepEqual(applyDetent(40, 20, armed()), { span: 40, state: { broken: false } });
+	assert.deepEqual(applyDetent(40, 20, armed()), { span: 40, state: { broken: false }, held: false });
+});
+
+// The invariant: the visible cue (driven by `held`) is on IFF the detent is
+// engaged — the frame resisting the pointer at the exact fit. These pin both
+// halves so neither past bug can return: the cue flashing when it shouldn't,
+// or the cue vanishing when the detent is genuinely holding.
+test("held is false at rest — sitting at or above the minimum is not 'engaged'", () => {
+	// At rest a re-fit card sits exactly at its minimum. Merely being at min must
+	// NOT light the cue (this was the old at-min border's spurious flash).
+	assert.equal(applyDetent(20, 20, armed()).held, false, "exactly at min, not resisting");
+	assert.equal(applyDetent(40, 20, armed()).held, false, "well above min");
+});
+
+test("held is false during a width-only resize of an at-min card", () => {
+	// A width-only drag leaves the row span unchanged (deltaRowSpan ~ 0), so the
+	// raw span never dips below min. The cue must stay dark — the original bug
+	// was it lighting because span happened to equal min.
+	const min = 20;
+	assert.equal(applyDetent(min, min, armed()).held, false);
+});
+
+test("held is true only while the edge is resisting below the fit", () => {
+	const min = 20;
+	for (let past = 1; past < DETENT_BREAKAWAY_ROWS; past++) {
+		assert.equal(applyDetent(min - past, min, armed()).held, true, `${past} rows into the detent`);
+	}
+});
+
+test("held goes false once the detent breaks away and while released", () => {
+	const min = 20;
+	const atRelease = applyDetent(min - DETENT_BREAKAWAY_ROWS, min, armed());
+	assert.equal(atRelease.held, false, "the frame it breaks away, it is no longer holding");
+	const released = applyDetent(min - DETENT_BREAKAWAY_ROWS - 2, min, atRelease.state);
+	assert.equal(released.held, false, "released and tracking the pointer, not holding");
 });
 
 test("the bottom edge sticks at the exact minimum while the pointer keeps moving", () => {

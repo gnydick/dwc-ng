@@ -1466,8 +1466,13 @@
 .card-head { padding-top: 0; margin-bottom: 8px; height: 36px; flex: 0 0 36px; }
 .card-title { font-size: 12px; }
 
-/* The card is sitting exactly on its content. A visible edge for the detent you
-   can already feel — so the minimum is findable by eye as well as by hand. */
+/* The height detent is ENGAGED: while you drag a card shorter, the frame has
+   caught on its exact content fit and is resisting the pointer. A copper edge
+   confirms the catch you're already feeling. It is toggled from applyDetent's
+   `held` flag, so it appears ONLY while actively resisting — never at rest and
+   never during a width-only resize (the earlier at-min border did both, which
+   is why it read as a spurious warning). */
+.card.at-detent { box-shadow: 0 0 0 1px var(--copper); }
 
 /* Equal-width control grid. Used where labels vary in length and a ragged
    flex-wrap would leave no two buttons sharing a width or an edge. */
