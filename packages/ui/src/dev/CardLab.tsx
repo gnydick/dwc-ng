@@ -77,7 +77,7 @@ const LAB_DEFAULTS: PanelDefault[] = [
 	{ id: "build-objects", col: 0, row: 0, colSpan: 12, rowSpan: 60 },
 	{ id: "console", col: 0, row: 0, colSpan: 16, rowSpan: 90 },
 	{ id: "camera", col: 0, row: 0, colSpan: 12, rowSpan: 80 },
-	{ id: "firmware", col: 0, row: 0, colSpan: 13, rowSpan: 110 },
+	{ id: "firmware", col: 0, row: 0, colSpan: 13, rowSpan: 112 },
 ];
 
 /** Nozzle 1 (heater index 1) — the one the heater-fault scenario latches. */
@@ -129,9 +129,12 @@ export default function CardLab() {
 		temps: createTemperatureHistory(omStore),
 	};
 
-	// Isolated canvas key — never touches a real view's saved layout.
-	const canvas = createPanelCanvas("dwc-ng.canvas.cardlab", LAB_DEFAULTS);
 	const current = (): LabCard => LAB_CARDS.find(c => c.key === featured()) ?? LAB_CARDS[0]!;
+	// Isolated canvas key — never touches a real view's saved layout. Only the
+	// featured card counts for collisions: every card defaults to (0,0) so they
+	// overlap, and without this filter a move/resize of the one on screen would
+	// collide with all the hidden ones and be silently rejected.
+	const canvas = createPanelCanvas("dwc-ng.canvas.cardlab", LAB_DEFAULTS, id => id === current().panelId);
 
 	return (
 		<div class="card-lab">

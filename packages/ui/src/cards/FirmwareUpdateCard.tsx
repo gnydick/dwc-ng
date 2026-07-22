@@ -60,9 +60,8 @@ export function FirmwareUpdateCard(props: { canvas: PanelCanvasController }) {
 			<div class="fw-warn">
 				<p><b>Before flashing</b></p>
 				<ul>
-					<li>The board's <b>IAP</b> binary and the <b>firmware .bin</b> must already be uploaded to <code>0:/firmware/</code>, or M997 can't install.</li>
-					<li>Updating the <b>main board resets it and drops this session</b>. This form flashes expansion/tool boards first and the main board last for that reason.</li>
-					<li>The M997 reference prescribes no further board order — see the linked <i>Installing and Updating Firmware</i> page for the full procedure.</li>
+					<li>The <b>IAP</b> and <b>firmware .bin</b> must already be in <code>0:/firmware/</code> (upload them first), or M997 can't install.</li>
+					<li>The <b>main-board reset drops this session</b>, so expansion/tool boards flash first and the main board last. The M997 reference prescribes no further order.</li>
 				</ul>
 			</div>
 
