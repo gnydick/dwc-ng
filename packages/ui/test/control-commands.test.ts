@@ -90,6 +90,12 @@ test("print (start / reprint) a job file", () => {
 	assert.equal(cmd.print("0:/gcodes/benchy.gcode"), 'M32 "0:/gcodes/benchy.gcode"');
 });
 
+test("firmware update: bare M997 for the main board, B<canAddress> for expansion", () => {
+	assert.equal(cmd.updateFirmware(0), "M997"); // main board (CAN 0)
+	assert.equal(cmd.updateFirmware(1), "M997 B1"); // EXP3HC
+	assert.equal(cmd.updateFirmware(23), "M997 B23"); // a TOOL1LC
+});
+
 // RRF's T-command P parameter is a BITMASK over the tool-change macros
 // (1 tfree | 2 tpre | 4 tpost), verified against reference/dwc
 // store/machine/settings.ts:309 — not a tool number, and not a boolean.

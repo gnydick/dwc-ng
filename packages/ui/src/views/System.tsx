@@ -2,6 +2,7 @@ import { Show, createSignal } from "solid-js";
 import { useApp } from "../shell/context.ts";
 import { FileEditor } from "../editor/FileEditor.tsx";
 import { OmInspector } from "../om/OmInspector.tsx";
+import { FirmwareUpdateCard } from "../cards/FirmwareUpdateCard.tsx";
 import { languageFor, type EditorLang } from "../editor/lang.ts";
 import { Panel } from "../shell/Panel.tsx";
 import { Card } from "../shell/Card.tsx";
@@ -73,6 +74,8 @@ export default function System() {
 				>
 					{path => <FileEditor id="editor" canvas={canvas} path={path()} lang={langOf(path())} onClose={() => setSelected(null)} />}
 				</Show>
+
+				<FirmwareUpdateCard canvas={canvas} />
 
 				<Card id="object-model" canvas={canvas} ariaLabel="Object model" class="om-card" title="Object model" tip="live · rr_model">
 					<Show when={connected()} fallback={<p class="job-empty">Not connected.</p>}>

@@ -154,7 +154,7 @@ nobody closes them by accident.
 | Appearance / theme | ✅ | ❌ | Single designed theme by choice; revisit only if asked |
 | Machine-specific config (axis roles, sensors, dock sensors, camera) | partial | ✅ | Ours is richer here |
 | Config versioning / rollback | ❌ | ✅ | Snapshot history + revert — our addition |
-| **Firmware update** (`M997`, `FirmwareUpdateDialog`) | ✅ | ❌ | |
+| **Firmware update** (`M997`, `FirmwareUpdateDialog`) | ✅ | ✅ | `cards/FirmwareUpdateCard.tsx` on System — a per-board form built from `state.boards`: checkbox, board id, current firmware, the `.bin` file, submit. Emits `M997` for the main board (CAN 0) and `M997 B<canAddress>` for expansion/tool boards (params via the `duet-gcode` skill); two-step confirm; flashes expansion/tool first, main last (its reset drops the session). Surfaces the M997 prerequisites. Upload the firmware `.bin` via the §6 uploader first. **Not verified on real hardware by design** — flashing can brick a board; tested via the Card Lab stub. |
 | **Emergency stop** (`M112`) | ✅ | ✅ | |
 | **Board reset** (`M999`) | ✅ | ✅ | |
 | ATX power on/off (`M80`/`M81`) | ✅ (`ATXPanel`) | ✅ | Shown only when `state.atxPower !== null`; Gabe's board has no PS_ON port so it stays hidden |

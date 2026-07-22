@@ -15,6 +15,7 @@ import { TemperaturesCard } from "../cards/TemperaturesCard.tsx";
 import { ActiveJobCard } from "../cards/ActiveJobCard.tsx";
 import { BuildObjects } from "../cards/BuildObjects.tsx";
 import { HeaterState } from "../cards/HeaterState.tsx";
+import { FirmwareUpdateCard } from "../cards/FirmwareUpdateCard.tsx";
 import { ConsolePanel } from "../shell/ConsolePanel.tsx";
 import { CameraPanel } from "../shell/CameraPanel.tsx";
 import { SCENARIOS, scenarioModel, type ScenarioId } from "./cardScenarios.ts";
@@ -62,6 +63,7 @@ const LAB_CARDS: LabCard[] = [
 	) },
 	{ key: "console", label: "Console", panelId: "console", render: c => <ConsolePanel canvas={c} /> },
 	{ key: "camera", label: "Camera", panelId: "camera", render: c => <CameraPanel canvas={c} /> },
+	{ key: "firmware", label: "Firmware", panelId: "firmware", render: c => <FirmwareUpdateCard canvas={c} /> },
 ];
 
 /** Each panel id at col 0 — only one card is ever mounted, so they can share a cell. */
@@ -75,6 +77,7 @@ const LAB_DEFAULTS: PanelDefault[] = [
 	{ id: "build-objects", col: 0, row: 0, colSpan: 12, rowSpan: 60 },
 	{ id: "console", col: 0, row: 0, colSpan: 16, rowSpan: 90 },
 	{ id: "camera", col: 0, row: 0, colSpan: 12, rowSpan: 80 },
+	{ id: "firmware", col: 0, row: 0, colSpan: 13, rowSpan: 110 },
 ];
 
 /** Nozzle 1 (heater index 1) — the one the heater-fault scenario latches. */

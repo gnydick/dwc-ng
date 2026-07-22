@@ -10,7 +10,7 @@
  * tools, bed with no standby) so the cards render against a realistic shape.
  */
 
-import type { ObjectModel, Axis, Heater, Tool, Fan } from "../om/types.ts";
+import type { ObjectModel, Axis, Heater, Tool, Fan, Board } from "../om/types.ts";
 import { emptyModel } from "../om/types.ts";
 
 export type ScenarioId = "idle" | "printing" | "paused" | "heater-fault" | "multi-tool";
@@ -51,10 +51,19 @@ const fan = (name: string, value: number, thermostatic: number[] = []): Fan => (
 /** A cold, homed toolchanger with everything off — the base every scenario patches. */
 function base(): ObjectModel {
 	const model = emptyModel();
-	model.boards = [{
-		name: "Duet 3 MB6HC", shortName: "6HC", firmwareVersion: "3.6.3",
-		mcuTemp: { current: 38.2 }, vIn: { current: 24.1 }, v12: { current: 12.1 },
-	}];
+	// The real toolchanger's CAN topology (from the 2026-07-15 capture): main
+	// board + one EXP3HC + four TOOL1LC, so the firmware card has real boards.
+	const board = (
+		name: string, shortName: string, canAddress: number, version: string, file: string, mcu: number,
+	): Board => ({ name, shortName, canAddress, firmwareVersion: version, firmwareFileName: file, mcuTemp: { current: mcu }, vIn: { current: 24.1 }, v12: canAddress === 0 ? { current: 12.1 } : null });
+	model.boards = [
+		board("Duet 3 MB6HC", "MB6HC", 0, "3.6.3", "Duet3Firmware_MB6HC.bin", 38.2),
+		board("Duet 3 Expansion EXP3HC", "EXP3HC", 1, "3.6.3", "Duet3Firmware_EXP3HC.bin", 35.0),
+		board("Duet 3 Expansion TOOL1LC", "TOOL1LC", 20, "3.6.3+1", "Duet3Firmware_TOOL1LC.bin", 30.0),
+		board("Duet 3 Expansion TOOL1LC", "TOOL1LC", 21, "3.6.3+1", "Duet3Firmware_TOOL1LC.bin", 30.2),
+		board("Duet 3 Expansion TOOL1LC", "TOOL1LC", 22, "3.6.3+1", "Duet3Firmware_TOOL1LC.bin", 30.1),
+		board("Duet 3 Expansion TOOL1LC", "TOOL1LC", 23, "3.6.3+1", "Duet3Firmware_TOOL1LC.bin", 30.3),
+	];
 	model.move = {
 		axes: [
 			axis("X", 150), axis("Y", 140), axis("Z", 12.4),

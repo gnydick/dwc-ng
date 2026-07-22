@@ -83,6 +83,16 @@ export const cmd = {
 	/** Start printing a job file (reference/dwc JobFileList.vue / M32). */
 	print: (path: string): string => `M32 "${path}"`,
 
+	/**
+	 * Update a board's main firmware (M997, module S0 = default). Params per
+	 * reference/duet-gcode.md M997: the main board (CAN address 0) takes a bare
+	 * M997; a CAN-connected expansion/tool board is targeted with B<canAddress>.
+	 * The standard-named binary in 0:/firmware/ is used, so no P — matching the
+	 * wiki's own examples (`M997`, `M997 B121`).
+	 */
+	updateFirmware: (canAddress: number): string =>
+		canAddress === 0 ? "M997" : `M997 B${n(canAddress)}`,
+
 	/** Simulate a job file without moving (reference/dwc JobFileList.vue:353). */
 	simulate: (path: string): string => `M37 P"${path}"`,
 

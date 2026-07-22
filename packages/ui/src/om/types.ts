@@ -119,6 +119,11 @@ export interface Board {
 	name: string;
 	shortName: string;
 	firmwareVersion?: string;
+	/** Standard firmware binary for this board, e.g. "Duet3Firmware_MB6HC.bin" —
+	 *  the file M997 flashes from 0:/firmware/. */
+	firmwareFileName?: string;
+	/** CAN bus address. 0 (or absent) = main board; >0 = a CAN-connected
+	 *  expansion/tool board, which M997 targets with B<canAddress>. */
 	canAddress?: number;
 	mcuTemp: { current: number } | null;
 	vIn: { current: number } | null;
