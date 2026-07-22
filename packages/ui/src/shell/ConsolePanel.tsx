@@ -1,6 +1,7 @@
 import { For, Show, createEffect, createSignal } from "solid-js";
 import { useApp } from "./context.ts";
 import { Panel } from "./Panel.tsx";
+import { loadCommandHistory, pushCommand, saveCommandHistory } from "../om/commandHistory.ts";
 import type { PanelCanvasController } from "./panelCanvas.ts";
 
 /**
@@ -46,21 +47,73 @@ function ConsoleHistory() {
 function ConsoleForm() {
 	const app = useApp();
 	const [code, setCode] = createSignal("");
+	let input!: HTMLInputElement;
+	// Recall state. `history` is oldest→newest; `cursor` is null while editing a
+	// fresh line, otherwise a valid index into `history`. `draft` holds the
+	// in-progress line so ↓ back past the newest entry restores what was typed.
+	let history = loadCommandHistory();
+	let cursor: number | null = null;
+	let draft = "";
+
+	// Solid updates the controlled value synchronously on setCode, so the caret
+	// can be parked at the end straight after — recalling a command lands ready
+	// to edit or resend, not mid-string.
+	const caretToEnd = (): void => {
+		const end = input.value.length;
+		input.setSelectionRange(end, end);
+	};
+
 	const send = (event: SubmitEvent): void => {
 		event.preventDefault();
 		const value = code().trim();
 		if (value === "") return;
+		history = pushCommand(history, value);
+		saveCommandHistory(history);
+		cursor = null;
+		draft = "";
 		setCode("");
 		void app.connector.sendCode(value).catch(() => undefined);
 	};
+
+	const recall = (event: KeyboardEvent): void => {
+		if (event.key === "ArrowUp") {
+			if (history.length === 0) return;
+			event.preventDefault();
+			if (cursor === null) {
+				draft = code(); // stash the fresh line before stepping into history
+				cursor = history.length - 1;
+			} else if (cursor > 0) {
+				cursor -= 1;
+			}
+			setCode(history[cursor]!);
+			caretToEnd();
+		} else if (event.key === "ArrowDown") {
+			if (cursor === null) return; // not in recall — leave the caret alone
+			event.preventDefault();
+			if (cursor < history.length - 1) {
+				cursor += 1;
+				setCode(history[cursor]!);
+			} else {
+				cursor = null; // stepped back past the newest entry
+				setCode(draft);
+			}
+			caretToEnd();
+		}
+	};
+
 	return (
 		<form class="console-form" onSubmit={send}>
 			<input
+				ref={input}
 				type="text"
 				placeholder="Send G-code — e.g. M114"
 				aria-label="G-code command"
 				value={code()}
-				onInput={e => setCode(e.currentTarget.value)}
+				onInput={e => {
+					cursor = null; // typing exits recall — this is a fresh line now
+					setCode(e.currentTarget.value);
+				}}
+				onKeyDown={recall}
 			/>
 			<button type="submit">Send</button>
 		</form>

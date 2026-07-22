@@ -123,7 +123,7 @@ nobody closes them by accident.
 | Capability | DWC | dwc-ng | Notes |
 |---|---|---|---|
 | Console with command entry + reply | ✅ | ✅ | Console drawer on every view |
-| Command history | ✅ | 🟡 | Verify persistence |
+| Command history | ✅ | ✅ | ↑/↓ recall of sent commands, localStorage-persisted, draft preserved on step-past-newest; `om/commandHistory.ts` |
 | **M291 message boxes + M292 acknowledge** | ✅ (`MessageBoxDialog.vue`) | ✅ | `messagebox/` — seq handshake, jog controls per the axis bitmap |
 | Notifications / toasts | ✅ (`NotificationDisplay`) | 🟡 | Verify error surfacing path |
 | Event/log list | ✅ (`EventList`) | 🟡 | `om/consoleLog.ts` exists; verify severity handling |
@@ -207,7 +207,7 @@ workplace coordinates, input shaping, DSF/SBC connector.
 
 Items marked 🟡 above are best-effort reads of the codebase and should be
 confirmed against the running app before being planned or closed:
-console history persistence, notification/error surfacing, nested directory
-navigation, upload progress, and whether `M37` simulation can be started from
-the UI. (Job estimation sources — closed 2026-07-22: all three RRF sources
-surfaced on the Activity card, best-of headline everywhere.)
+notification/error surfacing, nested directory navigation, and upload progress.
+Closed 2026-07-22: job estimation sources (all three RRF sources on the Activity
+card, best-of headline everywhere); console command history (↑/↓ recall of sent
+commands, persisted).
