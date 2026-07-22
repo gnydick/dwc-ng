@@ -26,6 +26,7 @@ Additionally, a documentation snapshot (not source code):
 | File | Upstream | Retrieved | Role |
 |---|---|---|---|
 | `rrf-m409-object-model.md` | [docs.duet3d.com Gcodes `#m409`](https://docs.duet3d.com/User_manual/Reference/Gcodes) | 2026-07-10 | Verbatim M409 section — the authoritative `rr_model` **flag-letter** semantics (`f v n o d a p`) and array-chunking (`a<n>` / `next`) rules, which are not in the connector source. |
+| `duet-gcode.md` | [docs.duet3d.com Gcodes](https://docs.duet3d.com/User_manual/Reference/Gcodes) | 2026-07-22 | Full G/M/T-code dictionary — one `## <CODE>: <title>` heading per command, with parameters, examples and notes. **Lookup/verification** reference for what a code does and its parameters. Scraped and hand-cleaned (`[¶](#…)` permalink cruft removed), so trust the facts over the formatting. See the `duet-gcode` skill. |
 
 Downloaded 2026-07-10.
 
@@ -56,3 +57,7 @@ These files must never be compiled, bundled, or linted:
   `duet-http-api` and `rrf-object-model` skills for annotated line pointers).
 - OM tree shape → `objectmodel/src/` (one file/dir per top-level key).
 - `rr_model`/M409 flag letters & array chunking → `rrf-m409-object-model.md`.
+- What a specific G/M/T-code does & its parameters → `duet-gcode.md` (grep
+  `^## <CODE>:`; see the `duet-gcode` skill). Reference for understanding a
+  code — the **form we emit** is still `packages/ui/src/control/commands.ts`,
+  verified against `dwc/` and the real macros, not copied from here.
