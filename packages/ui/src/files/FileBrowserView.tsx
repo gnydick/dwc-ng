@@ -50,6 +50,12 @@ export function FileBrowserView(props: {
 	const [creating, setCreating] = createSignal<"dir" | "file" | null>(null);
 	const [createText, setCreateText] = createSignal("");
 	const [message, setMessage] = createSignal("");
+	// Upload-from-disk: the transfer in flight (drives the busy line) and the
+	// drag-over highlight. One file at a time — the RRF server buckles under
+	// parallel POSTs.
+	const [uploading, setUploading] = createSignal<{ name: string; done: number; total: number } | null>(null);
+	const [dragging, setDragging] = createSignal(false);
+	let fileInput!: HTMLInputElement;
 
 	/** Clear transient row state — any listing change invalidates all of it. */
 	const resetRowState = (): void => {
@@ -62,6 +68,24 @@ export function FileBrowserView(props: {
 
 	const report = (result: OpResult): void => {
 		setMessage(result.ok ? "" : result.error);
+	};
+
+	/**
+	 * Upload picked or dropped files into the current directory, sequentially so
+	 * the weak RRF server never sees parallel POSTs. Stops at the first failure
+	 * (a full disk / write error) rather than hammering on. The browser reads
+	 * each file into memory — fine for gcode on a desktop/tablet.
+	 */
+	const uploadFiles = async (files: File[]): Promise<void> => {
+		if (files.length === 0 || uploading() !== null) return;
+		setMessage("");
+		for (let i = 0; i < files.length; i++) {
+			const file = files[i]!;
+			setUploading({ name: file.name, done: i, total: files.length });
+			const result = await props.browser.upload(file.name, new Uint8Array(await file.arrayBuffer()));
+			if (!result.ok) { report(result); break; }
+		}
+		setUploading(null);
 	};
 
 	/** A name the operator is typing is only submittable once it could be a real name. */
@@ -124,7 +148,21 @@ export function FileBrowserView(props: {
 	};
 
 	return (
-		<div class="fb">
+		<div
+			class="fb"
+			classList={{ "fb-dragging": dragging() }}
+			onDragOver={e => { e.preventDefault(); if (!dragging()) setDragging(true); }}
+			onDragLeave={e => {
+				// Only clear when the pointer actually leaves the browser, not when
+				// it crosses onto a child element (dragleave fires for those too).
+				if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragging(false);
+			}}
+			onDrop={e => {
+				e.preventDefault();
+				setDragging(false);
+				void uploadFiles([...(e.dataTransfer?.files ?? [])]);
+			}}
+		>
 			<div class="crumbs">
 				<button
 					class="crumb"
@@ -156,6 +194,7 @@ export function FileBrowserView(props: {
 						<>
 							<button class="fb-tool" onClick={() => { resetRowState(); setCreating("dir"); }}>+ Folder</button>
 							<button class="fb-tool" onClick={() => { resetRowState(); setCreating("file"); }}>+ File</button>
+							<button class="fb-tool" disabled={uploading() !== null} onClick={() => fileInput.click()}>↑ Upload</button>
 						</>
 					}
 				>
@@ -175,7 +214,21 @@ export function FileBrowserView(props: {
 					</button>
 					<button class="fb-tool" onClick={() => { setCreating(null); setCreateText(""); }}>Cancel</button>
 				</Show>
+				{/* Hidden — opened by the Upload button; the multiple picker feeds
+				    the same sequential uploader the drop zone does. Reset value so
+				    re-picking the same file fires onChange again. */}
+				<input
+					ref={fileInput}
+					type="file"
+					multiple
+					class="fb-file-input"
+					onChange={e => { const files = [...(e.currentTarget.files ?? [])]; e.currentTarget.value = ""; void uploadFiles(files); }}
+				/>
 			</div>
+
+			<Show when={uploading()}>
+				{u => <p class="fb-uploading">Uploading <b>{u().name}</b> … {u().done + 1} of {u().total}</p>}
+			</Show>
 
 			{/* Always present so surfacing an error never shifts the rows below it. */}
 			<p class="fb-msg" classList={{ show: message() !== "" }}>{message() || " "}</p>

@@ -64,6 +64,12 @@ export interface FileBrowser {
 	createDir(rawName: string): Promise<OpResult>;
 	/** Create an empty file in the current directory. */
 	createFile(rawName: string): Promise<OpResult>;
+	/**
+	 * Upload a file's bytes into the current directory under `rawName`. Overwrites
+	 * a same-named file (the re-slice-and-reupload workflow); the name is parsed
+	 * through the same `resolve`, so it cannot escape the directory.
+	 */
+	upload(rawName: string, content: Uint8Array): Promise<OpResult>;
 	/** Rename an entry in place (same directory). */
 	rename(entry: FileListEntry, rawName: string): Promise<OpResult>;
 	/**
@@ -185,6 +191,12 @@ export function createFileBrowser(
 	const createDir = withRefresh(named(path => connector.mkdir(path)));
 	const createFile = withRefresh(named(path => connector.upload(path, "")));
 
+	const upload = withRefresh(async (rawName: string, content: Uint8Array) => {
+		const r = resolve(rawName);
+		if ("error" in r) throw new Error(r.error);
+		await connector.upload(r.path, content);
+	});
+
 	const rename = withRefresh(async (entry: FileListEntry, rawName: string) => {
 		const r = resolve(rawName);
 		if ("error" in r) throw new Error(r.error);
@@ -237,6 +249,7 @@ export function createFileBrowser(
 		refresh: () => void refetch(),
 		createDir,
 		createFile,
+		upload,
 		rename,
 		planRemove,
 		remove,

@@ -67,6 +67,7 @@ const settle = (): Promise<void> => new Promise(resolve => setTimeout(resolve, 0
 const MUTATIONS: { name: string; run: (b: FileBrowser) => Promise<unknown> }[] = [
 	{ name: "createDir", run: b => b.createDir("newdir") },
 	{ name: "createFile", run: b => b.createFile("new.g") },
+	{ name: "upload", run: b => b.upload("new.gcode", new Uint8Array([1, 2, 3])) },
 	{ name: "rename", run: b => b.rename({ type: "f", name: "a.g", size: 1 }, "b.g") },
 	{ name: "remove", run: async b => b.remove(await b.planRemove({ type: "f", name: "a.g", size: 1 })) },
 ];
@@ -113,8 +114,9 @@ test("a traversing name is refused before any request is made", async () => {
 test("a name with a separator is refused for every name-taking operation", async () => {
 	await withBrowser(async (browser, calls) => {
 		assert.equal((await browser.createFile("a/b.g")).ok, false);
+		assert.equal((await browser.upload("a/b.g", new Uint8Array())).ok, false);
 		assert.equal((await browser.rename({ type: "f", name: "a.g", size: 1 }, "x/y.g")).ok, false);
-		assert.equal(calls.upload.length, 0);
+		assert.equal(calls.upload.length, 0, "an unusable upload name never reaches the board");
 		assert.equal(calls.move.length, 0);
 	});
 });
@@ -125,6 +127,16 @@ test("createDir builds the path from the current directory", async () => {
 	await withBrowser(async (browser, calls) => {
 		await browser.createDir("  spare  ");
 		assert.deepEqual(calls.mkdir, ["0:/gcodes/spare"]);
+	});
+});
+
+test("upload builds the path from the current directory", async () => {
+	await withBrowser(async (browser, calls) => {
+		browser.goTo("0:/gcodes/sub");
+		await settle();
+		const result = await browser.upload("part.gcode", new Uint8Array([1, 2, 3]));
+		assert.deepEqual(result, { ok: true });
+		assert.deepEqual(calls.upload, ["0:/gcodes/sub/part.gcode"]);
 	});
 });
 

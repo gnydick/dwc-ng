@@ -1421,6 +1421,14 @@
 .fb-act.danger:hover { color: var(--fault); border-color: rgba(224, 92, 74, 0.5); }
 .fb-act.danger.armed { color: var(--mask-900); background: var(--fault); border-color: var(--fault); }
 
+/* Upload: the native picker is hidden; the "↑ Upload" fb-tool opens it. */
+.fb-file-input { display: none; }
+.fb-uploading { margin: 0 0 8px; font-size: 12.5px; color: var(--silk-dim); }
+.fb-uploading b { color: var(--silk); }
+/* Drop zone: a copper dashed outline while a file is dragged over the browser,
+   so the target reads as a place to drop. Inset so it never shifts the rows. */
+.fb-dragging { outline: 2px dashed var(--copper); outline-offset: -4px; border-radius: var(--radius); }
+
 /* Macros: AutoConfirm — visible wherever the Run buttons are, so the mode can
    always be read off the screen rather than remembered. */
 .macro-autoconfirm {

@@ -115,7 +115,7 @@ nobody closes them by accident.
 | **Create directory / new file** | ✅ | ✅ | Inline in every listing (no dialogs) — `files/FileBrowserView.tsx` |
 | **Rename / move / delete** | ✅ | ✅ | Inline rename; delete is a two-step confirm; dirs delete recursively |
 | **Directory breadcrumbs / nested navigation** | ✅ | ✅ | One `createFileBrowser` shared by Jobs/Macros/System; `parentDir` clamps at the domain root |
-| **Bulk file transfer / progress UI** | ✅ (`FileTransferDialog`) | 🟡 | Single upload works; no queue/progress dialog |
+| **Bulk file transfer / progress UI** | ✅ (`FileTransferDialog`) | 🟡 | Upload-from-disk now exists (2026-07-22): `↑ Upload` button + drag-drop on the shared browser, multi-file **sequential** (RRF can't take parallel POSTs), per-file busy line. Remaining: a **byte-level progress bar** — needs XHR upload in PollConnector (fetch gives no upload-progress events). |
 | Filament files | ✅ | ❌ | see §4 |
 
 ## 7. Console & messaging
