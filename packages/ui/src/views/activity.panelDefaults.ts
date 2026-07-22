@@ -13,6 +13,9 @@ export const ACTIVITY_PANEL_DEFAULTS: PanelDefault[] = [
 	// canvas has nowhere to put it on a job that does.
 	{ id: "build-objects", col: 12, row: 40, colSpan: 12, rowSpan: 53 },
 	{ id: "gcode-viewer", col: 0, row: 95, colSpan: 24, rowSpan: 180 },
-	{ id: "console", col: 0, row: 275, colSpan: 24, rowSpan: 75 },
-	{ id: "camera", col: 0, row: 350, colSpan: 8, rowSpan: 75 },
+	// Hidden until a print has completed a layer; full width below the viewer,
+	// so the per-layer chart reads as detail on the print above it.
+	{ id: "layers", col: 0, row: 275, colSpan: 24, rowSpan: 67 },
+	{ id: "console", col: 0, row: 342, colSpan: 24, rowSpan: 75 },
+	{ id: "camera", col: 0, row: 417, colSpan: 8, rowSpan: 75 },
 ];

@@ -140,9 +140,20 @@ export function createBaseModel(): Om {
 			lastFileAborted: false,
 			lastFileCancelled: false,
 			lastFileSimulated: false,
-			layer: null,
+			layer: 8,
 			layerTime: null,
-			layers: [],
+			// A handful of completed layers so the layer-times chart has data to
+			// draw; the last (duration 0) is the layer still printing.
+			layers: [
+				{ duration: 42, filament: [310], fractionPrinted: 0.02, height: 0.2, temperatures: [] },
+				{ duration: 38, filament: [305], fractionPrinted: 0.04, height: 0.4, temperatures: [] },
+				{ duration: 51, filament: [402], fractionPrinted: 0.07, height: 0.6, temperatures: [] },
+				{ duration: 47, filament: [388], fractionPrinted: 0.10, height: 0.8, temperatures: [] },
+				{ duration: 45, filament: [377], fractionPrinted: 0.13, height: 1.0, temperatures: [] },
+				{ duration: 63, filament: [510], fractionPrinted: 0.17, height: 1.2, temperatures: [] },
+				{ duration: 44, filament: [369], fractionPrinted: 0.20, height: 1.4, temperatures: [] },
+				{ duration: 0, filament: [120], fractionPrinted: 0.22, height: 1.6, temperatures: [] },
+			],
 			pauseDuration: null,
 			rawExtrusion: null,
 			timesLeft: { filament: null, file: null, slicer: null },

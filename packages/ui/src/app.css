@@ -1715,3 +1715,12 @@
 .cm-scroller {
 	overscroll-behavior: contain;
 }
+
+/* ---------- layer times chart ---------- */
+.layer-summary {
+	display: flex; gap: 16px; margin-bottom: 8px;
+	font: 400 12px/1 var(--font-body); color: var(--silk-dim);
+	font-variant-numeric: tabular-nums;
+}
+.layer-summary b { color: var(--silk); font-weight: 600; }
+.layer-chart { width: 100%; }

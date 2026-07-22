@@ -142,6 +142,18 @@ export interface Build {
 	objects: (BuildObject | null)[];
 }
 
+/** reference/objectmodel/src/job/index.ts (Layer) */
+export interface Layer {
+	/** Wall-clock time this layer took, seconds; 0 while it is still printing. */
+	duration: number;
+	/** Filament used this layer, mm per extruder. */
+	filament: number[];
+	fractionPrinted: number;
+	/** Z height of the layer, mm. */
+	height: number;
+	temperatures: number[];
+}
+
 /** reference/objectmodel/src/job/index.ts (Job) */
 export interface Job {
 	file: {
@@ -153,6 +165,8 @@ export interface Job {
 	filePosition: number | null;
 	duration: number | null;
 	layer: number | null;
+	/** One entry per completed layer (the last is the in-progress one, duration 0). */
+	layers: Layer[];
 	lastFileName: string | null;
 	timesLeft: { filament: number | null; file: number | null; slicer: number | null };
 	/** null when the job carries no M486 object information. */
@@ -226,7 +240,7 @@ export function emptyModel(): ObjectModel {
 		boards: [],
 		fans: [],
 		heat: { bedHeaters: [], chamberHeaters: [], heaters: [] },
-		job: { file: null, filePosition: null, duration: null, layer: null, lastFileName: null, timesLeft: { filament: null, file: null, slicer: null }, build: null },
+		job: { file: null, filePosition: null, duration: null, layer: null, layers: [], lastFileName: null, timesLeft: { filament: null, file: null, slicer: null }, build: null },
 		move: { axes: [], currentMove: { requestedSpeed: 0, topSpeed: 0 }, speedFactor: 1, extruders: [] },
 		sensors: { gpIn: [], endstops: [], filamentMonitors: [], probes: [] },
 		state: { status: "disconnected", currentTool: -1, machineMode: "FFF", displayMessage: "", upTime: 0, messageBox: null, atxPower: null },
