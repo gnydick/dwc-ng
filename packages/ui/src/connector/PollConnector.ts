@@ -34,6 +34,11 @@ export interface PollConnectorOptions {
 	maxRetries?: number;
 	requestTimeoutMs?: number;
 	/**
+	 * Timeout for a whole file upload. Far longer than requestTimeoutMs: a
+	 * multi-MB gcode over RRF's slow HTTP takes far more than a poll's 5s.
+	 */
+	uploadTimeoutMs?: number;
+	/**
 	 * Start the poll timer on connect (default). Tests set false and drive
 	 * the loop with pollOnce() for determinism.
 	 */
@@ -62,6 +67,7 @@ export class PollConnector implements Connector {
 	private readonly retryDelayMs: number;
 	private readonly maxRetries: number;
 	private readonly requestTimeoutMs: number;
+	private readonly uploadTimeoutMs: number;
 	private readonly autoPoll: boolean;
 	private readonly events: ConnectorEvents;
 
@@ -87,6 +93,7 @@ export class PollConnector implements Connector {
 		this.retryDelayMs = options.retryDelayMs ?? 200;
 		this.maxRetries = options.maxRetries ?? 4;
 		this.requestTimeoutMs = options.requestTimeoutMs ?? 5000;
+		this.uploadTimeoutMs = options.uploadTimeoutMs ?? 300000;
 		this.autoPoll = options.autoPoll ?? true;
 		this.events = options.events ?? {};
 	}
@@ -257,15 +264,81 @@ export class PollConnector implements Connector {
 		return replyPromise;
 	}
 
-	async upload(path: string, content: Uint8Array | string): Promise<void> {
+	async upload(path: string, content: Uint8Array | string, onProgress?: (fraction: number) => void): Promise<void> {
 		const bytes = typeof content === "string" ? new TextEncoder().encode(content) : content;
 		const checksum = crc32(bytes).toString(16).padStart(8, "0");
-		const res = await this.rawRequest(
-			`rr_upload?name=${encodeURIComponent(path)}&crc32=${checksum}&time=${encodeURIComponent(isoNow())}`,
-			{ method: "POST", body: bytes },
-		);
-		const body = await res.json() as { err: number };
+		const query = `rr_upload?name=${encodeURIComponent(path)}&crc32=${checksum}&time=${encodeURIComponent(isoNow())}`;
+		// XHR, not fetch: only XHR reports upload-byte progress, and it takes the
+		// long uploadTimeoutMs a multi-MB file needs (a poll's 5s would abort it).
+		const body = await this.attemptUpload(query, bytes, onProgress, 0);
 		if (body.err !== 0) throw new OperationFailedError(`upload of ${path} failed (err ${body.err} — CRC mismatch or write error)`);
+	}
+
+	/**
+	 * One upload attempt through the queue. The 401-reauth / network-retry ladder
+	 * is kept OUTSIDE the held slot: re-auth enqueues, and with a single slot,
+	 * calling it from inside the upload's own slot would deadlock (same rule
+	 * attemptRequest follows). A retry re-sends the whole file, which is safe —
+	 * rr_upload overwrites and the CRC still matches.
+	 */
+	private async attemptUpload(
+		path: string,
+		bytes: Uint8Array,
+		onProgress: ((fraction: number) => void) | undefined,
+		retry: number,
+	): Promise<{ err: number }> {
+		let result: { status: number; text: string };
+		try {
+			result = await this.requests.enqueue(() => this.xhrPost(path, bytes, onProgress), "low");
+		} catch (err) {
+			if (retry < this.maxRetries) {
+				await delay(this.retryDelayMs * (retry + 1));
+				return this.attemptUpload(path, bytes, onProgress, retry + 1);
+			}
+			throw new OperationFailedError(`${path}: ${(err as Error).message}`);
+		}
+		if (result.status >= 200 && result.status < 300) {
+			try { return JSON.parse(result.text) as { err: number }; }
+			catch { return { err: 0 }; } // some firmware answers empty on success
+		}
+		if ((result.status === 401 || result.status === 403) && retry < this.maxRetries) {
+			await this.openSessionDirect(); // outside the slot — safe
+			return this.attemptUpload(path, bytes, onProgress, retry + 1);
+		}
+		throw new OperationFailedError(`${path}: HTTP ${result.status}`);
+	}
+
+	/**
+	 * The POST itself, holding the queue slot for the transfer's duration (as the
+	 * poll's fetch does — RRF tolerates one connection). Resolves with the raw
+	 * status + body text; a network error or timeout rejects so the ladder retries.
+	 */
+	private xhrPost(path: string, bytes: Uint8Array, onProgress?: (fraction: number) => void): Promise<{ status: number; text: string }> {
+		const headers: Record<string, string> = this.sessionKey !== null ? { "X-Session-Key": String(this.sessionKey) } : {};
+		// Node (tests) has no XMLHttpRequest — fall back to fetch there. It just
+		// loses the progress events, which are a browser-only UI nicety anyway;
+		// upload correctness is exercised either way.
+		if (typeof XMLHttpRequest === "undefined") {
+			return fetch(`${this.base}/${path}`, {
+				method: "POST",
+				body: bytes as BodyInit,
+				headers,
+				signal: AbortSignal.timeout(this.requestTimeoutMs),
+			}).then(async res => ({ status: res.status, text: await res.text() }));
+		}
+		return new Promise((resolve, reject) => {
+			const xhr = new XMLHttpRequest();
+			xhr.open("POST", `${this.base}/${path}`);
+			if (this.sessionKey !== null) xhr.setRequestHeader("X-Session-Key", String(this.sessionKey));
+			xhr.timeout = this.uploadTimeoutMs;
+			if (onProgress) {
+				xhr.upload.onprogress = e => { if (e.lengthComputable) onProgress(e.loaded / e.total); };
+			}
+			xhr.onload = () => resolve({ status: xhr.status, text: xhr.responseText });
+			xhr.onerror = () => reject(new Error("network error"));
+			xhr.ontimeout = () => reject(new Error("timeout"));
+			xhr.send(bytes as BufferSource);
+		});
 	}
 
 	async download(path: string): Promise<string> {

@@ -88,8 +88,13 @@ export interface Connector {
 	disconnect(): Promise<void>;
 	/** Execute a G/M/T-code; resolves with its reply text ("" if none came). */
 	sendCode(code: string): Promise<string>;
-	/** Upload a file (verified end-to-end by the transport, e.g. CRC32). */
-	upload(path: string, content: Uint8Array | string): Promise<void>;
+	/**
+	 * Upload a file (verified end-to-end by the transport, e.g. CRC32).
+	 * `onProgress`, when supplied, is called with the fraction sent (0..1) as the
+	 * bytes go out, for a progress bar. Optional — not every transport can report
+	 * progress, and a caller that doesn't need it passes nothing.
+	 */
+	upload(path: string, content: Uint8Array | string, onProgress?: (fraction: number) => void): Promise<void>;
 	/** Download a text file (configs, macros). */
 	download(path: string): Promise<string>;
 	/** List a directory. */

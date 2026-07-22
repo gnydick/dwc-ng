@@ -53,7 +53,7 @@ export function FileBrowserView(props: {
 	// Upload-from-disk: the transfer in flight (drives the busy line) and the
 	// drag-over highlight. One file at a time — the RRF server buckles under
 	// parallel POSTs.
-	const [uploading, setUploading] = createSignal<{ name: string; done: number; total: number } | null>(null);
+	const [uploading, setUploading] = createSignal<{ name: string; done: number; total: number; fraction: number } | null>(null);
 	const [dragging, setDragging] = createSignal(false);
 	let fileInput!: HTMLInputElement;
 
@@ -81,8 +81,12 @@ export function FileBrowserView(props: {
 		setMessage("");
 		for (let i = 0; i < files.length; i++) {
 			const file = files[i]!;
-			setUploading({ name: file.name, done: i, total: files.length });
-			const result = await props.browser.upload(file.name, new Uint8Array(await file.arrayBuffer()));
+			setUploading({ name: file.name, done: i, total: files.length, fraction: 0 });
+			const result = await props.browser.upload(
+				file.name,
+				new Uint8Array(await file.arrayBuffer()),
+				fraction => setUploading(u => (u ? { ...u, fraction } : u)),
+			);
 			if (!result.ok) { report(result); break; }
 		}
 		setUploading(null);
@@ -227,7 +231,18 @@ export function FileBrowserView(props: {
 			</div>
 
 			<Show when={uploading()}>
-				{u => <p class="fb-uploading">Uploading <b>{u().name}</b> … {u().done + 1} of {u().total}</p>}
+				{u => (
+					<div class="fb-uploading">
+						<span class="fb-up-label">
+							Uploading <b>{u().name}</b>
+							<Show when={u().total > 1}> · {u().done + 1} of {u().total}</Show>
+						</span>
+						<span class="fb-progress" role="progressbar" aria-valuenow={Math.round(u().fraction * 100)}>
+							<span class="fb-progress-fill" style={{ width: `${Math.round(u().fraction * 100)}%` }} />
+						</span>
+						<span class="fb-up-pct">{Math.round(u().fraction * 100)}%</span>
+					</div>
+				)}
 			</Show>
 
 			{/* Always present so surfacing an error never shifts the rows below it. */}
