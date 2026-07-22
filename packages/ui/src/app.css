@@ -1471,8 +1471,16 @@
    confirms the catch you're already feeling. It is toggled from applyDetent's
    `held` flag, so it appears ONLY while actively resisting — never at rest and
    never during a width-only resize (the earlier at-min border did both, which
-   is why it read as a spurious warning). */
-.card.at-detent { box-shadow: 0 0 0 1px var(--copper); }
+   is why it read as a spurious warning).
+
+   Recolour the card's OWN border rather than adding an outset box-shadow ring:
+   an outset shadow paints in the 1px band OUTSIDE the border-box, which is
+   exactly what .view-scroll's `overflow: auto` clips away for any card flush
+   against the scrollport — the leftmost column lost its left edge, the top row
+   its top. The border is inside the element's box, so no ancestor clip can
+   reach it, at any grid position; it also avoids the 1px bloom an outset ring
+   added on snap (border-box unchanged → no reflow, no shift). */
+.card.at-detent { border-color: var(--copper); }
 
 /* Equal-width control grid. Used where labels vary in length and a ragged
    flex-wrap would leave no two buttons sharing a width or an edge. */
