@@ -9,6 +9,9 @@ import { PanelCanvas } from "../shell/PanelCanvas.tsx";
 import { Card } from "../shell/Card.tsx";
 import { createPanelCanvas, type PanelCanvasController, type PanelDefault } from "../shell/panelCanvas.ts";
 import { PositionCard } from "../cards/PositionCard.tsx";
+import { ToolsHeatersCard } from "../cards/ToolsHeatersCard.tsx";
+import { SensorsCard } from "../cards/SensorsCard.tsx";
+import { TemperaturesCard } from "../cards/TemperaturesCard.tsx";
 import { ActiveJobCard } from "../cards/ActiveJobCard.tsx";
 import { BuildObjects } from "../cards/BuildObjects.tsx";
 import { HeaterState } from "../cards/HeaterState.tsx";
@@ -42,6 +45,9 @@ interface LabCard {
 
 const LAB_CARDS: LabCard[] = [
 	{ key: "position", label: "Position", panelId: "position", render: c => <PositionCard canvas={c} /> },
+	{ key: "tools-heaters", label: "Tools & Heaters", panelId: "tools-heaters", render: c => <ToolsHeatersCard canvas={c} /> },
+	{ key: "temperatures", label: "Temperatures", panelId: "temperatures", render: c => <TemperaturesCard canvas={c} /> },
+	{ key: "sensors", label: "Sensors", panelId: "sensors", render: c => <SensorsCard canvas={c} /> },
 	{ key: "job-compact", label: "Printing (compact)", panelId: "active-job", render: c => <ActiveJobCard canvas={c} /> },
 	{ key: "job-detailed", label: "Printing (detailed)", panelId: "active-job", render: c => <ActiveJobCard canvas={c} detailed /> },
 	{ key: "heater", label: "Heater", panelId: "heater", render: c => (
@@ -61,6 +67,9 @@ const LAB_CARDS: LabCard[] = [
 /** Each panel id at col 0 — only one card is ever mounted, so they can share a cell. */
 const LAB_DEFAULTS: PanelDefault[] = [
 	{ id: "position", col: 0, row: 0, colSpan: 12, rowSpan: 95 },
+	{ id: "tools-heaters", col: 0, row: 0, colSpan: 12, rowSpan: 89 },
+	{ id: "temperatures", col: 0, row: 0, colSpan: 14, rowSpan: 70 },
+	{ id: "sensors", col: 0, row: 0, colSpan: 12, rowSpan: 44 },
 	{ id: "active-job", col: 0, row: 0, colSpan: 12, rowSpan: 62 },
 	{ id: "heater", col: 0, row: 0, colSpan: 8, rowSpan: 40 },
 	{ id: "build-objects", col: 0, row: 0, colSpan: 12, rowSpan: 60 },
