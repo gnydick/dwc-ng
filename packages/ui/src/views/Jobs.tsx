@@ -35,6 +35,9 @@ export default function Jobs() {
 	// Files newest-first — the way you actually hunt for a job you just sliced.
 	const browser = createFileBrowser(GCODES_ROOT, connected, app.connector, "recent");
 	const [selected, setSelected] = createSignal<string | null>(null);
+	// Path currently being fetched for download, so its row shows progress and a
+	// second click can't start an overlapping transfer on the weak RRF server.
+	const [downloading, setDownloading] = createSignal<string | null>(null);
 
 	const [info] = createResource(selected, path => app.connector.getFileInfo(path));
 
@@ -72,6 +75,33 @@ export default function Jobs() {
 		if (path !== null) void app.connector.sendCode(cmd.simulate(path));
 	};
 
+	/**
+	 * Save a job file to the operator's machine. Goes through the connector (not a
+	 * plain <a href>) because rr_download is authenticated by a session-key HEADER
+	 * a bare link can't send; it's a read, so the write guard leaves it alone. The
+	 * fetched text becomes a Blob the browser saves under the file's own name.
+	 */
+	const download = async (path: string, name: string): Promise<void> => {
+		if (downloading() !== null) return; // one transfer at a time
+		setDownloading(path);
+		try {
+			const text = await app.connector.download(path);
+			const url = URL.createObjectURL(new Blob([text], { type: "text/plain;charset=utf-8" }));
+			const a = document.createElement("a");
+			a.href = url;
+			a.download = name;
+			document.body.appendChild(a);
+			a.click();
+			a.remove();
+			URL.revokeObjectURL(url);
+		} catch {
+			// A failed transfer surfaces via the connection status / console; the
+			// row simply returns to its idle "Download" label.
+		} finally {
+			setDownloading(null);
+		}
+	};
+
 	return (
 		<>
 			<div class="layout-toolbar">
@@ -87,6 +117,19 @@ export default function Jobs() {
 							rootLabel="gcodes"
 							emptyText="Empty folder."
 							showMeta
+							rowActions={entry => {
+								const path = browser.pathOf(entry);
+								return (
+									<button
+										class="fb-act"
+										title={`Download ${entry.name}`}
+										disabled={downloading() !== null}
+										onClick={() => void download(path, entry.name)}
+									>
+										{downloading() === path ? "…" : "Download"}
+									</button>
+								);
+							}}
 						/>
 					</Show>
 				</Card>

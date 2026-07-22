@@ -111,7 +111,7 @@ nobody closes them by accident.
 | Macro listing + run (`M98`) | ✅ | ✅ | with confirm |
 | System file listing + edit | ✅ | ✅ | CodeMirror 6, lazy-loaded |
 | Upload (with CRC verify) | ✅ | ✅ | |
-| Download | ✅ | ✅ | |
+| Download | ✅ | ✅ | Per-file Download on each Jobs entry — via the connector (rr_download is header-authenticated, so a bare `<a href>` can't), saved as a Blob under the file's name. Listing also shows modified date **and time**. |
 | **Create directory / new file** | ✅ | ✅ | Inline in every listing (no dialogs) — `files/FileBrowserView.tsx` |
 | **Rename / move / delete** | ✅ | ✅ | Inline rename; delete is a two-step confirm; dirs delete recursively |
 | **Directory breadcrumbs / nested navigation** | ✅ | ✅ | One `createFileBrowser` shared by Jobs/Macros/System; `parentDir` clamps at the domain root |

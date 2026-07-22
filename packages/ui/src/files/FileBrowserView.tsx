@@ -2,6 +2,7 @@ import { For, Show, createSignal, type JSX } from "solid-js";
 import type { FileListEntry } from "../connector/types.ts";
 import type { FileBrowser, OpResult, RemovePlan } from "./browser.ts";
 import { parseFileName } from "./path.ts";
+import { formatModified } from "./format.ts";
 
 /**
  * The single rendering of a domain file listing — breadcrumbs, create/rename/
@@ -235,7 +236,7 @@ export function FileBrowserView(props: {
 										</button>
 										<Show when={props.showMeta && entry.type === "f"}>
 											<span class="file-meta">{formatSize(entry.size)}</span>
-											<span class="file-meta file-date">{entry.date ? entry.date.slice(0, 10) : ""}</span>
+											<span class="file-meta file-date">{formatModified(entry.date)}</span>
 										</Show>
 										{/* Files only. A directory is a place to navigate to, never the
 										    target of a domain action — rendering Macros' ▶ Run on a folder
