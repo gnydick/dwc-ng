@@ -57,7 +57,7 @@ nobody closes them by accident.
 | Axis positions / DRO | ✅ | ✅ | 7-axis, role labels, homed state |
 | Tools + heaters state | ✅ | ✅ | incl. bed-no-standby |
 | Temperature chart | ✅ (`TemperatureChart.vue`) | ✅ | `charts/TemperatureChart.tsx` |
-| **Layer chart** (per-layer times) | ✅ (`LayerChart.vue`) | ❌ | We have layer-time *colouring* in the viewer but no chart |
+| **Layer chart** (per-layer times) | ✅ (`LayerChart.vue`) | ✅ | `charts/LayerChart.tsx` — uPlot bars keyed by layer number, min/avg/max summary; on the Activity view below the toolpath viewer |
 | Sensors (endstops, probes, filament) | ✅ | ✅ | named sensors, status dots |
 | Job progress / estimations | ✅ (3 panels) | 🟡 | Have elapsed/remaining/layer; verify all RRF estimate sources (file/filament/layer) are surfaced |
 | Preflight strip (state/homed/HOT/faults) | — | ✅ | Our addition |
@@ -182,13 +182,15 @@ nobody closes them by accident.
 7. ✅ **Filament load/unload** (`M701`/`M702`) (2026-07-21). Assignment/config
    editing per filament is still open — see §4 "Filament management".
 
-**P1 is closed.** Next is P2 — visibility: height map, layer chart, viewer
-Z-clip and per-object cancel.
+**P1 and P2 are closed.** Next is P3 — lifecycle: firmware update,
+workplace coordinates, input shaping, DSF/SBC connector.
 
 **P2 — visibility**
 8. ✅ **Height map** viewer with single-point re-probing and manual nudge
    (2026-07-21). Save is upload + `G29 S1` as one operation. ← done
-9. **Layer chart** (per-layer time/height).
+9. ✅ **Layer chart** (per-layer times) (2026-07-21). uPlot bar chart keyed
+   by layer number, min/avg/max summary; drops the trailing in-progress
+   layer (RRF reports it with `duration 0`). ← done
 10. ✅ **Per-object cancel** (`M486`) (2026-07-21) — as a list, not viewer
     picking. Viewer **Z-clip sliders** deliberately not done: the G-code viewer
     is good as it stands (Gabe, 2026-07-21).
