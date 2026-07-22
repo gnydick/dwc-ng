@@ -44,7 +44,7 @@ export default function Activity() {
 			</div>
 			<PanelCanvas>
 				<PositionCard canvas={canvas} />
-				<ActiveJobCard canvas={canvas} />
+				<ActiveJobCard canvas={canvas} detailed />
 				<GcodeViewer canvas={canvas} />
 				<Show when={hasObjects()}>
 					<Card id="build-objects" canvas={canvas} ariaLabel="Objects" title="Objects" tip="M486 · job.build">

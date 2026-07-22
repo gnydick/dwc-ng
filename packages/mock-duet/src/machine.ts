@@ -190,10 +190,19 @@ export class Machine {
 		const fraction = job.file.size > 0 ? job.filePosition / job.file.size : 0;
 		job.layer = Math.max(1, Math.min(job.file.numLayers, Math.ceil(fraction * job.file.numLayers)));
 		job.layerTime = (job.layerTime ?? 0) + ms / 1000;
+
+		// Extruded length lags the byte position slightly (flow eases in), so the
+		// filament- and file-based estimates diverge the way a real board's do
+		// instead of tracking each other exactly.
+		const flowFraction = Math.pow(fraction, 1.12);
+		job.rawExtrusion = (job.file.filament[0] ?? 0) * flowFraction;
+
+		// Three genuinely independent estimates, mirroring RRF: file from byte
+		// position, filament from extruded length, slicer as a fixed budget
+		// counting down by wall-clock. They agree at the end, disagree in between.
 		job.timesLeft.file = Math.max(0, Math.round(job.file.printTime * (1 - fraction)));
-		job.timesLeft.slicer = job.timesLeft.file;
-		job.timesLeft.filament = job.timesLeft.file;
-		job.rawExtrusion = (job.file.filament[0] ?? 0) * fraction;
+		job.timesLeft.filament = Math.max(0, Math.round(job.file.printTime * (1 - flowFraction)));
+		job.timesLeft.slicer = Math.max(0, Math.round(job.file.printTime - job.duration));
 
 		// Nozzle wanders across the bed; Z tracks the layer
 		const extruder = this.om.move.extruders[0];

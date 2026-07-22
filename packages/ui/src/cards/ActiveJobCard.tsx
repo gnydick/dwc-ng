@@ -1,6 +1,7 @@
-import { Show, Switch, Match, createMemo } from "solid-js";
+import { Show, Switch, Match, For, createMemo } from "solid-js";
 import { useApp } from "../shell/context.ts";
 import { Card } from "../shell/Card.tsx";
+import { headlineRemaining, estimateSources } from "../om/estimates.ts";
 import type { PanelCanvasController } from "../shell/panelCanvas.ts";
 
 /** RRF statuses where a job is on the machine and controllable. */
@@ -16,7 +17,7 @@ const ACTIVE_STATUSES = new Set(["processing", "paused", "pausing", "resuming", 
  * card as the single answer to "what is the machine printing?", and means the
  * panel does not pop in and out of a layout the operator arranged.
  */
-export function ActiveJobCard(props: { canvas: PanelCanvasController }) {
+export function ActiveJobCard(props: { canvas: PanelCanvasController; detailed?: boolean }) {
 	const app = useApp();
 	const job = () => app.om.om.job;
 	const jobFile = createMemo(() => {
@@ -30,6 +31,11 @@ export function ActiveJobCard(props: { canvas: PanelCanvasController }) {
 		if (f === null || j.filePosition === null || f.size === 0) return null;
 		return Math.min(100, (j.filePosition / f.size) * 100);
 	});
+	// One headline "Remaining" (most-accurate available source) plus the full
+	// breakdown, so we mirror every estimate RRF gives without three competing
+	// headline numbers. See om/estimates.ts.
+	const headline = createMemo(() => headlineRemaining(job().timesLeft));
+	const sources = createMemo(() => estimateSources(job().timesLeft));
 
 	return (
 		<Show
@@ -66,10 +72,29 @@ export function ActiveJobCard(props: { canvas: PanelCanvasController }) {
 								<Show when={job().duration !== null}>
 									<Fact label="Elapsed">{fmtDuration(job().duration!)}</Fact>
 								</Show>
-								<Show when={job().timesLeft.file !== null}>
-									<Fact label="Remaining">{fmtDuration(job().timesLeft.file!)}</Fact>
+								<Show when={headline()}>
+									{h => <Fact label="Remaining">{fmtDuration(h().seconds)}</Fact>}
 								</Show>
 							</div>
+							{/* All RRF estimate sources, subordinate to the headline. Only
+							    on the detailed (Activity) surface — the compact control cards
+							    on Machine/Control stay a single actionable "Remaining" so their
+							    slot never gains a row and reflows the operator's layout. Shown
+							    only when more than one exists — a lone source would just
+							    repeat the "Remaining" figure above. */}
+							<Show when={props.detailed && sources().length > 1}>
+								<div class="est-sources">
+									<span class="est-cap">est.</span>
+									<For each={sources()}>
+										{s => (
+											<span class="est-src">
+												<span class="est-name">{s.source}</span>
+												<span class="est-val">{fmtDuration(s.seconds)}</span>
+											</span>
+										)}
+									</For>
+								</div>
+							</Show>
 							<div class="btn-row">
 								{/* job-toggle reserves the wider label's width so Cancel can't
 								    slide under the pointer when the job changes state. */}

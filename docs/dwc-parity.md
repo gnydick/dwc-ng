@@ -59,7 +59,7 @@ nobody closes them by accident.
 | Temperature chart | ✅ (`TemperatureChart.vue`) | ✅ | `charts/TemperatureChart.tsx` |
 | **Layer chart** (per-layer times) | ✅ (`LayerChart.vue`) | ✅ | `charts/LayerChart.tsx` — uPlot bars keyed by layer number, min/avg/max summary; on the Activity view below the toolpath viewer |
 | Sensors (endstops, probes, filament) | ✅ | ✅ | named sensors, status dots |
-| Job progress / estimations | ✅ (3 panels) | 🟡 | Have elapsed/remaining/layer; verify all RRF estimate sources (file/filament/layer) are surfaced |
+| Job progress / estimations | ✅ (3 panels) | ✅ | Elapsed/remaining/layer + a single best-of "Remaining" (filament→file→slicer trust order); Activity's detailed card breaks out all three RRF sources. Compact control cards (Machine/Control) keep the one headline so their slot never gains a row. `om/estimates.ts` |
 | Preflight strip (state/homed/HOT/faults) | — | ✅ | Our addition |
 | Object model browser | ✅ (plugin) | ✅ | `om/OmInspector.tsx`, first-class |
 
@@ -207,6 +207,7 @@ workplace coordinates, input shaping, DSF/SBC connector.
 
 Items marked 🟡 above are best-effort reads of the codebase and should be
 confirmed against the running app before being planned or closed:
-job estimation sources, console history persistence, notification/error
-surfacing, nested directory navigation, upload progress, and whether `M37`
-simulation can be started from the UI.
+console history persistence, notification/error surfacing, nested directory
+navigation, upload progress, and whether `M37` simulation can be started from
+the UI. (Job estimation sources — closed 2026-07-22: all three RRF sources
+surfaced on the Activity card, best-of headline everywhere.)
