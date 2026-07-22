@@ -100,7 +100,7 @@ nobody closes them by accident.
 | Cancel (`M0`) | ✅ | ✅ | |
 | Simulate (`M37`) | ✅ | ✅ | Start button beside Start print (`M37 P"<file>"`) |
 | **Cancel individual object** (`M486`) | ✅ (viewer object selection) | ❌ | DWC's viewer supports per-object cancel |
-| Repeat / re-run last job | ✅ | ❌ | |
+| Repeat / re-run last job | ✅ | ✅ | Reprint button on the Printing card's idle state (`M32` on `job.lastFileName`), shown only when a last file exists |
 | Job file thumbnails | ✅ | ✅ | QOI decoder, `thumbnails/` |
 
 ## 6. Files

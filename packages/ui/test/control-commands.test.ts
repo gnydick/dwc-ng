@@ -86,6 +86,10 @@ test("simulate a job file", () => {
 	assert.equal(cmd.simulate("0:/gcodes/benchy.gcode"), 'M37 P"0:/gcodes/benchy.gcode"');
 });
 
+test("print (start / reprint) a job file", () => {
+	assert.equal(cmd.print("0:/gcodes/benchy.gcode"), 'M32 "0:/gcodes/benchy.gcode"');
+});
+
 // RRF's T-command P parameter is a BITMASK over the tool-change macros
 // (1 tfree | 2 tpre | 4 tpost), verified against reference/dwc
 // store/machine/settings.ts:309 — not a tool number, and not a boolean.

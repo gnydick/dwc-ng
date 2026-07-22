@@ -80,6 +80,9 @@ export const cmd = {
 	/** ATX PSU control (reference/dwc ATXPanel.vue:51). */
 	atxPower: (on: boolean): string => (on ? "M80" : "M81"),
 
+	/** Start printing a job file (reference/dwc JobFileList.vue / M32). */
+	print: (path: string): string => `M32 "${path}"`,
+
 	/** Simulate a job file without moving (reference/dwc JobFileList.vue:353). */
 	simulate: (path: string): string => `M37 P"${path}"`,
 

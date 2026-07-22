@@ -1,5 +1,6 @@
 import { Show, Switch, Match, For, createMemo } from "solid-js";
 import { useApp } from "../shell/context.ts";
+import { cmd } from "../control/commands.ts";
 import { Card } from "../shell/Card.tsx";
 import { headlineRemaining, estimateSources } from "../om/estimates.ts";
 import type { PanelCanvasController } from "../shell/panelCanvas.ts";
@@ -42,10 +43,24 @@ export function ActiveJobCard(props: { canvas: PanelCanvasController; detailed?:
 			when={isActive()}
 			fallback={
 				<Card id="active-job" canvas={props.canvas} ariaLabel="Active job" class="job-active" title="Printing" tip="job · state">
-					<p class="job-empty">
-						No job running.
-						<Show when={app.om.om.job.lastFileName}> Last: {baseName(app.om.om.job.lastFileName)}</Show>
-					</p>
+					<Show when={app.om.om.job.lastFileName} fallback={<p class="job-empty">No job running.</p>}>
+						{last => (
+							<>
+								<p class="job-empty">No job running. Last: {baseName(last())}</p>
+								{/* Re-run the last file — a plain M32 on it, the same code Jobs
+								    sends to start a print. Only offered when a last file exists. */}
+								<div class="btn-row">
+									<button
+										class="btn btn-go"
+										title={`Reprint ${baseName(last())}`}
+										onClick={() => void app.connector.sendCode(cmd.print(last())).catch(() => undefined)}
+									>
+										Reprint
+									</button>
+								</div>
+							</>
+						)}
+					</Show>
 				</Card>
 			}
 		>

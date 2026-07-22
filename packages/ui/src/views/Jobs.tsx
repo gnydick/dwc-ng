@@ -62,7 +62,7 @@ export default function Jobs() {
 
 	const startPrint = () => {
 		const path = selected();
-		if (path !== null) void app.connector.sendCode(`M32 "${path}"`);
+		if (path !== null) void app.connector.sendCode(cmd.print(path));
 	};
 
 	/**
