@@ -16,6 +16,22 @@ export interface ConsoleLine {
 	text: string;
 }
 
+/**
+ * Severity a reply carries. RRF authors it into the message itself: a flagged
+ * error/warning arrives prefixed "Error: " / "Warning: " (RRF's own convention,
+ * see reference/dwc utils/logging.ts). We only REFLECT that prefix — we never
+ * decide severity ourselves, so an error can't be styled as normal or vice
+ * versa. Derived from the text at render, never stored, so it can't drift from
+ * the words on screen.
+ */
+export type ReplySeverity = "error" | "warning" | "normal";
+
+export function classifyReply(text: string): ReplySeverity {
+	if (text.startsWith("Error: ")) return "error";
+	if (text.startsWith("Warning: ")) return "warning";
+	return "normal";
+}
+
 /** Deep enough to scroll back through a long macro run. */
 export const CONSOLE_LIMIT = 1000;
 

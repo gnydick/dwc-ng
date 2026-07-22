@@ -125,8 +125,8 @@ nobody closes them by accident.
 | Console with command entry + reply | ✅ | ✅ | Console drawer on every view |
 | Command history | ✅ | ✅ | ↑/↓ recall of sent commands, localStorage-persisted, draft preserved on step-past-newest; `om/commandHistory.ts` |
 | **M291 message boxes + M292 acknowledge** | ✅ (`MessageBoxDialog.vue`) | ✅ | `messagebox/` — seq handshake, jog controls per the axis bitmap |
-| Notifications / toasts | ✅ (`NotificationDisplay`) | 🟡 | Verify error surfacing path |
-| Event/log list | ✅ (`EventList`) | 🟡 | `om/consoleLog.ts` exists; verify severity handling |
+| Notifications / toasts | ✅ (`NotificationDisplay`) | 🚫→✅ | No transient toasts by design — we surface into the persistent console instead (a toast that scrolls away is the wrong medium for a fault log). Errors/warnings are now colour-coded there, so the surfacing path is legible |
+| Event/log list | ✅ (`EventList`) | ✅ | Console lines carry firmware-authored severity: `classifyReply` colours `Error:` red / `Warning:` gold, derived from the text (never stored, can't drift). `om/consoleLog.ts` |
 
 > ### ⚠️ M291/M292 is a correctness gap, not cosmetic
 > `state.messageBox` is **not modelled anywhere** in our OM types or store.

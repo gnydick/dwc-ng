@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { capLines, parseConsole, serializeConsole, CONSOLE_LIMIT } from "../src/om/consoleLog.ts";
+import { capLines, parseConsole, serializeConsole, classifyReply, CONSOLE_LIMIT } from "../src/om/consoleLog.ts";
 
 const line = (n: number) => ({ receivedAt: 1000 + n, text: `msg ${n}` });
 
@@ -40,4 +40,20 @@ test("serialize -> parse round-trips and caps", () => {
 	const restored = parseConsole(serializeConsole(lines));
 	assert.equal(restored.length, CONSOLE_LIMIT, "never grow storage without bound");
 	assert.equal(restored.at(-1)!.text, `msg ${CONSOLE_LIMIT + 49}`, "keeps the newest");
+});
+
+test("classifyReply reflects the firmware-authored prefix", () => {
+	assert.equal(classifyReply("Error: Heater 0 fault"), "error");
+	assert.equal(classifyReply("Warning: motor phase disconnected"), "warning");
+	assert.equal(classifyReply("ok"), "normal");
+	assert.equal(classifyReply("X:0.0 Y:0.0 Z:0.0"), "normal");
+	assert.equal(classifyReply(""), "normal");
+});
+
+test("classifyReply is exact — a mention of an error is not an error line", () => {
+	// Only the RRF prefix (capitalised, with the colon-space) counts. A reply
+	// that merely talks about errors, or lower-cases it, stays normal.
+	assert.equal(classifyReply("No errors found"), "normal");
+	assert.equal(classifyReply("error: lowercase is not the RRF prefix"), "normal");
+	assert.equal(classifyReply("Errors: 0"), "normal");
 });

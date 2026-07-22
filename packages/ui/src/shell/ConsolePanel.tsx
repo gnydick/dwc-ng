@@ -1,6 +1,7 @@
 import { For, Show, createEffect, createSignal } from "solid-js";
 import { useApp } from "./context.ts";
 import { Panel } from "./Panel.tsx";
+import { classifyReply } from "../om/consoleLog.ts";
 import { loadCommandHistory, pushCommand, saveCommandHistory } from "../om/commandHistory.ts";
 import type { PanelCanvasController } from "./panelCanvas.ts";
 
@@ -32,12 +33,20 @@ function ConsoleHistory() {
 		<div class="console-history" ref={el}>
 			<Show when={app.om.console.length} fallback={<p class="console-empty">No replies yet.</p>}>
 				<For each={app.om.console}>
-					{line => (
-						<div class="console-line">
-							<time>{new Date(line.receivedAt).toLocaleTimeString(undefined, { hour12: false })}</time>
-							<span class="console-text">{line.text}</span>
-						</div>
-					)}
+					{line => {
+						// A line's text never changes once logged, so severity is a
+						// plain render-time derivation — no signal, no drift.
+						const severity = classifyReply(line.text);
+						return (
+							<div
+								class="console-line"
+								classList={{ "console-line-error": severity === "error", "console-line-warn": severity === "warning" }}
+							>
+								<time>{new Date(line.receivedAt).toLocaleTimeString(undefined, { hour12: false })}</time>
+								<span class="console-text">{line.text}</span>
+							</div>
+						);
+					}}
 				</For>
 			</Show>
 		</div>
