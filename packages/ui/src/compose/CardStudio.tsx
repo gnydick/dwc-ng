@@ -9,13 +9,17 @@
  * compiles through, so the studio cannot author anything an import file
  * couldn't say.
  *
- * The live preview renders the actual ControlList against the real ctx, with
- * pointer events disabled — you see the buttons wearing their resolved
- * G-code exactly as they'll appear, but nothing can send from a preview.
+ * The live preview renders the actual ControlList against the real ctx's
+ * OBJECT MODEL (so {om:…} reads resolve) but inside its own AppContext
+ * whose connector reaches no machine — a preview send has no route to the
+ * board by construction, wherever the studio was opened from. Pointer
+ * events off and `inert` are the visual/focus half; the provider swap is
+ * the enforcement.
  */
 import { For, Show, createMemo, createSignal } from "solid-js";
 import { createStore, produce, unwrap } from "solid-js/store";
-import { useApp } from "../shell/context.ts";
+import { AppContext, useApp, type AppServices } from "../shell/context.ts";
+import { createStubConnector } from "../connector/stubConnector.ts";
 import { ControlList } from "./controls/ControlList.tsx";
 import { parseControlSpecText } from "./controls/parse.ts";
 import { SPINDLE_EXAMPLE, SPINDLE_EXAMPLE_NAME } from "./controls/examples.ts";
@@ -33,6 +37,15 @@ export function CardStudio(props: {
 }) {
 	const app = useApp();
 	const existing = props.cardId !== null ? app.config.config.cards[props.cardId] : undefined;
+
+	// The preview's world: the surrounding om/config/temps (live values render
+	// exactly as they will on a screen) but a connector that reaches nothing.
+	const previewServices: AppServices = {
+		om: props.ctx.om,
+		config: props.ctx.config,
+		temps: props.ctx.temps,
+		connector: createStubConnector(() => undefined),
+	};
 
 	const initialForm = ((): { form: FormState; json: string; mode: "form" | "json" } => {
 		if (existing === undefined) return { form: emptyForm(), json: "", mode: "form" };
@@ -235,17 +248,21 @@ export function CardStudio(props: {
 						</Show>
 					</div>
 
-					{/* ---- live preview: real renderer, inert ---- */}
+					{/* ---- live preview: real renderer, no route to the machine ---- */}
 					<div class="studio-preview">
 						<span class="lab-cap">Preview — controls inert</span>
-						<div class="studio-preview-card card">
-							<Show
-								when={(() => { const p = preview(); return p.ok ? p.spec : null; })()}
-								fallback={<p class="job-empty">{(() => { const p = preview(); return p.ok ? "" : p.error; })()}</p>}
-								keyed
-							>
-								{spec => <ControlList spec={spec} ctx={props.ctx} />}
-							</Show>
+						{/* inert removes the preview from the tab order too —
+						    pointer-events:none alone left Tab+Enter reachable. */}
+						<div class="studio-preview-card card" inert>
+							<AppContext.Provider value={previewServices}>
+								<Show
+									when={(() => { const p = preview(); return p.ok ? p.spec : null; })()}
+									fallback={<p class="job-empty">{(() => { const p = preview(); return p.ok ? "" : p.error; })()}</p>}
+									keyed
+								>
+									{spec => <ControlList spec={spec} ctx={props.ctx} />}
+								</Show>
+							</AppContext.Provider>
 						</div>
 					</div>
 				</div>

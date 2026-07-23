@@ -15,6 +15,7 @@ import { readOmList } from "./omSelector.ts";
 import { resolveTemplate, type TemplateScope } from "./template.ts";
 import type { CompiledControlSpec, CompiledNode, CompiledRowItem, EnrichmentId } from "./spec.ts";
 import type { CardCtx } from "../ctx.ts";
+import { unreachable } from "../../util/unreachable.ts";
 
 /** Closed enrichment registry (data names one; code defines it — rung 8). */
 const ENRICHMENTS: Record<EnrichmentId, (item: Record<string, unknown>, ctx: CardCtx) => Record<string, unknown>> = {
@@ -165,6 +166,10 @@ export function ControlList(props: { spec: CompiledControlSpec; ctx: CardCtx }) 
 				);
 			}
 		}
+		// Totality weld: JSX.Element admits undefined, so without this a new
+		// CompiledNode variant would render as NOTHING and compile fine. This
+		// makes the missing case a compile error instead.
+		unreachable(node);
 	};
 
 	const RenderRowItem = (p: { item: CompiledRowItem; vars: Record<string, unknown> }): JSX.Element => (

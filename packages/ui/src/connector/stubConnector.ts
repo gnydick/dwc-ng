@@ -1,5 +1,8 @@
 /**
- * A connector that reaches no machine — for the Card Lab (dev/CardLab.tsx).
+ * A connector that reaches no machine — the Card Lab renders whole cards
+ * against it, and the card studio's live preview mounts inside a provider
+ * carrying one, so "a preview cannot send" holds by construction rather
+ * than by CSS.
  *
  * Every method is a safe no-op so a card's controls can be clicked without any
  * risk of a real write. sendCode doesn't send: it hands the code to `onSend`,
@@ -8,7 +11,7 @@
  * without a board or even the mock.
  */
 
-import type { Connector, FileListEntry, GcodeFileInfo } from "../connector/types.ts";
+import type { Connector, FileListEntry, GcodeFileInfo } from "./types.ts";
 
 export function createStubConnector(onSend: (code: string) => void): Connector {
 	return {

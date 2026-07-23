@@ -15,7 +15,7 @@ import { isCustomCardId, type CustomCardId, type SlotId } from "../compose/compo
 import { createServicePool } from "../compose/services.ts";
 import type { CardCtx } from "../compose/ctx.ts";
 import { SCENARIOS, scenarioModel, type ScenarioId } from "./cardScenarios.ts";
-import { createStubConnector } from "./stubConnector.ts";
+import { createStubConnector } from "../connector/stubConnector.ts";
 
 /**
  * Card Lab (dev-only): render one REGISTRY card at a time against a synthetic
