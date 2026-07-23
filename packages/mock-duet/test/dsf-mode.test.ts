@@ -199,8 +199,8 @@ test("a changed array travels FULL-LENGTH (heater fault)", T, async t => {
 	assert.equal(typeof heaters[0], "object", "unchanged elements ride along, full-length");
 	// The fault's console reply rides the same push as the model change
 	assert.equal(diff.messages.length, 1);
-	assert.equal(diff.messages[0].type, 2, "leading Error: infers type 2");
-	assert.match(diff.messages[0].content, /^Error: Heater 1 fault/);
+	assert.equal(diff.messages[0].type, 2, "RRF's leading Error: becomes type 2");
+	assert.match(diff.messages[0].content, /^Heater 1 fault/, "…and leaves the content bare");
 	ws.close();
 	await wsClosed(ws);
 });
@@ -230,22 +230,28 @@ test("messages are consumed: alone they are a pushable diff, and never repeat", 
 	await wsClosed(ws);
 });
 
-test("message type inference: Error 2, Warning 1, else 0", T, async t => {
+test("message severity moves from RRF's prefix into `type`, and out of `content`", T, async t => {
 	const mock = await startDsf();
 	t.after(() => mock.close());
 
+	// A DSF message carries severity ONLY as `type`; consumers re-derive the
+	// prefix from it (reference/objectmodel/src/messages/index.ts:16-18, and
+	// DWC's `Error: ${message.content}`). Leaving the prefix in `content` too
+	// would double it in every consumer — our own dsfModel included.
 	const { ws, inbox } = await openDsf(mock);
-	const cases: Array<[string, number]> = [
-		["Error: boom", 2],
-		["Warning: warm", 1],
-		["all good", 0],
+	const cases: Array<[string, number, string]> = [
+		["Error: boom", 2, "boom"],
+		["Warning: warm", 1, "warm"],
+		["all good", 0, "all good"],
+		["ERROR: shouty", 2, "shouty"],
+		["Errorless prose", 0, "Errorless prose"],
 	];
-	for (const [text, type] of cases) {
+	for (const [text, type, content] of cases) {
 		ws.send("OK\n");
 		mock.machine.emitReply(text);
 		const push = JSON.parse(await inbox.next());
 		assert.equal(push.messages[0].type, type, text);
-		assert.equal(push.messages[0].content, text);
+		assert.equal(push.messages[0].content, content, text);
 	}
 	ws.close();
 	await wsClosed(ws);

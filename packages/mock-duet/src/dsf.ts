@@ -147,10 +147,17 @@ export function createDsfEndpoint(server: http.Server, opts: DsfEndpointOptions)
 	const queueReply = (text: string): void => {
 		// Silent codes answer "" over REST; they are not console traffic
 		if (text === "") return;
+		// RRF's raw reply text carries the severity as a prefix; a DSF message
+		// carries it as `type` and its content is the bare text — the prefix is
+		// re-derived from the type when the line is displayed
+		// (reference/objectmodel/src/messages/index.ts:16-18, and DWC's own
+		// `Error: ${message.content}`). Consuming the prefix without stripping
+		// it would double it in every consumer.
+		const severity = /^Error:\s*/i.exec(text) ?? /^Warning:\s*/i.exec(text);
 		const message: DsfMessage = {
 			time: machine.om.state.time,
-			type: /^Error:/i.test(text) ? 2 : /^Warning:/i.test(text) ? 1 : 0,
-			content: text,
+			type: severity === null ? 0 : severity[0].toLowerCase().startsWith("error") ? 2 : 1,
+			content: severity === null ? text : text.slice(severity[0].length),
 		};
 		for (const conn of conns) {
 			conn.pending.push(message);
