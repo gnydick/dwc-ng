@@ -38,8 +38,10 @@ export function ToolsHeatersBody(props: { orientation: () => Orientation }) {
 
 	const ToolName = (p: { name: string; des: string; dock: "docked" | "away" | null }) => (
 		<span class="heat-name">
-			<span class="heat-tool">{p.name}</span>
+			{/* The designator leads the row: T0/T1/… (and the bed's heater0) are the
+			    copy tips you scan and click, so they get the first column. */}
 			<span class="des">{p.des}</span>
+			<span class="heat-tool">{p.name}</span>
 			{/* Dock presence: a single dot by the tool, no column to scroll off.
 			    Green = docked, gold = away. */}
 			<Show when={p.dock}>

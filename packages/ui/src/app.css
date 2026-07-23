@@ -586,7 +586,7 @@
 	font-weight: 600;
 	font-size: 15px;
 	display: grid;
-	grid-template-columns: 84px 58px 12px; /* name | designator | dock dot */
+	grid-template-columns: 58px 84px 12px; /* designator | name | dock dot */
 	align-items: center;
 	gap: 8px;
 }
