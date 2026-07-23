@@ -146,15 +146,31 @@ export function FansBody(props: { orientation: () => Orientation }) {
 export function TuningBody() {
 	const app = useApp();
 	const [babyStep, setBabyStep] = createSignal(0.02);
+	// The machine's own accumulated offset (move.axes[].babystep) — the
+	// firmware reports it, we only mirror. Signed and fixed-width so the
+	// readout can't jitter the row as it changes.
+	const applied = createMemo(() => {
+		const z = app.om.om.move.axes.find(a => a.letter === "Z");
+		return z?.babystep ?? 0;
+	});
+	const appliedLabel = (): string => `${applied() > 0 ? "+" : ""}${applied().toFixed(2)}`;
 	return (
 		<div class="heater-list">
 			<SpeedSlider currentPct={Math.round((app.om.om.move.speedFactor ?? 1) * 100)} />
 			<div class="heater-ctl">
 				<span class="ctl-name">Babystep Z</span>
+				<span
+					class="baby-applied"
+					classList={{ "is-live": applied() !== 0 }}
+					title="Accumulated Z babystep the firmware is applying (move.axes Z.babystep)"
+				>
+					{appliedLabel()}
+				</span>
 				<label class="feed-field">mm <input type="number" step="0.01" value={babyStep()} onInput={e => setBabyStep(Number(e.currentTarget.value))} /></label>
 				<div class="btn-cluster">
 					<GcodeButton label={`− ${babyStep()}`} command={cmd.babystep(-babyStep())} stamp={false} />
 					<GcodeButton label={`+ ${babyStep()}`} command={cmd.babystep(babyStep())} stamp={false} />
+					<GcodeButton label="Zero" command={cmd.babystepZero()} variant="quiet" stamp={false} />
 				</div>
 			</div>
 		</div>

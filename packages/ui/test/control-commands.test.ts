@@ -187,3 +187,10 @@ test("the coupler macros derive from runMacro (no second M98 form)", () => {
 	assert.equal(cmd.couplerLock(), cmd.runMacro("/macros/tool_lock"));
 	assert.equal(cmd.couplerUnlock(), cmd.runMacro("/macros/tool_unlock"));
 });
+
+// Babystep zero (reference/duet-gcode.md M290: "M290 R0 S0 ; clear babystepping").
+test("babystepZero clears the accumulated offset with the reference's exact form", () => {
+	assert.equal(cmd.babystepZero(), "M290 R0 S0");
+	assert.equal(cmd.babystep(0.02), "M290 R1 Z0.02", "the relative step form is unchanged");
+	assert.equal(cmd.babystep(-0.02), "M290 R1 Z-0.02");
+});

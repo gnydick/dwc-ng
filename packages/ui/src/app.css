@@ -1695,6 +1695,18 @@
 	min-width: 152px;
 }
 
+/* The firmware's accumulated babystep, mirrored live. Reserved width and
+   tabular figures: this updates on every poll and must not shove the row
+   (same rule as .speed-value). Dim at zero, silk when an offset is live. */
+.baby-applied {
+	font: 600 13px/1 var(--font-display);
+	color: var(--silk-dim);
+	font-variant-numeric: tabular-nums;
+	min-width: 44px;
+	text-align: right;
+}
+.baby-applied.is-live { color: var(--silk); }
+
 /* ---------- speed factor slider (M220) ---------- */
 .speed-row { display: flex; align-items: center; gap: 10px; height: var(--ctl-h); }
 /* The bar and its stops are stacked, NOT overlaid. The scale is always

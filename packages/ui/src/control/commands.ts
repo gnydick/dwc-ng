@@ -174,4 +174,7 @@ M703`,
 	speedFactor: (percent: number): string => `M220 S${n(percent)}`,
 	flowFactor: (percent: number): string => `M221 S${n(percent)}`,
 	babystep: (delta: number): string => `M290 R1 Z${n(delta)}`,
+	/** Clear accumulated babystepping — the reference's own example form
+	 *  (reference/duet-gcode.md M290: "M290 R0 S0 ; clear babystepping"). */
+	babystepZero: (): string => "M290 R0 S0",
 };
