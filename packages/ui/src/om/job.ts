@@ -14,7 +14,16 @@ export function jobFileOf(job: Job): Job["file"] {
 	return f !== null && typeof f.fileName === "string" && f.fileName.length > 0 ? f : null;
 }
 
-/** A job is on the machine: an active status, or a named file still loaded. */
-export function isJobActive(status: string, jobFile: Job["file"]): boolean {
-	return ACTIVE_STATUSES.has(status) || jobFile !== null;
+/**
+ * A job is on the machine: determined by STATUS alone, which is the
+ * authoritative run state and covers every printing state (processing,
+ * paused, …). NOT by job.file presence: DSF keeps the SELECTED file in
+ * job.file while fully idle, so a "named file loaded" test reports a phantom
+ * job on an idle SBC — and, via JobDetailsBody, disables Start Print because
+ * the UI believes a print is already running. Standalone rr_ merely hid this
+ * by null-fielding job.file when idle. Selection is a separate concept from
+ * running; only the status says a job is active.
+ */
+export function isJobActive(status: string): boolean {
+	return ACTIVE_STATUSES.has(status);
 }

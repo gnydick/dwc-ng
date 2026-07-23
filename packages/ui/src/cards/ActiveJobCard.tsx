@@ -22,7 +22,7 @@ export function ActiveJobBody(props: { detailed?: boolean }) {
 	const app = useApp();
 	const job = () => app.om.om.job;
 	const jobFile = createMemo(() => jobFileOf(job()));
-	const isActive = createMemo(() => isJobActive(app.om.om.state.status, jobFile()));
+	const isActive = createMemo(() => isJobActive(app.om.om.state.status));
 	const progress = createMemo(() => {
 		const j = job();
 		const f = jobFile();

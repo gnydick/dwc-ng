@@ -15,7 +15,7 @@ import { FileEditorBody } from "../editor/FileEditor.tsx";
 import { languageFor, type EditorLang } from "../editor/lang.ts";
 import { OmInspector } from "../om/OmInspector.tsx";
 import { baseName, fmtDuration, formatSize } from "../files/format.ts";
-import { isJobActive, jobFileOf } from "../om/job.ts";
+import { isJobActive } from "../om/job.ts";
 import type { CardCtx } from "../compose/ctx.ts";
 
 // ---- Jobs ----
@@ -52,7 +52,7 @@ export function JobFilesBody(props: { ctx: CardCtx }) {
 export function JobDetailsBody(props: { ctx: CardCtx }) {
 	const app = useApp();
 	const svc = props.ctx.service("jobsBrowser");
-	const active = createMemo(() => isJobActive(app.om.om.state.status, jobFileOf(app.om.om.job)));
+	const active = createMemo(() => isJobActive(app.om.om.state.status));
 
 	const startPrint = (): void => {
 		const path = svc.selected();
