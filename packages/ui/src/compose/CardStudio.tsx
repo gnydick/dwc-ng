@@ -17,7 +17,7 @@
  * the enforcement.
  */
 import { For, Show, createMemo, createSignal } from "solid-js";
-import { createStore, produce, unwrap } from "solid-js/store";
+import { createStore, produce } from "solid-js/store";
 import { AppContext, useApp, type AppServices } from "../shell/context.ts";
 import { createStubConnector } from "../connector/stubConnector.ts";
 import { ControlList } from "./controls/ControlList.tsx";
@@ -62,8 +62,13 @@ export function CardStudio(props: {
 	const [json, setJson] = createSignal(initialForm.json);
 	const [error, setError] = createSignal("");
 
+	// toSpec reads through the store PROXY (not unwrap) on purpose: the
+	// preview memo below tracks those reads, so every form edit re-resolves
+	// the preview. unwrap() here made form-mode edits invisible to the
+	// preview — it only refreshed on a mode switch (found in the audit's
+	// live verification).
 	const currentJson = (): string =>
-		mode() === "json" ? json() : JSON.stringify(toSpec(unwrap(form) as FormState), null, 2);
+		mode() === "json" ? json() : JSON.stringify(toSpec(form), null, 2);
 
 	/** Patch one button row item — typed narrowing instead of path-setter
 	 *  casts (the union item type defeats Solid's typed paths). */

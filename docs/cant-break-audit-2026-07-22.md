@@ -290,3 +290,46 @@ CSS custom properties) so CSS has no second copy.
    **H6** collision-checked `ensureSlot`.
 6. M-tier promotions opportunistically as their files are touched
    (grandfathering rule), starting with M3's raw literals and M4's timeout.
+
+## Outcome — fixed 2026-07-22, same day
+
+Every finding above was fixed, in eleven commits (`b43a184`…), each with its
+pinning tests; the suite grew 413 → 445, all green, `tsc -b` clean under
+`strict` + `noUncheckedIndexedAccess`.
+
+| Finding | Fix | Where |
+|---|---|---|
+| H4 | strict + noUncheckedIndexedAccess on all ui tsconfigs; tests get their own tsconfig (they were typechecked by NOTHING); QOI decoder made total | b43a184 |
+| H2/M2 | `util/safeObject.ts` kernel (safeEntries/isSafeKey/isPlainObject — five clones consolidated); every untrusted walk routed through it; parseShareFile null-hardened; reviewSpec totality-welded | ff28e4b |
+| H3/M1 | studio preview mounts its own AppContext with a stub connector (+ `inert`); ControlList RenderNode totality-welded | 87e34ea |
+| H1/H8 | `connector/emergency.ts` one definition; `cmd.emergencyStop()`; transport-level unqueued/ungated e-stop path with unqueued re-auth; failures surface (Shell colour alarm, prompt error line) | da194fb |
+| H7 | weld walks the ACTUAL compiled specs; 1:1 completeness check; red-checked | 3247c29 |
+| H5/M6/M7 | `config/parse.ts` per-section boundary + version gate; DeepPartial keeps arrays; ONE branded `mintId`; `resetSection` type-excludes creations; namespace compile asserts; Readonly composition slots | b4dde76 |
+| H6/L5 | `ensureSlot` collides like a drag (findFreePosition moved to the geometry layer); stale-slot sweep inverted-logic fix; one Slot→SlotRect projection | 44b21c3 |
+| M3/M4 | cmd.resumePrint/pausePrint/cancelPrint/runMacro/loadHeightmap; `gcodeQuote` the one quoting authority (M98 injection killed); titles derive from builders; upload fallback uses uploadTimeoutMs | 6ff79c2 |
+| M8 | `conformModelKey` per-key shape gate at the OM entry (reject unusable, conform sparse — the layerStats incident shape renders) | 69160cb |
+| M9 | grid metrics emitted from panelCanvas.ts constants; CSS copy deleted | b2edbdb |
+| M5/L1/L3/L5 | ConnectorReads/ConnectorWrites split (guard follows the declaration); exportScreen drops unparseable cards; no-raw-transport fence test; studio setter casts → typed patch helper | e823783 |
+| L2/L4/L6 | Readonly slots; route-namespace compile asserts; design-doc mechanism drift corrected (I5/I13/I16, ComposedScreen name) | with H5/H6 + docs commit |
+
+**Found during live verification (and fixed):** the studio's form-mode
+preview never tracked form edits — `currentJson` read the store through
+`unwrap()`, so the "live" preview only refreshed on a mode switch. toSpec
+now reads through the proxy; verified in Chrome (typing a label re-resolves
+the preview instantly).
+
+**Remaining ledger (deliberate debt, per the grandfathering rule):**
+
+- **Branded `GcodeCommand` for `sendCode`** (M3's rung-7 promotion): the
+  parameter is still `string`; the L3 fence test + builders are the interim.
+  Promotion design: brand producers = commands.ts, ack.ts, `resolveTemplate`,
+  one console escape hatch, the operator-owned bed probe template.
+- **ActiveJobCard job buttons** still raw `<button>`s (now wearing builder
+  titles); unifying them onto `GcodeButton` is a visual change to verify
+  live before shipping.
+- **`mergeCanvas` discard-on-collision counts INACTIVE panels**: a drag over
+  a hidden card's space can still persist an overlap that discards the
+  stored layout at next mount. `ensureSlot` no longer contributes; the drag
+  path can. Fix direction: exclude never-rendered ids from the mount-time
+  collision verdict, or repair per-pair instead of discarding wholesale.
+- **Write guard remains dev-only by design** — documented, not a gap.

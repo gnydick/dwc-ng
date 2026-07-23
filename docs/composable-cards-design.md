@@ -46,7 +46,10 @@ system, persistence, cards, the Card Lab, and cross-card couplings.
   (deletes the 9-place per-view/lab tables).
 - `visibleWhen?(ctx)` — ONE predicate driving BOTH the JSX mount and the
   canvas `isActive` cell-release (deletes the dual/triple encoding).
-- `needs?: ServiceId[]` — typed service dependencies.
+- Services are reached through `ctx.service(id)` — typed, lazily provisioned
+  on first access. (As built: the planned declared-`needs` field turned out
+  unnecessary — provisioning-on-access is provisioning-by-construction, so a
+  card that doesn't touch a service simply has none.)
 - `body(ctx)` — **content-only**. The renderer provides the single `<Card>`
   wrapper from the def (normalizes the self-carding vs content-only split and
   removes panel-id literals from component bodies).
@@ -89,11 +92,11 @@ entry — e.g. one jog row per visible axis). In-repo precedents:
 `control/SpeedSlider.tsx`. Built-in Control-view cards convert to these
 primitives first (dogfood), then user-authored custom cards, then sharing.
 
-### The renderer (`compose/ComposedView.tsx`)
+### The renderer (`compose/ComposedScreen.tsx`)
 The single route from composition → screen: derives panel defaults from
-`CardDef.size`, derives `isActive` from `visibleWhen`, provisions services from
-the union of `needs`, wraps each body in the one `<Card>`, hosts the layout
-toolbar + picker. Keyed rendering preserves instance identity for untouched
+`CardDef.size`, derives `isActive` from `visibleWhen`, provisions services
+lazily through the per-screen service pool, wraps each body in the one
+`<Card>`, hosts the layout toolbar + picker. Keyed rendering preserves instance identity for untouched
 cards (GcodeViewer/FileEditor hold heavy Worker/Three/CodeMirror lifecycles —
 composition edits must not remount them).
 
@@ -105,18 +108,24 @@ composition edits must not remount them).
 | I2 | No duplicate card on a screen | Composition is `Partial<Record<CardId, Slot>>` | 8 |
 | I3 | Mount gate and cell-release can never disagree | Both derive from `CardDef.visibleWhen` | 8 |
 | I4 | One source of natural geometry | `CardDef.size`; screens only place | 8 |
-| I5 | Context-carrying cards can't exist without context | `needs` typed; composer provisions or card can't mount | 7 |
-| I6 | Shared artifacts are data, not code | Export format has no field that can encode code | 8 |
-| I7 | No card bypasses the write guard | Sole guarded connector in ctx (preserved) | 7 |
-| I8 | One view renderer | `ComposedView` is the only composition→screen route | 7 |
+| I5 | Context-carrying cards can't exist without context | Typed `ctx.service(id)` — lazy provisioning is the only constructor | 8 |
+| I6 | Shared artifacts are data, not code | Export format has no field that can encode code; review/render walks totality-welded (`util/unreachable`) so a new node type can't ship un-inventoried | 8 |
+| I7 | No card bypasses the write guard | The AppContext connector is the sole guarded instance the app provides; GcodeButton is the send primitive | 7 |
+| I8 | One view renderer | `ComposedScreen` is the only composition→screen route | 7 |
 | I9 | Nav/router/renderer agree on screens | All derive from the one screen list | 8 |
 | I10 | Rename can't orphan layouts | Bindings key stable minted id; name is a label | 8 |
-| I11 | User screens can't shadow built-in routes | Slugs parsed against the reserved namespace | 7–8 |
-| I12 | Built-ins immutable; user changes are overlay | Config-overlay model, reset = drop | 8 |
-| I13 | Control instances only of compiled types | `ControlTypeId = keyof CONTROL_TYPES` | 8 |
+| I11 | User screens can't shadow built-in routes | Overlay parser (config/parse.ts) drops non-`u-`/`c-` keys; `mintId` returns branded ids; compile asserts pin CardId/`c-` and BuiltinScreenId/`u-`/lab-route disjointness | 7–8 |
+| I12 | Built-ins immutable; user changes are overlay | Config-overlay model, reset = drop; `Composition` slots are `Readonly` so the code defaults cannot be mutated | 8 |
+| I13 | Control instances only of compiled types | Closed `ControlNode` union; `compileControlSpec` is the sole constructor of branded `CompiledControlSpec`; parse.ts default-rejects unknown types | 8 |
 | I14 | OM bindings are selectors, never executable | Branded `OmSelector` grammar with no call/eval form; total read-only evaluation | 8 |
 | I15 | Emitted G-code visible before send | The shared control renderer is the choke point | 7 |
-| I16 | Control sends only via guarded connector | Renderers receive `ctx.connector`; no other path | 7 |
+| I16 | Control sends only via the guarded connector | Sends go through `GcodeButton` → the AppContext connector (the guarded instance); the card studio's preview mounts its own AppContext carrying a no-machine stub, so a preview send has no route to the board | 7 |
+
+Audited 2026-07-22 against the enforcement ladder
+(docs/cant-break-audit-2026-07-22.md): every gap found — I11's cast-not-parsed
+overlay, I16's CSS-only preview inertness, the copy-welded template test, the
+blockable e-stop — was fixed the same day; the table above describes the
+as-built constructions.
 
 ## Corrections the sweep demands
 
