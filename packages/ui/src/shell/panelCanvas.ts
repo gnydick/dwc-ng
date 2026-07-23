@@ -183,25 +183,34 @@ export function applyDetent(
 
 /**
  * The smallest rowSpan that still contains a card's content, measured from the
- * live DOM. Read from the children's own boxes rather than the body's
- * scrollHeight: when the card is currently TALLER than its content, scrollHeight
- * reports the box, not the content, and the minimum would come back wrong.
+ * live DOM at resize start.
+ *
+ * NOT body.scrollHeight: scrollHeight is max(box, content), so on a card
+ * currently TALLER than its content it reports the BOX — the detent then
+ * caught wherever the card happened to be, far below the content, and the
+ * true fit was unreachable (live repro: an oversized card measured 80 rows
+ * for 34 rows of content). Instead, measure the content itself: the lowest
+ * child edge plus its bottom margin (a scroll container includes it),
+ * shifted back by scrollTop so a currently-scrolled card (the earlier bug
+ * this function was rewritten for) still measures full content — immune to
+ * both the box size and the scroll position.
  */
 export function contentRowSpan(cardEl: HTMLElement, gutterPx: number): number {
 	const body = cardEl.querySelector<HTMLElement>(".panel-body");
 	if (!body) return 1;
-	// body.scrollHeight is the FULL content height of the body (header + content
-	// + its own padding), independent of the current scroll position AND of how
-	// large the card happens to be right now.
-	//
-	// The previous version measured the last child's getBoundingClientRect()
-	// bottom relative to the card top. That bottom is shifted UP by
-	// body.scrollTop whenever the content is already scrolled — which is exactly
-	// the state a card is in while you drag it smaller — so the minimum came out
-	// too small and the card snapped to a size whose content still scrolled. The
-	// card fills its body (padding 0), so min card height == scrollHeight, and
-	// card border-box height == 4*rowSpan - gutter.
-	return Math.max(1, Math.ceil((body.scrollHeight + gutterPx) / ROW_UNIT_PX));
+	const bodyRect = body.getBoundingClientRect();
+	let contentBottom = 0;
+	for (const child of Array.from(body.children)) {
+		const rect = child.getBoundingClientRect();
+		const marginBottom = parseFloat(getComputedStyle(child).marginBottom) || 0;
+		contentBottom = Math.max(contentBottom, rect.bottom + marginBottom - bodyRect.top + body.scrollTop);
+	}
+	contentBottom += parseFloat(getComputedStyle(body).paddingBottom) || 0;
+	// The card's chrome around the body's content box (borders, outer padding)
+	// — measured, not assumed, and size-invariant since card and body grow
+	// together. Card border-box height == ROW_UNIT_PX*rowSpan - gutter.
+	const chrome = cardEl.getBoundingClientRect().height - body.clientHeight;
+	return Math.max(1, Math.ceil((contentBottom + chrome + gutterPx) / ROW_UNIT_PX));
 }
 
 /**
