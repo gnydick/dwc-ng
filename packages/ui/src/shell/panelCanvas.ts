@@ -1,11 +1,13 @@
 /**
  * 48-column collision-based grid canvas: panels sit at explicit
  * (col, row, colSpan, rowSpan) and never move or resize except by direct
- * drag — a move is rejected outright if it would collide or run off-grid,
- * a resize stops dead at the first collision or boundary, and nothing
- * else on the canvas ever shifts as a side effect. Pure logic here (no
- * DOM, no Solid) so it's testable without a browser and a corrupt/blocked
- * store can never break a view's layout — see
+ * drag — a move lands on the pointer's cell when it's valid and otherwise
+ * SLIDES per axis (a blocked diagonal component stops at the obstacle or
+ * edge while the free component keeps tracking), a resize stops dead at
+ * the first collision or boundary, and nothing else on the canvas ever
+ * shifts as a side effect. Pure logic here (no DOM, no Solid) so it's
+ * testable without a browser and a corrupt/blocked store can never break
+ * a view's layout — see
  * docs/superpowers/specs/2026-07-17-grid-canvas-design.md.
  */
 
@@ -127,6 +129,61 @@ export function tryMove(state: CanvasState, id: string, candidateCol: number, ca
 	if (!inBounds(candidate)) return null;
 	if (collidesWithAny(state, id, candidate)) return null;
 	return candidate;
+}
+
+/**
+ * Resolve a move drag toward the pointer's target cell — the SOLE
+ * resolution route for move drags (Panel grips call it via the
+ * controller; tryMove stays the single-candidate validity primitive).
+ *
+ * Motion is per-axis, one cell at a time, dominant axis first: a diagonal
+ * whose horizontal component is blocked (another card, or the grid edge —
+ * the target is clamped into bounds first) keeps moving vertically instead
+ * of freezing, and a step that frees up mid-drag resumes on the next
+ * iteration, so the card slides along and around obstacles. Never
+ * displaces anything else, and every landed cell was individually
+ * validated — a drag cannot express an overlapping or out-of-bounds rect
+ * any more than tryMove could.
+ *
+ * Null when no movement at all is possible (caller keeps the panel put).
+ */
+export function resolveMove(state: CanvasState, id: string, targetCol: number, targetRow: number): PanelRect | null {
+	const current = state[id];
+	if (!current) return null;
+	// Clamp the target into the grid: a pointer past an edge means "as far
+	// as the grid allows", not "stop moving on both axes".
+	const tc = Math.min(Math.max(0, Math.round(safeNum(targetCol, current.col))), GRID_COLS - current.colSpan);
+	const tr = Math.max(0, Math.round(safeNum(targetRow, current.row)));
+	let col = current.col;
+	let row = current.row;
+	const stepTo = (nextCol: number, nextRow: number): boolean => {
+		const candidate: PanelRect = { col: nextCol, row: nextRow, colSpan: current.colSpan, rowSpan: current.rowSpan };
+		if (!inBounds(candidate) || collidesWithAny(state, id, candidate)) return false;
+		col = nextCol;
+		row = nextRow;
+		return true;
+	};
+	// The pointer's own cell wins outright when it's valid — dragging OVER
+	// an obstacle to a free spot beyond it still works (the pre-slide
+	// behavior); sliding is only for when the target itself is blocked.
+	if (stepTo(tc, tr)) {
+		return col === current.col && row === current.row ? null : { col, row, colSpan: current.colSpan, rowSpan: current.rowSpan };
+	}
+	let moved = true;
+	while (moved && (col !== tc || row !== tr)) {
+		moved = false;
+		// Dominant remaining axis first — the path hugs the pointer's intent.
+		const colFirst = Math.abs(tc - col) >= Math.abs(tr - row);
+		for (const axis of colFirst ? ["col", "row"] : ["row", "col"]) {
+			if (axis === "col" && col !== tc) {
+				if (stepTo(col + Math.sign(tc - col), row)) moved = true;
+			} else if (axis === "row" && row !== tr) {
+				if (stepTo(col, row + Math.sign(tr - row))) moved = true;
+			}
+		}
+	}
+	if (col === current.col && row === current.row) return null;
+	return { col, row, colSpan: current.colSpan, rowSpan: current.rowSpan };
 }
 
 
@@ -535,7 +592,10 @@ export function createPanelCanvas(storageKey: string, defaults: PanelDefault[], 
 			const reachRow = Math.max(0, start.row + deltaRow) + start.rowSpan;
 			spacer.style.gridRow = `${reachRow + 1} / span 1`;
 
-			const candidate = tryMove(collidableState(id), id, start.col + deltaCol, start.row + deltaRow);
+			// resolveMove slides per axis: a blocked component stops at the
+			// obstacle (or edge) while the free component keeps tracking the
+			// pointer — a diagonal never freezes the whole card.
+			const candidate = resolveMove(collidableState(id), id, start.col + deltaCol, start.row + deltaRow);
 			if (candidate) {
 				lastValid = candidate;
 				setState({ ...state(), [id]: candidate }); // live preview, not yet persisted

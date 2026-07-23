@@ -289,3 +289,52 @@ test("ensureSlot never persists an overlap - a colliding adoption is re-placed",
 	assert.equal(canvas.styleFor("c")["grid-row"], `${0 + 1} / span 40`);
 	void findFreePosition;
 });
+
+// ---- resolveMove: a blocked diagonal component slides instead of freezing ----
+
+test("resolveMove: the pointer's own cell wins when valid (jump preserved)", async () => {
+	const { resolveMove } = await import("../src/shell/panelCanvas.ts");
+	const state = { a: rect(0, 0, 4, 4), wall: rect(0, 8, 48, 4) };
+	// Target far beyond the full-width wall - the old hop-over still works.
+	assert.deepEqual(resolveMove(state, "a", 0, 20), rect(0, 20, 4, 4));
+});
+
+test("resolveMove: a diagonal against the grid edge keeps its free component", async () => {
+	const { resolveMove } = await import("../src/shell/panelCanvas.ts");
+	const state = { a: rect(0, 5, 4, 4) };
+	// Pointer pulls left (impossible, already at col 0) and down (fine):
+	// the old tryMove rejected this outright and the card froze.
+	assert.deepEqual(resolveMove(state, "a", -3, 15), rect(0, 15, 4, 4), "clamped to the edge, still moving down");
+});
+
+test("resolveMove: a diagonal against another card slides along it", async () => {
+	const { resolveMove } = await import("../src/shell/panelCanvas.ts");
+	const state = { a: rect(0, 0, 4, 10), b: rect(4, 0, 4, 10) };
+	// a drags right (into b) and down: right stops at contact, down proceeds.
+	assert.deepEqual(resolveMove(state, "a", 2, 6), rect(0, 6, 4, 10), "blocked axis stays, free axis tracks");
+	// Once past b's bottom edge, the horizontal component resumes: the card
+	// slides AROUND the corner in one resolution.
+	assert.deepEqual(resolveMove(state, "a", 2, 10), rect(2, 10, 4, 10), "corner cleared, both axes land");
+});
+
+test("resolveMove: fully pinned means null, exactly like a rejected tryMove", async () => {
+	const { resolveMove } = await import("../src/shell/panelCanvas.ts");
+	const state = { a: rect(0, 0, 4, 4), right: rect(4, 0, 4, 4), below: rect(0, 4, 4, 4) };
+	assert.equal(resolveMove(state, "a", 2, 2), null, "no axis can move; caller keeps the panel put");
+	assert.equal(resolveMove(state, "ghost", 1, 1), null, "unknown id");
+});
+
+test("resolveMove: never expresses an overlap or an out-of-bounds rect", async () => {
+	const { resolveMove, collidesWithAny, inBounds } = await import("../src/shell/panelCanvas.ts");
+	const state = { a: rect(10, 10, 6, 6), b: rect(20, 4, 6, 20), c: rect(4, 20, 20, 4) };
+	// Sweep a grid of drag targets; every resolution must be valid.
+	for (let col = -8; col <= 52; col += 4) {
+		for (let row = -4; row <= 40; row += 4) {
+			const landed = resolveMove(state, "a", col, row);
+			if (landed !== null) {
+				assert.ok(inBounds(landed), `in bounds at target (${col},${row})`);
+				assert.ok(!collidesWithAny(state, "a", landed), `collision-free at target (${col},${row})`);
+			}
+		}
+	}
+});
