@@ -18,23 +18,35 @@
  */
 import { GRID_COLS, clampRect, rectsOverlap, type PanelRect } from "../shell/panelCanvas.ts";
 import { CARD_DEFS, parseCardId, type CardId } from "./defs.ts";
+import { isCustomCardId, type CustomCardId, type UiConfig } from "../config/types.ts";
 
 /** One card's placement on a screen. */
 export type Slot = PanelRect;
 
-/** A user-authored card's id — the "c-" prefix IS the namespace boundary:
- *  registry CardIds never start with it, so the union below can't collide. */
-export type CustomCardId = `c-${string}`;
-
-export function isCustomCardId(id: string): id is CustomCardId {
-	return id.startsWith("c-");
-}
+/** A user-authored card's id and its guard — defined once in
+ *  config/types.ts (the layer that mints them); re-exported here for the
+ *  compose layer's consumers. */
+export { isCustomCardId };
+export type { CustomCardId };
 
 /** Everything a slot can hold: a registry card or a user-authored one. */
 export type SlotId = CardId | CustomCardId;
 
-/** I2: keyed by SlotId — duplicates unrepresentable. */
-export type Composition = Partial<Record<SlotId, Slot>>;
+// The namespace boundary, compile-checked: if a registry card were ever
+// named "c-…", it would be silently hijacked into the custom-card render
+// branch. This line makes that a type error instead of a runtime mystery.
+const _cardIdNeverCustom: Extract<CardId, CustomCardId> extends never ? true : never = true;
+void _cardIdNeverCustom;
+
+/** The user's custom card ids, parsed (never cast) from the config record. */
+export function customCardIds(config: UiConfig): CustomCardId[] {
+	return Object.keys(config.cards).filter(isCustomCardId);
+}
+
+/** I2: keyed by SlotId — duplicates unrepresentable. Slots are Readonly so
+ *  a built-in composition literal cannot be mutated at runtime (I12) —
+ *  layout changes go through the canvas/overlay, never the code defaults. */
+export type Composition = Partial<Record<SlotId, Readonly<Slot>>>;
 
 function isSlotShape(value: unknown): value is Record<keyof PanelRect, unknown> {
 	return typeof value === "object" && value !== null

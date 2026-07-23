@@ -11,7 +11,7 @@ import { CARD_DEFS, allCardIds, type CardId } from "../compose/defs.ts";
 import { RegistryCard, cardTitleOf } from "../compose/RegistryCard.tsx";
 import { CustomCard } from "../compose/CustomCard.tsx";
 import { CardStudio } from "../compose/CardStudio.tsx";
-import { isCustomCardId, type CustomCardId, type SlotId } from "../compose/composition.ts";
+import { customCardIds, isCustomCardId, type CustomCardId, type SlotId } from "../compose/composition.ts";
 import { createServicePool } from "../compose/services.ts";
 import type { CardCtx } from "../compose/ctx.ts";
 import { SCENARIOS, scenarioModel, type ScenarioId } from "./cardScenarios.ts";
@@ -87,7 +87,7 @@ export default function CardLab() {
 
 	// User-authored cards join the lab as they exist (incl. ones made HERE):
 	// adopt a slot for each at the custom default size.
-	const customIds = (): CustomCardId[] => Object.keys(outer.config.config.cards) as CustomCardId[];
+	const customIds = (): CustomCardId[] => customCardIds(outer.config.config);
 	createEffect(() => {
 		for (const id of customIds()) canvas.ensureSlot(id, { col: 0, row: 0, colSpan: 12, rowSpan: 40 });
 	});
@@ -163,7 +163,7 @@ export default function CardLab() {
 							ctx={ctxFor(s.id ?? featured())}
 							onSaved={(id, name, specJson) => {
 								if (id === null) {
-									const minted = outer.config.addCustomCard(name, specJson) as CustomCardId;
+									const minted = outer.config.addCustomCard(name, specJson);
 									setFeatured(minted); // straight onto the bench
 								} else {
 									outer.config.updateCustomCard(id, { name, spec: specJson });

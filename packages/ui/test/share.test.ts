@@ -5,7 +5,7 @@ import { parseControlSpecText } from "../src/compose/controls/parse.ts";
 import { SPINDLE_EXAMPLE_JSON } from "../src/compose/controls/examples.ts";
 import { createConfigStore } from "../src/config/store.ts";
 import { resolveScreen } from "../src/compose/screens.ts";
-import type { CustomCardId } from "../src/compose/composition.ts";
+import { isCustomCardId, type CustomCardId } from "../src/compose/composition.ts";
 
 // ---- review completeness: the closed vocabulary makes the inventory total ----
 
@@ -84,7 +84,7 @@ test("exportScreen embeds custom cards; import remaps to fresh ids", () => {
 	const keys = Object.keys(imported.def.composition);
 	assert.equal(keys.length, 2);
 	assert.ok(keys.includes("homing"), "registry slots travel by stable id");
-	const mintedKey = keys.find(k => k.startsWith("c-"))!;
+	const mintedKey = keys.filter(isCustomCardId)[0]!;
 	assert.notEqual(mintedKey, cardId, "foreign ids never adopted — fresh mint");
 	assert.equal(target.config.cards[mintedKey]!.name, "Spindle");
 });

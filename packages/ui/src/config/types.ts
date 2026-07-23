@@ -10,6 +10,20 @@
  * - only the overlay is ever persisted.
  */
 
+/**
+ * Minted id namespaces, as types. A custom card id ALWAYS starts "c-", a
+ * user screen id ALWAYS starts "u-" — which keeps both out of the registry
+ * CardId and built-in/lab route namespaces by construction. The mint
+ * (config/store.ts mintId) is the only producer; the overlay parser
+ * (config/parse.ts) drops foreign keys that don't match, so a hand-edited
+ * SD file cannot smuggle an id into someone else's namespace either.
+ */
+export type CustomCardId = `c-${string}`;
+export type UserScreenId = `u-${string}`;
+
+export const isCustomCardId = (id: string): id is CustomCardId => id.startsWith("c-");
+export const isUserScreenId = (id: string): id is UserScreenId => id.startsWith("u-");
+
 export interface DockSensorRef {
 	/** Index into sensors.gpIn reporting "tool is in its dock". */
 	gpIn: number;
@@ -87,7 +101,7 @@ export interface CustomCardDef {
  * the built-in/lab route namespace by construction).
  */
 export interface ScreensConfig {
-	custom: Record<string, CustomScreen>;
+	custom: Record<UserScreenId, CustomScreen>;
 	/** Built-in id → display-name override. A rename never touches identity. */
 	renames: Record<string, string>;
 	/** Built-in ids removed from the nav (still recoverable — it's overlay). */
@@ -114,11 +128,13 @@ export interface UiConfig {
 	screens: ScreensConfig;
 	/** User-authored cards, keyed by minted "c-" ids (the prefix keeps them
 	 *  out of the registry CardId namespace by construction). */
-	cards: Record<string, CustomCardDef>;
+	cards: Record<CustomCardId, CustomCardDef>;
 }
 
 export type DeepPartial<T> = {
-	[K in keyof T]?: T[K] extends object ? DeepPartial<T[K]> : T[K];
+	// Arrays stay arrays: mapping string[] through the object arm would admit
+	// { 0: "x" }-shaped non-arrays (the audit's screens.hidden white-screen).
+	[K in keyof T]?: T[K] extends readonly unknown[] ? T[K] : T[K] extends object ? DeepPartial<T[K]> : T[K];
 };
 
 export type ConfigOverlay = DeepPartial<UiConfig>;

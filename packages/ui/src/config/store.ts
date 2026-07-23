@@ -2,10 +2,13 @@ import { createStore, reconcile, unwrap } from "solid-js/store";
 import type { Connector } from "../connector/types.ts";
 import { FileNotFoundError } from "../connector/types.ts";
 import { isPlainObject, safeEntries } from "../util/safeObject.ts";
+import { parseOverlayPayload } from "./parse.ts";
 import {
 	CONFIG_CACHE_KEY, CONFIG_FILE, CONFIG_VERSION, DEFAULT_CONFIG, MAX_SNAPSHOTS,
-	type CameraConfig, type ConfigOverlay, type ConfigSnapshot, type DockSensorRef,
-	type BedConfig, type MacrosConfig, type SlotRect, type UiConfig,
+	isUserScreenId,
+	type CameraConfig, type ConfigOverlay, type ConfigSnapshot, type CustomCardId,
+	type DockSensorRef, type BedConfig, type MacrosConfig, type SlotRect, type UiConfig,
+	type UserScreenId,
 } from "./types.ts";
 
 export interface ConfigStore {
@@ -26,7 +29,7 @@ export interface ConfigStore {
 	setBed(patch: Partial<BedConfig>): void;
 
 	/** Create a user screen; returns its minted stable id ("u-…"). */
-	addScreen(name: string): string;
+	addScreen(name: string): UserScreenId;
 	/** Rename a screen — custom in place, built-in via the renames overlay.
 	 *  The id (and everything keyed on it) is untouched. */
 	renameScreen(id: string, name: string): void;
@@ -39,14 +42,17 @@ export interface ConfigStore {
 	updateScreenCards(id: string, cards: Record<string, SlotRect>): void;
 
 	/** Create a user-authored card; returns its minted stable id ("c-…"). */
-	addCustomCard(name: string, spec: string): string;
-	updateCustomCard(id: string, patch: { name?: string; spec?: string }): void;
-	removeCustomCard(id: string): void;
+	addCustomCard(name: string, spec: string): CustomCardId;
+	updateCustomCard(id: CustomCardId, patch: { name?: string; spec?: string }): void;
+	removeCustomCard(id: CustomCardId): void;
 
-	/** Drop one section's overlay — that section returns to defaults. NOTE:
-	 *  this is the raw primitive; resetting "cards" or "screens" destroys
-	 *  creations. No UI path does — the UI resets through resetAll. */
-	resetSection(section: keyof UiConfig): void;
+	/**
+	 * Drop one section's overlay — that section returns to defaults. The
+	 * creation-holding sections ("cards", "screens") are excluded AT THE TYPE:
+	 * a call that would destroy authored content does not compile. Creations
+	 * go through their own explicit removeCustomCard/removeScreen.
+	 */
+	resetSection(section: Exclude<keyof UiConfig, "cards" | "screens">): void;
 	/**
 	 * Drop every OVERRIDE — settings, screen renames/hides, layout overrides —
 	 * returning the built-ins to defaults. The user's CREATIONS (custom cards,
@@ -117,9 +123,7 @@ export function createConfigStore(): ConfigStore {
 		},
 
 		addScreen(name) {
-			// "u-" prefix keeps minted ids out of the built-in/lab route
-			// namespace by construction — a collision has no way to occur.
-			const id = `u-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+			const id = mintId("u-");
 			apply(draft => {
 				((draft.screens ??= {}).custom ??= {})[id] = { name, cards: {} };
 			});
@@ -127,13 +131,13 @@ export function createConfigStore(): ConfigStore {
 		},
 		renameScreen(id, name) {
 			apply(draft => {
-				const custom = draft.screens?.custom?.[id];
+				const custom = isUserScreenId(id) ? draft.screens?.custom?.[id] : undefined;
 				if (custom !== undefined) custom.name = name;
 				else ((draft.screens ??= {}).renames ??= {})[id] = name;
 			});
 		},
 		removeScreen(id) {
-			apply(draft => { delete draft.screens?.custom?.[id]; });
+			apply(draft => { if (isUserScreenId(id)) delete draft.screens?.custom?.[id]; });
 		},
 		setScreenHidden(id, hidden) {
 			apply(draft => {
@@ -145,17 +149,15 @@ export function createConfigStore(): ConfigStore {
 		},
 		updateScreenCards(id, cards) {
 			apply(draft => {
-				const custom = draft.screens?.custom?.[id];
+				const custom = isUserScreenId(id) ? draft.screens?.custom?.[id] : undefined;
 				if (custom !== undefined) custom.cards = cards;
 				else ((draft.screens ??= {}).layouts ??= {})[id] = cards;
 			});
 		},
 
 		addCustomCard(name, spec) {
-			// "c-" prefix keeps minted ids out of the registry CardId namespace
-			// by construction — a collision has no way to occur.
-			const id = `c-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
-			apply(draft => { ((draft.cards ??= {}) as Record<string, unknown>)[id] = { name, spec }; });
+			const id = mintId("c-");
+			apply(draft => { (draft.cards ??= {})[id] = { name, spec }; });
 			return id;
 		},
 		updateCustomCard(id, patch) {
@@ -219,7 +221,7 @@ export function createConfigStore(): ConfigStore {
 		async loadFromMachine(connector) {
 			let loaded: ConfigOverlay | null = null;
 			try {
-				loaded = parsePayload(await connector.download(CONFIG_FILE));
+				loaded = parseOverlayPayload(await connector.download(CONFIG_FILE));
 			} catch (err) {
 				// No config on the SD card yet — a fresh machine, not an error
 				if (!(err instanceof FileNotFoundError)) throw err;
@@ -232,6 +234,16 @@ export function createConfigStore(): ConfigStore {
 	};
 
 	return store;
+}
+
+/**
+ * The ONE id mint. The prefix IS the namespace guarantee: "u-" ids can never
+ * collide with built-in screen ids or the lab route, "c-" ids can never
+ * collide with registry CardIds — and the return type carries the proof, so
+ * consumers hold a branded id without casting.
+ */
+function mintId<P extends "u-" | "c-">(prefix: P): `${P}${string}` {
+	return `${prefix}${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
 }
 
 /** defaults + overlay → the effective config (pure). */
@@ -269,21 +281,12 @@ function prune(value: ConfigOverlay): ConfigOverlay | undefined {
 	return Object.keys(out).length > 0 ? (out as ConfigOverlay) : undefined;
 }
 
-function parsePayload(text: string): ConfigOverlay | null {
-	try {
-		const parsed = JSON.parse(text) as { version?: number; overlay?: ConfigOverlay };
-		if (!isPlainObject(parsed) || !isPlainObject(parsed.overlay)) return null;
-		// Future schema migrations hook in here, keyed on parsed.version
-		return parsed.overlay;
-	} catch {
-		return null; // corrupt file → defaults, never a boot failure
-	}
-}
-
 function loadCache(): ConfigOverlay | null {
 	if (typeof localStorage === "undefined") return null;
 	const raw = localStorage.getItem(CONFIG_CACHE_KEY);
-	return raw === null ? null : parsePayload(raw);
+	// The real parse boundary (config/parse.ts): mis-typed leaves are
+	// dropped, so a bad cached overlay can no longer crash every boot.
+	return raw === null ? null : parseOverlayPayload(raw);
 }
 
 function writeCache(overlay: ConfigOverlay): void {

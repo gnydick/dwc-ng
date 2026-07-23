@@ -20,7 +20,7 @@ import { PanelCanvas } from "../shell/PanelCanvas.tsx";
 import { createPanelCanvas } from "../shell/panelCanvas.ts";
 import { CARD_DEFS, allCardIds, parseCardId, type CardId } from "./defs.ts";
 import { RegistryCard, cardTitleOf } from "./RegistryCard.tsx";
-import { addCard, isCustomCardId, removeCard, slotsOf, type Composition, type CustomCardId, type SlotId } from "./composition.ts";
+import { addCard, customCardIds, isCustomCardId, removeCard, slotsOf, type Composition, type CustomCardId, type SlotId } from "./composition.ts";
 import { createServicePool } from "./services.ts";
 import { resolveScreen, type ScreenEntry } from "./screens.ts";
 import { CustomCard } from "./CustomCard.tsx";
@@ -159,7 +159,7 @@ function ComposeDrawer(props: { screenId: string; entry: ScreenEntry | null; com
 		const parsed = importing();
 		if (parsed === null || parsed.kind === "error") return;
 		if (parsed.kind === "card") {
-			const minted = app.config.addCustomCard(parsed.name, parsed.specText) as CustomCardId;
+			const minted = app.config.addCustomCard(parsed.name, parsed.specText);
 			app.config.updateScreenCards(props.screenId, asRects(addCard(props.composition, minted)));
 		} else {
 			const idMap = new Map<string, string>();
@@ -186,7 +186,7 @@ function ComposeDrawer(props: { screenId: string; entry: ScreenEntry | null; com
 	/** The studio already validated through the one boundary; just store. */
 	const onStudioSaved = (id: CustomCardId | null, name: string, specJson: string): void => {
 		if (id === null) {
-			const minted = app.config.addCustomCard(name, specJson) as CustomCardId;
+			const minted = app.config.addCustomCard(name, specJson);
 			// A just-made card lands on the current screen immediately — the
 			// author is composing here, not filing it away.
 			app.config.updateScreenCards(props.screenId, asRects(addCard(props.composition, minted)));
@@ -308,9 +308,9 @@ function ComposeDrawer(props: { screenId: string; entry: ScreenEntry | null; com
 							onChange={e => { onImportFile(e.currentTarget.files?.[0]); e.currentTarget.value = ""; }}
 						/>
 					</div>
-					<Show when={Object.keys(app.config.config.cards).length > 0}>
+					<Show when={customCardIds(app.config.config).length > 0}>
 						<div class="compose-cards compose-custom-list">
-							<For each={Object.keys(app.config.config.cards) as CustomCardId[]}>
+							<For each={customCardIds(app.config.config)}>
 								{id => (
 									<div class="compose-customrow">
 										<label class="compose-card">

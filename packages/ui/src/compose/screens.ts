@@ -13,7 +13,8 @@
  */
 import { parseComposition, slotsOf, type Composition } from "./composition.ts";
 import { readCanvasState } from "../shell/panelCanvas.ts";
-import type { SlotRect, UiConfig } from "../config/types.ts";
+import { LAB_ROUTE } from "../shell/router.ts";
+import type { SlotRect, UiConfig, UserScreenId } from "../config/types.ts";
 
 export interface ScreenDef {
 	/** Display name — a LABEL, never an identity (I10: renames can't orphan). */
@@ -123,6 +124,14 @@ export const BUILTIN_SCREENS = {
 } as const satisfies Record<string, ScreenDef>;
 
 export type BuiltinScreenId = keyof typeof BUILTIN_SCREENS;
+
+// Route-namespace walls, compile-checked: a built-in screen id must never
+// equal the lab route (the DEV lab would shadow it) and can never wear the
+// minted "u-" prefix. Violations are type errors here, not runtime mysteries.
+const _labRouteNeverScreen: Extract<BuiltinScreenId, typeof LAB_ROUTE> extends never ? true : never = true;
+void _labRouteNeverScreen;
+const _builtinNeverUser: Extract<BuiltinScreenId, UserScreenId> extends never ? true : never = true;
+void _builtinNeverUser;
 
 /** A screen with its identity attached — what nav/router/renderer consume. */
 export interface ScreenEntry {

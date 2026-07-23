@@ -59,7 +59,9 @@ test("updateScreenCards overrides a builtin's composition; garbage falls back", 
 	);
 });
 
-test("removeScreen deletes a custom screen; resetSection('screens') undoes everything", () => {
+test("removeScreen deletes a custom screen; resetAll undoes renames and hides", () => {
+	// resetSection("screens") no longer COMPILES (audit M7): the section holds
+	// creations, and the type excludes it. Overrides reset through resetAll.
 	const store = createConfigStore();
 	const id = store.addScreen("Scratch");
 	store.removeScreen(id);
@@ -67,7 +69,7 @@ test("removeScreen deletes a custom screen; resetSection('screens') undoes every
 
 	store.renameScreen("machine", "X");
 	store.setScreenHidden("bed", true);
-	store.resetSection("screens");
+	store.resetAll();
 	assert.equal(resolveScreen(store.config, "machine")!.def.name, "Machine");
 	assert.ok(resolveScreen(store.config, "bed"));
 });
