@@ -1,7 +1,7 @@
 # DWC Parity — what dwc-ng still needs
 
 **Baseline:** DuetWebControl v3.6.3, vendored read-only at `reference/dwc/`.
-**Our surface:** `packages/ui/src` as of 2026-07-20.
+**Our surface:** `packages/ui/src` as of 2026-07-23.
 
 > Per CLAUDE.md's hard rule, the vendored DWC source is **reference only** — it
 > is read to learn *what problems exist* and *what edge cases matter*. Nothing
@@ -47,7 +47,7 @@ nobody closes them by accident.
 | `rr_filelist` pagination | ✅ | ✅ | |
 | 503 retry / 401 recovery / reconnect ladder | ✅ | ✅ | |
 | Request prioritisation | — | ✅ | `requestQueue.ts` — poll heartbeat can't be starved |
-| **DSF/SBC connector** | ✅ | ❌ | Bolt-on behind connector interface; not started |
+| **DSF/SBC connector** | ✅ | ✅ | `DsfConnector` — native `/machine` API, full interface (connect/subscribe/sendCode/upload/download/list/move), live-verified (used as REAL-DSF/mock-DSF). Deferred: production standalone-vs-DSF auto-detect (needs a standalone board; `probeTransport` is written & tested). Non-blocking review debt ledgered in `docs/dsf-connector-design.md`. |
 | Multi-machine / machine switching | ✅ | ❌ | DWC manages several boards; we target one appliance |
 
 ## 2. Status & monitoring
@@ -72,6 +72,7 @@ nobody closes them by accident.
 | Babystepping (`M290`) | ✅ | ✅ | |
 | Workplace coordinate selection (G54–G59) | ✅ | ❌ | |
 | **Disable motors** (`M84`) | 🚫 (console only) | ✅ | All + per axis in Homing. DWC has no such panel — `M84` appears there only as a console autocomplete hint (`store/machine/cache.ts:54`). |
+| **Bed tramming** (`G32` → `bed.g`) | ✅ | ✅ | Button on the Homing card; bare `G32` (levels the Z leadscrews UVW independently on this toolchanger) |
 | Mesh bed compensation run (`G29`) | ✅ | ❌ | see §8 Height map |
 | CNC axes/movement panels | ✅ | 🚫 | FFF-focused appliance |
 
@@ -84,7 +85,7 @@ nobody closes them by accident.
 | Extrude / retract (`M83`+`G1 E`) | ✅ (`ExtrudePanel`) | ✅ | |
 | Speed factor (`M220`) | ✅ | ✅ | |
 | Extrusion factor (`M221`) | ✅ | ✅ | |
-| Fans (`M106`) | ✅ | ✅ | |
+| Fans (`M106`) | ✅ | ✅ | incl. a live tacho RPM readout when the fan reports one (`fans[].rpm`) |
 | **Reset heater fault** (`M562`) | ✅ (`ResetHeaterFaultDialog`) | ✅ | `cards/HeaterState.tsx`, two-step confirm |
 | **Filament load/unload** (`M701`/`M702`) | ✅ | ✅ | Per tool, with a run-macros (P0) toggle; `M703` applies the filament config |
 | **Filament management** (assign/config per extruder) | ✅ (`Filaments.vue`, `FilamentDialog`) | ❌ | Belongs under machine management, not files |
@@ -99,7 +100,7 @@ nobody closes them by accident.
 | Pause / resume (`M25`/`M24`) | ✅ | ✅ | |
 | Cancel (`M0`) | ✅ | ✅ | |
 | Simulate (`M37`) | ✅ | ✅ | Start button beside Start print (`M37 P"<file>"`) |
-| **Cancel individual object** (`M486`) | ✅ (viewer object selection) | ❌ | DWC's viewer supports per-object cancel |
+| **Cancel individual object** (`M486`) | ✅ (viewer object selection) | ✅ | `cards/BuildObjects.tsx` — a list with cancel/resume by index (`M486 P`/`U`); see §8 |
 | Repeat / re-run last job | ✅ | ✅ | Reprint button on the Printing card's idle state (`M32` on `job.lastFileName`), shown only when a last file exists |
 | Job file thumbnails | ✅ | ✅ | QOI decoder, `thumbnails/` |
 
@@ -143,7 +144,7 @@ nobody closes them by accident.
 | Viewer: per-object selection/cancel | ✅ (in the viewer) | ✅ | `cards/BuildObjects.tsx` — a list on Activity rather than picking in the viewer; cancel/resume by index (`M486 P`/`U`) |
 | Viewer: Z-clip / layer slider | ✅ (`setZClipPlane`) | 🟡 | We have layer-focus mode; no free top/bottom clip sliders |
 | Viewer: render-quality tiers | ✅ (6 levels) | ❌ | We have one quality; merge tolerance is fixed |
-| **Height map** (`G29` mesh visualisation) | ✅ (`HeightMap` plugin) | ✅ | `views/Bed.tsx` — gradient surface + probe points. **Above DWC:** single-point re-probe and manual nudge, which the read-only plugin cannot do |
+| **Height map** (`G29` mesh visualisation) | ✅ (`HeightMap` plugin) | ✅ | `views/Bed.tsx` — gradient surface + probe points. **Above DWC:** single-point re-probe and manual nudge, which the read-only plugin cannot do (re-probe stores `stopHeight − triggerHeight`, corrected 2026-07-23) |
 | **Input shaping** (accelerometer plots) | ✅ (`InputShaping` plugin) | ❌ | |
 | Webcam | ✅ (`Job/Webcam.vue`) | ✅ | Floating pinnable camera tile |
 
@@ -182,8 +183,9 @@ nobody closes them by accident.
 7. ✅ **Filament load/unload** (`M701`/`M702`) (2026-07-21). Assignment/config
    editing per filament is still open — see §4 "Filament management".
 
-**P1 and P2 are closed.** Next is P3 — lifecycle: firmware update,
-workplace coordinates, input shaping, DSF/SBC connector.
+**P1, P2, and most of P3 are closed** (firmware update ✅, per-object cancel
+✅, DSF/SBC connector ✅). Remaining: workplace coordinates and input shaping,
+plus DSF production transport auto-detect (deferred pending a standalone board).
 
 **P2 — visibility**
 8. ✅ **Height map** viewer with single-point re-probing and manual nudge
@@ -196,10 +198,10 @@ workplace coordinates, input shaping, DSF/SBC connector.
     is good as it stands (Gabe, 2026-07-21).
 
 **P3 — lifecycle**
-11. **Firmware update** flow (`M997`).
+11. ✅ **Firmware update** flow (`M997`) — `cards/FirmwareUpdateCard.tsx`, per-board form; not verified on real hardware by design (flashing can brick a board).
 12. Workplace coordinates (G54–G59).
 13. Input shaping plots.
-14. DSF/SBC connector.
+14. ✅ DSF/SBC connector — `DsfConnector` complete & live-verified; production standalone-vs-DSF transport auto-detect deferred (needs a standalone board).
 
 ---
 
