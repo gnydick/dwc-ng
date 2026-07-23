@@ -130,20 +130,6 @@ export class PollConnector implements Connector {
 		if (this.autoPoll) this.schedulePoll();
 	}
 
-	/**
-	 * Repoint at a different backend (dev-only Mock/Real toggle). Tears the
-	 * session down, swaps endpoint + password, and reconnects with a clean full
-	 * sync so the object model reflects the new machine.
-	 */
-	async switchEndpoint(baseUrl: string, password: string): Promise<void> {
-		await this.disconnect();
-		this.base = baseUrl;
-		this.password = password;
-		this.lastSeqs = {};
-		this.lastVolSeqs = [];
-		await this.connect();
-	}
-
 	async disconnect(): Promise<void> {
 		this.stopTimers();
 		if (this.sessionKey !== null) {
@@ -167,7 +153,11 @@ export class PollConnector implements Connector {
 		if (body.err !== 0) throw new OperationFailedError(`rr_connect err ${body.err}`);
 		this.sessionKey = body.sessionKey ?? null;
 		this.emulated = body.isEmulated === true;
-		this.events.onBoardInfo?.({ emulated: this.emulated, boardType: body.boardType });
+		this.events.onBoardInfo?.({
+			emulated: this.emulated,
+			transport: this.emulated ? "rr-emulated" : "rr",
+			boardType: body.boardType,
+		});
 	}
 
 	/** Fetch seqs then every model key, emitting wholesale replacements. */

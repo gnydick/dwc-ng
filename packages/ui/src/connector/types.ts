@@ -48,8 +48,12 @@ export interface ConnectorEvents {
 	 * by DSF (i.e. emulated — the flag keeps that exact meaning), "dsf" =
 	 * DSF's native /machine API.
 	 */
-	onBoardInfo?(info: { emulated: boolean; boardType?: string; transport?: "rr" | "rr-emulated" | "dsf" }): void;
+	onBoardInfo?(info: { emulated: boolean; boardType?: string; transport?: ConnectorTransport }): void;
 }
+
+/** Which dialect serves a session. Named once; the store and the UI import
+ *  it rather than restating the union (a second copy would drift). */
+export type ConnectorTransport = "rr" | "rr-emulated" | "dsf";
 
 export interface FileListEntry {
 	/** "d" directory | "f" file */
@@ -152,11 +156,11 @@ export interface Connector extends ConnectorReads, ConnectorWrites {
 	/** Open a session and emit the full model via onModelKey, key by key. */
 	connect(): Promise<void>;
 	disconnect(): Promise<void>;
-	/**
-	 * Dev-only: repoint the connector at a different backend (Mock vs the real
-	 * board, via the dev proxy). Optional — not every transport supports it.
-	 */
-	switchEndpoint?(baseUrl: string, password: string): Promise<void>;
+	// There is deliberately NO switchEndpoint: backends now differ by
+	// TRANSPORT as well as address, and a transport change means a different
+	// connector class — which an in-place re-point cannot express. The dev
+	// toggle persists the choice and reloads, so a half-switched connector has
+	// no representation (design D9/C14).
 }
 
 /** Wrong password at connect. */

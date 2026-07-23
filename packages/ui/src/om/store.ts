@@ -1,5 +1,5 @@
 import { createStore, reconcile, produce, type SetStoreFunction } from "solid-js/store";
-import type { ConnectorEvents, ConnectionStatus } from "../connector/types.ts";
+import type { ConnectorEvents, ConnectionStatus, ConnectorTransport } from "../connector/types.ts";
 import { conformModelKey, emptyModel, type ObjectModel } from "./types.ts";
 import { CONSOLE_LIMIT, loadConsole, saveConsole, type ConsoleLine } from "./consoleLog.ts";
 import { isPlainObject, isSafeKey, safeEntries } from "../util/safeObject.ts";
@@ -25,6 +25,8 @@ export interface ConnectionState {
 	detail: string;
 	/** true = rr_ served by DSF on an SBC; false = standalone firmware; null = unknown. */
 	emulated: boolean | null;
+	/** Which dialect is serving this session; null until the connector says. */
+	transport: ConnectorTransport | null;
 	boardType: string | null;
 }
 
@@ -45,6 +47,7 @@ export function createOmStore(): OmStore {
 		status: "disconnected",
 		detail: "",
 		emulated: null,
+		transport: null,
 		boardType: null,
 	});
 	// Macro output (M118) is the reason to run some macros — restore it so a
@@ -102,7 +105,13 @@ export function createOmStore(): OmStore {
 			setConnection({ status, detail: detail ?? "" });
 		},
 		onBoardInfo(info) {
-			setConnection({ emulated: info.emulated, boardType: info.boardType ?? null });
+			setConnection({
+				emulated: info.emulated,
+				// A connector that predates the field still yields a truthful
+				// answer from the flag it does set.
+				transport: info.transport ?? (info.emulated ? "rr-emulated" : "rr"),
+				boardType: info.boardType ?? null,
+			});
 		},
 	};
 

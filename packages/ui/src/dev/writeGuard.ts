@@ -85,8 +85,5 @@ export function guardWrites(inner: Connector, opts: GuardOptions): Connector {
 		disconnect: () => inner.disconnect(),
 		...writes,
 		...reads,
-		switchEndpoint: inner.switchEndpoint
-			? (baseUrl, password) => inner.switchEndpoint!(baseUrl, password)
-			: undefined,
 	};
 }

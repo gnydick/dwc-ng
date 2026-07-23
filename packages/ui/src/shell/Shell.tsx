@@ -4,7 +4,7 @@ import { cmd } from "../control/commands.ts";
 import { createRouter, LAB_ROUTE } from "./router.ts";
 import {
 	BACKENDS, type Backend, rememberBackend,
-	currentBackendId, setCurrentBackendId, writesArmed, setWritesArmed,
+	currentBackend, writesArmed, setWritesArmed,
 } from "../dev/backend.ts";
 import { ComposedScreen } from "../compose/ComposedScreen.tsx";
 import { resolveScreen, screenList } from "../compose/screens.ts";
@@ -72,9 +72,12 @@ export default function Shell() {
 					<Show when={app.om.om.boards[0]}>
 						{board => <>{board().name}<br /></>}
 					</Show>
+					{/* What is actually serving us, from the connector's own
+					    declaration — three transports, three distinct truths. */}
 					<Switch fallback="RRF">
-						<Match when={app.om.connection.emulated === true}>SBC · DSF</Match>
-						<Match when={app.om.connection.emulated === false}>RRF · standalone</Match>
+						<Match when={app.om.connection.transport === "dsf"}>SBC · DSF native</Match>
+						<Match when={app.om.connection.transport === "rr-emulated"}>SBC · DSF (rr_)</Match>
+						<Match when={app.om.connection.transport === "rr"}>RRF · standalone</Match>
 					</Switch>
 				</p>
 			</aside>
@@ -164,43 +167,41 @@ export default function Shell() {
 
 /** Dev-only Mock/Real backend switcher + write arming (see src/dev/writeGuard.ts). */
 function BackendToggle() {
-	const app = useApp();
 	const [busy, setBusy] = createSignal(false);
 
-	const switchTo = async (b: Backend): Promise<void> => {
-		if (busy() || b.id === currentBackendId() || app.connector.switchEndpoint === undefined) return;
+	/**
+	 * Switching backends RELOADS rather than re-pointing the live connector:
+	 * backends now differ by transport (rr_ vs DSF), which is a different
+	 * connector class, so a half-switched session has no representation
+	 * (design D9/C14). The reload also guarantees the arm starts false —
+	 * writesArmed is in-memory only by design.
+	 */
+	const switchTo = (b: Backend): void => {
+		if (busy() || b.id === currentBackend().id) return;
 		setBusy(true);
-		setCurrentBackendId(b.id);
-		setWritesArmed(false); // an arm never survives a backend switch
+		setWritesArmed(false);
 		rememberBackend(b.id);
-		try {
-			await app.connector.switchEndpoint(b.baseUrl, b.password);
-			await app.config.loadFromMachine(app.connector);
-		} catch {
-			// Failure shows in the connection chip (e.g. bad password / offline).
-		} finally {
-			setBusy(false);
-		}
+		window.location.reload();
 	};
 
 	return (
 		<>
-			<div class="backend-toggle" role="group" aria-label="Backend" title="Dev: which board the UI talks to">
+			<div class="backend-toggle" role="group" aria-label="Backend" title="Dev: which machine, over which transport">
 				<For each={BACKENDS}>
 					{b => (
 						<button
 							class="backend-opt"
-							classList={{ active: currentBackendId() === b.id, real: b.id === "real" }}
-							aria-pressed={currentBackendId() === b.id}
+							classList={{ active: currentBackend().id === b.id, real: b.real }}
+							aria-pressed={currentBackend().id === b.id}
 							disabled={busy()}
-							onClick={() => void switchTo(b)}
+							onClick={() => switchTo(b)}
 						>
 							{b.label}
 						</button>
 					)}
 				</For>
 			</div>
-			<Show when={currentBackendId() === "real"}>
+			<Show when={currentBackend().real}>
 				<button
 					class="arm-btn"
 					classList={{ armed: writesArmed() }}

@@ -22,10 +22,15 @@ export default defineConfig({
       // server-side so the browser never hits the board directly (no CORS).
       '^/real/rr_.*': { target: realTarget, changeOrigin: true, rewrite: p => p.replace(/^\/real/, '') },
       '^/rr_.*': { target, changeOrigin: true },
-      // DSF's own model endpoint — the connector's layer-history enrichment
-      // reads job.layers from it when the rr_ API is emulated (SBC mode).
+      // DSF's REST surface: the native connector's files/code/session routes,
+      // and the rr_ connector's layer-history enrichment (GET /machine/model).
       '^/real/machine/.*': { target: realTarget, changeOrigin: true, rewrite: p => p.replace(/^\/real/, '') },
       '^/machine/.*': { target, changeOrigin: true },
+      // DSF's WebSocket. Separate entries because the patterns above require a
+      // character after the slash and so cannot match the bare `/machine`
+      // endpoint, and because proxying an Upgrade needs ws: true.
+      '^/real/machine$': { target: realTarget, changeOrigin: true, ws: true, rewrite: p => p.replace(/^\/real/, '') },
+      '^/machine$': { target, changeOrigin: true, ws: true },
     },
   },
 })

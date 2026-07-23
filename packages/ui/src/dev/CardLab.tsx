@@ -61,7 +61,7 @@ export default function CardLab() {
 
 	const connection: ConnectionState = {
 		status: "connected", detail: "Card Lab — synthetic model, no machine",
-		emulated: false, boardType: "Card Lab",
+		emulated: false, transport: null, boardType: "Card Lab",
 	};
 	const omStore: OmStore = {
 		om: model, setOm: setModel, connection, console: consoleLines, events: {},
