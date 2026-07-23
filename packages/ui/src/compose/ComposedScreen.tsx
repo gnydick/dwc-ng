@@ -205,6 +205,33 @@ function ComposeDrawer(props: { screenId: string; entry: ScreenEntry | null; com
 		window.location.hash = `#/${id}`;
 	};
 
+	// Two-step confirms for the drawer's destructive acts (house pattern —
+	// matching file delete / heater reset / macro run): first click arms,
+	// second fires; arming anything else disarms. Deleting a CREATION is
+	// permanent once saved, so it never rides on a single click.
+	const [armedCardDelete, setArmedCardDelete] = createSignal<CustomCardId | null>(null);
+	const [armedScreenDelete, setArmedScreenDelete] = createSignal(false);
+
+	const deleteCard = (id: CustomCardId): void => {
+		setArmedScreenDelete(false);
+		if (armedCardDelete() !== id) {
+			setArmedCardDelete(id);
+			return;
+		}
+		setArmedCardDelete(null);
+		app.config.removeCustomCard(id);
+	};
+
+	const deleteScreen = (): void => {
+		setArmedCardDelete(null);
+		if (!armedScreenDelete()) {
+			setArmedScreenDelete(true);
+			return;
+		}
+		setArmedScreenDelete(false);
+		app.config.removeScreen(props.screenId);
+	};
+
 	return (
 		<div class="compose-wrap">
 			<button class="layout-reset" aria-pressed={open()} onClick={() => setOpen(v => !v)}>⊞ Compose</button>
@@ -230,7 +257,13 @@ function ComposeDrawer(props: { screenId: string; entry: ScreenEntry | null; com
 						<Show
 							when={props.entry?.builtin}
 							fallback={
-								<button class="fb-act danger" onClick={() => app.config.removeScreen(props.screenId)}>Delete screen</button>
+								<button
+									class="fb-act danger"
+									classList={{ armed: armedScreenDelete() }}
+									onClick={deleteScreen}
+								>
+									{armedScreenDelete() ? "Confirm" : "Delete screen"}
+								</button>
 							}
 						>
 							<button class="fb-act" onClick={() => app.config.setScreenHidden(props.screenId, true)}>Hide screen</button>
@@ -300,7 +333,14 @@ function ComposeDrawer(props: { screenId: string; entry: ScreenEntry | null; com
 										>
 											⤓
 										</button>
-										<button class="link-btn" onClick={() => app.config.removeCustomCard(id)}>✕</button>
+										<button
+											class="fb-act danger"
+											classList={{ armed: armedCardDelete() === id }}
+											title={`Delete ${app.config.config.cards[id]!.name} — removes it from every screen`}
+											onClick={() => deleteCard(id)}
+										>
+											{armedCardDelete() === id ? "Confirm" : "✕"}
+										</button>
 									</div>
 								)}
 							</For>
