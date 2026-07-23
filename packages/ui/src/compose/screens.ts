@@ -43,7 +43,6 @@ export const CONTROL_COMPOSITION: Composition = {
 	heaters: { col: 0, row: 83, colSpan: 12, rowSpan: 62 },
 	fans: { col: 0, row: 145, colSpan: 12, rowSpan: 62 },
 	tuning: { col: 0, row: 207, colSpan: 12, rowSpan: 33 },
-	tools: { col: 12, row: 32, colSpan: 12, rowSpan: 33 },
 	filament: { col: 12, row: 65, colSpan: 12, rowSpan: 50 },
 	movement: { col: 12, row: 115, colSpan: 12, rowSpan: 123 },
 	atx: { col: 12, row: 238, colSpan: 12, rowSpan: 32 },

@@ -18,7 +18,7 @@ import { SensorsBody } from "../cards/SensorsCard.tsx";
 import { TemperaturesBody } from "../cards/TemperaturesCard.tsx";
 import { BuildObjects } from "../cards/BuildObjects.tsx";
 import {
-	AtxBody, ToolsBody, FilamentBody, HeatersBody, FansBody, TuningBody,
+	AtxBody, FilamentBody, HeatersBody, FansBody, TuningBody,
 } from "../cards/ControlCards.tsx";
 import { ControlList } from "./controls/ControlList.tsx";
 import { HOMING_SPEC, MOVEMENT_SPEC } from "./controls/builtin.ts";
@@ -60,7 +60,6 @@ export const CARD_RENDER: Record<CardId, CardRender> = {
 	// the control vocabulary — the phase-B dogfood.
 	homing: { body: ctx => <ControlList spec={HOMING_SPEC} ctx={ctx} /> },
 	atx: { body: () => <AtxBody /> },
-	tools: { body: () => <ToolsBody /> },
 	filament: { body: () => <FilamentBody /> },
 	heaters: { body: () => <HeatersBody /> },
 	movement: { body: ctx => <div class="jog-controls"><ControlList spec={MOVEMENT_SPEC} ctx={ctx} /></div> },

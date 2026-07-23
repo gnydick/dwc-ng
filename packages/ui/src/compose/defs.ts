@@ -155,13 +155,6 @@ export const CARD_DEFS = {
 		size: { colSpan: 12, rowSpan: 32 },
 		visibleWhen: ctx => ctx.om.om.state.atxPower !== null,
 	}),
-	/** Tool select / deselect with the tool-change macro bitmask. */
-	tools: defineCard({
-		title: "Tools",
-		ariaLabel: "Tools",
-		tip: "T · state.currentTool",
-		size: { colSpan: 12, rowSpan: 33 },
-	}),
 	/** Filament load/unload — a tool with no extruder cannot hold filament. */
 	filament: defineCard({
 		title: "Filament",
@@ -170,11 +163,11 @@ export const CARD_DEFS = {
 		size: { colSpan: 12, rowSpan: 50 },
 		visibleWhen: ctx => ctx.om.om.tools.some(t => t !== null && t.filamentExtruder >= 0),
 	}),
-	/** Heater setpoints per tool + bed (M568/M140). */
+	/** Tools: select a tool by its label, plus its heater setpoints. */
 	heaters: defineCard({
-		title: "Heaters",
-		ariaLabel: "Heaters",
-		tip: "M568 · M140",
+		title: "Tools",
+		ariaLabel: "Tools",
+		tip: "T · M568 · M140",
 		size: { colSpan: 12, rowSpan: 62 },
 	}),
 	/** Jog pad, aux axes, coupler, extrude. */

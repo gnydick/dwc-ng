@@ -20,31 +20,8 @@ import type { Orientation } from "../shell/panelOrientation.ts";
  * Content-only body; chrome comes from the compose registry
  * (compose/defs.ts "tools-heaters") or the legacy wrapper below.
  */
-/**
- * Human reading of RRF's tool-change macro bitmask (1 tfree | 2 tpre | 4 tpost).
- * undefined means no P is sent at all, which lets the firmware run all three.
- */
-function describeToolP(p: number | undefined): string {
-	if (p === undefined) return "all macros (no P sent)";
-	if (p === 0) return "no macros";
-	const parts: string[] = [];
-	if (p & 1) parts.push("tfree");
-	if (p & 2) parts.push("tpre");
-	if (p & 4) parts.push("tpost");
-	return parts.join(" · ");
-}
-
 export function ToolsHeatersBody(props: { orientation: () => Orientation }) {
 	const app = useApp();
-	// Blank means "send no P", which is not the same as P0 - see cmd.selectTool.
-	const [toolP, setToolP] = createSignal("");
-	const toolPValue = (): number | undefined => {
-		const raw = toolP().trim();
-		if (raw === "") return undefined;
-		const v = Number(raw);
-		return Number.isInteger(v) && v >= 0 && v <= 7 ? v : undefined;
-	};
-	const isCurrent = (n: number): boolean => app.om.om.state.currentTool === n;
 
 	const heaterAt = (index: number): Heater | null => app.om.om.heat.heaters[index] ?? null;
 	const bedHeaterIndex = createMemo(() => app.om.om.heat.bedHeaters.find(i => i >= 0) ?? -1);
@@ -59,20 +36,9 @@ export function ToolsHeatersBody(props: { orientation: () => Orientation }) {
 		return (ref.inverted ? !active : active) ? "docked" : "away";
 	};
 
-	const ToolName = (p: { name: string; des: string; dock: "docked" | "away" | null; tool?: number }) => (
+	const ToolName = (p: { name: string; des: string; dock: "docked" | "away" | null }) => (
 		<span class="heat-name">
-			{/* The tool's own label IS the selector - the thing you read is the
-			    thing you click, so selection needs no column of its own. The bed
-			    is not selectable and stays a plain label. */}
-			<Show when={p.tool !== undefined} fallback={<span class="heat-tool">{p.name}</span>}>
-				<GcodeButton
-					class="heat-tool tool-select"
-					label={p.name}
-					variant={isCurrent(p.tool!) ? "go" : "quiet"}
-					stamp={false}
-					command={cmd.selectTool(p.tool!, toolPValue())}
-				/>
-			</Show>
+			<span class="heat-tool">{p.name}</span>
 			<span class="des">{p.des}</span>
 			{/* Dock presence: a single dot by the tool, no column to scroll off.
 			    Green = docked, gold = away. */}
@@ -90,26 +56,6 @@ export function ToolsHeatersBody(props: { orientation: () => Orientation }) {
 
 	return (
 		<>
-			{/* Deselect and the tool-change bitmask sit above the table: they act on
-			    the machine, not on one row, and keeping them out of the grid leaves
-			    the columns alone. P blank sends no P at all; P0 suppresses all three
-			    macros. Kept as the raw number the G-code takes, decoded beside it. */}
-			<div class="tool-p">
-				<GcodeButton label="Deselect" variant="quiet" stamp={false} command={cmd.deselectTool(toolPValue())} />
-				<label class="feed-field">
-					P
-					<input
-						type="number"
-						min="0"
-						max="7"
-						placeholder="all"
-						value={toolP()}
-						onInput={e => setToolP(e.currentTarget.value)}
-						aria-label="Tool change macro bitmask"
-					/>
-				</label>
-				<span class="tool-p-decode">{describeToolP(toolPValue())}</span>
-			</div>
 			<Show
 				when={props.orientation() === "horizontal"}
 				fallback={
@@ -135,7 +81,6 @@ export function ToolsHeatersBody(props: { orientation: () => Orientation }) {
 														name={t().name || `Tool ${t().number}`}
 														des={`T${t().number}`}
 														dock={dockState(t().number)}
-														tool={t().number}
 													/>
 												</td>
 												<Show
@@ -180,7 +125,6 @@ export function ToolsHeatersBody(props: { orientation: () => Orientation }) {
 											name={t().name || `Tool ${t().number}`}
 											des={`T${t().number}`}
 											dock={dockState(t().number)}
-											tool={t().number}
 										/>
 										<Show when={heaterAt(t().heaters[0] ?? -1)} fallback={<span class="heat-set">no heater</span>}>
 											{h => (
