@@ -11,7 +11,7 @@
  * caller gates it behind import.meta.env.DEV) and it gates nothing on machine
  * state. The firmware remains the only authority over what the machine will do.
  */
-import type { Connector } from "../connector/types.ts";
+import type { Connector, ConnectorReads, ConnectorWrites } from "../connector/types.ts";
 import { isEmergencyStop } from "../connector/emergency.ts";
 
 export { isEmergencyStop };
@@ -34,23 +34,19 @@ export interface GuardOptions {
 }
 
 /**
- * Wrap a connector so mutating calls fail closed on the real board. Reads
- * (model polling, download, list, fileinfo, thumbnails) always pass.
+ * Wrap a connector so mutating calls fail closed on the real board. The
+ * read/write classification is the INTERFACE's (ConnectorReads /
+ * ConnectorWrites in connector/types.ts, audit M5): the two typed halves
+ * below must each be complete for their interface, so a method added to
+ * ConnectorWrites fails to compile until it is guarded here — and cannot
+ * be smuggled into the pass-through block, which only accepts
+ * ConnectorReads members.
  */
 export function guardWrites(inner: Connector, opts: GuardOptions): Connector {
 	const blocked = (): boolean => opts.isReal() && !opts.isArmed();
 
-	return {
-		get status() { return inner.status; },
-		connect: () => inner.connect(),
-		disconnect: () => inner.disconnect(),
-
-		// --- mutations: fail closed on real unless armed ---
-		// Every Connector mutation must appear here. The compiler enforces that
-		// nothing is MISSING (the return type is the full Connector, so a new
-		// method fails to typecheck until it's listed) but it cannot tell a
-		// mutation from a read — that judgement is the one thing to get right
-		// when adding to the interface.
+	// Mutations: fail closed on real unless armed.
+	const writes: ConnectorWrites = {
 		sendCode: async (code: string) => {
 			if (!isEmergencyStop(code) && blocked()) {
 				throw new RealWriteBlockedError(code.split("\n")[0] ?? code);
@@ -73,13 +69,22 @@ export function guardWrites(inner: Connector, opts: GuardOptions): Connector {
 			if (blocked()) throw new RealWriteBlockedError(`delete ${path}`);
 			return inner.remove(path, recursive);
 		},
+	};
 
-		// --- reads: always allowed ---
+	// Reads: always allowed.
+	const reads: ConnectorReads = {
 		download: path => inner.download(path),
 		list: dir => inner.list(dir),
 		getFileInfo: path => inner.getFileInfo(path),
 		getThumbnail: (path, offset) => inner.getThumbnail(path, offset),
+	};
 
+	return {
+		get status() { return inner.status; },
+		connect: () => inner.connect(),
+		disconnect: () => inner.disconnect(),
+		...writes,
+		...reads,
 		switchEndpoint: inner.switchEndpoint
 			? (baseUrl, password) => inner.switchEndpoint!(baseUrl, password)
 			: undefined,

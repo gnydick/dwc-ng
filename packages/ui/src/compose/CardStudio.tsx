@@ -23,7 +23,7 @@ import { createStubConnector } from "../connector/stubConnector.ts";
 import { ControlList } from "./controls/ControlList.tsx";
 import { parseControlSpecText } from "./controls/parse.ts";
 import { SPINDLE_EXAMPLE, SPINDLE_EXAMPLE_NAME } from "./controls/examples.ts";
-import { emptyButton, emptyForm, toSpec, tryFromSpec, type FormState } from "./controls/formModel.ts";
+import { emptyButton, emptyForm, toSpec, tryFromSpec, type FormItem, type FormState } from "./controls/formModel.ts";
 import type { CustomCardId } from "./composition.ts";
 import type { CardCtx } from "./ctx.ts";
 
@@ -64,6 +64,14 @@ export function CardStudio(props: {
 
 	const currentJson = (): string =>
 		mode() === "json" ? json() : JSON.stringify(toSpec(unwrap(form) as FormState), null, 2);
+
+	/** Patch one button row item — typed narrowing instead of path-setter
+	 *  casts (the union item type defeats Solid's typed paths). */
+	const patchButton = (row: number, item: number, patch: Partial<Extract<FormItem, { kind: "button" }>>): void => {
+		setForm("rows", row, "items", item, produce(it => {
+			if (it.kind === "button") Object.assign(it, patch);
+		}));
+	};
 
 	/** Live preview through the one boundary — errors render as themselves. */
 	const preview = createMemo(() => parseControlSpecText(currentJson()));
@@ -221,11 +229,11 @@ export function CardStudio(props: {
 													{btn => (
 														<div class="studio-itemrow">
 															<input class="fb-input st-btnlabel" placeholder="label" value={btn().label}
-																onInput={e => setForm("rows", r(), "items", i(), "label" as never, e.currentTarget.value as never)} />
+																onInput={e => patchButton(r(), i(), { label: e.currentTarget.value })} />
 															<input class="fb-input st-template mono" placeholder='G-code, e.g. M3 S{input.rpm}' value={btn().template}
-																onInput={e => setForm("rows", r(), "items", i(), "template" as never, e.currentTarget.value as never)} />
+																onInput={e => patchButton(r(), i(), { template: e.currentTarget.value })} />
 															<select class="fb-input st-variant" value={btn().variant}
-																onChange={e => setForm("rows", r(), "items", i(), "variant" as never, e.currentTarget.value as never)}>
+																onChange={e => patchButton(r(), i(), { variant: e.currentTarget.value as "" | "go" | "danger" | "quiet" })}>
 																<option value="">plain</option>
 																<option value="go">go</option>
 																<option value="danger">danger</option>
@@ -233,7 +241,7 @@ export function CardStudio(props: {
 															</select>
 															<label class="check st-stamp" title="Show the mono G-code stamp on the button">
 																<input type="checkbox" checked={btn().stamp}
-																	onChange={e => setForm("rows", r(), "items", i(), "stamp" as never, e.currentTarget.checked as never)} />
+																	onChange={e => patchButton(r(), i(), { stamp: e.currentTarget.checked })} />
 																stamp
 															</label>
 															<button class="link-btn" onClick={() => setForm("rows", r(), "items", produce(items => { items.splice(i(), 1); }))}>✕</button>

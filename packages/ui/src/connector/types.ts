@@ -81,11 +81,36 @@ export interface GcodeFileInfo {
 	thumbnails: ThumbnailInfo[];
 }
 
-export interface Connector {
-	readonly status: ConnectionStatus;
-	/** Open a session and emit the full model via onModelKey, key by key. */
-	connect(): Promise<void>;
-	disconnect(): Promise<void>;
+/**
+ * The read half: observing the machine and its files. The dev write guard
+ * passes everything here through unconditionally, so WHERE a method is
+ * declared IS its classification (audit M5) — a new method goes in
+ * ConnectorWrites unless it provably cannot change machine state, and the
+ * guard follows the declaration by construction.
+ */
+export interface ConnectorReads {
+	/** Download a text file (configs, macros). */
+	download(path: string): Promise<string>;
+	/** List a directory. */
+	list(dir: string): Promise<FileListEntry[]>;
+	/** Parse a job file's metadata (height, filament, layers, thumbnails). */
+	getFileInfo(path: string): Promise<GcodeFileInfo>;
+	/**
+	 * Fetch one embedded thumbnail by its offset (from GcodeFileInfo), returning
+	 * the decoded image bytes. The transport hides chunking and base64; the
+	 * caller decodes by ThumbnailInfo.format (QOI via decodeQoi, png/jpeg as a
+	 * Blob).
+	 */
+	getThumbnail(path: string, offset: number): Promise<Uint8Array>;
+}
+
+/**
+ * The write half: everything that can change the machine or its SD card.
+ * The dev write guard fails ALL of this closed on the real board unless
+ * writes are armed (sendCode's e-stop pass-through is the one documented
+ * exception).
+ */
+export interface ConnectorWrites {
 	/** Execute a G/M/T-code; resolves with its reply text ("" if none came). */
 	sendCode(code: string): Promise<string>;
 	/**
@@ -95,10 +120,6 @@ export interface Connector {
 	 * progress, and a caller that doesn't need it passes nothing.
 	 */
 	upload(path: string, content: Uint8Array | string, onProgress?: (fraction: number) => void): Promise<void>;
-	/** Download a text file (configs, macros). */
-	download(path: string): Promise<string>;
-	/** List a directory. */
-	list(dir: string): Promise<FileListEntry[]>;
 	/** Create a directory. Rejects if it already exists or the parent is missing. */
 	mkdir(path: string): Promise<void>;
 	/**
@@ -112,15 +133,13 @@ export interface Connector {
 	 * directory rejects without it.
 	 */
 	remove(path: string, recursive?: boolean): Promise<void>;
-	/** Parse a job file's metadata (height, filament, layers, thumbnails). */
-	getFileInfo(path: string): Promise<GcodeFileInfo>;
-	/**
-	 * Fetch one embedded thumbnail by its offset (from GcodeFileInfo), returning
-	 * the decoded image bytes. The transport hides chunking and base64; the
-	 * caller decodes by ThumbnailInfo.format (QOI via decodeQoi, png/jpeg as a
-	 * Blob).
-	 */
-	getThumbnail(path: string, offset: number): Promise<Uint8Array>;
+}
+
+export interface Connector extends ConnectorReads, ConnectorWrites {
+	readonly status: ConnectionStatus;
+	/** Open a session and emit the full model via onModelKey, key by key. */
+	connect(): Promise<void>;
+	disconnect(): Promise<void>;
 	/**
 	 * Dev-only: repoint the connector at a different backend (Mock vs the real
 	 * board, via the dev proxy). Optional — not every transport supports it.

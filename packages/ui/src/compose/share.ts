@@ -118,20 +118,26 @@ export function exportCard(name: string, specText: string): { fileName: string; 
  * A screen → share-file text. Embeds the definitions of every custom card
  * its composition references — a screen file is self-contained; registry
  * cards travel as their stable ids.
+ *
+ * A custom card whose stored spec no longer parses is dropped — slot and
+ * definition both — matching exportCard's refuse-broken rule (audit L1):
+ * embedding the raw broken text produced a file that could NEVER import.
+ * The exported screen degrades by exactly that card, the same way the
+ * live screen already does (its card shows an error body).
  */
 export function exportScreen(entry: ScreenEntry, config: UiConfig): { fileName: string; text: string } {
 	const cards: Record<string, SlotRect> = {};
 	const customCards: Record<string, { name: string; spec: unknown }> = {};
 	for (const [id, slot] of Object.entries(entry.def.composition)) {
 		if (slot === undefined) continue;
-		cards[id] = { col: slot.col, row: slot.row, colSpan: slot.colSpan, rowSpan: slot.rowSpan };
 		if (isCustomCardId(id)) {
 			const def = config.cards[id];
-			if (def !== undefined) {
-				const parsed = parseControlSpecText(def.spec);
-				customCards[id] = { name: def.name, spec: parsed.ok ? parsed.data : def.spec };
-			}
+			if (def === undefined) continue;
+			const parsed = parseControlSpecText(def.spec);
+			if (!parsed.ok) continue;
+			customCards[id] = { name: def.name, spec: parsed.data };
 		}
+		cards[id] = { col: slot.col, row: slot.row, colSpan: slot.colSpan, rowSpan: slot.rowSpan };
 	}
 	return {
 		fileName: fileNameOf(entry.def.name, "screen"),
