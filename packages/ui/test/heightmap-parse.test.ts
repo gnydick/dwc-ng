@@ -24,7 +24,7 @@ test("parses the real machine's height map", () => {
 	assert.equal(map.meta.radius, -1, "rectangular bed, not delta");
 	assert.equal(map.rows.length, 16);
 	assert.ok(map.rows.every(r => r.length === 16), "every row is num0 wide");
-	assert.equal(map.rows[0][0], 0.067);
+	assert.equal(map.rows[0]?.[0], 0.067);
 });
 
 test("round-trips the real capture byte-for-byte", () => {
@@ -40,7 +40,7 @@ test("round-trips the real capture byte-for-byte", () => {
 test("the header statistics are DERIVED, not carried through", () => {
 	const map = parseHeightMap(csv());
 	assert.ok(map);
-	map.rows[0][0] = 9.999; // an obviously out-of-range value
+	map.rows[0]![0] = 9.999; // an obviously out-of-range value
 	const out = serializeHeightMap(map);
 	assert.match(out, /max error 9\.999/, "max must reflect the edited grid");
 	assert.doesNotMatch(out, /max error 0\.150/, "the original max must not survive");
@@ -84,8 +84,8 @@ test("negative zero survives a round trip", () => {
 	// handled explicitly.
 	const map = parseHeightMap(csv());
 	assert.ok(map);
-	assert.ok(Object.is(map.rows[0][2], -0), "the capture's -0.000 must parse to -0");
-	assert.match(serializeHeightMap(map).split("\n")[3], /^ {2}0\.067, {2}0\.017, -0\.000/);
+	assert.ok(Object.is(map.rows[0]?.[2], -0), "the capture's -0.000 must parse to -0");
+	assert.match(serializeHeightMap(map).split("\n")[3] ?? "", /^ {2}0\.067, {2}0\.017, -0\.000/);
 });
 
 test("the stored spacing is preserved even though positions do not use it", () => {
@@ -94,6 +94,6 @@ test("the stored spacing is preserved even though positions do not use it", () =
 	const map = parseHeightMap(csv());
 	assert.ok(map);
 	assert.equal(map.meta.spacing1, 19.33);
-	assert.match(serializeHeightMap(map).split("\n")[2], /,19\.33,/);
+	assert.match(serializeHeightMap(map).split("\n")[2] ?? "", /,19\.33,/);
 	assert.equal(cellPosition(map.meta, 15, 0).y, 295);
 });

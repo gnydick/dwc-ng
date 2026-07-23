@@ -253,8 +253,10 @@ test("getFileInfo returns typed job metadata with thumbnail descriptors", async 
 		assert.deepEqual(info.filament, [15463.9]);
 		assert.match(info.generatedBy, /PrusaSlicer 2\.9\.6/);
 		assert.equal(info.thumbnails.length, 1);
-		assert.equal(info.thumbnails[0].format, "qoi");
-		assert.deepEqual([info.thumbnails[0].width, info.thumbnails[0].height], [160, 160]);
+		const thumb = info.thumbnails[0];
+		assert.ok(thumb);
+		assert.equal(thumb.format, "qoi");
+		assert.deepEqual([thumb.width, thumb.height], [160, 160]);
 	} finally {
 		await h.close();
 	}
@@ -265,7 +267,9 @@ test("getThumbnail stitches rr_thumbnail chunks and returns decoded image bytes"
 	try {
 		await h.connector.connect();
 		const info = await h.connector.getFileInfo(SEAT_SUPPORT);
-		const bytes = await h.connector.getThumbnail(SEAT_SUPPORT, info.thumbnails[0].offset);
+		const thumb = info.thumbnails[0];
+		assert.ok(thumb);
+		const bytes = await h.connector.getThumbnail(SEAT_SUPPORT, thumb.offset);
 
 		// Raw QOI stream: 'qoif' magic, 160x160, 17079 bytes (not base64 text).
 		assert.equal(bytes.length, 17079);

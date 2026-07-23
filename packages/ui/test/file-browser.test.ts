@@ -193,7 +193,7 @@ test("an unreadable directory reports unknown contents rather than empty", async
 	let calls = 0;
 	const failing = {
 		...connector,
-		list: async (dir: string) => {
+		list: async (_dir: string) => {
 			calls++;
 			if (calls > 1) throw new Error("unreadable");
 			return [];

@@ -6,7 +6,7 @@ import type { Heater, Tool } from "../src/om/types.ts";
 const heater = (): Heater => ({ active: 0, standby: 0, current: 20, max: 300, state: "off" });
 
 const tool = (number: number, name: string, heaters: number[]): Tool =>
-	({ number, name, heaters, active: [], standby: [], state: "off" });
+	({ number, name, heaters, filamentExtruder: -1, active: [], standby: [], state: "off" });
 
 /** Gabe's toolchanger: bed on heater 0, four tools on heaters 1-4. */
 const toolchanger = {

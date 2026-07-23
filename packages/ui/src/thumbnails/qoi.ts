@@ -26,10 +26,13 @@ const hash = (r: number, g: number, b: number, a: number) =>
 	(r * 3 + g * 5 + b * 7 + a * 11) & 63;
 
 /**
- * Decode a QOI byte stream to RGBA. Throws on a missing `qoif` magic or a
- * truncated stream.
+ * Decode a QOI byte stream to RGBA. Throws on a missing `qoif` magic; a
+ * truncated stream decodes as if zero-padded (every read past the end is 0),
+ * so malformed input can only yield wrong pixels, never NaN or a crash.
  */
 export function decodeQoi(bytes: Uint8Array): DecodedImage {
+	// Total read: out-of-bounds is 0 by definition, not undefined.
+	const u8 = (i: number): number => bytes[i] ?? 0;
 	if (
 		bytes.length < 14 ||
 		bytes[0] !== 0x71 || // q
@@ -40,9 +43,8 @@ export function decodeQoi(bytes: Uint8Array): DecodedImage {
 		throw new Error("not a QOI image (missing 'qoif' magic)");
 	}
 
-	const width = (bytes[4] << 24) | (bytes[5] << 16) | (bytes[6] << 8) | bytes[7];
-	const height =
-		(bytes[8] << 24) | (bytes[9] << 16) | (bytes[10] << 8) | bytes[11];
+	const width = (u8(4) << 24) | (u8(5) << 16) | (u8(6) << 8) | u8(7);
+	const height = (u8(8) << 24) | (u8(9) << 16) | (u8(10) << 8) | u8(11);
 	// bytes[12] = channels, bytes[13] = colorspace — not needed to decode.
 
 	const pixelCount = width * height;
@@ -62,28 +64,31 @@ export function decodeQoi(bytes: Uint8Array): DecodedImage {
 		if (run > 0) {
 			run--;
 		} else if (p < bytes.length) {
-			const op = bytes[p++];
+			const op = u8(p++);
 			if (op === QOI_OP_RGB) {
-				r = bytes[p++];
-				g = bytes[p++];
-				b = bytes[p++];
+				r = u8(p++);
+				g = u8(p++);
+				b = u8(p++);
 			} else if (op === QOI_OP_RGBA) {
-				r = bytes[p++];
-				g = bytes[p++];
-				b = bytes[p++];
-				a = bytes[p++];
+				r = u8(p++);
+				g = u8(p++);
+				b = u8(p++);
+				a = u8(p++);
 			} else if ((op & MASK2) === QOI_OP_INDEX) {
+				// index has 64 four-byte slots and (op & 63) * 4 + 3 <= 255, so
+				// these reads are in-bounds by construction; ?? 0 satisfies the
+				// checked-index rule without a cast.
 				const o = (op & 63) * 4;
-				r = index[o];
-				g = index[o + 1];
-				b = index[o + 2];
-				a = index[o + 3];
+				r = index[o] ?? 0;
+				g = index[o + 1] ?? 0;
+				b = index[o + 2] ?? 0;
+				a = index[o + 3] ?? 0;
 			} else if ((op & MASK2) === QOI_OP_DIFF) {
 				r = (r + ((op >> 4) & 3) - 2) & 0xff;
 				g = (g + ((op >> 2) & 3) - 2) & 0xff;
 				b = (b + (op & 3) - 2) & 0xff;
 			} else if ((op & MASK2) === QOI_OP_LUMA) {
-				const b2 = bytes[p++];
+				const b2 = u8(p++);
 				const vg = (op & 63) - 32;
 				r = (r + vg - 8 + ((b2 >> 4) & 15)) & 0xff;
 				g = (g + vg) & 0xff;

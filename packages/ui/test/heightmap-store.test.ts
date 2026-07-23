@@ -62,11 +62,11 @@ test("an unreadable map reports an error rather than a blank grid", async () => 
 test("an edit is pending, not applied to the loaded map", async () => {
 	await withStore(async store => {
 		await store.load();
-		const before = store.map()!.rows[0][0];
+		const before = store.map()!.rows[0]?.[0];
 		store.edit(0, 0, 0.123);
 		assert.equal(store.dirty(), true);
 		assert.equal(store.valueAt(0, 0), 0.123, "the pending value is what the UI shows");
-		assert.equal(store.map()!.rows[0][0], before, "the loaded map is untouched until save");
+		assert.equal(store.map()!.rows[0]?.[0], before, "the loaded map is untouched until save");
 		assert.deepEqual(store.pending().get("0,0"), { row: 0, col: 0, from: before, to: 0.123 });
 	});
 });
@@ -104,8 +104,8 @@ test("save uploads the edited map AND reloads it on the machine", async () => {
 		const result = await store.save();
 		assert.deepEqual(result, { ok: true });
 		assert.equal(calls.upload.length, 1);
-		assert.equal(calls.upload[0][0], HEIGHTMAP_FILE);
-		assert.match(calls.upload[0][1], /0\.123/, "the edit reached the file");
+		assert.equal(calls.upload[0]?.[0], HEIGHTMAP_FILE);
+		assert.match(calls.upload[0]?.[1] ?? "", /0\.123/, "the edit reached the file");
 		assert.deepEqual(calls.codes, ["G29 S1"], "the machine must reload the map");
 	});
 });
