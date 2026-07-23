@@ -1,39 +1,25 @@
 import { For, Match, Show, Suspense, Switch, createMemo, createSignal, lazy } from "solid-js";
 import { useApp } from "./context.ts";
-import { createRouter, type Route } from "./router.ts";
+import { createRouter, LAB_ROUTE } from "./router.ts";
 import {
 	BACKENDS, type Backend, rememberBackend,
 	currentBackendId, setCurrentBackendId, writesArmed, setWritesArmed,
 } from "../dev/backend.ts";
-import Machine from "../views/Machine.tsx";
-import Control from "../views/Control.tsx";
-import Bed from "../views/Bed.tsx";
-import Jobs from "../views/Jobs.tsx";
-import Macros from "../views/Macros.tsx";
-import System from "../views/System.tsx";
-import Settings from "../views/Settings.tsx";
-import Activity from "../views/Activity.tsx";
+import { ComposedScreen } from "../compose/ComposedScreen.tsx";
+import { resolveScreen, screenList } from "../compose/screens.ts";
 import { MessageBoxPrompt } from "../messagebox/MessageBoxPrompt.tsx";
 
 // Dev-only card test harness. lazy() keeps it in its own chunk that a
 // production build never fetches (the route and nav entry below are DEV-gated).
 const CardLab = lazy(() => import("../dev/CardLab.tsx"));
 
-const NAV: Array<{ route: Route; label: string }> = [
-	{ route: "machine", label: "Machine" },
-	{ route: "control", label: "Control" },
-	{ route: "jobs", label: "Jobs" },
-	{ route: "macros", label: "Macros" },
-	{ route: "system", label: "System" },
-	{ route: "settings", label: "Settings" },
-	{ route: "activity", label: "Activity" },
-	{ route: "bed", label: "Bed" },
-	...(import.meta.env.DEV ? [{ route: "cards" as Route, label: "Card Lab" }] : []),
-];
-
 export default function Shell() {
 	const app = useApp();
 	const route = createRouter();
+	// Nav, router, and renderer all read the ONE screen list (I9). An unknown
+	// route falls back to the first listed screen.
+	const currentScreen = createMemo(() => resolveScreen(route()) ?? screenList()[0]!);
+	const labActive = (): boolean => import.meta.env.DEV && route() === LAB_ROUTE;
 
 	const visibleAxes = createMemo(() => app.om.om.move.axes.filter(a => a.visible));
 	const unhomedCount = createMemo(() => visibleAxes().filter(a => !a.homed).length);
@@ -58,13 +44,16 @@ export default function Shell() {
 			<aside class="rail">
 				<div class="wordmark">dwc<span>·</span>ng</div>
 				<nav aria-label="Main">
-					<For each={NAV}>
-						{item => (
-							<a href={`#/${item.route}`} aria-current={route() === item.route ? "page" : undefined}>
-								{item.label}
+					<For each={screenList()}>
+						{entry => (
+							<a href={`#/${entry.id}`} aria-current={!labActive() && currentScreen().id === entry.id ? "page" : undefined}>
+								{entry.def.name}
 							</a>
 						)}
 					</For>
+					<Show when={import.meta.env.DEV}>
+						<a href={`#/${LAB_ROUTE}`} aria-current={labActive() ? "page" : undefined}>Card Lab</a>
+					</Show>
 				</nav>
 				<p class="machine-id">
 					<Show when={app.om.om.boards[0]}>
@@ -136,16 +125,22 @@ export default function Shell() {
 
 				<div class="view-scroll">
 					<Switch>
-						<Match when={route() === "machine"}><Machine /></Match>
-						<Match when={route() === "control"}><Control /></Match>
-						<Match when={route() === "jobs"}><Jobs /></Match>
-						<Match when={route() === "macros"}><Macros /></Match>
-						<Match when={route() === "system"}><System /></Match>
-						<Match when={route() === "settings"}><Settings /></Match>
-						<Match when={route() === "activity"}><Activity /></Match>
-						<Match when={route() === "bed"}><Bed /></Match>
-						<Match when={route() === "cards" && import.meta.env.DEV}>
+						<Match when={labActive()}>
 							<Suspense fallback={<p class="job-empty">Loading Card Lab…</p>}><CardLab /></Suspense>
+						</Match>
+						<Match when={true}>
+							{/* Keyed: switching screens remounts ComposedScreen, so each
+							    screen's canvas re-reads storage and its services die with
+							    it — the same lifecycle the eight view files had. */}
+							<Show when={currentScreen()} keyed>
+								{screen => (
+									<ComposedScreen
+										storageKey={`dwc-ng.canvas.${screen.id}`}
+										composition={screen.def.composition}
+										class={screen.def.class}
+									/>
+								)}
+							</Show>
 						</Match>
 					</Switch>
 				</div>

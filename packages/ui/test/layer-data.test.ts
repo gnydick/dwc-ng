@@ -53,3 +53,11 @@ test("layerStats on no completed layers is all zeros, not NaN", () => {
 	const s = layerStats([]);
 	assert.deepEqual(s, { count: 0, min: 0, max: 0, mean: 0, total: 0 });
 });
+
+test("layerStats and layerChartData are total over an absent layers key", () => {
+	// A wholesale job-subtree replacement from a board that doesn't report
+	// `layers` deletes the key (OM rule: tolerate missing fields). Found live
+	// 2026-07-23: the layers card's visibleWhen threw and wedged the shell.
+	assert.deepEqual(layerStats(undefined), { count: 0, min: 0, max: 0, mean: 0, total: 0 });
+	assert.deepEqual(layerChartData(undefined), [[], []]);
+});

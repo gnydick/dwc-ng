@@ -58,7 +58,7 @@ export interface UiConfig {
 	dockSensors: Record<string, DockSensorRef>;
 	camera: CameraConfig;
 	/** Sensor slot key (endstopKey/filamentKey/probeKey from
-	 * views/machine.sensors.ts, e.g. "probe:0") → human name. RRF only knows
+	 * om/sensorRows.ts, e.g. "probe:0") → human name. RRF only knows
 	 * indices; this replaces the auto-generated label on the Machine view's
 	 * Sensors card wherever set. */
 	sensorNames: Record<string, string>;

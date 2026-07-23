@@ -48,7 +48,18 @@ export function ComposedScreen(props: {
 	});
 	const visibleFor = (id: CardId): boolean => {
 		const visibleWhen = CARD_DEFS[id].visibleWhen;
-		return visibleWhen ? visibleWhen(ctxFor(id)) : true;
+		if (visibleWhen === undefined) return true;
+		// Containment: a predicate that throws is a card bug, but it must cost
+		// that CARD (shown despite the error), never the screen or the router —
+		// an exception here propagates through Show's memo and wedges the whole
+		// shell (observed live 2026-07-23 with an OM field a board didn't
+		// report). Predicates should be total; this makes the blast radius
+		// card-sized when one isn't.
+		try {
+			return visibleWhen(ctxFor(id));
+		} catch {
+			return true;
+		}
 	};
 
 	// I3, release half: the collision filter is the same predicate as the

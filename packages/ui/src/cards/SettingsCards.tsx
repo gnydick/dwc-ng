@@ -11,7 +11,7 @@
 import { For, Show, createMemo, createSignal } from "solid-js";
 import { useApp } from "../shell/context.ts";
 import { CONFIG_FILE } from "../config/types.ts";
-import { sensorRows } from "../views/machine.sensors.ts";
+import { sensorRows } from "../om/sensorRows.ts";
 
 export function AxisRolesBody() {
 	const app = useApp();

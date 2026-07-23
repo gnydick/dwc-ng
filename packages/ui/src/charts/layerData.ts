@@ -9,8 +9,13 @@
 import type { Layer } from "../om/types.ts";
 import type { AlignedData } from "../om/temperature.ts";
 
-/** Layers with a real duration — everything but a trailing in-progress layer. */
-function completed(layers: Layer[]): Layer[] {
+/** Layers with a real duration — everything but a trailing in-progress layer.
+ *  Total over undefined: a wholesale job-subtree replacement from a board
+ *  that doesn't report `layers` deletes the key entirely (the OM rule is
+ *  "tolerate missing fields") — that must read as "no layers", not a crash.
+ *  Found live 2026-07-23: the layers card's visibleWhen threw on it. */
+function completed(layers: Layer[] | undefined): Layer[] {
+	if (layers === undefined) return [];
 	if (layers.length > 0 && layers[layers.length - 1]!.duration === 0) {
 		return layers.slice(0, -1);
 	}
@@ -18,7 +23,7 @@ function completed(layers: Layer[]): Layer[] {
 }
 
 /** uPlot data: layer number (1-indexed) on x, layer duration (seconds) on y. */
-export function layerChartData(layers: Layer[]): AlignedData {
+export function layerChartData(layers: Layer[] | undefined): AlignedData {
 	const done = completed(layers);
 	const x = done.map((_, i) => i + 1);
 	const y = done.map(l => l.duration);
@@ -35,7 +40,7 @@ export interface LayerStats {
 	total: number;
 }
 
-export function layerStats(layers: Layer[]): LayerStats {
+export function layerStats(layers: Layer[] | undefined): LayerStats {
 	const done = completed(layers);
 	if (done.length === 0) return { count: 0, min: 0, max: 0, mean: 0, total: 0 };
 	let min = Infinity;

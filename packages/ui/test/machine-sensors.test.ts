@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { sensorRows, endstopKey, filamentKey, probeKey } from "../src/views/machine.sensors.ts";
+import { sensorRows, endstopKey, filamentKey, probeKey } from "../src/om/sensorRows.ts";
 import type { Axis, Sensors } from "../src/om/types.ts";
 
 const axis = (letter: string): Axis => ({

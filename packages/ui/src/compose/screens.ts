@@ -1,13 +1,25 @@
 /**
- * Built-in screen compositions — pure data (design phase A3+; grows a full
- * screen registry with user screens and derived nav in phase A7).
+ * The screen registry — screens as pure data (design phase A7).
+ *
+ * The nav rail, the hash router, and the renderer ALL derive from this one
+ * list (I9): a screen that isn't here cannot be routed to or shown, and the
+ * ROUTES/NAV/Switch triple hand-sync this replaced cannot drift because it
+ * no longer exists. Built-in ids double as the layout storage identity
+ * ("dwc-ng.canvas.<id>" — the historic keys, so saved layouts keep working).
  *
  * Slot rects are the fitted defaults the per-view *.panelDefaults.ts files
- * carried; a view converts by deleting its defaults file and gaining an entry
- * here. Storage keys stay the historic "dwc-ng.canvas.<view>" strings so
- * existing saved layouts keep working unchanged.
+ * carried before the conversion. User screens (overlay entries with minted
+ * stable ids) join this list in phase A7b.
  */
 import type { Composition } from "./composition.ts";
+
+export interface ScreenDef {
+	/** Display name — a LABEL, never an identity (I10: renames can't orphan). */
+	name: string;
+	composition: Composition;
+	/** Extra class on the canvas (screen-specific CSS hooks). */
+	class?: string;
+}
 
 /** Machine: live DRO, tools & heaters, current job, sensors, temps. */
 export const MACHINE_COMPOSITION: Composition = {
@@ -95,3 +107,40 @@ export const SETTINGS_COMPOSITION: Composition = {
 	console: { col: 0, row: 259, colSpan: 24, rowSpan: 75 },
 	camera: { col: 0, row: 334, colSpan: 8, rowSpan: 75 },
 };
+
+/** The built-in screens, in nav order. Ids are stable identities. */
+export const BUILTIN_SCREENS = {
+	machine: { name: "Machine", composition: MACHINE_COMPOSITION },
+	control: { name: "Control", composition: CONTROL_COMPOSITION, class: "control" },
+	jobs: { name: "Jobs", composition: JOBS_COMPOSITION, class: "jobs" },
+	macros: { name: "Macros", composition: MACROS_COMPOSITION },
+	system: { name: "System", composition: SYSTEM_COMPOSITION, class: "system" },
+	settings: { name: "Settings", composition: SETTINGS_COMPOSITION, class: "settings" },
+	activity: { name: "Activity", composition: ACTIVITY_COMPOSITION },
+	bed: { name: "Bed", composition: BED_COMPOSITION, class: "bed" },
+} as const satisfies Record<string, ScreenDef>;
+
+export type BuiltinScreenId = keyof typeof BUILTIN_SCREENS;
+
+/** A screen with its identity attached — what nav/router/renderer consume. */
+export interface ScreenEntry {
+	id: string;
+	def: ScreenDef;
+}
+
+/**
+ * The live screen list, in nav order. Today: the built-ins. Phase A7b merges
+ * user screens (and rename/hide overlays) from the config store here — this
+ * accessor is already the single point every consumer reads.
+ */
+export function screenList(): ScreenEntry[] {
+	return Object.entries(BUILTIN_SCREENS).map(([id, def]) => ({ id, def }));
+}
+
+/**
+ * Resolve a route segment to a screen, or null (the caller decides the
+ * fallback — Shell uses the first listed screen).
+ */
+export function resolveScreen(id: string): ScreenEntry | null {
+	return screenList().find(s => s.id === id) ?? null;
+}

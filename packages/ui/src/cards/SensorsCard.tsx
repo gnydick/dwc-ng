@@ -1,6 +1,6 @@
 import { For, Show, createMemo } from "solid-js";
 import { useApp } from "../shell/context.ts";
-import { sensorRows } from "../views/machine.sensors.ts";
+import { sensorRows } from "../om/sensorRows.ts";
 import { Card } from "../shell/Card.tsx";
 import type { Orientation } from "../shell/panelOrientation.ts";
 import type { PanelCanvasController } from "../shell/panelCanvas.ts";
