@@ -591,6 +591,26 @@
 	gap: 8px;
 }
 .heat-tool { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The tool's label doubles as its selector (T<n>). It keeps the label's type and
+   its grid column and drops the button chrome, so the table still reads as a
+   table rather than a row of buttons; the current tool is marked by colour, not
+   by a filled box that would widen the column. */
+.tool-select.gcode-btn {
+	padding: 2px 4px;
+	margin: -2px -4px;
+	background: none;
+	border: 1px solid transparent;
+	border-radius: 4px;
+	font: 600 15px/1 var(--font-display);
+	color: var(--silk);
+	justify-content: flex-start;
+	text-align: left;
+	width: 100%;
+}
+.tool-select.gcode-btn:hover { border-color: var(--hairline); background: var(--mask-900); }
+.tool-select.gcode-btn:focus-visible { outline: 2px solid var(--copper-bright); outline-offset: 1px; }
+/* Current tool — the one a bare G-code acts on. */
+.tool-select.gcode-go { color: var(--ok); }
 /* Grid items stretch by default, which inflated the designator's bordered box
    to the full slot. Hug the text; only the slot's left edge needs to be fixed. */
 .heat-name .des { justify-self: start; }
