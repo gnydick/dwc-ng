@@ -19,6 +19,11 @@ import { BuildObjects } from "../cards/BuildObjects.tsx";
 import {
 	HomingBody, AtxBody, ToolsBody, FilamentBody, HeatersBody, MovementBody, FansBody, TuningBody,
 } from "../cards/ControlCards.tsx";
+import {
+	JobFilesBody, JobDetailsBody, MacrosBody, SystemFilesBody, OmInspectorBody, MacrosEditorBody, SystemEditorBody,
+} from "../cards/FileCards.tsx";
+import { HeightmapBody, ProbePointBody } from "../cards/BedCards.tsx";
+import { FirmwareBody } from "../cards/FirmwareUpdateCard.tsx";
 import { LayersBody } from "../cards/LayersCard.tsx";
 import { GcodeViewerBody } from "../gcode/GcodeViewer.tsx";
 import { ConsoleBody } from "../shell/ConsolePanel.tsx";
@@ -52,4 +57,14 @@ export const CARD_RENDER: Record<CardId, CardRender> = {
 	movement: { body: () => <MovementBody /> },
 	fans: { body: ctx => <FansBody orientation={ctx.orientation} /> },
 	tuning: { body: () => <TuningBody /> },
+	"job-files": { body: ctx => <JobFilesBody ctx={ctx} /> },
+	"job-details": { body: ctx => <JobDetailsBody ctx={ctx} /> },
+	macros: { body: ctx => <MacrosBody ctx={ctx} /> },
+	"macros-editor": { body: ctx => <MacrosEditorBody ctx={ctx} /> },
+	"system-files": { body: ctx => <SystemFilesBody ctx={ctx} /> },
+	"system-editor": { body: ctx => <SystemEditorBody ctx={ctx} /> },
+	"object-model": { body: ctx => <OmInspectorBody ctx={ctx} /> },
+	firmware: { body: () => <FirmwareBody /> },
+	heightmap: { body: ctx => <HeightmapBody ctx={ctx} /> },
+	"probe-point": { body: ctx => <ProbePointBody ctx={ctx} /> },
 };

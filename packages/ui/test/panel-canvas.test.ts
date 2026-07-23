@@ -5,11 +5,7 @@ import {
 	tryMove, tryResize, defaultCanvas, parseStoredCanvas, serializeCanvas, mergeCanvas,
 	applyDetent, DETENT_BREAKAWAY_ROWS, type DetentState,
 } from "../src/shell/panelCanvas.ts";
-import { JOBS_PANEL_DEFAULTS } from "../src/views/jobs.panelDefaults.ts";
-import { MACROS_PANEL_DEFAULTS } from "../src/views/macros.panelDefaults.ts";
-import { SYSTEM_PANEL_DEFAULTS } from "../src/views/system.panelDefaults.ts";
 import { SETTINGS_PANEL_DEFAULTS } from "../src/views/settings.panelDefaults.ts";
-import { BED_PANEL_DEFAULTS } from "../src/views/bed.panelDefaults.ts";
 
 const rect = (col: number, row: number, colSpan: number, rowSpan: number) => ({ col, row, colSpan, rowSpan });
 
@@ -172,23 +168,9 @@ test("serializeCanvas round-trips through parseStoredCanvas and mergeCanvas", ()
 	assert.deepEqual(mergeCanvas(parseStoredCanvas(serializeCanvas(canvas)), defaults), canvas);
 });
 
-// Machine's layout is asserted in composition.test.ts against its composed
-// screen — the defaults file this checked was deleted in the A3 conversion.
-
-test("Jobs view's default panel layout is collision-free", () => {
-	assert.equal(hasCollisions(defaultCanvas(JOBS_PANEL_DEFAULTS)), false);
-});
-
-test("Macros view's default panel layout is collision-free", () => {
-	assert.equal(hasCollisions(defaultCanvas(MACROS_PANEL_DEFAULTS)), false);
-});
-
-test("System view's default panel layout is collision-free", () => {
-	assert.equal(hasCollisions(defaultCanvas(SYSTEM_PANEL_DEFAULTS)), false);
-});
-
-// Control's layout is asserted in composition.test.ts against its composed
-// screen — the defaults file this checked was deleted in the A4 conversion.
+// Machine/Jobs/Macros/System/Control/Bed/Activity layouts are asserted in
+// composition.test.ts against their composed screens — the per-view defaults
+// files those tests checked were deleted in the A3–A5 conversions.
 
 test("Settings view's default panel layout is collision-free", () => {
 	assert.equal(hasCollisions(defaultCanvas(SETTINGS_PANEL_DEFAULTS)), false);
@@ -287,9 +269,3 @@ test("it re-arms on the way back up so the detent is felt in both directions", (
 	assert.equal(back.state.broken, false, "re-armed, so shrinking again must catch at the minimum");
 });
 
-test("Bed view's default panel layout is collision-free", () => {
-	assert.equal(hasCollisions(defaultCanvas(BED_PANEL_DEFAULTS)), false);
-});
-
-// Activity's layout is asserted in composition.test.ts against its composed
-// screen — the defaults file this checked was deleted in the A4 conversion.

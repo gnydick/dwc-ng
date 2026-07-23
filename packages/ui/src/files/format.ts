@@ -1,5 +1,28 @@
-/** Display formatters for file listings, kept out of the component so they're
- *  unit-testable (node's type-stripping can't load JSX). */
+/** Display formatters shared across cards and listings — one definition each
+ *  (they were duplicated per view before the compose conversion). Kept out of
+ *  components so they're unit-testable (node's type-stripping can't load JSX). */
+
+export function formatSize(bytes: number): string {
+	if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+	if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`;
+	return `${bytes} B`;
+}
+
+/** Final path segment — how a file names itself in titles and labels. */
+export function baseName(path: string | null | undefined): string {
+	if (!path) return "";
+	const i = path.lastIndexOf("/");
+	return i >= 0 ? path.slice(i + 1) : path;
+}
+
+export function fmtDuration(seconds: number): string {
+	const s = Math.round(seconds);
+	const h = Math.floor(s / 3600);
+	const m = Math.floor((s % 3600) / 60);
+	if (h > 0) return `${h}h ${m}m`;
+	if (m > 0) return `${m}m ${s % 60}s`;
+	return `${s}s`;
+}
 
 /**
  * RRF's file timestamp ("2026-07-21T14:30:00") to "2026-07-21 14:30". Sliced

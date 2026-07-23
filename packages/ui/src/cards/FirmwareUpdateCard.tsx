@@ -16,7 +16,7 @@ import type { PanelCanvasController } from "../shell/panelCanvas.ts";
  * the card only builds the codes. The two-step confirm is friction on a
  * destructive action (a bad flash can brick a board), not a machine verdict.
  */
-export function FirmwareUpdateCard(props: { canvas: PanelCanvasController }) {
+export function FirmwareBody() {
 	const app = useApp();
 	const boards = createMemo<Board[]>(() => app.om.om.boards.filter((b): b is Board => b !== null));
 	const canAddrOf = (b: Board): number => b.canAddress ?? 0;
@@ -55,7 +55,7 @@ export function FirmwareUpdateCard(props: { canvas: PanelCanvasController }) {
 	const count = (): number => selectedBoards().length;
 
 	return (
-		<Card id="firmware" canvas={props.canvas} ariaLabel="Firmware update" title="Firmware update" tip="M997 · boards">
+		<>
 			{/* Prerequisites/caveats taken from reference/duet-gcode.md M997. */}
 			<div class="fw-warn">
 				<p><b>Before flashing</b></p>
@@ -119,6 +119,15 @@ export function FirmwareUpdateCard(props: { canvas: PanelCanvasController }) {
 					</Show>
 				</div>
 			</Show>
+		</>
+	);
+}
+
+/** Legacy self-carding wrapper — dies with its last un-converted consumer (Card Lab). */
+export function FirmwareUpdateCard(props: { canvas: PanelCanvasController }) {
+	return (
+		<Card id="firmware" canvas={props.canvas} ariaLabel="Firmware update" title="Firmware update" tip="M997 · boards">
+			<FirmwareBody />
 		</Card>
 	);
 }

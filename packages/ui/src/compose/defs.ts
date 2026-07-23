@@ -16,6 +16,7 @@
  */
 import { layerStats } from "../charts/layerData.ts";
 import { isManualFan } from "../om/fans.ts";
+import { baseName } from "../files/format.ts";
 import type { CardCtx } from "./ctx.ts";
 
 export interface CardSize {
@@ -23,11 +24,15 @@ export interface CardSize {
 	rowSpan: number;
 }
 
+/** A static string, or one derived per render (a selected file's name, a
+ *  browser's current directory). */
+export type CardText = string | ((ctx: CardCtx) => string);
+
 export interface CardMeta {
-	title: string;
+	title: CardText;
 	ariaLabel: string;
 	/** What powers the card (OM path, G-code, endpoint) — the CardTip text. */
-	tip?: string;
+	tip?: CardText;
 	class?: string;
 	orientationToggle?: boolean;
 	/** THE natural geometry (I4). */
@@ -195,6 +200,81 @@ export const CARD_DEFS = {
 		ariaLabel: "Tuning",
 		tip: "M220 · M221 · M290",
 		size: { colSpan: 12, rowSpan: 33 },
+	}),
+	/** Job file listing (0:/gcodes) — click opens, never runs. */
+	"job-files": defineCard({
+		title: "Jobs",
+		ariaLabel: "Job files",
+		class: "jobs-browse",
+		tip: ctx => ctx.service("jobsBrowser").browser.dir(),
+		size: { colSpan: 12, rowSpan: 135 },
+	}),
+	/** Metadata + thumbnail + start/simulate for the selected job file. */
+	"job-details": defineCard({
+		title: ctx => baseName(ctx.service("jobsBrowser").selected()) || "Job details",
+		ariaLabel: "Job details",
+		class: "jobs-detail",
+		tip: "rr_fileinfo",
+		size: { colSpan: 12, rowSpan: 135 },
+		visibleWhen: ctx => ctx.service("jobsBrowser").selected() !== null,
+	}),
+	/** Macro listing (0:/macros) with two-step Run. */
+	macros: defineCard({
+		title: "Macros",
+		ariaLabel: "Macros",
+		tip: ctx => ctx.service("macrosBrowser").browser.dir(),
+		size: { colSpan: 10, rowSpan: 150 },
+	}),
+	/** Macro editor — placeholder until a file is opened. */
+	"macros-editor": defineCard({
+		title: ctx => ctx.service("macrosBrowser").selected() ?? "Editor",
+		ariaLabel: "Editor",
+		class: "editor-card",
+		size: { colSpan: 14, rowSpan: 150 },
+	}),
+	/** System file listing (0:/sys) — sys files are invoked by the firmware,
+	 *  so there is deliberately no Run here. */
+	"system-files": defineCard({
+		title: "System files",
+		ariaLabel: "System files",
+		tip: ctx => ctx.service("sysBrowser").browser.dir(),
+		size: { colSpan: 8, rowSpan: 120 },
+	}),
+	/** System file editor. */
+	"system-editor": defineCard({
+		title: ctx => ctx.service("sysBrowser").selected() ?? "Editor",
+		ariaLabel: "Editor",
+		class: "editor-card",
+		size: { colSpan: 16, rowSpan: 120 },
+	}),
+	/** The live object model, browsable. */
+	"object-model": defineCard({
+		title: "Object model",
+		ariaLabel: "Object model",
+		class: "om-card",
+		tip: "live · rr_model",
+		size: { colSpan: 12, rowSpan: 112 },
+	}),
+	/** Per-board firmware update (M997). */
+	firmware: defineCard({
+		title: "Firmware update",
+		ariaLabel: "Firmware update",
+		tip: "M997 · boards",
+		size: { colSpan: 12, rowSpan: 112 },
+	}),
+	/** The height map grid + save/reload. */
+	heightmap: defineCard({
+		title: "Height map",
+		ariaLabel: "Height map",
+		tip: "0:/sys/heightmap.csv",
+		size: { colSpan: 16, rowSpan: 150 },
+	}),
+	/** Single-point re-probe + manual nudge for the selected cell. */
+	"probe-point": defineCard({
+		title: "Probe point",
+		ariaLabel: "Probe point",
+		tip: "config: bed.probePointCommand",
+		size: { colSpan: 8, rowSpan: 90 },
 	}),
 } as const satisfies Record<string, CardMeta>;
 

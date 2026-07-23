@@ -16,9 +16,10 @@ import { useApp } from "../shell/context.ts";
 import { Card } from "../shell/Card.tsx";
 import { PanelCanvas } from "../shell/PanelCanvas.tsx";
 import { createPanelCanvas, type PanelDefault } from "../shell/panelCanvas.ts";
-import { CARD_DEFS, parseCardId, type CardId } from "./defs.ts";
+import { CARD_DEFS, parseCardId, type CardId, type CardText } from "./defs.ts";
 import { CARD_RENDER } from "./cards.tsx";
 import { slotsOf, type Composition } from "./composition.ts";
+import { createServicePool } from "./services.ts";
 import type { CardCtx } from "./ctx.ts";
 
 export function ComposedScreen(props: {
@@ -30,6 +31,10 @@ export function ComposedScreen(props: {
 	const app = useApp();
 	const connected = (): boolean => app.om.connection.status === "connected";
 
+	// One pool per screen: shared card state (browser selections, the height
+	// map) provisions on first access and dies with the screen.
+	const service = createServicePool({ ...app, connected });
+
 	// Slot geometry → the canvas's defaults. Hidden-but-placed holds by
 	// construction: every slot has a rect whether or not visibleWhen passes.
 	const defaults: PanelDefault[] = slotsOf(props.composition).map(([id, slot]) => ({ id, ...slot }));
@@ -39,6 +44,7 @@ export function ComposedScreen(props: {
 		...app,
 		connected,
 		orientation: () => canvas.orientationFor(id),
+		service,
 	});
 	const visibleFor = (id: CardId): boolean => {
 		const visibleWhen = CARD_DEFS[id].visibleWhen;
@@ -64,6 +70,7 @@ export function ComposedScreen(props: {
 						const def = CARD_DEFS[id];
 						const render = CARD_RENDER[id];
 						const ctx = ctxFor(id);
+						const text = (t: CardText): string => (typeof t === "function" ? t(ctx) : t);
 						return (
 							// I3, mount half — same predicate the canvas filter uses.
 							<Show when={visibleFor(id)}>
@@ -71,8 +78,8 @@ export function ComposedScreen(props: {
 									id={id}
 									canvas={canvas}
 									ariaLabel={def.ariaLabel}
-									title={def.title}
-									tip={def.tip}
+									title={text(def.title)}
+									tip={def.tip !== undefined ? text(def.tip) : undefined}
 									class={def.class}
 									orientationToggle={def.orientationToggle}
 									actions={render.actions?.(ctx)}

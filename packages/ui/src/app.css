@@ -1459,6 +1459,12 @@
    so the target reads as a place to drop. Inset so it never shifts the rows. */
 .fb-dragging { outline: 2px dashed var(--copper); outline-offset: -4px; border-radius: var(--radius); }
 
+/* Editor controls, in-body (the compose conversion moved them out of the card
+   header: they read the editor's own dirty/status state, which a registry's
+   static actions closure cannot). Right-aligned like the header zone they
+   replaced; the message reserves no width — the buttons hold the row height. */
+.editor-bar { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-bottom: 8px; flex: 0 0 auto; }
+
 /* Macros: AutoConfirm — visible wherever the Run buttons are, so the mode can
    always be read off the screen rather than remembered. */
 .macro-autoconfirm {

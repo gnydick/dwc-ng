@@ -48,3 +48,37 @@ export const ACTIVITY_COMPOSITION: Composition = {
 	console: { col: 0, row: 342, colSpan: 24, rowSpan: 75 },
 	camera: { col: 0, row: 417, colSpan: 8, rowSpan: 75 },
 };
+
+/** Jobs: the gcodes listing + details for the selected file. */
+export const JOBS_COMPOSITION: Composition = {
+	"job-files": { col: 0, row: 0, colSpan: 12, rowSpan: 135 },
+	"job-details": { col: 12, row: 0, colSpan: 12, rowSpan: 135 },
+	console: { col: 0, row: 135, colSpan: 24, rowSpan: 75 },
+	camera: { col: 0, row: 210, colSpan: 8, rowSpan: 75 },
+};
+
+/** Macros: the listing (with Run) + editor. */
+export const MACROS_COMPOSITION: Composition = {
+	macros: { col: 0, row: 0, colSpan: 10, rowSpan: 150 },
+	"macros-editor": { col: 10, row: 0, colSpan: 14, rowSpan: 150 },
+	console: { col: 0, row: 150, colSpan: 24, rowSpan: 75 },
+	camera: { col: 0, row: 225, colSpan: 8, rowSpan: 75 },
+};
+
+/** System: 0:/sys listing + editor, firmware update, the OM inspector. */
+export const SYSTEM_COMPOSITION: Composition = {
+	"system-files": { col: 0, row: 0, colSpan: 8, rowSpan: 120 },
+	"system-editor": { col: 8, row: 0, colSpan: 16, rowSpan: 120 },
+	firmware: { col: 0, row: 120, colSpan: 12, rowSpan: 112 },
+	"object-model": { col: 12, row: 120, colSpan: 12, rowSpan: 112 },
+	console: { col: 0, row: 232, colSpan: 24, rowSpan: 75 },
+	camera: { col: 0, row: 307, colSpan: 8, rowSpan: 75 },
+};
+
+/** Bed: the height map + single-point re-probe. */
+export const BED_COMPOSITION: Composition = {
+	heightmap: { col: 0, row: 0, colSpan: 16, rowSpan: 150 },
+	"probe-point": { col: 16, row: 0, colSpan: 8, rowSpan: 90 },
+	console: { col: 0, row: 150, colSpan: 24, rowSpan: 75 },
+	camera: { col: 0, row: 225, colSpan: 8, rowSpan: 75 },
+};

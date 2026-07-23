@@ -85,12 +85,19 @@ test("removeCard removes only the named slot and never reflows", () => {
 // ---- built-in screens: shippable by construction ----
 
 test("built-in screen compositions are collision-free and round-trip parse", async () => {
-	const { MACHINE_COMPOSITION, CONTROL_COMPOSITION, ACTIVITY_COMPOSITION } = await import("../src/compose/screens.ts");
+	const {
+		MACHINE_COMPOSITION, CONTROL_COMPOSITION, ACTIVITY_COMPOSITION,
+		JOBS_COMPOSITION, MACROS_COMPOSITION, SYSTEM_COMPOSITION, BED_COMPOSITION,
+	} = await import("../src/compose/screens.ts");
 	const { hasCollisions } = await import("../src/shell/panelCanvas.ts");
 	for (const [name, composition] of [
 		["machine", MACHINE_COMPOSITION],
 		["control", CONTROL_COMPOSITION],
 		["activity", ACTIVITY_COMPOSITION],
+		["jobs", JOBS_COMPOSITION],
+		["macros", MACROS_COMPOSITION],
+		["system", SYSTEM_COMPOSITION],
+		["bed", BED_COMPOSITION],
 	] as const) {
 		// keys are CardIds by type; prove the runtime data survives its own boundary
 		assert.deepEqual(parseComposition(composition), composition, `${name} round-trips`);
@@ -105,6 +112,9 @@ test("every card def has a positive natural size within the grid", () => {
 		const size = CARD_DEFS[id].size;
 		assert.ok(size.colSpan >= 1 && size.colSpan <= GRID_COLS, `${id} colSpan`);
 		assert.ok(size.rowSpan >= 1, `${id} rowSpan`);
-		assert.ok(CARD_DEFS[id].title.length > 0, `${id} title`);
+		const title = CARD_DEFS[id].title;
+		// A title is a non-empty string or a ctx-derived function (job-details,
+		// the editors) — either way the card can always name itself.
+		assert.ok(typeof title === "function" || title.length > 0, `${id} title`);
 	}
 });

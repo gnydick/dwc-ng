@@ -2,7 +2,7 @@ import { For, Show, createSignal, type JSX } from "solid-js";
 import type { FileListEntry } from "../connector/types.ts";
 import type { FileBrowser, OpResult, RemovePlan } from "./browser.ts";
 import { parseFileName } from "./path.ts";
-import { formatModified } from "./format.ts";
+import { formatModified, formatSize } from "./format.ts";
 
 /**
  * The single rendering of a domain file listing — breadcrumbs, create/rename/
@@ -19,11 +19,6 @@ import { formatModified } from "./format.ts";
  * its height, so arming a delete or surfacing an error never moves a row that
  * the operator is aiming at.
  */
-function formatSize(bytes: number): string {
-	if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-	if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`;
-	return `${bytes} B`;
-}
 
 export function FileBrowserView(props: {
 	browser: FileBrowser;

@@ -3,10 +3,9 @@ import { useApp } from "../shell/context.ts";
 import { cmd } from "../control/commands.ts";
 import { Card } from "../shell/Card.tsx";
 import { headlineRemaining, estimateSources } from "../om/estimates.ts";
+import { isJobActive, jobFileOf } from "../om/job.ts";
+import { baseName, fmtDuration } from "../files/format.ts";
 import type { PanelCanvasController } from "../shell/panelCanvas.ts";
-
-/** RRF statuses where a job is on the machine and controllable. */
-const ACTIVE_STATUSES = new Set(["processing", "paused", "pausing", "resuming", "cancelling", "simulating"]);
 
 /**
  * The print card — progress and pause/resume/cancel. It lives on the surfaces
@@ -24,11 +23,8 @@ const ACTIVE_STATUSES = new Set(["processing", "paused", "pausing", "resuming", 
 export function ActiveJobBody(props: { detailed?: boolean }) {
 	const app = useApp();
 	const job = () => app.om.om.job;
-	const jobFile = createMemo(() => {
-		const f = job().file;
-		return f !== null && typeof f.fileName === "string" && f.fileName.length > 0 ? f : null;
-	});
-	const isActive = createMemo(() => ACTIVE_STATUSES.has(app.om.om.state.status) || jobFile() !== null);
+	const jobFile = createMemo(() => jobFileOf(job()));
+	const isActive = createMemo(() => isJobActive(app.om.om.state.status, jobFile()));
 	const progress = createMemo(() => {
 		const j = job();
 		const f = jobFile();
@@ -147,19 +143,4 @@ function Fact(props: { label: string; children: unknown }) {
 	return (
 		<span class="fact"><span class="fact-label">{props.label}</span><span class="fact-val">{props.children as never}</span></span>
 	);
-}
-
-function baseName(path: string | null | undefined): string {
-	if (!path) return "";
-	const i = path.lastIndexOf("/");
-	return i >= 0 ? path.slice(i + 1) : path;
-}
-
-function fmtDuration(seconds: number): string {
-	const s = Math.round(seconds);
-	const h = Math.floor(s / 3600);
-	const m = Math.floor((s % 3600) / 60);
-	if (h > 0) return `${h}h ${m}m`;
-	if (m > 0) return `${m}m ${s % 60}s`;
-	return `${s}s`;
 }

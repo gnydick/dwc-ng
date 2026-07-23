@@ -1,7 +1,5 @@
 import { createEffect, createSignal, onCleanup, Show } from "solid-js";
 import { useApp } from "../shell/context.ts";
-import { Panel } from "../shell/Panel.tsx";
-import type { PanelCanvasController } from "../shell/panelCanvas.ts";
 import { languageFor, type EditorLang } from "./lang.ts";
 import type { EditorHandle } from "./setup.ts";
 
@@ -18,13 +16,12 @@ type Status = "loading" | "ready" | "saving" | "error";
  * often extensionless on RRF, so callers that know the domain (macros, sys)
  * pass "gcode" rather than falling back to plain text.
  *
- * It renders its OWN Panel so the file path is the card title and Revert/Save/
- * Close sit in the header's float-right zone, beside the grab handle — the same
- * header every other card has.
+ * Content-only body (the compose conversion): Revert/Save/Close moved from the
+ * old Panel header into the .editor-bar row here, because they read the
+ * editor's own state (dirty/status), which a registry's static actions closure
+ * cannot. The card's dynamic title (the file path) comes from the def.
  */
-export function FileEditor(props: {
-	id: string;
-	canvas: PanelCanvasController;
+export function FileEditorBody(props: {
 	path: string;
 	lang?: EditorLang;
 	onClose?: () => void;
@@ -88,30 +85,22 @@ export function FileEditor(props: {
 	};
 
 	return (
-		<Panel
-			id={props.id}
-			canvas={props.canvas}
-			ariaLabel="Editor"
-			class="editor-card"
-			title={props.path}
-			actions={
-				<>
-					<Show when={dirty()}>
-						<span class="editor-dirty">unsaved</span>
-					</Show>
-					<Show when={message() !== "" && !dirty()}>
-						<span class="editor-msg" classList={{ err: status() === "error" }}>{message()}</span>
-					</Show>
-					<button class="btn" onClick={() => void revert()} disabled={!dirty()}>Revert</button>
-					<button class="btn primary" onClick={() => void save()} disabled={!dirty() || status() === "saving"}>
-						{status() === "saving" ? "Saving…" : "Save"}
-					</button>
-					<Show when={props.onClose}>
-						<button class="btn" onClick={() => props.onClose?.()}>Close</button>
-					</Show>
-				</>
-			}
-		>
+		<>
+			<div class="editor-bar">
+				<Show when={dirty()}>
+					<span class="editor-dirty">unsaved</span>
+				</Show>
+				<Show when={message() !== "" && !dirty()}>
+					<span class="editor-msg" classList={{ err: status() === "error" }}>{message()}</span>
+				</Show>
+				<button class="btn" onClick={() => void revert()} disabled={!dirty()}>Revert</button>
+				<button class="btn primary" onClick={() => void save()} disabled={!dirty() || status() === "saving"}>
+					{status() === "saving" ? "Saving…" : "Save"}
+				</button>
+				<Show when={props.onClose}>
+					<button class="btn" onClick={() => props.onClose?.()}>Close</button>
+				</Show>
+			</div>
 			<div class="editor-host">
 				<div class="editor-mount" ref={host} />
 				<Show when={status() === "loading"}>
@@ -121,7 +110,7 @@ export function FileEditor(props: {
 					<div class="editor-overlay err">{message()}</div>
 				</Show>
 			</div>
-		</Panel>
+		</>
 	);
 }
 

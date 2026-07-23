@@ -13,6 +13,7 @@
  */
 import type { AppServices } from "../shell/context.ts";
 import type { Orientation } from "../shell/panelOrientation.ts";
+import type { ServiceAccessor } from "./services.ts";
 
 export interface CardCtx extends AppServices {
 	/** Uniform connection gate (replaces five per-view ad-hoc encodings). */
@@ -20,4 +21,10 @@ export interface CardCtx extends AppServices {
 	/** This slot's content-layout direction (only meaningful for cards that
 	 *  declare orientationToggle). */
 	orientation: () => Orientation;
+	/**
+	 * Reach a shared service (compose/services.ts). First access provisions it
+	 * for this screen; every later access — from any card — returns the same
+	 * instance, so two cards cannot disagree about shared state.
+	 */
+	service: ServiceAccessor;
 }
