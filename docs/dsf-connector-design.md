@@ -148,6 +148,46 @@ ever needed; no separate version probe.
 | C13 | Mock WS frames parse at one codec | `ws.ts` codec is mock-duet's only byte-level WS code; malformed input = named close, never a hang | 7 |
 | C14 | Half-switched transports unrepresentable | `switchEndpoint` deleted; toggle = persist + reload | 8 |
 
+## Ledger — known debt after the adversarial review (2026-07-23)
+
+The HIGH findings were fixed and red-checked (see the fix commit). These
+remain, none blocking, recorded here so the debt is explicit (skill rule 6:
+debt is allowed, silent debt is not):
+
+- **Duplication tripwires between the two connectors** (rung 1): the
+  base64→Uint8Array decode, the "unblockable e-stop" pipeline, and
+  GcodeFileInfo parsing each exist in both PollConnector and DsfConnector —
+  and the two fileinfo parsers use *different* trust models (Poll casts the
+  wire, Dsf parses defensively). Promotion: extract the decode and a shared
+  defensive `parseFileInfo` to a connector util; the e-stop pipeline differs
+  by transport (rr_gcode vs /machine/code) so it factors less cleanly —
+  candidate for a small shared `fireEmergencyStop(url, key)` helper.
+- **Mock fidelity gaps** (rung 3, so a connector bug could pass):
+  `/machine/fileinfo?readThumbnailContent=true` returns the same blob for
+  every thumbnail of a file, so `getThumbnail`'s offset selection is never
+  caught picking wrong; and `dsfDiff` emits full-length arrays with
+  fully-materialised elements, never the sparse per-element object diffs real
+  DSF sends — so `dsfModel.mergeValue`'s element-merge path is unit-tested
+  only, never end-to-end. Promotion: distinct thumbnail bytes per offset; a
+  mock diff mode that sparsifies object elements.
+- **C12 has untyped escape routes** (rung 6 with holes): `res.text()` in
+  download/sendCode and `atob()` in getThumbnail reject/throw outside the one
+  error seam (raw TypeError/DOMException). Benign at config boot (only
+  FileNotFoundError is special-cased there), but "no raw Error escapes" is
+  not literally true. Promotion: wrap the body reads in the seam.
+- **`onFilesChanged` is never emitted on DSF** (latent asymmetry): rr_ emits
+  it from `seqs.volChanges`; DSF's push model has no equivalent and nothing
+  consumes the event today, so no live bug — but a future file-listing
+  auto-refresh would work on rr_ and silently not on DSF.
+- **`move()` sends urlencoded** where upstream sends FormData (both
+  spec-conformant; the mock accepts both, so the choice is unfalsifiable in
+  tests) — to be confirmed on the real board in the supervised write pass.
+- **Minor**: `connect()` racing an in-flight `tryReconnect` can orphan a
+  socket (low reachability — Connect is gated on `status==="disconnected"`);
+  ws.ts tolerates non-minimal length encodings and does not validate UTF-8
+  (mock-only, harmless); the endpoint-uniqueness guard in ws.ts is
+  one-directional (rung 2).
+
 ## Phases
 
 P1. `mock-duet/src/ws.ts` — RFC6455 codec + upgrade handler (harness
