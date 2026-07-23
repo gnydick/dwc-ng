@@ -135,7 +135,7 @@ export function FansBody(props: { orientation: () => Orientation }) {
 			<For each={app.om.om.fans}>
 				{(fan, i) => (
 					<Show when={isManualFan(fan) ? fan : undefined}>
-						{f => <FanControl label={f().name || `Fan ${i()}`} index={i()} value={f().actualValue} />}
+						{f => <FanControl label={f().name || `Fan ${i()}`} index={i()} value={f().actualValue} rpm={f().rpm} />}
 					</Show>
 				)}
 			</For>
@@ -199,11 +199,17 @@ function HeaterControl(props: { label: string; kind: "tool" | "bed"; num: number
 	);
 }
 
-function FanControl(props: { label: string; index: number; value: number }) {
+function FanControl(props: { label: string; index: number; value: number; rpm: number }) {
 	const [pct, setPct] = createSignal(Math.round((props.value ?? 0) * 100));
 	return (
 		<div class="heater-ctl">
 			<span class="ctl-name">{props.label}</span>
+			{/* Live tacho reading — shown only when a tacho is configured
+			    (rpm >= 0; RRF reports -1 otherwise). Tabular figures on a
+			    reserved width so the per-poll value never jitters the row. */}
+			<Show when={props.rpm >= 0}>
+				<span class="fan-rpm" title="Tacho reading (fans[].rpm)">{props.rpm}<small>rpm</small></span>
+			</Show>
 			<label class="temp-field">
 				<input type="number" min="0" max="100" value={pct()} onInput={e => setPct(Number(e.currentTarget.value))} aria-label={`${props.label} percent`} />
 				<span class="deg">%</span>

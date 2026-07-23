@@ -44,8 +44,8 @@ const tool = (number: number, heaterIndex: number, active: number, standby: numb
 	active: [active], standby: [standby], state,
 });
 
-const fan = (name: string, value: number, thermostatic: number[] = []): Fan => ({
-	name, actualValue: value, requestedValue: value, thermostatic: { sensors: thermostatic },
+const fan = (name: string, value: number, thermostatic: number[] = [], rpm = -1): Fan => ({
+	name, actualValue: value, requestedValue: value, rpm, thermostatic: { sensors: thermostatic },
 });
 
 /** A cold, homed toolchanger with everything off — the base every scenario patches. */

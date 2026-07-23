@@ -183,8 +183,44 @@
 	font-size: 18px;
 	letter-spacing: 0.04em;
 	padding-left: 10px;
+	display: flex;
+	align-items: center;
 }
 .wordmark span { color: var(--copper); }
+
+/* Hide-nav control, tucked to the right of the wordmark. */
+.nav-hide {
+	margin-left: auto;
+	background: none;
+	border: none;
+	color: var(--silk-dim);
+	font-size: 20px;
+	line-height: 1;
+	padding: 2px 6px;
+	cursor: pointer;
+	border-radius: var(--radius);
+}
+.nav-hide:hover { color: var(--silk); background: var(--mask-700); }
+
+/* Nav hidden: the rail is gone entirely and .main takes the full width. */
+.app.nav-hidden { grid-template-columns: minmax(0, 1fr); }
+.app.nav-hidden .rail { display: none; }
+
+/* Reveal control at the head of the preflight strip (present only when
+   hidden). Fixed geometry so its appearance never reflows the chips. */
+.nav-reveal {
+	background: none;
+	border: 1px solid var(--hairline);
+	color: var(--silk);
+	font-size: 16px;
+	line-height: 1;
+	width: 30px;
+	height: 30px;
+	cursor: pointer;
+	border-radius: var(--radius);
+	flex: none;
+}
+.nav-reveal:hover { background: var(--mask-700); }
 
 /* ---------- cards ---------- */
 
@@ -1727,6 +1763,17 @@
 	text-align: right;
 }
 .baby-applied.is-live { color: var(--silk); }
+
+/* Live fan tacho readout — reserved width + tabular figures so a per-poll
+   RPM never shifts the row (same discipline as .baby-applied). */
+.fan-rpm {
+	font: 600 13px/1 var(--font-display);
+	color: var(--silk);
+	font-variant-numeric: tabular-nums;
+	min-width: 52px;
+	text-align: right;
+}
+.fan-rpm small { font-size: 9px; color: var(--silk-dim); margin-left: 3px; }
 
 /* ---------- speed factor slider (M220) ---------- */
 .speed-row { display: flex; align-items: center; gap: 10px; height: var(--ctl-h); }

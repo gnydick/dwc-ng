@@ -2,6 +2,7 @@ import { For, Match, Show, Suspense, Switch, createMemo, createSignal, lazy } fr
 import { useApp } from "./context.ts";
 import { cmd } from "../control/commands.ts";
 import { createRouter, LAB_ROUTE } from "./router.ts";
+import { navHidden, setNavHidden } from "./navState.ts";
 import {
 	BACKENDS, type Backend, rememberBackend,
 	currentBackend, writesArmed, setWritesArmed,
@@ -50,12 +51,15 @@ export default function Shell() {
 	};
 
 	return (
-		<div class="app">
+		<div class="app" classList={{ "nav-hidden": navHidden() }}>
 			{/* Outside the view switch on purpose: a blocking prompt that only
 			    renders on the view you happen to be on is the same bug as none. */}
 			<MessageBoxPrompt />
 			<aside class="rail">
-				<div class="wordmark">dwc<span>·</span>ng</div>
+				<div class="wordmark">
+					dwc<span>·</span>ng
+					<button class="nav-hide" title="Hide navigation" aria-label="Hide navigation" onClick={() => setNavHidden(true)}>‹</button>
+				</div>
 				<nav aria-label="Main">
 					<For each={screens()}>
 						{entry => (
@@ -84,6 +88,12 @@ export default function Shell() {
 
 			<div class="main">
 				<header class="preflight" aria-label="Machine preflight">
+					{/* Reveal control: only present while the nav is hidden, at the
+					    left of the strip where the rail's edge used to be — always
+					    visible and discoverable, no floating overlay to hunt for. */}
+					<Show when={navHidden()}>
+						<button class="nav-reveal" title="Show navigation" aria-label="Show navigation" onClick={() => setNavHidden(false)}>☰</button>
+					</Show>
 					<Switch>
 						<Match when={app.om.connection.status === "connected"}>
 							<span class="chip" classList={{

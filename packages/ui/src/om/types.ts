@@ -185,11 +185,14 @@ export interface FanThermostaticControl {
 	sensors: number[];
 }
 
-/** reference/objectmodel/src/fans/Fan.ts */
+/** reference/objectmodel/src/fans/index.ts (Fan) */
 export interface Fan {
 	name: string;
 	actualValue: number;
 	requestedValue: number;
+	/** Tacho reading. -1 when no tacho is configured; the live RPM otherwise
+	 *  (reference/objectmodel/src/fans/index.ts:15). */
+	rpm: number;
 	thermostatic: FanThermostaticControl;
 }
 
