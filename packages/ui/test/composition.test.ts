@@ -88,6 +88,7 @@ test("built-in screen compositions are collision-free and round-trip parse", asy
 	const {
 		MACHINE_COMPOSITION, CONTROL_COMPOSITION, ACTIVITY_COMPOSITION,
 		JOBS_COMPOSITION, MACROS_COMPOSITION, SYSTEM_COMPOSITION, BED_COMPOSITION,
+		SETTINGS_COMPOSITION,
 	} = await import("../src/compose/screens.ts");
 	const { hasCollisions } = await import("../src/shell/panelCanvas.ts");
 	for (const [name, composition] of [
@@ -98,6 +99,7 @@ test("built-in screen compositions are collision-free and round-trip parse", asy
 		["macros", MACROS_COMPOSITION],
 		["system", SYSTEM_COMPOSITION],
 		["bed", BED_COMPOSITION],
+		["settings", SETTINGS_COMPOSITION],
 	] as const) {
 		// keys are CardIds by type; prove the runtime data survives its own boundary
 		assert.deepEqual(parseComposition(composition), composition, `${name} round-trips`);

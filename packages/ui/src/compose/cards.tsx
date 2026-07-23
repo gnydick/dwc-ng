@@ -23,6 +23,9 @@ import {
 	JobFilesBody, JobDetailsBody, MacrosBody, SystemFilesBody, OmInspectorBody, MacrosEditorBody, SystemEditorBody,
 } from "../cards/FileCards.tsx";
 import { HeightmapBody, ProbePointBody } from "../cards/BedCards.tsx";
+import {
+	AxisRolesBody, DockSensorsBody, BedProbeBody, CameraConfigBody, SensorNamesBody, SavedVersionsBody, ConfigSaveBody,
+} from "../cards/SettingsCards.tsx";
 import { FirmwareBody } from "../cards/FirmwareUpdateCard.tsx";
 import { LayersBody } from "../cards/LayersCard.tsx";
 import { GcodeViewerBody } from "../gcode/GcodeViewer.tsx";
@@ -67,4 +70,18 @@ export const CARD_RENDER: Record<CardId, CardRender> = {
 	firmware: { body: () => <FirmwareBody /> },
 	heightmap: { body: ctx => <HeightmapBody ctx={ctx} /> },
 	"probe-point": { body: ctx => <ProbePointBody ctx={ctx} /> },
+	"axis-roles": { body: () => <AxisRolesBody />, actions: resetAction("axisRoles") },
+	"tool-dock-sensors": { body: () => <DockSensorsBody />, actions: resetAction("dockSensors") },
+	"bed-probe": { body: () => <BedProbeBody />, actions: resetAction("bed") },
+	"camera-config": { body: () => <CameraConfigBody />, actions: resetAction("camera") },
+	"sensor-names": { body: () => <SensorNamesBody />, actions: resetAction("sensorNames") },
+	"saved-versions": { body: () => <SavedVersionsBody /> },
+	"config-save": { body: () => <ConfigSaveBody /> },
 };
+
+/** The per-section "Reset drops the overlay" header action Settings cards share. */
+function resetAction(section: Parameters<CardCtx["config"]["resetSection"]>[0]) {
+	return (ctx: CardCtx): JSX.Element => (
+		<button class="link-btn" onClick={() => ctx.config.resetSection(section)}>Reset</button>
+	);
+}

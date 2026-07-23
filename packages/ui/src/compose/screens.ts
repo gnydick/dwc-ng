@@ -82,3 +82,16 @@ export const BED_COMPOSITION: Composition = {
 	console: { col: 0, row: 150, colSpan: 24, rowSpan: 75 },
 	camera: { col: 0, row: 225, colSpan: 8, rowSpan: 75 },
 };
+
+/** Settings: config-overlay editors + the save card (the former save-bar). */
+export const SETTINGS_COMPOSITION: Composition = {
+	"axis-roles": { col: 0, row: 0, colSpan: 12, rowSpan: 109 },
+	"camera-config": { col: 0, row: 109, colSpan: 12, rowSpan: 40 },
+	"tool-dock-sensors": { col: 12, row: 0, colSpan: 12, rowSpan: 76 },
+	"saved-versions": { col: 12, row: 76, colSpan: 12, rowSpan: 40 },
+	"bed-probe": { col: 12, row: 116, colSpan: 12, rowSpan: 45 },
+	"sensor-names": { col: 0, row: 161, colSpan: 24, rowSpan: 72 },
+	"config-save": { col: 0, row: 233, colSpan: 24, rowSpan: 26 },
+	console: { col: 0, row: 259, colSpan: 24, rowSpan: 75 },
+	camera: { col: 0, row: 334, colSpan: 8, rowSpan: 75 },
+};

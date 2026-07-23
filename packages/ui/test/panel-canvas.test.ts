@@ -5,7 +5,6 @@ import {
 	tryMove, tryResize, defaultCanvas, parseStoredCanvas, serializeCanvas, mergeCanvas,
 	applyDetent, DETENT_BREAKAWAY_ROWS, type DetentState,
 } from "../src/shell/panelCanvas.ts";
-import { SETTINGS_PANEL_DEFAULTS } from "../src/views/settings.panelDefaults.ts";
 
 const rect = (col: number, row: number, colSpan: number, rowSpan: number) => ({ col, row, colSpan, rowSpan });
 
@@ -168,13 +167,9 @@ test("serializeCanvas round-trips through parseStoredCanvas and mergeCanvas", ()
 	assert.deepEqual(mergeCanvas(parseStoredCanvas(serializeCanvas(canvas)), defaults), canvas);
 });
 
-// Machine/Jobs/Macros/System/Control/Bed/Activity layouts are asserted in
-// composition.test.ts against their composed screens — the per-view defaults
-// files those tests checked were deleted in the A3–A5 conversions.
-
-test("Settings view's default panel layout is collision-free", () => {
-	assert.equal(hasCollisions(defaultCanvas(SETTINGS_PANEL_DEFAULTS)), false);
-});
+// Every screen's layout is asserted in composition.test.ts against its
+// composed screen — the per-view defaults files the old per-view tests
+// checked were deleted in the A3–A6 conversions.
 
 // --- the resize detent at a card's exact content fit ---
 

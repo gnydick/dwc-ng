@@ -276,6 +276,50 @@ export const CARD_DEFS = {
 		tip: "config: bed.probePointCommand",
 		size: { colSpan: 8, rowSpan: 90 },
 	}),
+	/** Axis role labels (config overlay). */
+	"axis-roles": defineCard({
+		title: "Axis roles",
+		ariaLabel: "Axis roles",
+		size: { colSpan: 12, rowSpan: 109 },
+	}),
+	/** Tool dock presence sensors (config overlay). */
+	"tool-dock-sensors": defineCard({
+		title: "Tool dock sensors",
+		ariaLabel: "Tool dock sensors",
+		size: { colSpan: 12, rowSpan: 76 },
+	}),
+	/** The Bed view's probe-point command template (config overlay). */
+	"bed-probe": defineCard({
+		title: "Bed probing",
+		ariaLabel: "Bed probing",
+		size: { colSpan: 12, rowSpan: 45 },
+	}),
+	/** Camera stream URL (config overlay). */
+	"camera-config": defineCard({
+		title: "Camera",
+		ariaLabel: "Camera",
+		size: { colSpan: 12, rowSpan: 40 },
+	}),
+	/** Sensor display names (config overlay). */
+	"sensor-names": defineCard({
+		title: "Sensor names",
+		ariaLabel: "Sensor names",
+		size: { colSpan: 24, rowSpan: 72 },
+	}),
+	/** Config snapshot history + one-click revert. */
+	"saved-versions": defineCard({
+		title: "Saved versions",
+		ariaLabel: "Saved versions",
+		size: { colSpan: 12, rowSpan: 40 },
+	}),
+	/** Save the config overlay to the machine's SD / reset everything —
+	 *  the former Settings save-bar, now composable like everything else. */
+	"config-save": defineCard({
+		title: "Configuration",
+		ariaLabel: "Configuration save",
+		tip: "0:/sys/dwc-ng-config.json",
+		size: { colSpan: 24, rowSpan: 26 },
+	}),
 } as const satisfies Record<string, CardMeta>;
 
 /** I1: the only card identity that exists past a boundary. */
