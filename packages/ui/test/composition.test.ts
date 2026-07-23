@@ -82,6 +82,18 @@ test("removeCard removes only the named slot and never reflows", () => {
 	assert.equal(removeCard(emptied, "build-objects"), emptied, "removing absent = no-op");
 });
 
+// ---- built-in screens: shippable by construction ----
+
+test("built-in screen compositions are collision-free and round-trip parse", async () => {
+	const { MACHINE_COMPOSITION } = await import("../src/compose/screens.ts");
+	const { hasCollisions } = await import("../src/shell/panelCanvas.ts");
+	for (const [name, composition] of [["machine", MACHINE_COMPOSITION]] as const) {
+		// keys are CardIds by type; prove the runtime data survives its own boundary
+		assert.deepEqual(parseComposition(composition), composition, `${name} round-trips`);
+		assert.ok(!hasCollisions(composition as Record<string, never>), `${name} has no overlapping slots`);
+	}
+});
+
 // ---- registry sanity: every def is renderable-shaped ----
 
 test("every card def has a positive natural size within the grid", () => {

@@ -7,19 +7,20 @@ import { cameraViewState, setCameraViewState } from "./cameraViewState.ts";
 const SCROLL_SAVE_DEBOUNCE_MS = 150;
 
 /**
- * Camera as a regular panel, gated on the same pinned flag Settings edits.
- * Zoom (fit/native) and scroll position are global state (cameraViewState),
- * not per-instance — switching views or reloading lands on the same view.
+ * Camera stream body. Zoom (fit/native) and scroll position are global state
+ * (cameraViewState), not per-instance — switching views or reloading lands on
+ * the same view.
+ *
+ * Content-only; the pinned gate lives in the compose registry's visibleWhen
+ * (compose/defs.ts "camera") — the composed path has ONE encoding of the
+ * condition. The legacy wrapper below keeps its own Show for un-converted
+ * views.
  */
-export function CameraPanel(props: { canvas: PanelCanvasController }) {
+export function CameraBody() {
 	const app = useApp();
 	let bodyEl!: HTMLDivElement;
 	let scrollSaveTimer = 0;
 
-	// bodyEl is only assigned while this Show branch is actually mounted
-	// (camera.pinned); the effect below runs on every instance regardless of
-	// that flag, since it reacts to the *global* view state, not this view's
-	// own pinned setting — guard against calling this before/without a mount.
 	const restoreScroll = (): void => {
 		if (!bodyEl) return;
 		const s = cameraViewState();
@@ -43,6 +44,35 @@ export function CameraPanel(props: { canvas: PanelCanvasController }) {
 	});
 
 	return (
+		<div class="cam-body" classList={{ native: cameraViewState().native }} ref={bodyEl} onScroll={onScroll}>
+			<Show
+				when={app.config.config.camera.streamUrl !== ""}
+				fallback={<span>Set a stream URL in <a href="#/settings">Settings</a></span>}
+			>
+				<img
+					src={app.config.config.camera.streamUrl}
+					alt="Machine camera stream"
+					title={cameraViewState().native ? "Click to fit panel" : "Click for native resolution"}
+					onClick={() => setCameraViewState({ native: !cameraViewState().native })}
+					onLoad={() => { if (cameraViewState().native) restoreScroll(); }}
+				/>
+			</Show>
+		</div>
+	);
+}
+
+/** The header ✕ that unpins the camera everywhere (shared by both paths). */
+export function CameraHideAction() {
+	const app = useApp();
+	return (
+		<button class="card-act" title="Hide camera" aria-label="Hide camera" onClick={() => app.config.setCamera({ pinned: false })}>✕</button>
+	);
+}
+
+/** Legacy self-carding wrapper — dies with its last un-converted view. */
+export function CameraPanel(props: { canvas: PanelCanvasController }) {
+	const app = useApp();
+	return (
 		<Show when={app.config.config.camera.pinned}>
 			<Panel
 				id="camera"
@@ -50,24 +80,9 @@ export function CameraPanel(props: { canvas: PanelCanvasController }) {
 				ariaLabel="Camera"
 				class="cam-panel"
 				title="Camera"
-				actions={
-					<button class="card-act" title="Hide camera" aria-label="Hide camera" onClick={() => app.config.setCamera({ pinned: false })}>✕</button>
-				}
+				actions={<CameraHideAction />}
 			>
-				<div class="cam-body" classList={{ native: cameraViewState().native }} ref={bodyEl} onScroll={onScroll}>
-					<Show
-						when={app.config.config.camera.streamUrl !== ""}
-						fallback={<span>Set a stream URL in <a href="#/settings">Settings</a></span>}
-					>
-						<img
-							src={app.config.config.camera.streamUrl}
-							alt="Machine camera stream"
-							title={cameraViewState().native ? "Click to fit panel" : "Click for native resolution"}
-							onClick={() => setCameraViewState({ native: !cameraViewState().native })}
-							onLoad={() => { if (cameraViewState().native) restoreScroll(); }}
-						/>
-					</Show>
-				</div>
+				<CameraBody />
 			</Panel>
 		</Show>
 	);

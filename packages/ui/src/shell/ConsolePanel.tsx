@@ -10,12 +10,24 @@ import type { PanelCanvasController } from "./panelCanvas.ts";
  * Gabe's macros emit M118 messages that are the reason to run them, so the
  * history (localStorage-persisted, see om/consoleLog.ts) stays visible
  * rather than scrolling past in a one-line drawer.
+ *
+ * ConsoleBody is the content-only form for the compose registry
+ * (compose/defs.ts "console"); ConsolePanel is the legacy wrapper.
  */
+export function ConsoleBody() {
+	return (
+		<>
+			<ConsoleHistory />
+			<ConsoleForm />
+		</>
+	);
+}
+
+/** Legacy self-carding wrapper — dies with its last un-converted view. */
 export function ConsolePanel(props: { canvas: PanelCanvasController }) {
 	return (
 		<Panel id="console" canvas={props.canvas} ariaLabel="Console" class="console-panel" title="Console">
-			<ConsoleHistory />
-			<ConsoleForm />
+			<ConsoleBody />
 		</Panel>
 	);
 }

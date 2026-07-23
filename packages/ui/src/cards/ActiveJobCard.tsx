@@ -17,8 +17,11 @@ const ACTIVE_STATUSES = new Set(["processing", "paused", "pausing", "resuming", 
  * It renders in every state rather than vanishing when idle. That keeps one
  * card as the single answer to "what is the machine printing?", and means the
  * panel does not pop in and out of a layout the operator arranged.
+ *
+ * Content-only body; chrome comes from the compose registry (compose/defs.ts
+ * "active-job" / "active-job-detailed") or the legacy wrapper below.
  */
-export function ActiveJobCard(props: { canvas: PanelCanvasController; detailed?: boolean }) {
+export function ActiveJobBody(props: { detailed?: boolean }) {
 	const app = useApp();
 	const job = () => app.om.om.job;
 	const jobFile = createMemo(() => {
@@ -42,92 +45,101 @@ export function ActiveJobCard(props: { canvas: PanelCanvasController; detailed?:
 		<Show
 			when={isActive()}
 			fallback={
-				<Card id="active-job" canvas={props.canvas} ariaLabel="Active job" class="job-active" title="Printing" tip="job · state">
-					<Show when={app.om.om.job.lastFileName} fallback={<p class="job-empty">No job running.</p>}>
-						{last => (
-							<>
-								<p class="job-empty">No job running. Last: {baseName(last())}</p>
-								{/* Re-run the last file — a plain M32 on it, the same code Jobs
-								    sends to start a print. Only offered when a last file exists. */}
-								<div class="btn-row">
-									<button
-										class="btn btn-go"
-										title={`Reprint ${baseName(last())}`}
-										onClick={() => void app.connector.sendCode(cmd.print(last())).catch(() => undefined)}
-									>
-										Reprint
-									</button>
-								</div>
-							</>
-						)}
-					</Show>
-				</Card>
-			}
-		>
-			<Card id="active-job" canvas={props.canvas} ariaLabel="Active job" class="job-active" title="Printing" tip="job · state">
-				<Show when={jobFile()} fallback={<p class="job-empty">{app.om.om.state.status}…</p>}>
-					{file => (
+				<Show when={app.om.om.job.lastFileName} fallback={<p class="job-empty">No job running.</p>}>
+					{last => (
 						<>
-							<div class="job-active-head">
-								<span class="fname">{baseName(file().fileName)}</span>
-								<span class={`chip chip-${app.om.om.state.status === "paused" ? "warn" : "busy"}`}>
-									<span class="dot" />{app.om.om.state.status}
-								</span>
-							</div>
-							<Show when={progress() !== null}>
-								<div class="progress" role="progressbar" aria-valuenow={Math.round(progress()!)}>
-									<div class="progress-fill" style={{ width: `${progress()!}%` }} />
-									<span class="progress-label">{progress()!.toFixed(1)}%</span>
-								</div>
-							</Show>
-							<div class="job-facts">
-								<Show when={job().layer !== null}>
-									<Fact label="Layer">{job().layer} / {file().numLayers}</Fact>
-								</Show>
-								<Show when={job().duration !== null}>
-									<Fact label="Elapsed">{fmtDuration(job().duration!)}</Fact>
-								</Show>
-								<Show when={headline()}>
-									{h => <Fact label="Remaining">{fmtDuration(h().seconds)}</Fact>}
-								</Show>
-							</div>
-							{/* All RRF estimate sources, subordinate to the headline. Only
-							    on the detailed (Activity) surface — the compact control cards
-							    on Machine/Control stay a single actionable "Remaining" so their
-							    slot never gains a row and reflows the operator's layout. Shown
-							    only when more than one exists — a lone source would just
-							    repeat the "Remaining" figure above. */}
-							<Show when={props.detailed && sources().length > 1}>
-								<div class="est-sources">
-									<span class="est-cap">est.</span>
-									<For each={sources()}>
-										{s => (
-											<span class="est-src">
-												<span class="est-name">{s.source}</span>
-												<span class="est-val">{fmtDuration(s.seconds)}</span>
-											</span>
-										)}
-									</For>
-								</div>
-							</Show>
+							<p class="job-empty">No job running. Last: {baseName(last())}</p>
+							{/* Re-run the last file — a plain M32 on it, the same code Jobs
+							    sends to start a print. Only offered when a last file exists. */}
 							<div class="btn-row">
-								{/* job-toggle reserves the wider label's width so Cancel can't
-								    slide under the pointer when the job changes state. */}
-								<Switch>
-									<Match when={app.om.om.state.status === "paused"}>
-										<button class="btn job-toggle" onClick={() => void app.connector.sendCode("M24")}>Resume</button>
-									</Match>
-									<Match when={true}>
-										<button class="btn job-toggle" onClick={() => void app.connector.sendCode("M25")}>Pause</button>
-									</Match>
-								</Switch>
-								<button class="btn btn-danger" onClick={() => void app.connector.sendCode("M0")}>Cancel</button>
+								<button
+									class="btn btn-go"
+									title={`Reprint ${baseName(last())}`}
+									onClick={() => void app.connector.sendCode(cmd.print(last())).catch(() => undefined)}
+								>
+									Reprint
+								</button>
 							</div>
 						</>
 					)}
 				</Show>
-			</Card>
+			}
+		>
+			<Show when={jobFile()} fallback={<p class="job-empty">{app.om.om.state.status}…</p>}>
+				{file => (
+					<>
+						<div class="job-active-head">
+							<span class="fname">{baseName(file().fileName)}</span>
+							<span class={`chip chip-${app.om.om.state.status === "paused" ? "warn" : "busy"}`}>
+								<span class="dot" />{app.om.om.state.status}
+							</span>
+						</div>
+						<Show when={progress() !== null}>
+							<div class="progress" role="progressbar" aria-valuenow={Math.round(progress()!)}>
+								<div class="progress-fill" style={{ width: `${progress()!}%` }} />
+								<span class="progress-label">{progress()!.toFixed(1)}%</span>
+							</div>
+						</Show>
+						<div class="job-facts">
+							<Show when={job().layer !== null}>
+								<Fact label="Layer">{job().layer} / {file().numLayers}</Fact>
+							</Show>
+							<Show when={job().duration !== null}>
+								<Fact label="Elapsed">{fmtDuration(job().duration!)}</Fact>
+							</Show>
+							<Show when={headline()}>
+								{h => <Fact label="Remaining">{fmtDuration(h().seconds)}</Fact>}
+							</Show>
+						</div>
+						{/* All RRF estimate sources, subordinate to the headline. Only
+						    on the detailed surface — the compact control cards stay a
+						    single actionable "Remaining" so their slot never gains a
+						    row and reflows the operator's layout. Shown only when more
+						    than one exists — a lone source would just repeat the
+						    "Remaining" figure above. */}
+						<Show when={props.detailed && sources().length > 1}>
+							<div class="est-sources">
+								<span class="est-cap">est.</span>
+								<For each={sources()}>
+									{s => (
+										<span class="est-src">
+											<span class="est-name">{s.source}</span>
+											<span class="est-val">{fmtDuration(s.seconds)}</span>
+										</span>
+									)}
+								</For>
+							</div>
+						</Show>
+						<div class="btn-row">
+							{/* job-toggle reserves the wider label's width so Cancel can't
+							    slide under the pointer when the job changes state. */}
+							<Switch>
+								<Match when={app.om.om.state.status === "paused"}>
+									<button class="btn job-toggle" onClick={() => void app.connector.sendCode("M24")}>Resume</button>
+								</Match>
+								<Match when={true}>
+									<button class="btn job-toggle" onClick={() => void app.connector.sendCode("M25")}>Pause</button>
+								</Match>
+							</Switch>
+							<button class="btn btn-danger" onClick={() => void app.connector.sendCode("M0")}>Cancel</button>
+						</div>
+					</>
+				)}
+			</Show>
 		</Show>
+	);
+}
+
+/**
+ * Legacy self-carding wrapper — dies with its last un-converted consumer
+ * (Control, Activity, Card Lab). One Card wrapper with the state Show INSIDE
+ * (the old shape mounted a whole identical Card per branch).
+ */
+export function ActiveJobCard(props: { canvas: PanelCanvasController; detailed?: boolean }) {
+	return (
+		<Card id="active-job" canvas={props.canvas} ariaLabel="Active job" class="job-active" title="Printing" tip="job · state">
+			<ActiveJobBody detailed={props.detailed} />
+		</Card>
 	);
 }
 

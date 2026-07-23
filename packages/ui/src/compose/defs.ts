@@ -44,6 +44,69 @@ function defineCard(meta: CardMeta): CardMeta {
  * phases A2–A6); the starting entry proves the mechanism end to end.
  */
 export const CARD_DEFS = {
+	/** 7-axis DRO. */
+	position: defineCard({
+		title: "Position",
+		ariaLabel: "Position",
+		tip: "move.axes",
+		orientationToggle: true,
+		size: { colSpan: 12, rowSpan: 95 },
+	}),
+	/** Tools & heaters table (bed has no standby cell). */
+	"tools-heaters": defineCard({
+		title: "Tools & heaters",
+		ariaLabel: "Tools and heaters",
+		tip: "tools · heat.heaters",
+		orientationToggle: true,
+		size: { colSpan: 12, rowSpan: 89 },
+	}),
+	/** The print card — progress + pause/resume/cancel; Reprint when idle. */
+	"active-job": defineCard({
+		title: "Printing",
+		ariaLabel: "Active job",
+		tip: "job · state",
+		class: "job-active",
+		size: { colSpan: 12, rowSpan: 40 },
+	}),
+	/** Same card with the three-source estimate breakdown (monitoring surfaces). */
+	"active-job-detailed": defineCard({
+		title: "Printing",
+		ariaLabel: "Active job",
+		tip: "job · state",
+		class: "job-active",
+		size: { colSpan: 12, rowSpan: 40 },
+	}),
+	/** Endstops, filament monitors, probes. */
+	sensors: defineCard({
+		title: "Sensors",
+		ariaLabel: "Sensors",
+		tip: "sensors.endstops · filamentMonitors · probes",
+		orientationToggle: true,
+		size: { colSpan: 12, rowSpan: 42 },
+	}),
+	/** Live heater chart. */
+	temperatures: defineCard({
+		title: "Temperatures",
+		ariaLabel: "Temperatures",
+		tip: "heat.heaters · live",
+		size: { colSpan: 24, rowSpan: 80 },
+	}),
+	/** Console — reply log + G-code entry. */
+	console: defineCard({
+		title: "Console",
+		ariaLabel: "Console",
+		class: "console-panel",
+		size: { colSpan: 24, rowSpan: 75 },
+	}),
+	/** Camera stream. The ONE encoding of the pinned condition (I3) — it
+	 *  drives both the mount and the cell-release on composed screens. */
+	camera: defineCard({
+		title: "Camera",
+		ariaLabel: "Camera",
+		class: "cam-panel",
+		size: { colSpan: 8, rowSpan: 75 },
+		visibleWhen: ctx => ctx.config.config.camera.pinned,
+	}),
 	/** Per-object cancel (M486) — already content-only, zero props. */
 	"build-objects": defineCard({
 		title: "Objects",

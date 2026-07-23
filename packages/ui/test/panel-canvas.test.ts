@@ -5,7 +5,6 @@ import {
 	tryMove, tryResize, defaultCanvas, parseStoredCanvas, serializeCanvas, mergeCanvas,
 	applyDetent, DETENT_BREAKAWAY_ROWS, type DetentState,
 } from "../src/shell/panelCanvas.ts";
-import { MACHINE_PANEL_DEFAULTS } from "../src/views/machine.panelDefaults.ts";
 import { JOBS_PANEL_DEFAULTS } from "../src/views/jobs.panelDefaults.ts";
 import { MACROS_PANEL_DEFAULTS } from "../src/views/macros.panelDefaults.ts";
 import { SYSTEM_PANEL_DEFAULTS } from "../src/views/system.panelDefaults.ts";
@@ -175,9 +174,8 @@ test("serializeCanvas round-trips through parseStoredCanvas and mergeCanvas", ()
 	assert.deepEqual(mergeCanvas(parseStoredCanvas(serializeCanvas(canvas)), defaults), canvas);
 });
 
-test("Machine view's default panel layout is collision-free", () => {
-	assert.equal(hasCollisions(defaultCanvas(MACHINE_PANEL_DEFAULTS)), false);
-});
+// Machine's layout is asserted in composition.test.ts against its composed
+// screen — the defaults file this checked was deleted in the A3 conversion.
 
 test("Jobs view's default panel layout is collision-free", () => {
 	assert.equal(hasCollisions(defaultCanvas(JOBS_PANEL_DEFAULTS)), false);

@@ -11,10 +11,10 @@ import type { PanelCanvasController } from "../shell/panelCanvas.ts";
  * heaterSeries, which keeps the bed's gold out of the tool palette so no two
  * lines look alike.
  *
- * Extracted from views/Machine.tsx (2026-07-22) to render in the Card Lab and
- * be reusable across views.
+ * Content-only body; chrome comes from the compose registry
+ * (compose/defs.ts "temperatures") or the legacy wrapper below.
  */
-export function TemperaturesCard(props: { canvas: PanelCanvasController }) {
+export function TemperaturesBody() {
 	const app = useApp();
 	const chartSeries = createMemo<ChartSeries[]>(() =>
 		heaterSeries({
@@ -26,10 +26,17 @@ export function TemperaturesCard(props: { canvas: PanelCanvasController }) {
 	);
 
 	return (
+		<Show when={chartSeries().length} fallback={<p class="job-empty">Waiting for heaters…</p>}>
+			<TemperatureChart data={app.temps.data} series={chartSeries()} height={220} />
+		</Show>
+	);
+}
+
+/** Legacy self-carding wrapper — dies with its last un-converted consumer (Card Lab). */
+export function TemperaturesCard(props: { canvas: PanelCanvasController }) {
+	return (
 		<Card id="temperatures" canvas={props.canvas} ariaLabel="Temperatures" title="Temperatures" tip="heat.heaters · live">
-			<Show when={chartSeries().length} fallback={<p class="job-empty">Waiting for heaters…</p>}>
-				<TemperatureChart data={app.temps.data} series={chartSeries()} height={220} />
-			</Show>
+			<TemperaturesBody />
 		</Card>
 	);
 }

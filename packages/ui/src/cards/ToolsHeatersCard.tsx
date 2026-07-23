@@ -3,6 +3,7 @@ import { useApp } from "../shell/context.ts";
 import type { Heater } from "../om/types.ts";
 import { Card } from "../shell/Card.tsx";
 import { HeaterState } from "./HeaterState.tsx";
+import type { Orientation } from "../shell/panelOrientation.ts";
 import type { PanelCanvasController } from "../shell/panelCanvas.ts";
 
 /**
@@ -11,10 +12,10 @@ import type { PanelCanvasController } from "../shell/panelCanvas.ts";
  * dock-presence dot sits by each tool name (green docked, gold away) from the
  * user-mapped gpIn sensor. Vertical table or horizontal strip via the toggle.
  *
- * Extracted from views/Machine.tsx (2026-07-22) so the same card renders in the
- * Card Lab and could be placed on other views without copy-paste.
+ * Content-only body; chrome comes from the compose registry
+ * (compose/defs.ts "tools-heaters") or the legacy wrapper below.
  */
-export function ToolsHeatersCard(props: { canvas: PanelCanvasController }) {
+export function ToolsHeatersBody(props: { orientation: () => Orientation }) {
 	const app = useApp();
 
 	const heaterAt = (index: number): Heater | null => app.om.om.heat.heaters[index] ?? null;
@@ -31,9 +32,9 @@ export function ToolsHeatersCard(props: { canvas: PanelCanvasController }) {
 	};
 
 	return (
-		<Card id="tools-heaters" canvas={props.canvas} ariaLabel="Tools and heaters" title="Tools & heaters" tip="tools · heat.heaters" orientationToggle>
+		<>
 			<Show
-				when={props.canvas.orientationFor("tools-heaters") === "horizontal"}
+				when={props.orientation() === "horizontal"}
 				fallback={
 					<table class="heat-table">
 						<thead>
@@ -156,6 +157,15 @@ export function ToolsHeatersCard(props: { canvas: PanelCanvasController }) {
 					</Show>
 				</div>
 			</Show>
+		</>
+	);
+}
+
+/** Legacy self-carding wrapper — dies with its last un-converted consumer (Card Lab). */
+export function ToolsHeatersCard(props: { canvas: PanelCanvasController }) {
+	return (
+		<Card id="tools-heaters" canvas={props.canvas} ariaLabel="Tools and heaters" title="Tools & heaters" tip="tools · heat.heaters" orientationToggle>
+			<ToolsHeatersBody orientation={() => props.canvas.orientationFor("tools-heaters")} />
 		</Card>
 	);
 }
