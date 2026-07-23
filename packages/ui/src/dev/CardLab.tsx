@@ -9,6 +9,9 @@ import { PanelCanvas } from "../shell/PanelCanvas.tsx";
 import { createPanelCanvas } from "../shell/panelCanvas.ts";
 import { CARD_DEFS, allCardIds, type CardId } from "../compose/defs.ts";
 import { RegistryCard, cardTitleOf } from "../compose/RegistryCard.tsx";
+import { CustomCard } from "../compose/CustomCard.tsx";
+import { CardStudio } from "../compose/CardStudio.tsx";
+import { isCustomCardId, type CustomCardId, type SlotId } from "../compose/composition.ts";
 import { createServicePool } from "../compose/services.ts";
 import type { CardCtx } from "../compose/ctx.ts";
 import { SCENARIOS, scenarioModel, type ScenarioId } from "./cardScenarios.ts";
@@ -34,7 +37,11 @@ export default function CardLab() {
 	const outer = useApp();
 
 	const [scenario, setScenario] = createSignal<ScenarioId>("printing");
-	const [featured, setFeatured] = createSignal<CardId>("active-job-detailed");
+	const [featured, setFeatured] = createSignal<SlotId>("active-job-detailed");
+	// The card studio, launchable from the lab — authoring next to the
+	// scenario switcher, so a new card can be tested against printing/fault
+	// states the moment it exists. null = closed; id null = new card.
+	const [studio, setStudio] = createSignal<{ id: CustomCardId | null } | null>(null);
 
 	// Synthetic OM store, swapped when the scenario changes — reconcile per
 	// top-level key exactly as om/store.ts does.
@@ -78,7 +85,14 @@ export default function CardLab() {
 		id => id === featured(),
 	);
 
-	const ctxFor = (id: CardId): CardCtx => ({
+	// User-authored cards join the lab as they exist (incl. ones made HERE):
+	// adopt a slot for each at the custom default size.
+	const customIds = (): CustomCardId[] => Object.keys(outer.config.config.cards) as CustomCardId[];
+	createEffect(() => {
+		for (const id of customIds()) canvas.ensureSlot(id, { col: 0, row: 0, colSpan: 12, rowSpan: 40 });
+	});
+
+	const ctxFor = (id: SlotId): CardCtx => ({
 		...services,
 		connected,
 		orientation: () => canvas.orientationFor(id),
@@ -97,6 +111,19 @@ export default function CardLab() {
 							</button>
 						)}
 					</For>
+					<For each={customIds()}>
+						{id => (
+							<button class="lab-pill lab-pill-custom" aria-pressed={featured() === id} onClick={() => setFeatured(id)}>
+								{outer.config.config.cards[id]!.name}
+							</button>
+						)}
+					</For>
+					<button class="lab-pill lab-pill-new" onClick={() => setStudio({ id: null })}>+ New card</button>
+					<Show when={isCustomCardId(featured()) ? featured() as CustomCardId : null}>
+						{id => (
+							<button class="lab-pill" onClick={() => setStudio({ id: id() })}>✎ Edit</button>
+						)}
+					</Show>
 				</div>
 			</div>
 			<div class="lab-bar">
@@ -119,9 +146,34 @@ export default function CardLab() {
 					    visibleWhen is deliberately NOT applied here — the lab's job is
 					    to show the card, whatever the scenario says. */}
 					<Show when={featured()} keyed>
-						{id => <RegistryCard id={id} canvas={canvas} ctx={ctxFor(id)} />}
+						{id => (
+							<Show
+								when={isCustomCardId(id) ? id : null}
+								fallback={<RegistryCard id={id as CardId} canvas={canvas} ctx={ctxFor(id)} />}
+							>
+								{customId => <CustomCard id={customId()} canvas={canvas} ctx={ctxFor(id)} />}
+							</Show>
+						)}
 					</Show>
 				</PanelCanvas>
+				<Show when={studio()} keyed>
+					{s => (
+						<CardStudio
+							cardId={s.id}
+							ctx={ctxFor(s.id ?? featured())}
+							onSaved={(id, name, specJson) => {
+								if (id === null) {
+									const minted = outer.config.addCustomCard(name, specJson) as CustomCardId;
+									setFeatured(minted); // straight onto the bench
+								} else {
+									outer.config.updateCustomCard(id, { name, spec: specJson });
+								}
+								setStudio(null);
+							}}
+							onClose={() => setStudio(null)}
+						/>
+					)}
+				</Show>
 			</AppContext.Provider>
 		</div>
 	);

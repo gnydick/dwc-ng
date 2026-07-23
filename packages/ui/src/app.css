@@ -753,6 +753,8 @@
 .lab-pill:hover { color: var(--silk); }
 .lab-pill[aria-pressed="true"] { color: var(--copper-bright); border-color: var(--copper); background: rgba(217, 133, 59, 0.1); }
 .lab-note { font-size: 12px; color: var(--silk-dim); font-style: italic; }
+.lab-pill-custom { border-style: dashed; }
+.lab-pill-new { color: var(--ok); border-color: rgba(111, 191, 143, 0.5); }
 .lab-canvas { padding-bottom: 240px; }
 
 .console-form { display: flex; gap: 8px; flex: 0 0 auto; }

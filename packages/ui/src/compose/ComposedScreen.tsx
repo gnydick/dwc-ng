@@ -16,7 +16,6 @@
  */
 import { For, Show, createEffect, createMemo, createSignal, untrack } from "solid-js";
 import { useApp } from "../shell/context.ts";
-import { Card } from "../shell/Card.tsx";
 import { PanelCanvas } from "../shell/PanelCanvas.tsx";
 import { createPanelCanvas } from "../shell/panelCanvas.ts";
 import { CARD_DEFS, allCardIds, parseCardId, type CardId } from "./defs.ts";
@@ -24,8 +23,7 @@ import { RegistryCard, cardTitleOf } from "./RegistryCard.tsx";
 import { addCard, isCustomCardId, removeCard, slotsOf, type Composition, type CustomCardId, type SlotId } from "./composition.ts";
 import { createServicePool } from "./services.ts";
 import { resolveScreen, screenList, type ScreenEntry } from "./screens.ts";
-import { ControlList } from "./controls/ControlList.tsx";
-import { parseControlSpecText } from "./controls/parse.ts";
+import { CustomCard } from "./CustomCard.tsx";
 import { CardStudio } from "./CardStudio.tsx";
 import type { CardCtx } from "./ctx.ts";
 
@@ -114,41 +112,6 @@ export function ComposedScreen(props: { screenId: string }) {
 				</For>
 			</PanelCanvas>
 		</>
-	);
-}
-
-/**
- * A user-authored card (phase B2): its spec is JSON text in the config
- * overlay, parsed and compiled through the untrusted boundary HERE — a
- * broken spec costs this card an error body naming the problem, never the
- * screen. The title is the author's name for it; the tip declares its
- * provenance so a shared card can't masquerade as a built-in.
- */
-function CustomCard(props: { id: CustomCardId; canvas: Parameters<typeof RegistryCard>[0]["canvas"]; ctx: CardCtx }) {
-	const app = useApp();
-	const def = createMemo(() => app.config.config.cards[props.id]);
-	const parsed = createMemo(() => {
-		const d = def();
-		return d === undefined ? null : parseControlSpecText(d.spec);
-	});
-	return (
-		<Show when={def()}>
-			{d => (
-				<Card id={props.id} canvas={props.canvas} ariaLabel={d().name} title={d().name} tip="custom card">
-					<Show
-						when={(() => { const p = parsed(); return p !== null && p.ok ? p.spec : null; })()}
-						fallback={
-							<p class="job-empty">
-								Card error: {(() => { const p = parsed(); return p !== null && !p.ok ? p.error : ""; })()}
-							</p>
-						}
-						keyed
-					>
-						{spec => <ControlList spec={spec} ctx={props.ctx} />}
-					</Show>
-				</Card>
-			)}
-		</Show>
 	);
 }
 
