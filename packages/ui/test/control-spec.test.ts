@@ -143,6 +143,7 @@ test("the weld: every builtin gcode-button template resolves to its cmd.* form",
 		// Homing
 		"Home All": cmd.homeAll(),
 		"Home {axis.label}": cmd.homeAxis("U"),
+		"Bed Tram": cmd.bedTram(),
 		"All": cmd.releaseAllMotors(),
 		"{axis.letter}": cmd.releaseAxis("U"),
 		// Movement

@@ -27,6 +27,10 @@ export const HOMING_SPEC = compileControlSpec({
 					enrich: "axisLabel",
 					node: { type: "gcode-button", label: "Home {axis.label}", template: "G28 {axis.letter}" },
 				},
+				// Bed tramming (G32 → bed.g) as the last grid cell, right after
+				// the per-axis homes (…Home C) — bed.g wants the machine homed
+				// first, so it reads as the step after homing.
+				{ type: "gcode-button", label: "Bed Tram", template: "G32", variant: "go" },
 			],
 		},
 		{

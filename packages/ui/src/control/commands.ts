@@ -56,6 +56,10 @@ export const cmd = {
 	// --- homing ---
 	homeAll: (): string => "G28",
 	homeAxis: (axis: string): string => `G28 ${axis}`,
+	/** Run bed.g — bed tramming / leveling. On this toolchanger bed.g levels
+	 *  the bed by moving the Z leadscrews (UVW) independently. Bare G32, no
+	 *  params (reference/duet-gcode.md G32; DWC sends the same). */
+	bedTram: (): string => "G32",
 
 	// --- tools ---
 	/**
