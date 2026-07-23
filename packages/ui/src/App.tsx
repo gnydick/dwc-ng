@@ -3,7 +3,7 @@ import { createOmStore } from "./om/store.ts";
 import { createConfigStore } from "./config/store.ts";
 import { createTemperatureHistory } from "./om/temperature.ts";
 import { createConnector } from "./connector/index.ts";
-import { initialBackend, isRealBackend, writesArmed } from "./dev/backend.ts";
+import { currentBackend, isRealBackend, writesArmed } from "./dev/backend.ts";
 import { guardWrites } from "./dev/writeGuard.ts";
 import { AppContext } from "./shell/context.ts";
 import Shell from "./shell/Shell.tsx";
@@ -18,7 +18,14 @@ export default function App() {
 	// backend ("", empty password) served by the machine itself. The transport
 	// comes from the backend record — createConnector is the only construction
 	// site, so which class runs is decided in exactly one place (C1).
-	const backend = initialBackend();
+	//
+	// This reads the SAME currentBackend() the write guard reads (isRealBackend
+	// below), not a second initialBackend() call: the guard's central question
+	// — is this the real board? — must have ONE source of truth, or a boot that
+	// built the connector from one derivation and guarded it by another could
+	// disagree (skill §2.8; and the 2026-07-16 real-hardware incident is why
+	// this is the wrong place for a duplicated derivation).
+	const backend = currentBackend();
 	const transport = createConnector(backend, om.events);
 	// Dev-only: mutations fail closed while a REAL backend is selected unless
 	// writes are armed (see writeGuard.ts). Reads are untouched. In production

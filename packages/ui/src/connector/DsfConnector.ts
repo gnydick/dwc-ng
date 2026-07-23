@@ -138,7 +138,15 @@ export class DsfConnector implements Connector {
 			return; // sessionless parity
 		}
 		if (res.status === 401 || res.status === 403) throw new InvalidPasswordError();
-		if (!res.ok) return; // 404 = pre-3.4-b4; others degrade the same way
+		// 404 alone is the sessionless fallback: DSF before 3.4-b4 has no
+		// connect route, so proceeding keyless is correct. Every other non-ok
+		// status is a real fault (500 generic, 502 incompatible DCS, 503 DCS
+		// down per the spec) and must surface as itself — swallowing them made
+		// the seam's later 401 replay retry connect, fail again, and finally
+		// throw InvalidPasswordError, telling the operator the password was
+		// wrong when DCS was simply down.
+		if (res.status === 404) return;
+		if (!res.ok) throw new OperationFailedError(`/machine/connect: HTTP ${res.status}`);
 		const body = await res.json().catch(() => null) as unknown;
 		if (isPlainObject(body)) {
 			const key = body["sessionKey"];
@@ -193,6 +201,15 @@ export class DsfConnector implements Connector {
 			ws.addEventListener("error", () => die("socket error"));
 			ws.addEventListener("close", event => die(`closed (${event.code})`));
 
+			// The deadline is armed HERE, not after the first frame: a socket
+			// that completes the handshake and then says nothing is exactly the
+			// case that used to hang connect() forever — and, because a
+			// reconnect attempt awaits this promise, it stalled the whole
+			// ladder with it (no timer, no next attempt, no Connect button).
+			// lastSeen is stamped at construction, so the first frame is
+			// covered by the same clock as every later one.
+			this.startLiveness(ws, () => lastSeen, die);
+
 			// ONE persistent handler, installed before any ack ever goes out:
 			// pushes can arrive coalesced back-to-back, and a listener that is
 			// re-registered per awaited frame loses the ones in between
@@ -216,16 +233,24 @@ export class DsfConnector implements Connector {
 				const current = model ?? createDsfModel();
 				model = current;
 				const digest = first ? current.applyFull(frame) : current.applyDiff(frame);
-				this.emitDigest(current, digest);
-				if (first) {
-					this.events.onBoardInfo?.({ emulated: false, transport: "dsf", boardType: boardTypeOf(current) });
-				}
 				// The ONE ack site (C6): exactly one "OK\n" per processed push,
-				// full frame and diff alike, sent only after every emission for
-				// the frame has landed. No other code sends an ack.
+				// full frame and diff alike. The emission is wrapped because
+				// the stream is ACK-GATED — a consumer that throws (a store
+				// reconcile shape clash, a card body bug) would otherwise skip
+				// the ack, the server would never push again, and PING/PONG
+				// would keep reporting a healthy socket: a green chip over a
+				// model frozen at the throw. A consumer's exception is the
+				// consumer's bug, never the transport's, so it is swallowed
+				// here and cannot escape the handler — the channel keeps
+				// turning and the ack always goes out.
+				try {
+					this.emitDigest(current, digest);
+					if (first) {
+						this.events.onBoardInfo?.({ emulated: false, transport: "dsf", boardType: boardTypeOf(current) });
+					}
+				} catch { /* a downstream consumer threw — not our concern; keep the channel alive */ }
 				if (ws.readyState === WebSocket.OPEN) ws.send("OK\n");
 				if (first) {
-					this.startLiveness(ws, () => lastSeen, die);
 					this.setStatus("connected");
 					settled = true;
 					resolve();
@@ -239,6 +264,15 @@ export class DsfConnector implements Connector {
 	 * — no inbound frame for 2×ping + 1 s means the socket is presumed dead
 	 * (a silently dead socket would otherwise serve week-old truth) — then
 	 * pings. Expiry goes through die(): teardown + ladder, never limbo.
+	 *
+	 * PONG resets the deadline, and that is correct given ack-gating: DCS
+	 * answers PING from the same message loop that pushes model diffs, so a
+	 * PONG proves that loop is alive. The only state where PONGs flow but
+	 * model pushes do not is a genuinely idle machine with nothing to push —
+	 * not a stall. (This holds ONLY because the ack fires unconditionally in
+	 * the message handler; before that, a throwing emission froze the push
+	 * stream while PONGs masked it — the two are one invariant, fixed
+	 * together.)
 	 */
 	private startLiveness(ws: WebSocket, lastSeenOf: () => number, die: (reason: string) => void): void {
 		this.stopLiveness(); // defensive: one timer, ever
@@ -301,11 +335,18 @@ export class DsfConnector implements Connector {
 			return "";
 		}
 		if (this.status !== "connected") throw new DisconnectedError();
-		// DSF answers when the code has completed; silent codes answer ""
-		// right here (they are never queued on the WS messages channel, so
-		// nothing repeats them later).
+		// DSF answers a SOLICITED code's reply in the POST body only — the
+		// spec says the reply goes to the WS `messages` channel ONLY when
+		// async=true (sbc-OpenAPI.yaml), and we post synchronously. So this is
+		// the sole delivery of that reply: emit it on onReply too, because the
+		// console reads the EVENT, not sendCode's return value (ConsolePanel
+		// discards it). Without this, typing M115 shows nothing. Empty replies
+		// (most silent codes) are not console traffic — matching the mock,
+		// which does not queue "" either.
 		const res = await this.request("POST", this.machineUrl("code"), { body: code });
-		return (await res.text()).trim();
+		const reply = (await res.text()).trim();
+		if (reply !== "") this.events.onReply?.(reply);
+		return reply;
 	}
 
 	/**

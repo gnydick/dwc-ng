@@ -1,6 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { Buffer } from "node:buffer";
+import http from "node:http";
+import { createHash } from "node:crypto";
 import type { Duplex } from "node:stream";
 import { createMockServer, type MockServer, type MockServerOptions } from "../../mock-duet/src/server.ts";
 import { THUMBNAIL_PNG_BASE64 } from "../../mock-duet/src/files.ts";
@@ -112,6 +114,43 @@ async function startHarness(
 			await connector.disconnect().catch(() => undefined);
 			await mock.close().catch(() => undefined);
 		},
+	};
+}
+
+/**
+ * A bare HTTP server that completes the RFC6455 handshake and then says
+ * NOTHING — the "socket opens but never pushes" fault the mock cannot
+ * express (it always sends the full model on connection). Used to prove the
+ * liveness deadline is armed before the first frame.
+ */
+function createSilentUpgradeServer(): { listen(): Promise<number>; close(): Promise<void> } {
+	const server = http.createServer();
+	const sockets: Duplex[] = [];
+	server.on("upgrade", (req, socket) => {
+		sockets.push(socket);
+		const key = req.headers["sec-websocket-key"] ?? "";
+		const accept = createHash("sha1")
+			.update(key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11")
+			.digest("base64");
+		socket.write(
+			"HTTP/1.1 101 Switching Protocols\r\n" +
+			"Upgrade: websocket\r\nConnection: Upgrade\r\n" +
+			`Sec-WebSocket-Accept: ${accept}\r\n\r\n`,
+		);
+		// …and then deliberately nothing. The socket is open and healthy at
+		// the TCP layer; no frame ever arrives.
+	});
+	return {
+		listen: () => new Promise<number>(resolve => server.listen(0, () => {
+			resolve((server.address() as { port: number }).port);
+		})),
+		close: () => new Promise<void>(resolve => {
+			// http close() does NOT reap upgraded sockets — destroy them by
+			// hand or node never exits (the very gotcha the campaign fixed for
+			// mock-duet; here it is the test's own throwaway server).
+			for (const s of sockets) s.destroy();
+			server.close(() => resolve());
+		}),
 	};
 }
 
@@ -408,6 +447,75 @@ test("sendCode returns the reply text; silent codes answer empty and act", T, as
 		assert.equal(h.mock.machine.om.heat.heaters[1].active, 200, "…but the code ran");
 	} finally {
 		await h.close();
+	}
+});
+
+test("a solicited code reply reaches the console via onReply, exactly once", T, async () => {
+	// The console reads the EVENT (ConsolePanel discards sendCode's return),
+	// and DSF answers a solicited reply in the POST body only — so the
+	// connector must emit it on onReply itself. Exactly once: the mock must
+	// NOT also queue it on the WS messages channel (that would double-log).
+	const h = await startHarness();
+	try {
+		await h.connector.connect();
+		h.replies.length = 0;
+		const reply = await h.connector.sendCode("M115");
+		assert.match(reply, /FIRMWARE/i);
+		await sleep(150); // give any erroneous messages-channel push time to arrive
+		assert.deepEqual(h.replies, [reply], "console saw the reply once, not zero or twice");
+	} finally {
+		await h.close();
+	}
+});
+
+test("a throwing model consumer cannot freeze the transport (the ack still fires)", T, async () => {
+	// The push stream is ack-gated: if an onModelKey emission throws and the
+	// ack is skipped, the server never pushes again and PING/PONG masks it as
+	// healthy — a green chip over a frozen model. The ack lives in a finally
+	// precisely so one bad emission cannot stop the channel.
+	const h = await startHarness();
+	let throwOnce = true;
+	try {
+		await h.connector.connect();
+		// Wire a consumer that throws on the very next state emission.
+		const original = h.connector["events"].onModelKey!;
+		h.connector["events"].onModelKey = (key, value) => {
+			if (key === "state" && throwOnce) { throwOnce = false; throw new Error("boom in a consumer"); }
+			original(key, value);
+		};
+		const before = h.keys.length;
+		// Two rounds of change: the first emission throws; the transport must
+		// still be taking pushes for the second to land.
+		h.mock.machine.advance(1000);
+		await sleep(100);
+		h.mock.machine.advance(1000);
+		await until(() => h.keys.length > before, "the channel kept turning past the throw");
+		assert.equal(h.connector.status, "connected");
+	} finally {
+		await h.close();
+	}
+});
+
+test("a socket that opens but never pushes trips the deadline into the ladder", T, async () => {
+	// The liveness clock is armed at socket creation, not on the first frame:
+	// a handshake that completes then goes silent used to hang connect() AND
+	// stall the whole reconnect ladder (the awaited openSocket never settled).
+	// Here the mock's WS is swapped for a bare server that upgrades and says
+	// nothing; connect() must reject within the deadline, not hang.
+	const silent = createSilentUpgradeServer();
+	const port = await silent.listen();
+	try {
+		const c = new DsfConnector({
+			baseUrl: `http://127.0.0.1:${port}`,
+			pingIntervalMs: 50, // deadline = 2*50 + 1000 = 1100 ms
+			reconnectDelayMs: 25,
+			events: {},
+		});
+		await assert.rejects(c.connect(), (err: unknown) => err instanceof OperationFailedError,
+			"connect() rejects on the silent socket instead of hanging");
+		await c.disconnect();
+	} finally {
+		await silent.close();
 	}
 });
 

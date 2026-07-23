@@ -46,7 +46,13 @@ export class Machine {
 	}
 
 	/** Server hooks. */
-	onReply: ((text: string) => void) | null = null;
+	// `solicited` = the reply is the direct answer to a code the caller just
+	// sent (execute()), so it already has a return channel (rr_reply drain,
+	// or DSF's POST body). Unsolicited replies (faults, job-end, M118) have
+	// no return channel and must be pushed. DSF's messages queue takes only
+	// the unsolicited ones — a solicited reply reaching it would double-log,
+	// because the connector also emits it from the POST body.
+	onReply: ((text: string, solicited: boolean) => void) | null = null;
 	onReset: (() => void) | null = null;
 	onOutage: (() => void) | null = null;
 
@@ -81,20 +87,24 @@ export class Machine {
 		this.volSeqs[index] = (this.volSeqs[index] ?? 0) + 1;
 	}
 
-	/** Emit a G-code reply / console message: bumps the reply seq. */
+	/** Emit an UNSOLICITED reply / console message (fault, job-end, M118):
+	 *  no caller is holding a return value for it, so every transport pushes. */
 	emitReply(text: string): void {
 		this.replySeq++;
-		this.onReply?.(text);
+		this.onReply?.(text, false);
 	}
 
 	/**
 	 * Execute a G/M/T-code and emit its reply. The ONE execution authority
-	 * for both HTTP dialects: rr_gcode ignores the return (its clients
-	 * drain rr_reply), POST /machine/code answers with it directly.
+	 * for both HTTP dialects: rr_gcode ignores the return (its clients drain
+	 * rr_reply), POST /machine/code answers with it directly. The emit is
+	 * marked SOLICITED so DSF's messages queue skips it — the DSF connector
+	 * delivers this reply from the POST body, not the WS.
 	 */
 	execute(code: string): string {
 		const reply = executeGCode(this, code);
-		this.emitReply(reply);
+		this.replySeq++;
+		this.onReply?.(reply, true);
 		return reply;
 	}
 

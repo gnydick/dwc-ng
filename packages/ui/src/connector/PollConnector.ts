@@ -64,8 +64,10 @@ const REPLY_GRACE_MS = 250;
 export class PollConnector implements Connector {
 	status: ConnectionStatus = "disconnected";
 
-	private base: string;
-	private password: string;
+	// readonly since switchEndpoint was removed — a connector's target is now
+	// fixed for its lifetime (a backend change reloads, see design D9/C14).
+	private readonly base: string;
+	private readonly password: string;
 	private readonly pollIntervalMs: number;
 	private readonly retryDelayMs: number;
 	private readonly maxRetries: number;

@@ -130,10 +130,12 @@ export interface ConnectorWrites {
 	/** Execute a G/M/T-code; resolves with its reply text ("" if none came). */
 	sendCode(code: string): Promise<string>;
 	/**
-	 * Upload a file (verified end-to-end by the transport, e.g. CRC32).
-	 * `onProgress`, when supplied, is called with the fraction sent (0..1) as the
-	 * bytes go out, for a progress bar. Optional — not every transport can report
-	 * progress, and a caller that doesn't need it passes nothing.
+	 * Upload a file, verified as strongly as the transport allows: rr_ carries
+	 * a CRC32 the board checks; DSF's PUT has no integrity mechanism (success
+	 * is the 201). `onProgress`, when supplied, is called with the fraction
+	 * sent (0..1) as the bytes go out, for a progress bar — optional, and not
+	 * every transport can report it (DSF over fetch cannot), so a caller that
+	 * needs it must tolerate never being called.
 	 */
 	upload(path: string, content: Uint8Array | string, onProgress?: (fraction: number) => void): Promise<void>;
 	/** Create a directory. Rejects if it already exists or the parent is missing. */

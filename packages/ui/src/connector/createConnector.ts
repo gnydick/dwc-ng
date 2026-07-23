@@ -36,14 +36,27 @@ export function createConnector(target: ConnectorTarget, events: ConnectorEvents
 /**
  * Which transport this origin serves, for a production boot that has no dev
  * toggle to read. DSF answers /machine/status; standalone RRF has no
- * /machine routes at all, so a short-timeout probe separates them without
- * ambiguity. Any failure means rr_ — the historical default, and the one
- * that also works when the probe is merely slow.
+ * /machine routes at all, so a short-timeout probe separates them.
+ *
+ * A 401/403 counts as DSF, not failure: a password-protected DSF refuses the
+ * keyless probe with 403, but the ROUTE existing at all is the proof — a
+ * standalone board has no /machine handler to refuse with. Only a genuine
+ * absence (404, a non-auth error) or a network/timeout failure means rr_ —
+ * the historical default, and the one that also works when the probe is
+ * merely slow.
+ *
+ * NOTE (design D9): this is not yet wired into App's production boot, which
+ * still constructs from the dev backend record — production auto-detection
+ * is DEFERRED (the campaign was verified in dev against the SBC via the
+ * toggle; standalone-vs-DSF auto-select needs a standalone board to verify
+ * against, which we do not have). The probe is kept sound and tested so the
+ * wiring, when it lands, is correct.
  */
 export async function probeTransport(baseUrl: string, timeoutMs = 2000): Promise<Transport> {
 	try {
 		const res = await fetch(`${baseUrl}/machine/status`, { signal: AbortSignal.timeout(timeoutMs) });
-		return res.ok ? "dsf" : "rr";
+		if (res.ok || res.status === 401 || res.status === 403) return "dsf";
+		return "rr";
 	} catch {
 		return "rr";
 	}

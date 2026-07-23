@@ -70,10 +70,13 @@ export function createMockServer(options: MockServerOptions = {}): MockServer {
 		replyExpiryMs: options.replyExpiryMs ?? 3000,
 	});
 
-	machine.onReply = text => {
+	machine.onReply = (text, solicited) => {
+		// rr_ clients have no return channel — every reply goes to the drain.
 		sessions.pushReply(text);
-		// In DSF mode the same reply ALSO rides the WS messages channel
-		dsf?.queueReply(text);
+		// DSF's messages channel carries UNSOLICITED replies only; a solicited
+		// one already went back in the POST /machine/code body, so queuing it
+		// here too would double-log it in every DSF console.
+		if (!solicited) dsf?.queueReply(text);
 	};
 	machine.onReset = () => sessions.clear();
 	machine.onOutage = () => sessions.clear();
