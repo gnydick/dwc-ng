@@ -533,7 +533,7 @@
    otherwise proportionally squeezes those fixed widths to fit a narrower
    container instead of overflowing it, and squeezed content overlaps
    rather than just needing a horizontal scroll. */
-.heat-table { width: 100%; min-width: 434px; border-collapse: collapse; font-variant-numeric: tabular-nums; table-layout: fixed; }
+.heat-table { width: 100%; min-width: 548px; border-collapse: collapse; font-variant-numeric: tabular-nums; table-layout: fixed; }
 /* Widths carry slack past the widest content: cells have no horizontal
    padding, so a column sized exactly to its text leaves adjacent right-aligned
    labels touching ("ACTIVESTANDBY"). */
@@ -541,6 +541,23 @@
 .heat-table th:nth-child(3), .heat-table td:nth-child(3) { width: 62px; }
 .heat-table th:nth-child(4), .heat-table td:nth-child(4) { width: 62px; }
 .heat-table th:nth-child(5), .heat-table td:nth-child(5) { width: 68px; }
+/* Setpoint entry + the buttons that send it. Fixed widths so a three-digit
+   temperature or a fault badge can never re-flow the columns. */
+.heat-table th:nth-child(6), .heat-table td:nth-child(6) { width: 162px; }
+.heat-input {
+	width: 56px;
+	padding: 4px 6px;
+	background: var(--mask-900);
+	border: 1px solid var(--hairline);
+	border-radius: 4px;
+	color: var(--silk);
+	font: 600 13px/1 var(--font-display);
+	font-variant-numeric: tabular-nums;
+	text-align: right;
+}
+.heat-input:focus-visible { outline: none; border-color: var(--copper); }
+.heat-actions { display: flex; gap: 4px; justify-content: flex-end; }
+.heat-actions .gcode-btn { padding: 5px 8px; }
 .heat-table th {
 	font-family: var(--font-display);
 	font-weight: 600;
@@ -593,38 +610,6 @@
 
 .heat-set { color: var(--silk-dim); font-size: 13px; }
 
-/* ---------- Tools & heaters: the interactive per-tool hub ----------
-   One block per tool — identity (name · designator · dock dot) on the head
-   line, then heater control, then filament. Stacked, or flowed as a strip via
-   the orientation toggle. Geometry is fixed by construction: the .heat-name
-   grid pins the identity columns, figures are tabular, and the reserved
-   .filament-loaded width absorbs a name↔em-dash flip — so a live temperature
-   or a load cannot shift anything under the operator. */
-.th-hub { display: flex; flex-direction: column; gap: 12px; font-variant-numeric: tabular-nums; }
-.th-hub.horizontal { flex-direction: row; flex-wrap: wrap; align-items: flex-start; gap: 16px; }
-.th-hub.horizontal .th-tool { min-width: 320px; }
-
-.th-tool {
-	display: flex;
-	flex-direction: column;
-	gap: 6px;
-	padding: 8px 10px;
-	border: 1px solid var(--hairline);
-	border-radius: var(--radius);
-	background: var(--mask-900);
-}
-/* The selected tool is the one a bare G-code acts on — worth seeing at a glance. */
-.th-tool.current { border-color: var(--copper); }
-
-.th-head { display: flex; align-items: center; gap: 10px; }
-/* Right-anchored so Select lands at the same x on every tool, whatever the
-   name length — the column you scan down. */
-.th-head .gcode-btn { margin-left: auto; }
-
-.th-line { display: flex; align-items: center; gap: 8px; min-height: var(--ctl-h); }
-.th-line .btn-cluster { margin-left: auto; }
-
-.th-no-heater { color: var(--silk-dim); font-size: 13px; }
 .heat-set b { color: var(--silk); font-weight: 600; }
 
 .heat-state {

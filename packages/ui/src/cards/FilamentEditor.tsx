@@ -1,4 +1,4 @@
-import { For, Show, createMemo, createResource, createSignal } from "solid-js";
+import { For, Show, createEffect, createMemo, createResource, createSignal } from "solid-js";
 import { useApp } from "../shell/context.ts";
 import { FileEditorBody } from "../editor/FileEditor.tsx";
 import { parseFileName } from "../files/path.ts";
@@ -39,6 +39,17 @@ export function FilamentEditorBody() {
 	);
 
 	const [selected, setSelected] = createSignal<string | null>(null);
+
+	// Open on the first filament rather than an empty pane: the editor only
+	// exists for a SELECTED filament, and a card that shows a list and no editor
+	// reads as "there is no editor here". This also re-homes the selection when
+	// the chosen filament is renamed or deleted out from under it.
+	createEffect(() => {
+		const list = filaments();
+		if (list === undefined || list.length === 0) return;
+		const current = selected();
+		if (current === null || !list.includes(current)) setSelected(list[0]!);
+	});
 	const [macro, setMacro] = createSignal<Macro>("config.g");
 	const [creating, setCreating] = createSignal(false);
 	const [renaming, setRenaming] = createSignal<string | null>(null);

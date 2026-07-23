@@ -59,14 +59,13 @@ export const CARD_DEFS = {
 		orientationToggle: true,
 		size: { colSpan: 12, rowSpan: 95 },
 	}),
-	/** The per-tool hub: identity + dock dot + heater control + filament, one
-	 *  block per tool (bed has no standby and no filament). */
+	/** Tools & heaters table: state + setpoint entry and per-heater actions. */
 	"tools-heaters": defineCard({
 		title: "Tools & heaters",
 		ariaLabel: "Tools and heaters",
-		tip: "M568 · M701 · M702 · M703 · M562",
+		tip: "tools · heat.heaters · M568 · M562",
 		orientationToggle: true,
-		size: { colSpan: 12, rowSpan: 160 },
+		size: { colSpan: 12, rowSpan: 110 },
 	}),
 	/** The print card — progress + pause/resume/cancel; Reprint when idle. */
 	"active-job": defineCard({
