@@ -11,6 +11,7 @@
  */
 import type { JSX } from "solid-js";
 import { PositionBody } from "../cards/PositionCard.tsx";
+import { FilamentEditorBody } from "../cards/FilamentEditor.tsx";
 import { ToolsHeatersBody } from "../cards/ToolsHeatersCard.tsx";
 import { ActiveJobBody } from "../cards/ActiveJobCard.tsx";
 import { SensorsBody } from "../cards/SensorsCard.tsx";
@@ -45,6 +46,7 @@ export interface CardRender {
 export const CARD_RENDER: Record<CardId, CardRender> = {
 	position: { body: ctx => <PositionBody orientation={ctx.orientation} /> },
 	"tools-heaters": { body: ctx => <ToolsHeatersBody orientation={ctx.orientation} /> },
+	"filament-editor": { body: () => <FilamentEditorBody /> },
 	"active-job": { body: () => <ActiveJobBody /> },
 	"active-job-detailed": { body: () => <ActiveJobBody detailed /> },
 	sensors: { body: ctx => <SensorsBody orientation={ctx.orientation} /> },

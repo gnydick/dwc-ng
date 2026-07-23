@@ -321,6 +321,15 @@ export const CARD_DEFS = {
 		tip: "0:/sys/dwc-ng-config.json",
 		size: { colSpan: 24, rowSpan: 26 },
 	}),
+	/** Define the materials this machine knows about: the filament directories
+	 *  under 0:/filaments and their load/unload/config macros. Machine
+	 *  management, not a file browser. */
+	"filament-editor": defineCard({
+		title: "Filament editor",
+		ariaLabel: "Filament editor",
+		tip: "0:/filaments · M703",
+		size: { colSpan: 24, rowSpan: 130 },
+	}),
 } as const satisfies Record<string, CardMeta>;
 
 /** I1: the only card identity that exists past a boundary. */

@@ -1906,6 +1906,39 @@
 }
 .filament-loaded.none { color: var(--silk-dim); }
 
+/* ---------- Filament editor (Settings) ----------
+   Materials this machine knows about: one row per filament directory under
+   0:/filaments, then the selected filament's macros in the editor. Rows keep
+   the file-browser's controls (fb-*) because the ACTIONS are the same shape —
+   but this is a material list, not a file listing. */
+.fil-editor { display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+.fil-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.fil-row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	height: var(--ctl-h);
+	padding: 0 4px;
+	border-bottom: 1px solid var(--hairline);
+}
+.fil-row.active { background: var(--mask-900); }
+/* Loaded filaments can't be renamed or deleted — say why, don't just grey out. */
+.fil-loaded {
+	font: 600 10px/1 var(--font-display);
+	text-transform: uppercase;
+	letter-spacing: 0.06em;
+	color: var(--ok);
+	border: 1px solid var(--ok);
+	border-radius: 3px;
+	padding: 3px 5px;
+}
+/* Actions sit at the right edge, at the same x on every row. */
+.fil-row .fb-act:first-of-type { margin-left: auto; }
+
+.fil-edit { display: flex; flex-direction: column; gap: 6px; flex: 1; min-height: 0; }
+.fil-tabs { display: flex; align-items: center; gap: 6px; }
+.fil-path { color: var(--silk-dim); font-size: 12px; margin-left: auto; font-variant-numeric: tabular-nums; }
+
 /* Speed slider send feedback. Colour only — the row's geometry is fixed so a
    refusal cannot move the track the pointer is still over. */
 .speed-value.is-sent { color: var(--ok); }
