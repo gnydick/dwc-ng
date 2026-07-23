@@ -76,6 +76,10 @@ export function FileBrowserView(props: {
 	}, { defer: true }));
 	createEffect(() => {
 		props.browser.entries(); // re-run when the listing renders
+		// Wait for the real rows: while the listing loads, entries() is [] and
+		// restoring onto the empty list clamps scrollTop to 0 and burns the
+		// one-shot pendingRestore before the rows arrive.
+		if (props.browser.loading()) return;
 		if (pendingRestore !== null && listEl) {
 			const top = pendingRestore;
 			pendingRestore = null;
