@@ -537,9 +537,11 @@
 /* Widths carry slack past the widest content: cells have no horizontal
    padding, so a column sized exactly to its text leaves adjacent right-aligned
    labels touching ("ACTIVESTANDBY"). */
-.heat-table th:nth-child(2), .heat-table td:nth-child(2) { width: 88px; }
-.heat-table th:nth-child(3), .heat-table td:nth-child(3) { width: 62px; }
-.heat-table th:nth-child(4), .heat-table td:nth-child(4) { width: 62px; }
+/* Columns: Heater | Active | Standby | Current | Set. Current sits last before
+   the buttons so the reading and the control are one glance apart. */
+.heat-table th:nth-child(2), .heat-table td:nth-child(2) { width: 58px; }
+.heat-table th:nth-child(3), .heat-table td:nth-child(3) { width: 58px; }
+.heat-table th:nth-child(4), .heat-table td:nth-child(4) { width: 66px; }
 /* Setpoint entry + the buttons that send it. Fixed widths so a three-digit
    temperature or a fault badge can never re-flow the columns. The old State
    column's 68px moved in HERE: the actions are flex-end aligned, so that slack
@@ -606,14 +608,29 @@
    tool with no mapped sensor) still lines its name up with every other row,
    instead of auto-placing into the empty dot slot. */
 .heat-name .heat-tool { grid-column: 3; }
+/* The name-as-selector. Sized to the 84px track (a long tool name ellipsises
+   rather than widening the column) and height-matched by the plain-label case
+   below, so a bed row is exactly as tall as a tool row. */
+.heat-name .tool-select { width: 100%; padding: 0 8px; overflow: hidden; }
+.heat-name .tool-select .gcode-label {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	font-size: 13px;
+	text-transform: none;
+}
+.heat-name span.heat-tool { display: flex; align-items: center; min-height: var(--ctl-h); }
+/* Deselect + P: machine-wide, above the selector column they govern. */
+.heat-deselect { display: flex; align-items: center; gap: 10px; margin: 0 0 10px; }
 
+/* Same size as the tool label it sits in a row with — the reading is a peer of
+   the name, not a headline. */
 .heat-cur {
 	font-family: var(--font-display);
 	font-weight: 600;
-	font-size: 22px;
+	font-size: 15px;
 	line-height: 1;
 }
-.heat-cur small { font-size: 12px; color: var(--silk-dim); }
+.heat-cur small { font-size: 11px; color: var(--silk-dim); }
 
 .t-cold { color: var(--t-cold); }
 .t-warm { color: var(--t-warm); }
@@ -977,12 +994,11 @@
 
 	/* Narrower fixed columns + smaller temp on phones so the Heater name never
 	   gets starved (and stays unclipped) while columns remain reflow-proof. */
-	.heat-table th:nth-child(2), .heat-table td:nth-child(2) { width: 68px; }
+	.heat-table th:nth-child(2), .heat-table td:nth-child(2) { width: 48px; }
 	.heat-table th:nth-child(3), .heat-table td:nth-child(3) { width: 48px; }
-	.heat-table th:nth-child(4), .heat-table td:nth-child(4) { width: 48px; }
+	.heat-table th:nth-child(4), .heat-table td:nth-child(4) { width: 56px; }
 	/* Set column: still the buttons + the residual-state slot, just tighter. */
 	.heat-table th:nth-child(5), .heat-table td:nth-child(5) { width: 196px; }
-	.heat-cur { font-size: 18px; }
 	/* tighten headers so labels ("STANDBY") fit their narrower columns */
 	.heat-table th { font-size: 9.5px; letter-spacing: 0.05em; }
 }

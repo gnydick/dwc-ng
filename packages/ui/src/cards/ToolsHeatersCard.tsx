@@ -4,6 +4,7 @@ import { cmd } from "../control/commands.ts";
 import { GcodeButton } from "../control/GcodeButton.tsx";
 import type { Heater } from "../om/types.ts";
 import { HeaterState } from "./HeaterState.tsx";
+import { describeToolP, parseToolP } from "../control/toolP.ts";
 import type { Orientation } from "../shell/panelOrientation.ts";
 
 /**
@@ -23,6 +24,10 @@ import type { Orientation } from "../shell/panelOrientation.ts";
 export function ToolsHeatersBody(props: { orientation: () => Orientation }) {
 	const app = useApp();
 
+	// Blank means "send no P", which is not the same as P0 — see cmd.selectTool.
+	const [toolP, setToolP] = createSignal("");
+	const toolPValue = (): number | undefined => parseToolP(toolP());
+
 	const heaterAt = (index: number): Heater | null => app.om.om.heat.heaters[index] ?? null;
 	const bedHeaterIndex = createMemo(() => app.om.om.heat.bedHeaters.find(i => i >= 0) ?? -1);
 
@@ -36,10 +41,18 @@ export function ToolsHeatersBody(props: { orientation: () => Orientation }) {
 		return (ref.inverted ? !active : active) ? "docked" : "away";
 	};
 
-	const ToolName = (p: { name: string; des: string; dock: "docked" | "away" | null }) => (
+	/** The tool this row is for, or null for the bed (which cannot be selected). */
+	const ToolName = (p: {
+		name: string;
+		des: string;
+		dock: "docked" | "away" | null;
+		tool: number | null;
+	}) => (
 		<span class="heat-name">
-			{/* The designator leads the row: T0/T1/… (and the bed's heater0) are the
-			    copy tips you scan and click, so they get the first column. */}
+			{/* The designator leads the row: T0/T1/… (and the bed's heater0) are what
+			    you scan down the column to find a row, so they come first. A plain
+			    label by design — .des deliberately carries no pointer affordance
+			    (see app.css), unlike the clickable .card-tip in a card header. */}
 			<span class="des">{p.des}</span>
 			{/* Dock presence: a single dot in the second column, between the
 			    designator and the name. Green = docked, gold = away. Rows without a
@@ -55,12 +68,53 @@ export function ToolsHeatersBody(props: { orientation: () => Orientation }) {
 					/>
 				)}
 			</Show>
-			<span class="heat-tool">{p.name}</span>
+			{/* The tool's own name IS its selector (T<n>) — the thing you read is the
+			    thing you click, and it glows while that tool is the current one. The
+			    bed is not selectable, so it stays a plain label sized to match the
+			    button so its row keeps the same height. */}
+			<Show when={p.tool !== null} fallback={<span class="heat-tool">{p.name}</span>}>
+				<GcodeButton
+					class="heat-tool tool-select"
+					label={p.name}
+					variant={app.om.om.state.currentTool === p.tool ? "go" : "quiet"}
+					stamp={false}
+					engaged={app.om.om.state.currentTool === p.tool}
+					command={cmd.selectTool(p.tool ?? 0, toolPValue())}
+				/>
+			</Show>
 		</span>
 	);
 
 	return (
 		<>
+			{/* Deselect and the tool-change bitmask act on the machine, not on one
+			    row, so they sit above the rows — over the selector column they
+			    govern. P is blank by default, which sends no P at all and lets the
+			    firmware run every tool-change macro; P0 suppresses them. Deselect
+			    is lit while no tool is current, so the row selectors and this
+			    button always show exactly one lit state between them. */}
+			<div class="heat-deselect">
+				<GcodeButton
+					label="Deselect"
+					variant="quiet"
+					stamp={false}
+					engaged={app.om.om.state.currentTool < 0}
+					command={cmd.deselectTool(toolPValue())}
+				/>
+				<label class="feed-field">
+					P
+					<input
+						type="number"
+						min="0"
+						max="7"
+						placeholder="all"
+						value={toolP()}
+						onInput={e => setToolP(e.currentTarget.value)}
+						aria-label="Tool change macro bitmask"
+					/>
+				</label>
+				<span class="tool-p-decode">{describeToolP(toolPValue())}</span>
+			</div>
 			<Show
 				when={props.orientation() === "horizontal"}
 				fallback={
@@ -68,9 +122,12 @@ export function ToolsHeatersBody(props: { orientation: () => Orientation }) {
 						<thead>
 							<tr>
 								<th scope="col">Heater</th>
-								<th scope="col">Current</th>
 								<th scope="col">Active</th>
 								<th scope="col">Standby</th>
+								{/* Reading sits next to acting: Current is the last thing before
+								    the buttons, so the number you check and the button you press
+								    are the same glance. */}
+								<th scope="col">Current</th>
 								<th scope="col">Set</th>
 							</tr>
 						</thead>
@@ -85,6 +142,7 @@ export function ToolsHeatersBody(props: { orientation: () => Orientation }) {
 														name={t().name || `Tool ${t().number}`}
 														des={`T${t().number}`}
 														dock={dockState(t().number)}
+														tool={t().number}
 													/>
 												</td>
 												<Show
@@ -109,7 +167,7 @@ export function ToolsHeatersBody(props: { orientation: () => Orientation }) {
 								{h => (
 									<tr>
 										<td>
-											<ToolName name="Bed" des={`heater${bedHeaterIndex()}`} dock={null} />
+											<ToolName name="Bed" des={`heater${bedHeaterIndex()}`} dock={null} tool={null} />
 										</td>
 										<HeaterCells heater={h()} index={bedHeaterIndex()} kind="bed" num={0} />
 									</tr>
@@ -129,6 +187,7 @@ export function ToolsHeatersBody(props: { orientation: () => Orientation }) {
 											name={t().name || `Tool ${t().number}`}
 											des={`T${t().number}`}
 											dock={dockState(t().number)}
+											tool={t().number}
 										/>
 										<Show when={heaterAt(t().heaters[0] ?? -1)} fallback={<span class="heat-set">no heater</span>}>
 											{h => (
@@ -150,7 +209,7 @@ export function ToolsHeatersBody(props: { orientation: () => Orientation }) {
 					<Show when={heaterAt(bedHeaterIndex())}>
 						{h => (
 							<div class="heat-h-cell">
-								<ToolName name="Bed" des={`heater${bedHeaterIndex()}`} dock={null} />
+								<ToolName name="Bed" des={`heater${bedHeaterIndex()}`} dock={null} tool={null} />
 								<HeaterCurrent heater={h()} />
 								<span class="heat-h-meta">
 									<b>{h().active}</b>°&nbsp;/&nbsp;—
@@ -179,7 +238,6 @@ function HeaterCells(props: { heater: Heater; index: number; kind: "tool" | "bed
 
 	return (
 		<>
-			<td><HeaterCurrent heater={props.heater} /></td>
 			<td>
 				<input
 					class="heat-input"
@@ -201,6 +259,7 @@ function HeaterCells(props: { heater: Heater; index: number; kind: "tool" | "bed
 					/>
 				</Show>
 			</td>
+			<td><HeaterCurrent heater={props.heater} /></td>
 			<td>
 				{/* The three buttons are modal: the one matching the heater's reported
 				    state lights up, which is what the State column used to say in
