@@ -1475,7 +1475,12 @@
 	background: var(--mask-700); border: 1px solid var(--copper); border-radius: var(--radius);
 	padding: 12px; display: flex; flex-direction: column; gap: 10px;
 	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+	/* Never taller than the viewport: on short screens the tail sections
+	   (New screen, etc.) used to clip off-screen with no way to reach them. */
+	max-height: calc(100vh - 140px);
+	overflow-y: auto; scrollbar-width: none;
 }
+.compose-drawer::-webkit-scrollbar { width: 0; }
 .compose-row { display: flex; align-items: center; gap: 8px; }
 .compose-row .fb-input { flex: 1; }
 .compose-cards {

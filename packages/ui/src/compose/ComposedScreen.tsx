@@ -22,7 +22,7 @@ import { CARD_DEFS, allCardIds, parseCardId, type CardId } from "./defs.ts";
 import { RegistryCard, cardTitleOf } from "./RegistryCard.tsx";
 import { addCard, isCustomCardId, removeCard, slotsOf, type Composition, type CustomCardId, type SlotId } from "./composition.ts";
 import { createServicePool } from "./services.ts";
-import { resolveScreen, screenList, type ScreenEntry } from "./screens.ts";
+import { resolveScreen, type ScreenEntry } from "./screens.ts";
 import { CustomCard } from "./CustomCard.tsx";
 import { CardStudio } from "./CardStudio.tsx";
 import { ImportReview } from "./ImportReview.tsx";
@@ -133,7 +133,10 @@ export function ComposedScreen(props: { screenId: string }) {
  * The compose drawer: which cards this screen holds, and the screen's own
  * lifecycle (rename / hide / delete / new). All of it is config-overlay data —
  * membership edits write through updateScreenCards (custom in place, built-in
- * via the layouts override), so Reset-everything on Settings undoes the lot.
+ * via the layouts override). Reset-everything on Settings undoes the
+ * OVERRIDES (renames, hides, layouts, membership changes to built-ins) but
+ * keeps the user's creations — custom cards and screens die only by their
+ * own explicit ✕/Delete.
  */
 function ComposeDrawer(props: { screenId: string; entry: ScreenEntry | null; composition: Composition; previewCtx: CardCtx }) {
 	const app = useApp();
@@ -233,6 +236,19 @@ function ComposeDrawer(props: { screenId: string; entry: ScreenEntry | null; com
 							<button class="fb-act" onClick={() => app.config.setScreenHidden(props.screenId, true)}>Hide screen</button>
 						</Show>
 					</div>
+					{/* Directly under the screen row: the unhide affordance lives next
+					    to the Hide that created it (it used to sit at the drawer's
+					    bottom, which clipped off-screen on short viewports). */}
+					<Show when={app.config.config.screens.hidden.length > 0}>
+						<div class="compose-row compose-hidden">
+							<span class="lab-cap">Hidden</span>
+							<For each={app.config.config.screens.hidden}>
+								{id => (
+									<button class="fb-act" onClick={() => app.config.setScreenHidden(id, false)}>{id} ↩</button>
+								)}
+							</For>
+						</div>
+					</Show>
 					<div class="compose-cards">
 						<For each={allCardIds()}>
 							{id => (
@@ -300,16 +316,6 @@ function ComposeDrawer(props: { screenId: string; entry: ScreenEntry | null; com
 						/>
 						<button class="fb-act ok" disabled={newName().trim() === ""} onClick={createScreen}>+ New screen</button>
 					</div>
-					<Show when={screenList(app.config.config).some(s => s.builtin) && app.config.config.screens.hidden.length > 0}>
-						<div class="compose-row compose-hidden">
-							<span class="lab-cap">Hidden</span>
-							<For each={app.config.config.screens.hidden}>
-								{id => (
-									<button class="fb-act" onClick={() => app.config.setScreenHidden(id, false)}>{id} ↩</button>
-								)}
-							</For>
-						</div>
-					</Show>
 				</div>
 			</Show>
 			<Show when={studio()} keyed>
