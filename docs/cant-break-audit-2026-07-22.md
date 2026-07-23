@@ -327,9 +327,12 @@ the preview instantly).
 - **ActiveJobCard job buttons** still raw `<button>`s (now wearing builder
   titles); unifying them onto `GcodeButton` is a visual change to verify
   live before shipping.
-- **`mergeCanvas` discard-on-collision counts INACTIVE panels**: a drag over
-  a hidden card's space can still persist an overlap that discards the
-  stored layout at next mount. `ensureSlot` no longer contributes; the drag
-  path can. Fix direction: exclude never-rendered ids from the mount-time
-  collision verdict, or repair per-pair instead of discarding wholesale.
+- ~~**`mergeCanvas` discard-on-collision counts INACTIVE panels**~~ CLOSED
+  2026-07-23: the discard verdict is deleted outright. Hidden cards
+  (visibleWhen false — the unpinned camera is the archetype) release their
+  cells BY DESIGN, so stored overlaps are legitimate, and the mount-time
+  "collision = corruption, reset everything" verdict silently erased user
+  layouts on every reload ("card sizes not remembered"). Visible-overlap
+  prevention lives where it always really did: at drag time against the
+  live collidable state.
 - **Write guard remains dev-only by design** — documented, not a gap.

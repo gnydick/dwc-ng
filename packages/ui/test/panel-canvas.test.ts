@@ -155,10 +155,14 @@ test("mergeCanvas drops a stored id no longer in defaults and defaults a new id 
 	assert.deepEqual(merged.b, rect(10, 0, 4, 4), "b missing from storage, uses its own coded default");
 });
 
-test("mergeCanvas discards the whole stored layout, not just the offending panel, if the merged result collides", () => {
+test("mergeCanvas KEEPS a stored layout whose rects overlap (audit residual closed)", () => {
+	// Hidden cards (visibleWhen false) release their cells, so a visible
+	// card resized into that space stores a legal overlap. The old verdict
+	// treated this as corruption and reset the ENTIRE layout on every
+	// mount — the "card sizes not remembered" bug.
 	const defaults = [{ id: "a", col: 0, row: 0, colSpan: 4, rowSpan: 4 }, { id: "b", col: 10, row: 0, colSpan: 4, rowSpan: 4 }];
-	const stored = { a: rect(0, 0, 4, 4), b: rect(1, 1, 4, 4) }; // b now overlaps a
-	assert.deepEqual(mergeCanvas(stored, defaults), defaultCanvas(defaults));
+	const stored = { a: rect(0, 0, 4, 4), b: rect(1, 1, 4, 4) }; // b overlaps a (b may be hidden)
+	assert.deepEqual(mergeCanvas(stored, defaults), { a: rect(0, 0, 4, 4), b: rect(1, 1, 4, 4) });
 });
 
 test("serializeCanvas round-trips through parseStoredCanvas and mergeCanvas", () => {

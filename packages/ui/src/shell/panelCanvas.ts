@@ -413,9 +413,17 @@ export function serializeCanvas(state: CanvasState): string {
  * storage (a panel added since the last save) gets its own coded
  * default — unlike the old order-based system, there's no "append after
  * the highest known order" step, because position is absolute, not
- * relative. A stored id no longer in defaults is dropped. If the merged
- * result collides anywhere, the WHOLE stored layout is discarded in
- * favor of defaults — never a partial repair of just the offending pair.
+ * relative. A stored id no longer in defaults is dropped.
+ *
+ * Stored rects are NEVER discarded for overlapping each other (the old
+ * "collision = corruption, reset everything" verdict): a hidden card
+ * (visibleWhen false) releases its grid cells precisely so visible cards
+ * can be resized into that space, which stores a legal overlap — the
+ * mount-time discard then silently erased the user's whole layout on
+ * every reload ("card sizes not remembered"). Overlap among VISIBLE
+ * cards is prevented where it can be: at drag time, against the live
+ * collidable state; a visibility flip that reveals an overlap is the
+ * operator's to rearrange, exactly as it already was at runtime.
  */
 export function mergeCanvas(stored: unknown, defaults: PanelDefault[]): CanvasState {
 	const fallback = defaultCanvas(defaults);
@@ -426,7 +434,7 @@ export function mergeCanvas(stored: unknown, defaults: PanelDefault[]): CanvasSt
 		const entry = storedRecord[d.id];
 		result[d.id] = isPanelRect(entry) ? clampRect(entry) : fallback[d.id]!;
 	}
-	return hasCollisions(result) ? fallback : result;
+	return result;
 }
 
 function readStorage(key: string): string | null {
