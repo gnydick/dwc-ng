@@ -16,6 +16,8 @@ import { ActiveJobBody } from "../cards/ActiveJobCard.tsx";
 import { SensorsBody } from "../cards/SensorsCard.tsx";
 import { TemperaturesBody } from "../cards/TemperaturesCard.tsx";
 import { BuildObjects } from "../cards/BuildObjects.tsx";
+import { LayersBody } from "../cards/LayersCard.tsx";
+import { GcodeViewerBody } from "../gcode/GcodeViewer.tsx";
 import { ConsoleBody } from "../shell/ConsolePanel.tsx";
 import { CameraBody, CameraHideAction } from "../shell/CameraPanel.tsx";
 import type { CardId } from "./defs.ts";
@@ -37,4 +39,6 @@ export const CARD_RENDER: Record<CardId, CardRender> = {
 	console: { body: () => <ConsoleBody /> },
 	camera: { body: () => <CameraBody />, actions: () => <CameraHideAction /> },
 	"build-objects": { body: () => <BuildObjects /> },
+	"gcode-viewer": { body: () => <GcodeViewerBody /> },
+	layers: { body: () => <LayersBody /> },
 };

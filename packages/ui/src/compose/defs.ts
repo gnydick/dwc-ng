@@ -14,6 +14,7 @@
  * item. Kept apart so this module stays pure and node-testable (type
  * stripping cannot load JSX).
  */
+import { layerStats } from "../charts/layerData.ts";
 import type { CardCtx } from "./ctx.ts";
 
 export interface CardSize {
@@ -114,6 +115,23 @@ export const CARD_DEFS = {
 		tip: "M486 · job.build",
 		size: { colSpan: 12, rowSpan: 53 },
 		visibleWhen: ctx => (ctx.om.om.job.build?.objects.length ?? 0) > 0,
+	}),
+	/** Live 3D toolpath of the active job. */
+	"gcode-viewer": defineCard({
+		title: "Toolpath",
+		ariaLabel: "G-code toolpath",
+		tip: "job.file · job.filePosition",
+		size: { colSpan: 24, rowSpan: 180 },
+	}),
+	/** Per-layer print times — no layers until a print completes one. The
+	 *  predicate derives from the same layerStats the body charts, so "has
+	 *  layers" cannot mean two different things. */
+	layers: defineCard({
+		title: "Layer times",
+		ariaLabel: "Layer times",
+		tip: "job.layers",
+		size: { colSpan: 24, rowSpan: 67 },
+		visibleWhen: ctx => layerStats(ctx.om.om.job.layers).count > 0,
 	}),
 } as const satisfies Record<string, CardMeta>;
 

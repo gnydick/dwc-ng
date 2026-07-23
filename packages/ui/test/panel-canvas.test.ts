@@ -11,7 +11,6 @@ import { SYSTEM_PANEL_DEFAULTS } from "../src/views/system.panelDefaults.ts";
 import { CONTROL_PANEL_DEFAULTS } from "../src/views/control.panelDefaults.ts";
 import { SETTINGS_PANEL_DEFAULTS } from "../src/views/settings.panelDefaults.ts";
 import { BED_PANEL_DEFAULTS } from "../src/views/bed.panelDefaults.ts";
-import { ACTIVITY_PANEL_DEFAULTS } from "../src/views/activity.panelDefaults.ts";
 
 const rect = (col: number, row: number, colSpan: number, rowSpan: number) => ({ col, row, colSpan, rowSpan });
 
@@ -294,9 +293,5 @@ test("Bed view's default panel layout is collision-free", () => {
 	assert.equal(hasCollisions(defaultCanvas(BED_PANEL_DEFAULTS)), false);
 });
 
-test("Activity view's default panel layout is collision-free", () => {
-	// This view had no such test until the Objects card was added to it, while
-	// every other view had one — the gap was the point at which a bad placement
-	// would have shipped unnoticed.
-	assert.equal(hasCollisions(defaultCanvas(ACTIVITY_PANEL_DEFAULTS)), false);
-});
+// Activity's layout is asserted in composition.test.ts against its composed
+// screen — the defaults file this checked was deleted in the A4 conversion.

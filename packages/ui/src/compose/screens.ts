@@ -19,3 +19,16 @@ export const MACHINE_COMPOSITION: Composition = {
 	console: { col: 0, row: 215, colSpan: 24, rowSpan: 75 },
 	camera: { col: 0, row: 290, colSpan: 8, rowSpan: 75 },
 };
+
+/** Activity: live position + detailed job progress + the 3D toolpath.
+ *  build-objects/layers are hidden-but-placed (their visibleWhen gates them)
+ *  so they have somewhere to appear on a job that carries them. */
+export const ACTIVITY_COMPOSITION: Composition = {
+	position: { col: 0, row: 0, colSpan: 12, rowSpan: 95 },
+	"active-job-detailed": { col: 12, row: 0, colSpan: 12, rowSpan: 40 },
+	"build-objects": { col: 12, row: 40, colSpan: 12, rowSpan: 53 },
+	"gcode-viewer": { col: 0, row: 95, colSpan: 24, rowSpan: 180 },
+	layers: { col: 0, row: 275, colSpan: 24, rowSpan: 67 },
+	console: { col: 0, row: 342, colSpan: 24, rowSpan: 75 },
+	camera: { col: 0, row: 417, colSpan: 8, rowSpan: 75 },
+};

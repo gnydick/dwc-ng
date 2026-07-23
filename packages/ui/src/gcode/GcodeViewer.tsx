@@ -50,8 +50,11 @@ const DEFAULT_GHOST_MODE: GhostMode = "hidden";
  *  (see renderModes.ts) — the two are independent axes, recombined every
  *  tick. Rendered as real instanced 3D tube geometry with Three.js's own
  *  lighting (see scene.ts), not a custom shader.
- *  See docs/superpowers/specs/2026-07-19-gcode-viewer-colorize-thick-lines-design.md. */
-export function GcodeViewer(props: { canvas: PanelCanvasController }) {
+ *  See docs/superpowers/specs/2026-07-19-gcode-viewer-colorize-thick-lines-design.md.
+ *
+ *  Content-only body; chrome comes from the compose registry
+ *  (compose/defs.ts "gcode-viewer") or the legacy wrapper below. */
+export function GcodeViewerBody() {
 	const app = useApp();
 	let canvasEl!: HTMLCanvasElement;
 	let hostEl!: HTMLDivElement;
@@ -237,8 +240,7 @@ export function GcodeViewer(props: { canvas: PanelCanvasController }) {
 	});
 
 	return (
-		<Card id="gcode-viewer" canvas={props.canvas} ariaLabel="G-code toolpath" title="Toolpath" tip="job.file · job.filePosition">
-			<div class="gcode-viewer" ref={hostEl}>
+		<div class="gcode-viewer" ref={hostEl}>
 				<div class="gcode-viewer-modes gcode-viewer-modes-color" role="group" aria-label="Color mode">
 					<For each={COLOR_MODES}>
 						{m => (
@@ -300,7 +302,15 @@ export function GcodeViewer(props: { canvas: PanelCanvasController }) {
 						{message()} <button class="link-btn" onClick={retry}>Retry</button>
 					</div>
 				</Show>
-			</div>
+		</div>
+	);
+}
+
+/** Legacy self-carding wrapper — dies with its last un-converted consumer. */
+export function GcodeViewer(props: { canvas: PanelCanvasController }) {
+	return (
+		<Card id="gcode-viewer" canvas={props.canvas} ariaLabel="G-code toolpath" title="Toolpath" tip="job.file · job.filePosition">
+			<GcodeViewerBody />
 		</Card>
 	);
 }
