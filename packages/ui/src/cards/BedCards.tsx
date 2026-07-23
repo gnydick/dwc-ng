@@ -15,7 +15,7 @@ import { Show, createEffect, createSignal } from "solid-js";
 import { useApp } from "../shell/context.ts";
 import { HeightMapGrid } from "../heightmap/HeightMapGrid.tsx";
 import { buildProbeCommand } from "../heightmap/probeCommand.ts";
-import { parseProbeReply } from "../heightmap/probeReply.ts";
+import { parseProbeReply, heightmapValue } from "../heightmap/probeReply.ts";
 import type { CardCtx } from "../compose/ctx.ts";
 
 export function HeightmapBody(props: { ctx: CardCtx }) {
@@ -99,10 +99,20 @@ export function ProbePointBody(props: { ctx: CardCtx }) {
 			const text = await app.connector.sendCode(code);
 			setReply(text);
 			const result = parseProbeReply(text);
-			// No trigger height in the reply is a failure to read, not a probe of
-			// zero — there is nothing to offer for acceptance.
-			if (result === null) svc.setMessage("No trigger height in the reply — nothing to accept.");
-			else setProbed(result.triggerHeight);
+			const probe = app.om.om.sensors.probes[0];
+			if (result === null) {
+				// A reply with no stop height is a failure to read, not a probe of zero -
+				// there is nothing to offer for acceptance.
+				svc.setMessage("No stop height in the reply - nothing to accept.");
+			} else if (probe == null) {
+				svc.setMessage("No probe in the model - cannot make the reading relative to the trigger height.");
+			} else {
+				// The map value is the stop height RELATIVE to the probe's trigger height,
+				// not the raw stop: RRF reports machine Z near the trigger height (e.g. ~-13),
+				// so storing it raw would be a ~13mm error. Subtracting makes a high spot
+				// read positive for any sign of triggerHeight.
+				setProbed(heightmapValue(result.stopHeight, probe.triggerHeight));
+			}
 		} catch (err) {
 			svc.setMessage(err instanceof Error ? err.message : String(err));
 		} finally {

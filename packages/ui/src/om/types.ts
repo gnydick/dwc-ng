@@ -215,6 +215,10 @@ export interface Probe {
 	type: number;
 	value: number[];
 	threshold: number;
+	/** G31 Z, the probe's Z trigger height (reference/objectmodel/src/sensors/Probe.ts:56).
+	 *  A re-probe's map value is (reported stop height - this); subtracting it makes a
+	 *  spot high of the reference read positive whatever the sign of this value. */
+	triggerHeight: number;
 }
 
 /** reference/objectmodel/src/sensors/index.ts (Sensors) */
