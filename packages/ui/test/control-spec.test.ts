@@ -2,7 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { parseOmSelector, readOm, readOmList } from "../src/compose/controls/omSelector.ts";
 import { compileTemplate, resolveTemplate, type TemplateScope } from "../src/compose/controls/template.ts";
-import { compileControlSpec } from "../src/compose/controls/spec.ts";
+import { compileControlSpec, type CompiledControlSpec, type CompiledNode } from "../src/compose/controls/spec.ts";
+import type { CompiledTemplate } from "../src/compose/controls/template.ts";
 import { HOMING_SPEC, MOVEMENT_SPEC } from "../src/compose/controls/builtin.ts";
 import { cmd } from "../src/control/commands.ts";
 
@@ -97,34 +98,64 @@ test("a spec referencing an unknown input or bad template cannot compile", () =>
 });
 
 // ---- the weld: built-in templates equal the commands.ts authority ----
+//
+// The weld walks the ACTUAL compiled specs and resolves the templates they
+// carry — not test-local copies of the strings. A template edited in
+// builtin.ts changes what resolveTemplate produces here and fails against
+// cmd.*; a button ADDED to a builtin spec without a weld entry fails the
+// completeness check. (The previous version of this test compared copies,
+// so builtin.ts could drift green — audit finding H7.)
 
-test("builtin specs compile (module load already proved it) and match cmd.*", () => {
-	assert.ok(HOMING_SPEC.nodes.length > 0);
-	assert.ok(MOVEMENT_SPEC.nodes.length > 0);
+/** Every gcode-button in a compiled spec, wherever it nests. */
+function extractButtons(spec: CompiledControlSpec): Array<{ label: string; template: CompiledTemplate }> {
+	const found: Array<{ label: string; template: CompiledTemplate }> = [];
+	const walk = (node: CompiledNode): void => {
+		switch (node.type) {
+			case "gcode-button":
+				found.push({ label: node.label.text, template: node.template });
+				return;
+			case "row":
+				for (const item of node.items) {
+					if (!("input" in item && !("type" in item))) walk(item as CompiledNode);
+				}
+				return;
+			case "grid":
+				node.items.forEach(walk);
+				return;
+			case "forEach":
+				walk(node.node);
+				return;
+			case "jog-pad":
+			case "axis-jog":
+				return; // motion primitives emit via cmd.jog inside the renderer
+		}
+	};
+	spec.nodes.forEach(walk);
+	return found;
+}
 
-	// Homing: templates resolve to exactly what commands.ts emits.
-	const axis = { letter: "U" };
-	assert.equal(
-		resolveTemplate(compileTemplate("G28 {axis.letter}")!, scope({}, {}, { axis })),
-		cmd.homeAxis("U"),
-	);
-	assert.equal(resolveTemplate(compileTemplate("G28")!, scope({})), cmd.homeAll());
-	assert.equal(
-		resolveTemplate(compileTemplate("M84 {axis.letter}")!, scope({}, {}, { axis })),
-		cmd.releaseAxis("U"),
-	);
-	assert.equal(resolveTemplate(compileTemplate("M84")!, scope({})), cmd.releaseAllMotors());
-
-	// Movement: extrude/retract and the coupler macros.
-	const io = { extMm: 5, extFeed: 300 };
-	assert.equal(
-		resolveTemplate(compileTemplate("M83\nG1 E{input.extMm} F{input.extFeed}")!, scope(io)),
-		cmd.extrude(5, 300),
-	);
-	assert.equal(
-		resolveTemplate(compileTemplate("M83\nG1 E-{input.extMm} F{input.extFeed}")!, scope(io)),
-		cmd.extrude(-5, 300),
-	);
-	assert.equal(resolveTemplate(compileTemplate('M98 P"/macros/tool_lock"')!, scope({})), cmd.couplerLock());
-	assert.equal(resolveTemplate(compileTemplate('M98 P"/macros/tool_unlock"')!, scope({})), cmd.couplerUnlock());
+test("the weld: every builtin gcode-button template resolves to its cmd.* form", () => {
+	const axis = { letter: "U", label: "U · Z motor 1" };
+	const fixture = scope({ extMm: 5, extFeed: 300 }, {}, { axis });
+	// Keyed by the button's RAW label text. Every builtin button MUST have an
+	// entry — an unwelded button is itself a failure.
+	const expected: Record<string, string> = {
+		// Homing
+		"Home All": cmd.homeAll(),
+		"Home {axis.label}": cmd.homeAxis("U"),
+		"All": cmd.releaseAllMotors(),
+		"{axis.letter}": cmd.releaseAxis("U"),
+		// Movement
+		"Lock": cmd.couplerLock(),
+		"Unlock": cmd.couplerUnlock(),
+		"Retract": cmd.extrude(-5, 300),
+		"Extrude": cmd.extrude(5, 300),
+	};
+	const buttons = [...extractButtons(HOMING_SPEC), ...extractButtons(MOVEMENT_SPEC)];
+	assert.equal(buttons.length, Object.keys(expected).length, "weld table and builtin buttons must stay 1:1");
+	for (const button of buttons) {
+		const want = expected[button.label];
+		assert.notEqual(want, undefined, `unwelded builtin button "${button.label}" — add its cmd.* weld`);
+		assert.equal(resolveTemplate(button.template, fixture), want, `template drift on "${button.label}"`);
+	}
 });
