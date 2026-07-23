@@ -592,6 +592,39 @@
 .t-hot  { color: var(--t-hot); text-shadow: 0 0 14px rgba(239, 123, 69, 0.35); }
 
 .heat-set { color: var(--silk-dim); font-size: 13px; }
+
+/* ---------- Tools & heaters: the interactive per-tool hub ----------
+   One block per tool — identity (name · designator · dock dot) on the head
+   line, then heater control, then filament. Stacked, or flowed as a strip via
+   the orientation toggle. Geometry is fixed by construction: the .heat-name
+   grid pins the identity columns, figures are tabular, and the reserved
+   .filament-loaded width absorbs a name↔em-dash flip — so a live temperature
+   or a load cannot shift anything under the operator. */
+.th-hub { display: flex; flex-direction: column; gap: 12px; font-variant-numeric: tabular-nums; }
+.th-hub.horizontal { flex-direction: row; flex-wrap: wrap; align-items: flex-start; gap: 16px; }
+.th-hub.horizontal .th-tool { min-width: 320px; }
+
+.th-tool {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	padding: 8px 10px;
+	border: 1px solid var(--hairline);
+	border-radius: var(--radius);
+	background: var(--mask-900);
+}
+/* The selected tool is the one a bare G-code acts on — worth seeing at a glance. */
+.th-tool.current { border-color: var(--copper); }
+
+.th-head { display: flex; align-items: center; gap: 10px; }
+/* Right-anchored so Select lands at the same x on every tool, whatever the
+   name length — the column you scan down. */
+.th-head .gcode-btn { margin-left: auto; }
+
+.th-line { display: flex; align-items: center; gap: 8px; min-height: var(--ctl-h); }
+.th-line .btn-cluster { margin-left: auto; }
+
+.th-no-heater { color: var(--silk-dim); font-size: 13px; }
 .heat-set b { color: var(--silk); font-weight: 600; }
 
 .heat-state {
