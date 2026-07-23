@@ -63,3 +63,24 @@ export function parentDir(dir: string, root: string): string {
 	const up = dir.slice(0, cut);
 	return up.length < root.length ? root : up;
 }
+
+/**
+ * Reconstruct a REMEMBERED directory (restored from localStorage — untrusted)
+ * as a proven descendant of `root`, or fall back to `root`. Every segment
+ * below the root is re-parsed through `parseFileName` and re-joined through
+ * `childPath`, so the result is built only from safe segments: a stored value
+ * carrying "..", an absolute path, a foreign root, or any forbidden character
+ * cannot point the browser outside its domain. Parse, don't validate — the
+ * unchecked string never becomes a dir.
+ */
+export function dirUnderRoot(root: string, raw: unknown): string {
+	if (typeof raw !== "string" || raw === root) return root;
+	if (!raw.startsWith(`${root}/`)) return root;
+	let dir = root;
+	for (const segment of raw.slice(root.length + 1).split("/")) {
+		const name = parseFileName(segment);
+		if (name === null) return root; // any unsafe/empty segment rejects the whole path
+		dir = childPath(dir, name);
+	}
+	return dir;
+}

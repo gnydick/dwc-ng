@@ -93,3 +93,37 @@ test("parentDir clamps at the root rather than escaping the domain", () => {
 test("parentDir on an unrelated path falls back to the root", () => {
 	assert.equal(parentDir("0:/sys/foo", "0:/gcodes"), "0:/gcodes");
 });
+
+// --- dirUnderRoot: a REMEMBERED directory can never escape its root ---
+
+test("dirUnderRoot reconstructs a genuine descendant", async () => {
+	const { dirUnderRoot } = await import("../src/files/path.ts");
+	assert.equal(dirUnderRoot("0:/gcodes", "0:/gcodes"), "0:/gcodes", "root is itself");
+	assert.equal(dirUnderRoot("0:/gcodes", "0:/gcodes/benchies"), "0:/gcodes/benchies");
+	assert.equal(dirUnderRoot("0:/gcodes", "0:/gcodes/a/b/c"), "0:/gcodes/a/b/c", "nested rebuilt");
+});
+
+test("dirUnderRoot rejects anything that could escape the root — falls back to root", async () => {
+	const { dirUnderRoot } = await import("../src/files/path.ts");
+	const root = "0:/gcodes";
+	for (const hostile of [
+		"0:/gcodes/../../sys",     // traversal
+		"0:/gcodes/../macros",     // sibling domain
+		"0:/sys",                  // a different root
+		"0:/sys/config.g",         // outside entirely
+		"0:/gcodes/a/../../b",     // traversal mid-path
+		"0:/gcodes/a//b",          // empty segment
+		"0:/gcodes/sub/",          // trailing slash (empty last segment)
+		"relative/path",           // not under root at all
+		"0:/gcodesevil/x",         // prefix-match trap (starts with root text, not root/)
+	]) {
+		assert.equal(dirUnderRoot(root, hostile), root, `must fall back to root: ${hostile}`);
+	}
+});
+
+test("dirUnderRoot tolerates non-string input", async () => {
+	const { dirUnderRoot } = await import("../src/files/path.ts");
+	assert.equal(dirUnderRoot("0:/macros", null), "0:/macros");
+	assert.equal(dirUnderRoot("0:/macros", undefined), "0:/macros");
+	assert.equal(dirUnderRoot("0:/macros", 42), "0:/macros");
+});

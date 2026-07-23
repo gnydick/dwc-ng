@@ -1,7 +1,8 @@
-import { For, Show, createSignal, type JSX } from "solid-js";
+import { For, Show, createEffect, createSignal, on, onCleanup, type JSX } from "solid-js";
 import type { FileListEntry } from "../connector/types.ts";
 import type { FileBrowser, OpResult, RemovePlan } from "./browser.ts";
 import { parseFileName } from "./path.ts";
+import { loadBrowserMemory, saveBrowserScroll } from "./browserMemory.ts";
 import { formatModified, formatSize } from "./format.ts";
 
 /**
@@ -51,6 +52,36 @@ export function FileBrowserView(props: {
 	const [uploading, setUploading] = createSignal<{ name: string; done: number; total: number; fraction: number } | null>(null);
 	const [dragging, setDragging] = createSignal(false);
 	let fileInput!: HTMLInputElement;
+
+	// Per-directory scroll memory. The list is the scroll container; its offset
+	// is saved (debounced) as the operator scrolls and restored when a
+	// directory's rows have rendered, so returning to a listing lands where it
+	// was left. Keyed by root + directory via browserMemory.
+	let listEl: HTMLUListElement | undefined;
+	let pendingRestore: number | null = loadBrowserMemory(props.browser.root).scroll[props.browser.dir()] ?? 0;
+	let saveTimer: ReturnType<typeof setTimeout> | undefined;
+	const onScroll = (): void => {
+		clearTimeout(saveTimer);
+		saveTimer = setTimeout(() => {
+			if (listEl) saveBrowserScroll(props.browser.root, props.browser.dir(), Math.round(listEl.scrollTop));
+		}, 150);
+	};
+	onCleanup(() => clearTimeout(saveTimer));
+	// A directory change queues its remembered offset; the queued restore is
+	// applied once that directory's rows are in the DOM (entries() re-runs the
+	// effect), and only once, so a later create/delete refresh doesn't yank the
+	// list back under the operator.
+	createEffect(on(() => props.browser.dir(), dir => {
+		pendingRestore = loadBrowserMemory(props.browser.root).scroll[dir] ?? 0;
+	}, { defer: true }));
+	createEffect(() => {
+		props.browser.entries(); // re-run when the listing renders
+		if (pendingRestore !== null && listEl) {
+			const top = pendingRestore;
+			pendingRestore = null;
+			requestAnimationFrame(() => { if (listEl) listEl.scrollTop = top; });
+		}
+	});
 
 	/** Clear transient row state — any listing change invalidates all of it. */
 	const resetRowState = (): void => {
@@ -281,7 +312,7 @@ export function FileBrowserView(props: {
 				)}
 			</Show>
 
-			<ul class="file-list">
+			<ul class="file-list" ref={listEl} onScroll={onScroll}>
 				<For each={props.browser.entries()} fallback={<li class="job-empty">{props.emptyText}</li>}>
 					{entry => (
 						<li class="file-row" classList={{ active: props.selected === props.browser.pathOf(entry) }}>

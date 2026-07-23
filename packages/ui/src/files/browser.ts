@@ -18,9 +18,10 @@
  * connector — so the real board still fails closed unless writes are armed.
  * That guard is deliberately NOT re-implemented here.
  */
-import { createMemo, createResource, createSignal, type Accessor } from "solid-js";
-import type { Connector, FileListEntry } from "../connector/types.ts";
-import { childPath, parentDir, parseFileName } from "./path.ts";
+import { createEffect, createMemo, createResource, createSignal, type Accessor } from "solid-js";
+import { FileNotFoundError, type Connector, type FileListEntry } from "../connector/types.ts";
+import { childPath, dirUnderRoot, parentDir, parseFileName } from "./path.ts";
+import { loadBrowserMemory, saveBrowserDir } from "./browserMemory.ts";
 import { protectedReason } from "./safety.ts";
 
 /** Outcome of a file operation, in a form the UI can render directly. */
@@ -113,12 +114,27 @@ export function createFileBrowser(
 	connector: Connector,
 	sort: FileSort = "name",
 ): FileBrowser {
-	const [dir, setDir] = createSignal(root);
+	// Seed from the remembered directory (restored from localStorage across
+	// navigations/reloads), reconstructed as a proven descendant of root — an
+	// untrusted stored value can never point the browser outside its domain.
+	const [dir, setDir] = createSignal(dirUnderRoot(root, loadBrowserMemory(root).dir));
 
 	const [raw, { refetch }] = createResource(
 		() => (connected() ? dir() : false),
 		d => connector.list(d as string),
 	);
+
+	// Remember the directory as it changes; on a return visit the browser opens
+	// where it was left.
+	createEffect(() => saveBrowserDir(root, dir()));
+
+	// A remembered directory that no longer exists (deleted between sessions)
+	// answers the listing with FileNotFoundError — fall back to root rather than
+	// stranding the browser on a dead directory. Only that specific error, and
+	// only when not already at root, so a transient failure at root can't loop.
+	createEffect(() => {
+		if (raw.error instanceof FileNotFoundError && dir() !== root) setDir(root);
+	});
 
 	const byName = (a: FileListEntry, b: FileListEntry): number =>
 		a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
