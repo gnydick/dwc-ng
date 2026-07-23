@@ -1,6 +1,10 @@
 # Composable Cards — architecture design
 
-**Status:** ratified 2026-07-23; **phase A (A1–A9) COMPLETE 2026-07-23** —
+**Status:** ratified 2026-07-23; **phases A AND B COMPLETE 2026-07-24** —
+A1–A9 (conversion, user screens, picker), B1 (control vocabulary; Homing/
+Movement as data), B2 (custom cards + spindle demo), B2.5 (the card studio
+GUI + lab bench), B3 (export/import with complete-inventory review).
+Original status: ratified 2026-07-23; phase A complete 2026-07-23 —
 all eight screens are compositions, user screens + compose drawer + SD
 persistence shipped, the Card Lab consumes the registry, every legacy
 wrapper and view file deleted. Phase B (control types) is next.

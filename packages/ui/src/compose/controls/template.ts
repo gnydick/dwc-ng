@@ -78,6 +78,15 @@ function show(value: unknown): string {
 	return String(value);
 }
 
+/** The OM selectors a template reads — for the import review's inventory. */
+export function omReadsOf(template: CompiledTemplate): string[] {
+	const reads: string[] = [];
+	for (const token of template.tokens) {
+		if (token.kind === "om") reads.push(token.selector.text);
+	}
+	return reads;
+}
+
 /** Total resolution — every input has a defined (possibly "") rendering. */
 export function resolveTemplate(template: CompiledTemplate, scope: TemplateScope): string {
 	let out = "";

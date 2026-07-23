@@ -30,9 +30,4 @@ export function RegistryCard(props: { id: CardId; canvas: PanelCanvasController;
 	);
 }
 
-/** A card's display name where no ctx exists (pickers, the lab's pills):
- *  static titles verbatim, dynamic ones fall back to the id. */
-export function cardTitleOf(id: CardId): string {
-	const title = CARD_DEFS[id].title;
-	return typeof title === "string" ? title : id;
-}
+export { cardTitleOf } from "./defs.ts";

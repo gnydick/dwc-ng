@@ -25,7 +25,21 @@ import { createServicePool } from "./services.ts";
 import { resolveScreen, screenList, type ScreenEntry } from "./screens.ts";
 import { CustomCard } from "./CustomCard.tsx";
 import { CardStudio } from "./CardStudio.tsx";
+import { ImportReview } from "./ImportReview.tsx";
+import { exportCard, exportScreen, parseShareFile, remapScreenCards, type ShareImport } from "./share.ts";
 import type { CardCtx } from "./ctx.ts";
+
+/** Hand a share file to the browser as a download. */
+function downloadShare(file: { fileName: string; text: string }): void {
+	const url = URL.createObjectURL(new Blob([file.text], { type: "application/json" }));
+	const a = document.createElement("a");
+	a.href = url;
+	a.download = file.fileName;
+	document.body.appendChild(a);
+	a.click();
+	a.remove();
+	URL.revokeObjectURL(url);
+}
 
 export function ComposedScreen(props: { screenId: string }) {
 	const app = useApp();
@@ -127,6 +141,35 @@ function ComposeDrawer(props: { screenId: string; entry: ScreenEntry | null; com
 	const [newName, setNewName] = createSignal("");
 	// The card studio: null = closed; id null = authoring a new card.
 	const [studio, setStudio] = createSignal<{ id: CustomCardId | null } | null>(null);
+	// A parsed share file awaiting the operator's review; nothing is written
+	// until Import is clicked.
+	const [importing, setImporting] = createSignal<ShareImport | null>(null);
+	let importInput!: HTMLInputElement;
+
+	const onImportFile = (file: File | undefined): void => {
+		if (file === undefined) return;
+		void file.text().then(text => setImporting(parseShareFile(text)));
+	};
+
+	/** Commit a reviewed import: mint fresh ids, remap, land. */
+	const commitImport = (): void => {
+		const parsed = importing();
+		if (parsed === null || parsed.kind === "error") return;
+		if (parsed.kind === "card") {
+			const minted = app.config.addCustomCard(parsed.name, parsed.specText) as CustomCardId;
+			app.config.updateScreenCards(props.screenId, asRects(addCard(props.composition, minted)));
+		} else {
+			const idMap = new Map<string, string>();
+			for (const card of parsed.customCards) {
+				idMap.set(card.fileId, app.config.addCustomCard(card.name, card.specText));
+			}
+			const screenId = app.config.addScreen(parsed.name);
+			app.config.updateScreenCards(screenId, remapScreenCards(parsed.cards, idMap));
+			window.location.hash = `#/${screenId}`;
+		}
+		setImporting(null);
+		setOpen(false);
+	};
 
 	const asRects = (comp: Composition): Record<string, { col: number; row: number; colSpan: number; rowSpan: number }> =>
 		Object.fromEntries(slotsOf(comp).map(([id, s]) => [id, { col: s.col, row: s.row, colSpan: s.colSpan, rowSpan: s.rowSpan }]));
@@ -174,6 +217,13 @@ function ComposeDrawer(props: { screenId: string; entry: ScreenEntry | null; com
 								if (v !== "") app.config.renameScreen(props.screenId, v);
 							}}
 						/>
+						<button
+							class="fb-act"
+							title="Download this screen (with its custom cards) as a share file"
+							onClick={() => { if (props.entry !== null) downloadShare(exportScreen(props.entry, app.config.config)); }}
+						>
+							⤓ Export
+						</button>
 						<Show
 							when={props.entry?.builtin}
 							fallback={
@@ -200,6 +250,14 @@ function ComposeDrawer(props: { screenId: string; entry: ScreenEntry | null; com
 					<div class="compose-row compose-custom-head">
 						<span class="lab-cap">Your cards</span>
 						<button class="fb-act ok" onClick={() => setStudio({ id: null })}>+ New card</button>
+						<button class="fb-act" title="Import a shared card or screen file" onClick={() => importInput.click()}>⤒ Import</button>
+						<input
+							ref={importInput}
+							type="file"
+							accept=".json,application/json"
+							class="fb-file-input"
+							onChange={e => { onImportFile(e.currentTarget.files?.[0]); e.currentTarget.value = ""; }}
+						/>
 					</div>
 					<Show when={Object.keys(app.config.config.cards).length > 0}>
 						<div class="compose-cards compose-custom-list">
@@ -215,6 +273,17 @@ function ComposeDrawer(props: { screenId: string; entry: ScreenEntry | null; com
 											{app.config.config.cards[id]!.name}
 										</label>
 										<button class="link-btn" onClick={() => setStudio({ id })}>Edit</button>
+										<button
+											class="link-btn"
+											title="Download as a share file"
+											onClick={() => {
+												const def = app.config.config.cards[id]!;
+												const file = exportCard(def.name, def.spec);
+												if (file !== null) downloadShare(file);
+											}}
+										>
+											⤓
+										</button>
 										<button class="link-btn" onClick={() => app.config.removeCustomCard(id)}>✕</button>
 									</div>
 								)}
@@ -250,6 +319,15 @@ function ComposeDrawer(props: { screenId: string; entry: ScreenEntry | null; com
 						ctx={props.previewCtx}
 						onSaved={onStudioSaved}
 						onClose={() => setStudio(null)}
+					/>
+				)}
+			</Show>
+			<Show when={importing()} keyed>
+				{parsed => (
+					<ImportReview
+						parsed={parsed}
+						onImport={commitImport}
+						onClose={() => setImporting(null)}
 					/>
 				)}
 			</Show>

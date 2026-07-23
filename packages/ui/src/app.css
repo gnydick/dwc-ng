@@ -1546,6 +1546,19 @@
 .studio-preview { display: flex; flex-direction: column; gap: 6px; position: sticky; top: 0; }
 .studio-preview-card { pointer-events: none; min-height: 120px; }
 
+/* ---------- import review (B3) ---------- */
+.import-dialog { width: min(640px, 94vw); }
+.import-title { font-family: var(--font-display); font-weight: 600; font-size: 14px; color: var(--silk); }
+.import-review { display: flex; flex-direction: column; gap: 8px; }
+.import-sect { display: flex; flex-direction: column; gap: 3px; }
+.import-code { display: flex; align-items: baseline; gap: 10px; }
+.import-code code {
+	font: 400 12px/1.5 ui-monospace, "Cascadia Code", Consolas, monospace;
+	color: var(--copper-bright); white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.import-label { color: var(--silk); font-size: 12.5px; min-width: 90px; }
+.import-embedded { border: 1px dashed var(--hairline); border-radius: var(--radius); padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+
 /* Macros: AutoConfirm — visible wherever the Run buttons are, so the mode can
    always be read off the screen rather than remembered. */
 .macro-autoconfirm {

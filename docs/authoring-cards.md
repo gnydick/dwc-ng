@@ -139,6 +139,25 @@ spec (built-in, user, imported) can use the new type. What a type may do is
 a review decision: it is a compiled capability data can *select*, never
 *define*.
 
+## Sharing cards and screens (export/import)
+
+- **Export a card**: ⊞ Compose → Your cards → **⤓** — downloads
+  `<name>.dwcng-card.json`. **Export a screen**: the **⤓ Export** button by
+  the screen name — downloads `<name>.dwcng-screen.json` with the layout,
+  the built-in card ids, and the full definitions of every custom card it
+  uses (self-contained).
+- **Import**: ⊞ Compose → **⤒ Import** → pick a file. The **review** opens
+  first: because the vocabulary is closed, it lists EVERYTHING the file can
+  do — every G-code template, every OM read, every enumeration, motion
+  primitives — before anything lands. Nothing is written until you click
+  Import.
+- Imported items get **fresh minted ids** (a foreign file can never collide
+  with or overwrite anything local); an imported screen appears in the nav
+  and you're taken to it. Like all authoring, imports are unsaved config
+  until **Save to machine**.
+- Share files are data-only by construction: a spec can carry templates and
+  selectors, and there is no field in which code could travel.
+
 ## The rules that hold it together
 
 - **Templates are welded to the authority.** Built-in specs' raw templates

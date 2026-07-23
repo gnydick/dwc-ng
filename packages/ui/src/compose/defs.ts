@@ -339,3 +339,11 @@ export function allCardIds(): readonly CardId[] {
 export function parseCardId(raw: string): CardId | null {
 	return (CARD_IDS as string[]).includes(raw) ? (raw as CardId) : null;
 }
+
+/** A card's display name where no ctx exists (pickers, the lab's pills,
+ *  import reviews): static titles verbatim, dynamic ones fall back to the id.
+ *  Lives here (not the JSX wrapper) so pure modules can import it. */
+export function cardTitleOf(id: CardId): string {
+	const title = CARD_DEFS[id].title;
+	return typeof title === "string" ? title : id;
+}
