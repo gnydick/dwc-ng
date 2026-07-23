@@ -11,7 +11,9 @@
  * carried before the conversion. User screens (overlay entries with minted
  * stable ids) join this list in phase A7b.
  */
-import type { Composition } from "./composition.ts";
+import { parseComposition, slotsOf, type Composition } from "./composition.ts";
+import { readCanvasState } from "../shell/panelCanvas.ts";
+import type { SlotRect, UiConfig } from "../config/types.ts";
 
 export interface ScreenDef {
 	/** Display name — a LABEL, never an identity (I10: renames can't orphan). */
@@ -125,22 +127,80 @@ export type BuiltinScreenId = keyof typeof BUILTIN_SCREENS;
 /** A screen with its identity attached — what nav/router/renderer consume. */
 export interface ScreenEntry {
 	id: string;
+	builtin: boolean;
 	def: ScreenDef;
 }
 
 /**
- * The live screen list, in nav order. Today: the built-ins. Phase A7b merges
- * user screens (and rename/hide overlays) from the config store here — this
- * accessor is already the single point every consumer reads.
+ * The live screen list, in nav order: built-ins (minus hidden, renamed and
+ * layout-overridden per the config overlay) followed by the user's custom
+ * screens. This is the ONE list nav/router/renderer read (I9). Config-sourced
+ * compositions pass the parseComposition boundary (I1) — a stored slot naming
+ * a removed card drops, never crashes.
+ *
+ * Never empty by construction: hiding every built-in still leaves the first
+ * one, so the shell always has a screen to land on.
  */
-export function screenList(): ScreenEntry[] {
-	return Object.entries(BUILTIN_SCREENS).map(([id, def]) => ({ id, def }));
+export function screenList(config: UiConfig): ScreenEntry[] {
+	const screens = config.screens;
+	const builtins = (Object.entries(BUILTIN_SCREENS) as Array<[BuiltinScreenId, ScreenDef]>)
+		.filter(([id]) => !screens.hidden.includes(id))
+		.map(([id, def]): ScreenEntry => {
+			const override = screens.layouts[id];
+			const overridden = override !== undefined ? parseComposition(override) : null;
+			return {
+				id,
+				builtin: true,
+				def: {
+					name: screens.renames[id] ?? def.name,
+					class: def.class,
+					// An override that parsed to nothing (all slots dropped) falls
+					// back to the built-in composition — a screen is never blank
+					// because of stale stored data.
+					composition: overridden !== null && Object.keys(overridden).length > 0 ? overridden : def.composition,
+				},
+			};
+		});
+	const custom = Object.entries(screens.custom).map(([id, c]): ScreenEntry => ({
+		id,
+		builtin: false,
+		def: { name: c.name, composition: parseComposition(c.cards) },
+	}));
+	const list = [...builtins, ...custom];
+	if (list.length > 0) return list;
+	const [id, def] = Object.entries(BUILTIN_SCREENS)[0]!;
+	return [{ id, builtin: true, def }];
 }
 
 /**
  * Resolve a route segment to a screen, or null (the caller decides the
  * fallback — Shell uses the first listed screen).
  */
-export function resolveScreen(id: string): ScreenEntry | null {
-	return screenList().find(s => s.id === id) ?? null;
+export function resolveScreen(config: UiConfig, id: string): ScreenEntry | null {
+	return screenList(config).find(s => s.id === id) ?? null;
+}
+
+/**
+ * Snapshot every screen's CURRENT geometry — the fast local tier (per-drop
+ * localStorage) joined with its composition — into the config overlay, so
+ * Save-to-machine carries screens AND layouts to the SD card (the ratified
+ * "all to SD" decision). Locally the localStorage tier still wins (it is the
+ * freshest); the overlay copy is what a NEW browser seeds from. This is also
+ * the whole migration story for pre-conversion layouts: their historic keys
+ * are read here and captured on the first save.
+ */
+export function captureScreenGeometry(store: {
+	config: UiConfig;
+	updateScreenCards: (id: string, cards: Record<string, SlotRect>) => void;
+}): void {
+	for (const entry of screenList(store.config)) {
+		const stored = readCanvasState(`dwc-ng.canvas.${entry.id}`);
+		if (stored === null) continue; // nothing local — the overlay copy stands
+		const cards: Record<string, SlotRect> = {};
+		for (const [id, slot] of slotsOf(entry.def.composition)) {
+			const s = stored[id] ?? slot;
+			cards[id] = { col: s.col, row: s.row, colSpan: s.colSpan, rowSpan: s.rowSpan };
+		}
+		store.updateScreenCards(entry.id, cards);
+	}
 }

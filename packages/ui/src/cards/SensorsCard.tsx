@@ -1,9 +1,7 @@
 import { For, Show, createMemo } from "solid-js";
 import { useApp } from "../shell/context.ts";
 import { sensorRows } from "../om/sensorRows.ts";
-import { Card } from "../shell/Card.tsx";
 import type { Orientation } from "../shell/panelOrientation.ts";
-import type { PanelCanvasController } from "../shell/panelCanvas.ts";
 
 /**
  * Endstops, filament monitors, and probes as a status list (or a horizontal
@@ -58,14 +56,5 @@ export function SensorsBody(props: { orientation: () => Orientation }) {
 				</table>
 			</Show>
 		</Show>
-	);
-}
-
-/** Legacy self-carding wrapper — dies with its last un-converted consumer (Card Lab). */
-export function SensorsCard(props: { canvas: PanelCanvasController }) {
-	return (
-		<Card id="sensors" canvas={props.canvas} ariaLabel="Sensors" title="Sensors" tip="sensors.endstops · filamentMonitors · probes" orientationToggle>
-			<SensorsBody orientation={() => props.canvas.orientationFor("sensors")} />
-		</Card>
 	);
 }

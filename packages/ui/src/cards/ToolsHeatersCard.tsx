@@ -1,10 +1,8 @@
 import { For, Show, createMemo } from "solid-js";
 import { useApp } from "../shell/context.ts";
 import type { Heater } from "../om/types.ts";
-import { Card } from "../shell/Card.tsx";
 import { HeaterState } from "./HeaterState.tsx";
 import type { Orientation } from "../shell/panelOrientation.ts";
-import type { PanelCanvasController } from "../shell/panelCanvas.ts";
 
 /**
  * Tools & heaters: one row per tool (current / active / standby / state) plus
@@ -158,15 +156,6 @@ export function ToolsHeatersBody(props: { orientation: () => Orientation }) {
 				</div>
 			</Show>
 		</>
-	);
-}
-
-/** Legacy self-carding wrapper — dies with its last un-converted consumer (Card Lab). */
-export function ToolsHeatersCard(props: { canvas: PanelCanvasController }) {
-	return (
-		<Card id="tools-heaters" canvas={props.canvas} ariaLabel="Tools and heaters" title="Tools & heaters" tip="tools · heat.heaters" orientationToggle>
-			<ToolsHeatersBody orientation={() => props.canvas.orientationFor("tools-heaters")} />
-		</Card>
 	);
 }
 

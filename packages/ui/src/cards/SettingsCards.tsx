@@ -12,6 +12,7 @@ import { For, Show, createMemo, createSignal } from "solid-js";
 import { useApp } from "../shell/context.ts";
 import { CONFIG_FILE } from "../config/types.ts";
 import { sensorRows } from "../om/sensorRows.ts";
+import { captureScreenGeometry } from "../compose/screens.ts";
 
 export function AxisRolesBody() {
 	const app = useApp();
@@ -202,6 +203,9 @@ export function ConfigSaveBody() {
 
 	const save = (): void => {
 		setSaveError(null);
+		// Fold every screen's current local geometry into the overlay first, so
+		// the SD copy carries screens AND layouts (they seed any new browser).
+		captureScreenGeometry(app.config);
 		void app.config.saveToMachine(app.connector).catch((err: unknown) => {
 			setSaveError(err instanceof Error ? err.message : String(err));
 		});

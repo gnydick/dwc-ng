@@ -1,9 +1,7 @@
 import { For, Show, createEffect, createSignal } from "solid-js";
 import { useApp } from "./context.ts";
-import { Panel } from "./Panel.tsx";
 import { classifyReply } from "../om/consoleLog.ts";
 import { loadCommandHistory, pushCommand, saveCommandHistory } from "../om/commandHistory.ts";
-import type { PanelCanvasController } from "./panelCanvas.ts";
 
 /**
  * Console as a regular panel — no more global docked/floating toggle.
@@ -20,15 +18,6 @@ export function ConsoleBody() {
 			<ConsoleHistory />
 			<ConsoleForm />
 		</>
-	);
-}
-
-/** Legacy self-carding wrapper — dies with its last un-converted view. */
-export function ConsolePanel(props: { canvas: PanelCanvasController }) {
-	return (
-		<Panel id="console" canvas={props.canvas} ariaLabel="Console" class="console-panel" title="Console">
-			<ConsoleBody />
-		</Panel>
 	);
 }
 

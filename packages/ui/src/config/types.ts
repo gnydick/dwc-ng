@@ -49,6 +49,38 @@ export interface BedConfig {
 	probePointCommand: string;
 }
 
+/** One card slot's grid rect (mirrors shell/panelCanvas PanelRect — inlined
+ *  so config stays dependency-free; compose's parseComposition guards reads). */
+export interface SlotRect {
+	col: number;
+	row: number;
+	colSpan: number;
+	rowSpan: number;
+}
+
+/** A user-created screen: display name + its card slots. */
+export interface CustomScreen {
+	name: string;
+	cards: Record<string, SlotRect>;
+}
+
+/**
+ * Screens as user truth (design phase A7b). Built-in screens are immutable
+ * code; everything the user does to them — rename, hide, change membership
+ * or layout — is overlay data here, and reset drops it. Custom screens live
+ * entirely here under minted "u-"-prefixed ids (the prefix keeps them out of
+ * the built-in/lab route namespace by construction).
+ */
+export interface ScreensConfig {
+	custom: Record<string, CustomScreen>;
+	/** Built-in id → display-name override. A rename never touches identity. */
+	renames: Record<string, string>;
+	/** Built-in ids removed from the nav (still recoverable — it's overlay). */
+	hidden: string[];
+	/** Built-in id → full composition override (membership + geometry). */
+	layouts: Record<string, Record<string, SlotRect>>;
+}
+
 export interface UiConfig {
 	/** Axis letter → human role label ("U" → "Z motor 1"). RRF has no
 	 * notion of axis roles; this is per-machine UI metadata. */
@@ -64,6 +96,7 @@ export interface UiConfig {
 	sensorNames: Record<string, string>;
 	macros: MacrosConfig;
 	bed: BedConfig;
+	screens: ScreensConfig;
 }
 
 export type DeepPartial<T> = {
@@ -86,6 +119,7 @@ export const DEFAULT_CONFIG: UiConfig = {
 	// Off by default: a fresh install asks before firing a macro at the machine.
 	macros: { autoConfirmRun: false },
 	bed: { probePointCommand: 'M98 P"0:/macros/dwc-ng/reprobe.g" X{x} Y{y}' },
+	screens: { custom: {}, renames: {}, hidden: [], layouts: {} },
 };
 
 /** Where the overlay lives on the machine's SD card. */

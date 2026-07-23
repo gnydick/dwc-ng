@@ -1,9 +1,7 @@
 import { For, Show, createMemo, createSignal } from "solid-js";
 import { useApp } from "../shell/context.ts";
 import { cmd } from "../control/commands.ts";
-import { Card } from "../shell/Card.tsx";
 import type { Board } from "../om/types.ts";
-import type { PanelCanvasController } from "../shell/panelCanvas.ts";
 
 /**
  * Firmware update (M997). Lists every board the object model reports and lets
@@ -120,14 +118,5 @@ export function FirmwareBody() {
 				</div>
 			</Show>
 		</>
-	);
-}
-
-/** Legacy self-carding wrapper — dies with its last un-converted consumer (Card Lab). */
-export function FirmwareUpdateCard(props: { canvas: PanelCanvasController }) {
-	return (
-		<Card id="firmware" canvas={props.canvas} ariaLabel="Firmware update" title="Firmware update" tip="M997 · boards">
-			<FirmwareBody />
-		</Card>
 	);
 }

@@ -1,7 +1,5 @@
 import { Show, createEffect, onCleanup } from "solid-js";
 import { useApp } from "./context.ts";
-import { Panel } from "./Panel.tsx";
-import type { PanelCanvasController } from "./panelCanvas.ts";
 import { cameraViewState, setCameraViewState } from "./cameraViewState.ts";
 
 const SCROLL_SAVE_DEBOUNCE_MS = 150;
@@ -66,24 +64,5 @@ export function CameraHideAction() {
 	const app = useApp();
 	return (
 		<button class="card-act" title="Hide camera" aria-label="Hide camera" onClick={() => app.config.setCamera({ pinned: false })}>✕</button>
-	);
-}
-
-/** Legacy self-carding wrapper — dies with its last un-converted view. */
-export function CameraPanel(props: { canvas: PanelCanvasController }) {
-	const app = useApp();
-	return (
-		<Show when={app.config.config.camera.pinned}>
-			<Panel
-				id="camera"
-				canvas={props.canvas}
-				ariaLabel="Camera"
-				class="cam-panel"
-				title="Camera"
-				actions={<CameraHideAction />}
-			>
-				<CameraBody />
-			</Panel>
-		</Show>
 	);
 }

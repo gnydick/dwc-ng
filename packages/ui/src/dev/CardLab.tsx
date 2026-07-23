@@ -1,4 +1,4 @@
-import { For, Show, createEffect, createSignal, type JSX } from "solid-js";
+import { For, Show, createEffect, createSignal } from "solid-js";
 import { createStore, produce, reconcile } from "solid-js/store";
 import { AppContext, type AppServices, useApp } from "../shell/context.ts";
 import { createTemperatureHistory } from "../om/temperature.ts";
@@ -6,100 +6,38 @@ import type { OmStore, ConnectionState } from "../om/store.ts";
 import type { ConsoleLine } from "../om/consoleLog.ts";
 import type { ObjectModel } from "../om/types.ts";
 import { PanelCanvas } from "../shell/PanelCanvas.tsx";
-import { Card } from "../shell/Card.tsx";
-import { createPanelCanvas, type PanelCanvasController, type PanelDefault } from "../shell/panelCanvas.ts";
-import { PositionCard } from "../cards/PositionCard.tsx";
-import { ToolsHeatersCard } from "../cards/ToolsHeatersCard.tsx";
-import { SensorsCard } from "../cards/SensorsCard.tsx";
-import { TemperaturesCard } from "../cards/TemperaturesCard.tsx";
-import { ActiveJobCard } from "../cards/ActiveJobCard.tsx";
-import { BuildObjects } from "../cards/BuildObjects.tsx";
-import { HeaterState } from "../cards/HeaterState.tsx";
-import { FirmwareUpdateCard } from "../cards/FirmwareUpdateCard.tsx";
-import { ConsolePanel } from "../shell/ConsolePanel.tsx";
-import { CameraPanel } from "../shell/CameraPanel.tsx";
+import { createPanelCanvas } from "../shell/panelCanvas.ts";
+import { CARD_DEFS, allCardIds, type CardId } from "../compose/defs.ts";
+import { RegistryCard, cardTitleOf } from "../compose/RegistryCard.tsx";
+import { createServicePool } from "../compose/services.ts";
+import type { CardCtx } from "../compose/ctx.ts";
 import { SCENARIOS, scenarioModel, type ScenarioId } from "./cardScenarios.ts";
 import { createStubConnector } from "./stubConnector.ts";
 
 /**
- * Card Lab (dev-only): render one card at a time against a synthetic object
- * model you can switch between states — idle, printing, paused, heater fault,
- * multi-tool — without a board or even the mock. It fixes the recurring pain of
- * a card whose interesting state (mid-print, a fault) can't be seen on an idle
- * machine.
+ * Card Lab (dev-only): render one REGISTRY card at a time against a synthetic
+ * object model you can switch between states — idle, printing, paused, heater
+ * fault, multi-tool — without a board or even the mock.
  *
- * The lab supplies its OWN AppContext: a synthetic OM store, the real config
- * (so your axis-role / sensor labels show), a stub connector that echoes
- * G-code into the console instead of sending it, and a temp history over the
- * synthetic model. Cards are unmodified — they read the same useApp() and can't
- * tell they're in the lab.
+ * Since the A9 conversion the lab has no card list of its own: the pills, the
+ * wrapper chrome, and the natural sizes all come from the same registry
+ * ComposedScreen renders (compose/defs.ts + RegistryCard), so a new card is
+ * in the lab the moment it is registered and the two surfaces cannot drift.
+ *
+ * The lab still supplies its OWN AppContext — synthetic OM store (per-key
+ * reconcile, mirroring om/store.ts), the real config, a stub connector that
+ * echoes G-code into the synthetic console, temp history over the synthetic
+ * model — and its own service pool over those services, so service-backed
+ * cards (browsers, height map) run against the stub too.
  */
-
-/** A card the lab can feature. `panelId` is the id the card's own <Panel> uses
- *  (so the canvas keys its geometry correctly). */
-interface LabCard {
-	key: string;
-	label: string;
-	panelId: string;
-	render: (canvas: PanelCanvasController) => JSX.Element;
-}
-
-const LAB_CARDS: LabCard[] = [
-	{ key: "position", label: "Position", panelId: "position", render: c => <PositionCard canvas={c} /> },
-	{ key: "tools-heaters", label: "Tools & Heaters", panelId: "tools-heaters", render: c => <ToolsHeatersCard canvas={c} /> },
-	{ key: "temperatures", label: "Temperatures", panelId: "temperatures", render: c => <TemperaturesCard canvas={c} /> },
-	{ key: "sensors", label: "Sensors", panelId: "sensors", render: c => <SensorsCard canvas={c} /> },
-	{ key: "job-compact", label: "Printing (compact)", panelId: "active-job", render: c => <ActiveJobCard canvas={c} /> },
-	{ key: "job-detailed", label: "Printing (detailed)", panelId: "active-job", render: c => <ActiveJobCard canvas={c} detailed /> },
-	{ key: "heater", label: "Heater", panelId: "heater", render: c => (
-		<Card id="heater" canvas={c} ariaLabel="Heater" title="Heater" tip="heat.heaters">
-			<HeaterTile />
-		</Card>
-	) },
-	{ key: "objects", label: "Objects (M486)", panelId: "build-objects", render: c => (
-		<Card id="build-objects" canvas={c} ariaLabel="Objects" title="Objects" tip="M486 · job.build">
-			<BuildObjects />
-		</Card>
-	) },
-	{ key: "console", label: "Console", panelId: "console", render: c => <ConsolePanel canvas={c} /> },
-	{ key: "camera", label: "Camera", panelId: "camera", render: c => <CameraPanel canvas={c} /> },
-	{ key: "firmware", label: "Firmware", panelId: "firmware", render: c => <FirmwareUpdateCard canvas={c} /> },
-];
-
-/** Each panel id at col 0 — only one card is ever mounted, so they can share a cell. */
-const LAB_DEFAULTS: PanelDefault[] = [
-	{ id: "position", col: 0, row: 0, colSpan: 12, rowSpan: 95 },
-	{ id: "tools-heaters", col: 0, row: 0, colSpan: 12, rowSpan: 89 },
-	{ id: "temperatures", col: 0, row: 0, colSpan: 14, rowSpan: 70 },
-	{ id: "sensors", col: 0, row: 0, colSpan: 12, rowSpan: 44 },
-	{ id: "active-job", col: 0, row: 0, colSpan: 12, rowSpan: 62 },
-	{ id: "heater", col: 0, row: 0, colSpan: 8, rowSpan: 40 },
-	{ id: "build-objects", col: 0, row: 0, colSpan: 12, rowSpan: 60 },
-	{ id: "console", col: 0, row: 0, colSpan: 16, rowSpan: 90 },
-	{ id: "camera", col: 0, row: 0, colSpan: 12, rowSpan: 80 },
-	{ id: "firmware", col: 0, row: 0, colSpan: 13, rowSpan: 112 },
-];
-
-/** Nozzle 1 (heater index 1) — the one the heater-fault scenario latches. */
-function HeaterTile() {
-	const app = useApp();
-	return (
-		<Show when={app.om.om.heat.heaters[1]} fallback={<p class="job-empty">No heater at index 1.</p>}>
-			{h => <HeaterState heater={h()} index={1} />}
-		</Show>
-	);
-}
-
 export default function CardLab() {
 	const outer = useApp();
 
 	const [scenario, setScenario] = createSignal<ScenarioId>("printing");
-	const [featured, setFeatured] = createSignal<string>("job-detailed");
+	const [featured, setFeatured] = createSignal<CardId>("active-job-detailed");
 
-	// Synthetic OM store, swapped when the scenario changes. Reconcile per
-	// top-level key exactly as the real om/store.ts does, so only the fields
-	// that actually differ re-notify — the same fine-grained update path the
-	// cards see in production.
+	// Synthetic OM store, swapped when the scenario changes — reconcile per
+	// top-level key exactly as om/store.ts does.
 	const [model, setModel] = createStore<ObjectModel>(scenarioModel(scenario()));
 	createEffect(() => {
 		const next = scenarioModel(scenario());
@@ -124,27 +62,38 @@ export default function CardLab() {
 
 	const services: AppServices = {
 		om: omStore,
-		config: outer.config, // real config so role/sensor labels render
+		config: outer.config, // real config so user axis-role/sensor labels render
 		connector: createStubConnector(echo),
 		temps: createTemperatureHistory(omStore),
 	};
+	const connected = (): boolean => true;
+	const service = createServicePool({ ...services, connected });
 
-	const current = (): LabCard => LAB_CARDS.find(c => c.key === featured()) ?? LAB_CARDS[0]!;
-	// Isolated canvas key — never touches a real view's saved layout. Only the
-	// featured card counts for collisions: every card defaults to (0,0) so they
-	// overlap, and without this filter a move/resize of the one on screen would
-	// collide with all the hidden ones and be silently rejected.
-	const canvas = createPanelCanvas("dwc-ng.canvas.cardlab", LAB_DEFAULTS, id => id === current().panelId);
+	// Isolated canvas key — never touches a real screen's saved layout. Every
+	// card defaults to (0,0) at its registry natural size; only the featured
+	// card counts for collisions (they all overlap by design).
+	const canvas = createPanelCanvas(
+		"dwc-ng.canvas.cardlab",
+		allCardIds().map(id => ({ id, col: 0, row: 0, ...CARD_DEFS[id].size })),
+		id => id === featured(),
+	);
+
+	const ctxFor = (id: CardId): CardCtx => ({
+		...services,
+		connected,
+		orientation: () => canvas.orientationFor(id),
+		service,
+	});
 
 	return (
 		<div class="card-lab">
 			<div class="lab-bar">
 				<span class="lab-cap">Card</span>
 				<div class="lab-pills" role="group" aria-label="Card">
-					<For each={LAB_CARDS}>
-						{c => (
-							<button class="lab-pill" aria-pressed={featured() === c.key} onClick={() => setFeatured(c.key)}>
-								{c.label}
+					<For each={allCardIds()}>
+						{id => (
+							<button class="lab-pill" aria-pressed={featured() === id} onClick={() => setFeatured(id)}>
+								{cardTitleOf(id)}
 							</button>
 						)}
 					</For>
@@ -166,10 +115,11 @@ export default function CardLab() {
 
 			<AppContext.Provider value={services}>
 				<PanelCanvas class="lab-canvas">
-					{/* Keyed on the featured card so switching remounts a clean card
-					    rather than reusing the previous one's internal state. */}
-					<Show when={current()} keyed>
-						{card => card.render(canvas)}
+					{/* Keyed remount on switch: a fresh card, no leaked internal state.
+					    visibleWhen is deliberately NOT applied here — the lab's job is
+					    to show the card, whatever the scenario says. */}
+					<Show when={featured()} keyed>
+						{id => <RegistryCard id={id} canvas={canvas} ctx={ctxFor(id)} />}
 					</Show>
 				</PanelCanvas>
 			</AppContext.Provider>

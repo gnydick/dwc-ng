@@ -1,11 +1,9 @@
 import { Show, Switch, Match, For, createMemo } from "solid-js";
 import { useApp } from "../shell/context.ts";
 import { cmd } from "../control/commands.ts";
-import { Card } from "../shell/Card.tsx";
 import { headlineRemaining, estimateSources } from "../om/estimates.ts";
 import { isJobActive, jobFileOf } from "../om/job.ts";
 import { baseName, fmtDuration } from "../files/format.ts";
-import type { PanelCanvasController } from "../shell/panelCanvas.ts";
 
 /**
  * The print card — progress and pause/resume/cancel. It lives on the surfaces
@@ -123,19 +121,6 @@ export function ActiveJobBody(props: { detailed?: boolean }) {
 				)}
 			</Show>
 		</Show>
-	);
-}
-
-/**
- * Legacy self-carding wrapper — dies with its last un-converted consumer
- * (Control, Activity, Card Lab). One Card wrapper with the state Show INSIDE
- * (the old shape mounted a whole identical Card per branch).
- */
-export function ActiveJobCard(props: { canvas: PanelCanvasController; detailed?: boolean }) {
-	return (
-		<Card id="active-job" canvas={props.canvas} ariaLabel="Active job" class="job-active" title="Printing" tip="job · state">
-			<ActiveJobBody detailed={props.detailed} />
-		</Card>
 	);
 }
 

@@ -4,7 +4,7 @@ import { FileNotFoundError } from "../connector/types.ts";
 import {
 	CONFIG_CACHE_KEY, CONFIG_FILE, CONFIG_VERSION, DEFAULT_CONFIG, MAX_SNAPSHOTS,
 	type CameraConfig, type ConfigOverlay, type ConfigSnapshot, type DockSensorRef,
-	type BedConfig, type MacrosConfig, type UiConfig,
+	type BedConfig, type MacrosConfig, type SlotRect, type UiConfig,
 } from "./types.ts";
 
 export interface ConfigStore {
@@ -23,6 +23,19 @@ export interface ConfigStore {
 	clearSensorName(key: string): void;
 	setMacros(patch: Partial<MacrosConfig>): void;
 	setBed(patch: Partial<BedConfig>): void;
+
+	/** Create a user screen; returns its minted stable id ("u-…"). */
+	addScreen(name: string): string;
+	/** Rename a screen — custom in place, built-in via the renames overlay.
+	 *  The id (and everything keyed on it) is untouched. */
+	renameScreen(id: string, name: string): void;
+	/** Delete a custom screen. Built-ins can only be hidden. */
+	removeScreen(id: string): void;
+	/** Hide/show a built-in from the nav. */
+	setScreenHidden(id: string, hidden: boolean): void;
+	/** Replace a screen's card slots (membership + geometry) — custom screens
+	 *  in place, built-ins via the layouts overlay. */
+	updateScreenCards(id: string, cards: Record<string, SlotRect>): void;
 
 	/** Drop one section's overlay — that section returns to defaults. */
 	resetSection(section: keyof UiConfig): void;
@@ -86,6 +99,41 @@ export function createConfigStore(): ConfigStore {
 		},
 		setBed(patch) {
 			apply(draft => { draft.bed = { ...draft.bed, ...patch }; });
+		},
+
+		addScreen(name) {
+			// "u-" prefix keeps minted ids out of the built-in/lab route
+			// namespace by construction — a collision has no way to occur.
+			const id = `u-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+			apply(draft => {
+				((draft.screens ??= {}).custom ??= {})[id] = { name, cards: {} };
+			});
+			return id;
+		},
+		renameScreen(id, name) {
+			apply(draft => {
+				const custom = draft.screens?.custom?.[id];
+				if (custom !== undefined) custom.name = name;
+				else ((draft.screens ??= {}).renames ??= {})[id] = name;
+			});
+		},
+		removeScreen(id) {
+			apply(draft => { delete draft.screens?.custom?.[id]; });
+		},
+		setScreenHidden(id, hidden) {
+			apply(draft => {
+				const screens = (draft.screens ??= {});
+				const current = (screens.hidden ?? []).filter(h => h !== id);
+				if (hidden) current.push(id);
+				screens.hidden = current;
+			});
+		},
+		updateScreenCards(id, cards) {
+			apply(draft => {
+				const custom = draft.screens?.custom?.[id];
+				if (custom !== undefined) custom.cards = cards;
+				else ((draft.screens ??= {}).layouts ??= {})[id] = cards;
+			});
 		},
 
 		resetSection(section) {

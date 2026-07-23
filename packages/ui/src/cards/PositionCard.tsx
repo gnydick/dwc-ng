@@ -1,8 +1,6 @@
 import { For, Show, createMemo } from "solid-js";
 import { useApp } from "../shell/context.ts";
-import { Card } from "../shell/Card.tsx";
 import type { Orientation } from "../shell/panelOrientation.ts";
-import type { PanelCanvasController } from "../shell/panelCanvas.ts";
 
 /**
  * The 7-axis DRO — content-only body; chrome comes from the compose registry
@@ -56,14 +54,5 @@ export function PositionBody(props: { orientation: () => Orientation }) {
 				</div>
 			</Show>
 		</Show>
-	);
-}
-
-/** Legacy self-carding wrapper — dies with its last un-converted view (Activity, Card Lab). */
-export function PositionCard(props: { canvas: PanelCanvasController }) {
-	return (
-		<Card id="position" canvas={props.canvas} ariaLabel="Position" title="Position" tip="move.axes" orientationToggle>
-			<PositionBody orientation={() => props.canvas.orientationFor("position")} />
-		</Card>
 	);
 }

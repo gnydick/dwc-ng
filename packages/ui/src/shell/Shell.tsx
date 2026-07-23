@@ -17,8 +17,9 @@ export default function Shell() {
 	const app = useApp();
 	const route = createRouter();
 	// Nav, router, and renderer all read the ONE screen list (I9). An unknown
-	// route falls back to the first listed screen.
-	const currentScreen = createMemo(() => resolveScreen(route()) ?? screenList()[0]!);
+	// (or just-hidden/deleted) route falls back to the first listed screen.
+	const screens = createMemo(() => screenList(app.config.config));
+	const currentScreenId = createMemo(() => resolveScreen(app.config.config, route())?.id ?? screens()[0]!.id);
 	const labActive = (): boolean => import.meta.env.DEV && route() === LAB_ROUTE;
 
 	const visibleAxes = createMemo(() => app.om.om.move.axes.filter(a => a.visible));
@@ -44,9 +45,9 @@ export default function Shell() {
 			<aside class="rail">
 				<div class="wordmark">dwc<span>·</span>ng</div>
 				<nav aria-label="Main">
-					<For each={screenList()}>
+					<For each={screens()}>
 						{entry => (
-							<a href={`#/${entry.id}`} aria-current={!labActive() && currentScreen().id === entry.id ? "page" : undefined}>
+							<a href={`#/${entry.id}`} aria-current={!labActive() && currentScreenId() === entry.id ? "page" : undefined}>
 								{entry.def.name}
 							</a>
 						)}
@@ -129,17 +130,12 @@ export default function Shell() {
 							<Suspense fallback={<p class="job-empty">Loading Card Lab…</p>}><CardLab /></Suspense>
 						</Match>
 						<Match when={true}>
-							{/* Keyed: switching screens remounts ComposedScreen, so each
-							    screen's canvas re-reads storage and its services die with
-							    it — the same lifecycle the eight view files had. */}
-							<Show when={currentScreen()} keyed>
-								{screen => (
-									<ComposedScreen
-										storageKey={`dwc-ng.canvas.${screen.id}`}
-										composition={screen.def.composition}
-										class={screen.def.class}
-									/>
-								)}
+							{/* Keyed on the STABLE id (never the entry object): switching
+							    screens remounts ComposedScreen — canvas re-reads storage,
+							    services die — but a config edit (rename, membership) on the
+							    SAME screen updates in place without a remount. */}
+							<Show when={currentScreenId()} keyed>
+								{id => <ComposedScreen screenId={id} />}
 							</Show>
 						</Match>
 					</Switch>

@@ -376,6 +376,13 @@ export interface PanelCanvasController {
 	 *  (Panel's orientationToggle prop) — "vertical" for anything never set. */
 	orientationFor: (id: string) => Orientation;
 	toggleOrientation: (id: string) => void;
+	/** Ids currently tracked (reactive). */
+	slotIds: () => string[];
+	/** Adopt a slot added after mount (composition editing) at the given rect;
+	 *  no-op if already tracked. Persists like a drop. */
+	ensureSlot: (id: string, rect: PanelRect) => void;
+	/** Forget a slot removed after mount. Persists like a drop. */
+	removeSlot: (id: string) => void;
 }
 
 /**
@@ -426,6 +433,20 @@ export function createPanelCanvas(storageKey: string, defaults: PanelDefault[], 
 			"grid-column": `${r.col + 1} / span ${r.colSpan}`,
 			"grid-row": `${r.row + 1} / span ${r.rowSpan}`,
 		};
+	};
+
+	const slotIds = (): string[] => Object.keys(state());
+
+	const ensureSlot = (id: string, rect: PanelRect): void => {
+		if (state()[id] !== undefined) return;
+		persist({ ...state(), [id]: clampRect(rect) });
+	};
+
+	const removeSlot = (id: string): void => {
+		if (state()[id] === undefined) return;
+		const next = { ...state() };
+		delete next[id];
+		persist(next);
 	};
 
 	const startMove = (id: string, event: PointerEvent): void => {
@@ -574,5 +595,21 @@ export function createPanelCanvas(storageKey: string, defaults: PanelDefault[], 
 		setOrientationState({});
 	};
 
-	return { styleFor, startMove, startResize, reset, orientationFor, toggleOrientation };
+	return { styleFor, startMove, startResize, reset, orientationFor, toggleOrientation, slotIds, ensureSlot, removeSlot };
+}
+
+/**
+ * Read a canvas's persisted state without a controller (the SD-capture path:
+ * Save-to-machine snapshots every screen's current local geometry into the
+ * config overlay). Same parse + migrations the controller uses; null when
+ * nothing (usable) is stored.
+ */
+export function readCanvasState(storageKey: string): CanvasState | null {
+	const parsed = parseStoredCanvas(readStorage(storageKey));
+	if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+	const out: CanvasState = {};
+	for (const [id, rect] of Object.entries(parsed as Record<string, unknown>)) {
+		if (isPanelRect(rect)) out[id] = clampRect(rect);
+	}
+	return Object.keys(out).length > 0 ? out : null;
 }

@@ -1,7 +1,5 @@
 import { For, Show, createEffect, createSignal, onCleanup, onMount } from "solid-js";
 import { useApp } from "../shell/context.ts";
-import { Card } from "../shell/Card.tsx";
-import type { PanelCanvasController } from "../shell/panelCanvas.ts";
 import { findSegmentIndex } from "./findSegmentIndex.ts";
 import { computeOpaqueRange, computeGhostRanges, type RenderMode, type GhostMode } from "./renderModes.ts";
 import { computeHueColors, colorModeAvailable, type ColorMode } from "./hueColors.ts";
@@ -303,14 +301,5 @@ export function GcodeViewerBody() {
 					</div>
 				</Show>
 		</div>
-	);
-}
-
-/** Legacy self-carding wrapper — dies with its last un-converted consumer. */
-export function GcodeViewer(props: { canvas: PanelCanvasController }) {
-	return (
-		<Card id="gcode-viewer" canvas={props.canvas} ariaLabel="G-code toolpath" title="Toolpath" tip="job.file · job.filePosition">
-			<GcodeViewerBody />
-		</Card>
 	);
 }

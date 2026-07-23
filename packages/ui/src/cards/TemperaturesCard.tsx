@@ -2,8 +2,6 @@ import { Show, createMemo } from "solid-js";
 import { useApp } from "../shell/context.ts";
 import { heaterSeries } from "../om/heaterSeries.ts";
 import { TemperatureChart, type ChartSeries } from "../charts/TemperatureChart.tsx";
-import { Card } from "../shell/Card.tsx";
-import type { PanelCanvasController } from "../shell/panelCanvas.ts";
 
 /**
  * Live heater temperatures. One chart series per heater, in heater order — the
@@ -29,14 +27,5 @@ export function TemperaturesBody() {
 		<Show when={chartSeries().length} fallback={<p class="job-empty">Waiting for heaters…</p>}>
 			<TemperatureChart data={app.temps.data} series={chartSeries()} height={220} />
 		</Show>
-	);
-}
-
-/** Legacy self-carding wrapper — dies with its last un-converted consumer (Card Lab). */
-export function TemperaturesCard(props: { canvas: PanelCanvasController }) {
-	return (
-		<Card id="temperatures" canvas={props.canvas} ariaLabel="Temperatures" title="Temperatures" tip="heat.heaters · live">
-			<TemperaturesBody />
-		</Card>
 	);
 }

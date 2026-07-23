@@ -1465,6 +1465,29 @@
    replaced; the message reserves no width — the buttons hold the row height. */
 .editor-bar { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-bottom: 8px; flex: 0 0 auto; }
 
+/* ---------- compose drawer (A8) ---------- */
+.compose-wrap { position: relative; display: inline-block; }
+.layout-toolbar { display: flex; gap: 10px; justify-content: flex-end; align-items: flex-start; }
+.compose-drawer {
+	position: absolute; right: 0; top: calc(100% + 6px); z-index: 40; width: 340px;
+	background: var(--mask-700); border: 1px solid var(--copper); border-radius: var(--radius);
+	padding: 12px; display: flex; flex-direction: column; gap: 10px;
+	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+.compose-row { display: flex; align-items: center; gap: 8px; }
+.compose-row .fb-input { flex: 1; }
+.compose-cards {
+	display: grid; grid-template-columns: 1fr 1fr; gap: 2px 12px;
+	max-height: 300px; overflow-y: auto; scrollbar-width: none;
+	border-top: 1px solid var(--hairline); border-bottom: 1px solid var(--hairline); padding: 8px 0;
+}
+.compose-card {
+	display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--silk);
+	padding: 3px 2px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.compose-card input { accent-color: var(--copper); }
+.compose-hidden { flex-wrap: wrap; }
+
 /* Macros: AutoConfirm — visible wherever the Run buttons are, so the mode can
    always be read off the screen rather than remembered. */
 .macro-autoconfirm {
