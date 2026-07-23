@@ -17,8 +17,6 @@ import { FilamentCard } from "../control/FilamentCard.tsx";
 import { isManualFan } from "../om/fans.ts";
 import type { Orientation } from "../shell/panelOrientation.ts";
 
-const STEPS = [0.1, 1, 10, 100];
-
 /**
  * Human reading of RRF's tool-change macro bitmask (1 tfree | 2 tpre | 4 tpost).
  * undefined means no P is sent at all, which lets the firmware run all three.
@@ -31,50 +29,6 @@ function describeToolP(p: number | undefined): string {
 	if (p & 2) parts.push("tpre");
 	if (p & 4) parts.push("tpost");
 	return parts.join(" · ");
-}
-
-export function HomingBody() {
-	const app = useApp();
-	const axes = createMemo(() => app.om.om.move.axes.filter(a => a.visible));
-	const role = (letter: string): string | undefined => app.config.config.axisRoles[letter];
-	return (
-		<>
-			{/* A grid, not a wrap: axis labels differ in length ("Home All" vs
-			    "Home U · Z motor 1"), so flex-wrapping produced six different
-			    button widths and six different left edges. Equal columns give
-			    one width and aligned rows regardless of what the axes are called. */}
-			<div class="ctl-grid">
-				<GcodeButton label="Home All" variant="go" command={cmd.homeAll()} />
-				<For each={axes()}>
-					{axis => (
-						<GcodeButton
-							label={`Home ${axis.letter}${role(axis.letter) ? ` · ${role(axis.letter)}` : ""}`}
-							command={cmd.homeAxis(axis.letter)}
-						/>
-					)}
-				</For>
-			</div>
-			{/* Releasing drops the homed state the row above establishes, so it
-			    belongs in this card. Compact and stamp-free: sixteen full-size
-			    buttons would not fit the panel, and the command is already named
-			    in the card tip (M84). */}
-			<div class="release-row">
-				<span class="ctl-name">Release</span>
-				<GcodeButton class="rel-key" label="All" variant="danger" command={cmd.releaseAllMotors()} stamp={false} />
-				<For each={axes()}>
-					{axis => (
-						<GcodeButton
-							class="rel-key"
-							label={axis.letter}
-							variant="quiet"
-							command={cmd.releaseAxis(axis.letter)}
-							stamp={false}
-						/>
-					)}
-				</For>
-			</div>
-		</>
-	);
 }
 
 export function AtxBody() {
@@ -170,83 +124,6 @@ export function HeatersBody() {
 			<Show when={bedModelIndex() >= 0}>
 				<HeaterControl label="Bed" kind="bed" num={0} active={heaterActive(bedModelIndex())} />
 			</Show>
-		</div>
-	);
-}
-
-export function MovementBody() {
-	const app = useApp();
-	const axes = createMemo(() => app.om.om.move.axes.filter(a => a.visible));
-	const role = (letter: string): string | undefined => app.config.config.axisRoles[letter];
-	const hasAxis = (letter: string): boolean => axes().some(a => a.letter === letter);
-	/** Axes that aren't part of the cardinal XY/Z pad or the coupler — e.g. the
-	    U/V/W leadscrews, jogged individually for tramming. */
-	const auxAxes = createMemo(() => axes().filter(a => !["X", "Y", "Z", "C"].includes(a.letter)));
-
-	const [step, setStep] = createSignal(1);
-	const [jogFeed, setJogFeed] = createSignal(6000);
-	const [extAmt, setExtAmt] = createSignal(5);
-	const [extFeed, setExtFeed] = createSignal(300);
-
-	return (
-		<div class="jog-controls">
-			<div class="step-row">
-				<span class="ctl-name">Step</span>
-				<For each={STEPS}>
-					{s => (
-						<button class="chip-btn" classList={{ active: step() === s }} onClick={() => setStep(s)}>{s} mm</button>
-					)}
-				</For>
-				<label class="feed-field">Feed <input type="number" value={jogFeed()} onInput={e => setJogFeed(Number(e.currentTarget.value))} /></label>
-			</div>
-
-			<div class="jog-pad">
-				<Show when={hasAxis("X") && hasAxis("Y")}>
-					<div class="jog-xy" role="group" aria-label="X/Y jog">
-						<GcodeButton class="jog-key pos-yp" label="+Y" command={cmd.jog("Y", step(), jogFeed())} stamp={false} />
-						<GcodeButton class="jog-key pos-xn" label="−X" command={cmd.jog("X", -step(), jogFeed())} stamp={false} />
-						<span class="jog-center">{step()}<small>mm</small></span>
-						<GcodeButton class="jog-key pos-xp" label="+X" command={cmd.jog("X", step(), jogFeed())} stamp={false} />
-						<GcodeButton class="jog-key pos-yn" label="−Y" command={cmd.jog("Y", -step(), jogFeed())} stamp={false} />
-					</div>
-				</Show>
-				<Show when={hasAxis("Z")}>
-					<div class="jog-z" role="group" aria-label="Z jog">
-						<GcodeButton class="jog-key" label="+Z" command={cmd.jog("Z", step(), jogFeed())} stamp={false} />
-						<span class="jog-zlabel">Z</span>
-						<GcodeButton class="jog-key" label="−Z" command={cmd.jog("Z", -step(), jogFeed())} stamp={false} />
-					</div>
-				</Show>
-			</div>
-
-			<Show when={auxAxes().length > 0}>
-				<div class="jog-aux">
-					<For each={auxAxes()}>
-						{axis => (
-							<div class="jog-row">
-								<span class="ctl-name">{axis.letter}<Show when={role(axis.letter)}>{r => <small>{r()}</small>}</Show></span>
-								<GcodeButton label={`− ${step()}`} command={cmd.jog(axis.letter, -step(), jogFeed())} stamp={false} />
-								<GcodeButton label={`+ ${step()}`} command={cmd.jog(axis.letter, step(), jogFeed())} stamp={false} />
-							</div>
-						)}
-					</For>
-				</div>
-			</Show>
-
-			<Show when={hasAxis("C")}>
-				<div class="coupler-row">
-					<span class="ctl-name">Coupler <small>C</small></span>
-					<GcodeButton label="Lock" command={cmd.couplerLock()} />
-					<GcodeButton label="Unlock" variant="quiet" command={cmd.couplerUnlock()} />
-				</div>
-			</Show>
-			<div class="extrude-row">
-				<span class="ctl-name">Extruder</span>
-				<label class="feed-field">mm <input type="number" value={extAmt()} onInput={e => setExtAmt(Number(e.currentTarget.value))} /></label>
-				<label class="feed-field">F <input type="number" value={extFeed()} onInput={e => setExtFeed(Number(e.currentTarget.value))} /></label>
-				<GcodeButton label="Retract" command={cmd.extrude(-extAmt(), extFeed())} stamp={false} />
-				<GcodeButton label="Extrude" command={cmd.extrude(extAmt(), extFeed())} stamp={false} />
-			</div>
 		</div>
 	);
 }

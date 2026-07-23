@@ -123,23 +123,28 @@ export function MacrosBody(props: { ctx: CardCtx }) {
 
 	return (
 		<Show when={props.ctx.connected()} fallback={<p class="job-empty">Not connected.</p>}>
-			<label class="auto-confirm">
+			<label class="macro-autoconfirm">
 				<input
 					type="checkbox"
 					checked={autoConfirm()}
 					onChange={e => {
-						app.config.setMacros({ autoConfirmRun: e.currentTarget.checked });
+						// Leaving a row armed while switching modes would make the
+						// next click mean something different than it looks.
 						setArmed(null);
+						app.config.setMacros({ autoConfirmRun: e.currentTarget.checked });
 					}}
 				/>
-				Run without confirming
+				<span>AutoConfirm</span>
+				<span class="macro-autoconfirm-hint">
+					{autoConfirm() ? "Run fires on the first click" : "Run asks twice"}
+				</span>
 			</label>
 			<FileBrowserView
 				browser={svc.browser}
 				selected={svc.selected()}
 				onOpen={entry => svc.setSelected(svc.browser.pathOf(entry))}
 				rootLabel="macros"
-				emptyText="No macros."
+				emptyText="No macros here."
 				rowActions={entry => {
 					const path = svc.browser.pathOf(entry);
 					return (

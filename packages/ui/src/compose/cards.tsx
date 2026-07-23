@@ -17,8 +17,10 @@ import { SensorsBody } from "../cards/SensorsCard.tsx";
 import { TemperaturesBody } from "../cards/TemperaturesCard.tsx";
 import { BuildObjects } from "../cards/BuildObjects.tsx";
 import {
-	HomingBody, AtxBody, ToolsBody, FilamentBody, HeatersBody, MovementBody, FansBody, TuningBody,
+	AtxBody, ToolsBody, FilamentBody, HeatersBody, FansBody, TuningBody,
 } from "../cards/ControlCards.tsx";
+import { ControlList } from "./controls/ControlList.tsx";
+import { HOMING_SPEC, MOVEMENT_SPEC } from "./controls/builtin.ts";
 import {
 	JobFilesBody, JobDetailsBody, MacrosBody, SystemFilesBody, OmInspectorBody, MacrosEditorBody, SystemEditorBody,
 } from "../cards/FileCards.tsx";
@@ -52,12 +54,14 @@ export const CARD_RENDER: Record<CardId, CardRender> = {
 	"build-objects": { body: () => <BuildObjects /> },
 	"gcode-viewer": { body: () => <GcodeViewerBody /> },
 	layers: { body: () => <LayersBody /> },
-	homing: { body: () => <HomingBody /> },
+	// Homing/Movement are DATA (compose/controls/builtin.ts) rendered through
+	// the control vocabulary — the phase-B dogfood.
+	homing: { body: ctx => <ControlList spec={HOMING_SPEC} ctx={ctx} /> },
 	atx: { body: () => <AtxBody /> },
 	tools: { body: () => <ToolsBody /> },
 	filament: { body: () => <FilamentBody /> },
 	heaters: { body: () => <HeatersBody /> },
-	movement: { body: () => <MovementBody /> },
+	movement: { body: ctx => <div class="jog-controls"><ControlList spec={MOVEMENT_SPEC} ctx={ctx} /></div> },
 	fans: { body: ctx => <FansBody orientation={ctx.orientation} /> },
 	tuning: { body: () => <TuningBody /> },
 	"job-files": { body: ctx => <JobFilesBody ctx={ctx} /> },
