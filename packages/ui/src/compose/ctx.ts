@@ -1,0 +1,23 @@
+/**
+ * The context a composed card receives — its ENTIRE external contract.
+ *
+ * Proven by the Card Lab: a card depends on exactly the four AppServices plus
+ * per-slot chrome state; anything supplying this shape can render any card
+ * (design doc §renderer). Cards never receive the raw PanelCanvasController
+ * or their own id string — orientation arrives pre-bound to the slot, so the
+ * id literals that were repeated inside card bodies (orientationFor("…"))
+ * have no reason to exist.
+ *
+ * Widened in phase A5 with the provisioned services of `needs` (typed per
+ * card via the service registry); a card that declares no needs sees none.
+ */
+import type { AppServices } from "../shell/context.ts";
+import type { Orientation } from "../shell/panelOrientation.ts";
+
+export interface CardCtx extends AppServices {
+	/** Uniform connection gate (replaces five per-view ad-hoc encodings). */
+	connected: () => boolean;
+	/** This slot's content-layout direction (only meaningful for cards that
+	 *  declare orientationToggle). */
+	orientation: () => Orientation;
+}
