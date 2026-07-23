@@ -71,11 +71,25 @@ export function createOmStore(): OmStore {
 			// guaranteed here; an unusable subtree keeps the last good one.
 			const conformed = conformModelKey(key, value);
 			if (!conformed.ok) return;
+			// job.layers is CONNECTOR truth (onJobLayers), never rr_ truth —
+			// RRF keeps no layer history, so a wholesale job refetch always
+			// arrives layer-less and must not wipe the maintained history.
+			if (key === "job") {
+				const incoming = conformed.value as Record<string, unknown>;
+				if (Array.isArray(incoming.layers) && incoming.layers.length === 0 && om.job.layers.length > 0) {
+					incoming.layers = om.job.layers.map(l => ({ ...l }));
+				}
+			}
 			// Authoritative subtree: replace wholesale, reconcile diffs the rest
 			setOm(key as keyof ObjectModel, reconcile(conformed.value as never));
 		},
 		onModelPatch(patch) {
 			setOm(produce(draft => deepMergeInto(draft as Record<string, unknown>, patch)));
+		},
+		onJobLayers(layers) {
+			// Wholesale replacement (see ConnectorEvents doc): a new print's
+			// shorter history must not keep the previous print's tail.
+			setOm("job", "layers", reconcile(layers as never));
 		},
 		onReply(text) {
 			setConsoleLines(produce(lines => {

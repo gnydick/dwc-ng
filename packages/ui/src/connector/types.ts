@@ -26,6 +26,15 @@ export interface ConnectorEvents {
 	 * are unchanged, never deleted.
 	 */
 	onModelPatch?(patch: Record<string, unknown>): void;
+	/**
+	 * The connector-maintained per-layer history changed — WHOLESALE
+	 * replacement semantics, deliberately its own event: the patch path's
+	 * element-wise array merge never truncates, so a new (shorter) print's
+	 * history could not reset through it. RRF keeps no layer history; the
+	 * connector is the one producer (synthesized in standalone, fetched from
+	 * DSF's model when the rr_ API is emulated).
+	 */
+	onJobLayers?(layers: unknown[]): void;
 	/** A G-code reply / console message arrived. */
 	onReply?(text: string): void;
 	onStatusChange?(status: ConnectionStatus, detail?: string): void;

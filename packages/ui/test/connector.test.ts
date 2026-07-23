@@ -21,6 +21,7 @@ interface Harness {
 	replies: string[];
 	statuses: ConnectionStatus[];
 	filesChanged: number[];
+	layerEvents: unknown[][];
 	close(): Promise<void>;
 }
 
@@ -33,6 +34,7 @@ async function startHarness(mockOptions: MockServerOptions = {}): Promise<Harnes
 	const replies: string[] = [];
 	const statuses: ConnectionStatus[] = [];
 	const filesChanged: number[] = [];
+	const layerEvents: unknown[][] = [];
 
 	const connector = new PollConnector({
 		baseUrl: `http://127.0.0.1:${port}`,
@@ -46,11 +48,12 @@ async function startHarness(mockOptions: MockServerOptions = {}): Promise<Harnes
 			onReply: text => replies.push(text),
 			onStatusChange: status => statuses.push(status),
 			onFilesChanged: volume => filesChanged.push(volume),
+			onJobLayers: layers => layerEvents.push(layers),
 		},
 	});
 
 	return {
-		mock, connector, keys, patches, replies, statuses, filesChanged,
+		mock, connector, keys, patches, replies, statuses, filesChanged, layerEvents,
 		async close() {
 			await connector.disconnect().catch(() => undefined);
 			await mock.close();
@@ -402,6 +405,59 @@ test("a command with no reply settles quickly instead of stalling", async () => 
 			elapsed < 1500,
 			`sendCode took ${elapsed}ms for a silent command - it must not wait out the request timeout`,
 		);
+	} finally {
+		await h.close();
+	}
+});
+
+// ---- layer history: the connector is the one producer of job.layers ----
+
+test("emulated (SBC) mode: layer history is fetched from DSF's /machine/model", async () => {
+	const h = await startHarness({ emulated: true, scenario: "mid-print" });
+	try {
+		const dsfLayers = [
+			{ duration: 61, filament: [2.5], fractionPrinted: 0.01, height: 0.2, temperatures: [210] },
+			{ duration: 58, filament: [2.4], fractionPrinted: 0.01, height: 0.2, temperatures: [211] },
+		];
+		(h.mock.machine.om.job as Record<string, unknown>).layers = dsfLayers;
+		await h.connector.connect();
+		// The fetch is fire-and-forget off the poll path — give it a beat.
+		for (let i = 0; i < 20 && h.layerEvents.length === 0; i++) {
+			await new Promise(resolve => setTimeout(resolve, 25));
+		}
+		assert.ok(h.layerEvents.length >= 1, "a mid-print connect backfills from DSF immediately");
+		assert.deepEqual(h.layerEvents.at(-1), dsfLayers, "DSF's genuine history, not a synthesis");
+	} finally {
+		await h.close();
+	}
+});
+
+test("standalone mode: layers are synthesized from observed polls", async () => {
+	const h = await startHarness({ scenario: "mid-print" });
+	try {
+		await h.connector.connect();
+		const job = h.mock.machine.om.job as Record<string, unknown>;
+		await h.connector.pollOnce(); // baseline tick (0→current pseudo-transition)
+		const startLayer = job.layer as number;
+		job.layer = startLayer + 1;
+		job.duration = (job.duration as number) + 30;
+		await h.connector.pollOnce();
+		const last = h.layerEvents.at(-1);
+		assert.ok(Array.isArray(last) && last.length === startLayer, "layers 1..current-1 synthesized");
+	} finally {
+		await h.close();
+	}
+});
+
+test("standalone mode never touches /machine/model", async () => {
+	// The mock 404s the endpoint when not emulating - a standalone connector
+	// asking for it would surface as a failed request somewhere; instead the
+	// synthesis path must simply never ask.
+	const h = await startHarness({ scenario: "mid-print" });
+	try {
+		await h.connector.connect();
+		await h.connector.pollOnce();
+		assert.equal(h.connector.status, "connected");
 	} finally {
 		await h.close();
 	}

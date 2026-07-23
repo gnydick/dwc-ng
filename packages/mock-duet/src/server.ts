@@ -26,6 +26,12 @@ export interface MockServerOptions {
 	tickMs?: number;
 	/** Base object model to serve instead of the synthetic one (see capture.ts). */
 	model?: Om;
+	/**
+	 * Pretend to be DSF's rr_ emulation (SBC mode): rr_connect reports
+	 * isEmulated, and GET /machine/model serves the full model the way DSF
+	 * does — the endpoint the connector's layer-history enrichment reads.
+	 */
+	emulated?: boolean;
 }
 
 export interface MockServer {
@@ -49,6 +55,7 @@ export function createMockServer(options: MockServerOptions = {}): MockServer {
 	const busyEvery = options.busyEvery ?? 0;
 	const requireAuth = options.requireAuth ?? true;
 	const tickMs = options.tickMs ?? 250;
+	const emulated = options.emulated ?? false;
 
 	const machine = new Machine(scenario, options.model);
 	const sessions = new SessionManager({
@@ -85,6 +92,17 @@ export function createMockServer(options: MockServerOptions = {}): MockServer {
 			res.end(body);
 		};
 
+		// DSF's model endpoint, present only when emulating SBC mode. DSF
+		// serves it without an rr_ session (its own auth is separate).
+		if (endpoint === "machine/model") {
+			if (!emulated) {
+				plain("mock-duet: /machine/model exists only with emulated: true.", 404);
+				return;
+			}
+			json(machine.om);
+			return;
+		}
+
 		if (!endpoint.startsWith("rr_")) {
 			plain("mock-duet: RRF rr_ endpoints only. This mock does not serve DWC assets.", 404);
 			return;
@@ -106,6 +124,7 @@ export function createMockServer(options: MockServerOptions = {}): MockServer {
 				apiLevel: 1,
 				sessionTimeout: sessions.sessionTimeout,
 			};
+			if (emulated) response.isEmulated = true;
 			if (q("sessionKey") === "yes") response.sessionKey = session.key;
 			json(response);
 			return;

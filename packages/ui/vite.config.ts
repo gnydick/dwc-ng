@@ -22,6 +22,10 @@ export default defineConfig({
       // server-side so the browser never hits the board directly (no CORS).
       '^/real/rr_.*': { target: realTarget, changeOrigin: true, rewrite: p => p.replace(/^\/real/, '') },
       '^/rr_.*': { target, changeOrigin: true },
+      // DSF's own model endpoint — the connector's layer-history enrichment
+      // reads job.layers from it when the rr_ API is emulated (SBC mode).
+      '^/real/machine/.*': { target: realTarget, changeOrigin: true, rewrite: p => p.replace(/^\/real/, '') },
+      '^/machine/.*': { target, changeOrigin: true },
     },
   },
 })

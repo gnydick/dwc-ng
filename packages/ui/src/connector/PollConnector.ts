@@ -7,6 +7,7 @@ import {
 import { crc32 } from "./crc32.ts";
 import { RequestQueue, type RequestPriority } from "./requestQueue.ts";
 import { isEmergencyStop } from "./emergency.ts";
+import { createLayerHistory, type LayerHistory, type LayerObservation } from "./layerHistory.ts";
 import { isPlainObject as isRecord, safeEntries } from "../util/safeObject.ts";
 
 /**
@@ -88,6 +89,20 @@ export class PollConnector implements Connector {
 	/** sendCode() calls waiting for the next non-empty reply. */
 	private replyWaiters: Array<(text: string) => void> = [];
 
+	/** True when rr_ is served by DSF on an SBC (rr_connect isEmulated). */
+	private emulated = false;
+	/**
+	 * The ONE producer of job.layers per connection (RRF keeps no layer
+	 * history): synthesized from observed polls in standalone, fetched from
+	 * DSF's own model when emulated. A closed union chosen against the
+	 * session's `emulated` flag — the two modes cannot both be live, and a
+	 * reconnect that lands on a different backend re-chooses automatically.
+	 */
+	private layerSource:
+		| { mode: "synth"; history: LayerHistory }
+		| { mode: "dsf"; lastLayer: number | null }
+		| null = null;
+
 	constructor(options: PollConnectorOptions = {}) {
 		this.base = options.baseUrl ?? "";
 		this.password = options.password ?? "";
@@ -151,7 +166,8 @@ export class PollConnector implements Connector {
 		if (body.err === 2) throw new NoFreeSessionError();
 		if (body.err !== 0) throw new OperationFailedError(`rr_connect err ${body.err}`);
 		this.sessionKey = body.sessionKey ?? null;
-		this.events.onBoardInfo?.({ emulated: body.isEmulated === true, boardType: body.boardType });
+		this.emulated = body.isEmulated === true;
+		this.events.onBoardInfo?.({ emulated: this.emulated, boardType: body.boardType });
 	}
 
 	/** Fetch seqs then every model key, emitting wholesale replacements. */
@@ -161,6 +177,9 @@ export class PollConnector implements Connector {
 		for (const key of keys) {
 			const value = await this.fetchModelKey(key);
 			this.events.onModelKey?.(key, value);
+			// Layer history sees the job at connect too — a mid-print connect
+			// starts tracking (and, in DSF mode, backfills) immediately.
+			if (key === "job" && isRecord(value)) this.trackLayers({ job: value });
 		}
 		this.lastSeqs = pickNumbers(seqs);
 		this.lastVolSeqs = Array.isArray(seqs.volChanges) ? [...(seqs.volChanges as number[])] : [];
@@ -177,6 +196,7 @@ export class PollConnector implements Connector {
 		delete live.seqs; // connector-maintained protocol state, not model data
 
 		this.events.onModelPatch?.(live);
+		this.trackLayers(live);
 
 		// Changed subtrees → authoritative re-fetch, wholesale replacement
 		for (const [key, value] of Object.entries(pickNumbers(seqs))) {
@@ -495,6 +515,57 @@ export class PollConnector implements Connector {
 		return value;
 	}
 
+	// ---------- layer history (see layerSource doc) ----------
+
+	/**
+	 * Digest one tick's model data (a live patch, or a job subtree wrapped
+	 * as { job }) into the mode-appropriate layer source. Total: absent or
+	 * mis-shaped fields cost precision, never a throw into the poll loop.
+	 */
+	private trackLayers(data: Record<string, unknown>): void {
+		const job = isRecord(data.job) ? data.job : undefined;
+		if (job === undefined) return;
+		if (this.layerSource === null || (this.layerSource.mode === "dsf") !== this.emulated) {
+			this.layerSource = this.emulated
+				? { mode: "dsf", lastLayer: null }
+				: { mode: "synth", history: createLayerHistory() };
+		}
+		if (this.layerSource.mode === "synth") {
+			const changed = this.layerSource.history.observe(layerObservationOf(data, job));
+			if (changed !== null) this.events.onJobLayers?.(changed);
+			return;
+		}
+		// DSF mode: the Pi already keeps the real history — re-fetch it once
+		// per observed layer change (layers change on a minutes cadence).
+		if (typeof job.duration !== "number") {
+			this.layerSource.lastLayer = null;
+			return;
+		}
+		const layer = typeof job.layer === "number" ? job.layer : null;
+		if (layer !== null && layer !== this.layerSource.lastLayer) {
+			this.layerSource.lastLayer = layer;
+			void this.fetchDsfLayers();
+		}
+	}
+
+	/**
+	 * DSF's own model (GET /machine/model) carries the genuine job.layers
+	 * the rr_ emulation omits. Enrichment only: any failure keeps the last
+	 * good history and never disturbs the poll.
+	 */
+	private async fetchDsfLayers(): Promise<void> {
+		try {
+			const res = await this.rawRequest("machine/model", undefined, "low");
+			const body = await res.json() as unknown;
+			const job = isRecord(body) && isRecord(body.job) ? body.job : undefined;
+			if (job !== undefined && Array.isArray(job.layers)) {
+				this.events.onJobLayers?.(job.layers.filter(isRecord));
+			}
+		} catch {
+			// keep last good
+		}
+	}
+
 	/** Fetch one whole subtree, stitching chunked arrays (a<offset>/next). */
 	private async fetchKey(key: string): Promise<unknown> {
 		let result: unknown = null;
@@ -629,6 +700,28 @@ function isoNow(): string {
 
 function delay(ms: number): Promise<void> {
 	return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/** Tolerantly lift one tick's raw model data into a synthesis observation. */
+function layerObservationOf(data: Record<string, unknown>, job: Record<string, unknown>): LayerObservation {
+	const num = (v: unknown): number | null => (typeof v === "number" ? v : null);
+	const move = isRecord(data.move) ? data.move : undefined;
+	const heat = isRecord(data.heat) ? data.heat : undefined;
+	const file = isRecord(job.file) ? job.file : undefined;
+	const axes = Array.isArray(move?.axes) ? move.axes : [];
+	const zAxis = axes.find(a => isRecord(a) && a.letter === "Z");
+	const extruders = Array.isArray(move?.extruders) ? move.extruders : [];
+	const heaters = Array.isArray(heat?.heaters) ? heat.heaters : [];
+	return {
+		duration: num(job.duration),
+		layer: num(job.layer),
+		warmUpDuration: num(job.warmUpDuration),
+		filePosition: num(job.filePosition),
+		fileSize: num(file?.size),
+		zPosition: isRecord(zAxis) ? num(zAxis.userPosition) : null,
+		rawExtrusion: extruders.map(e => (isRecord(e) ? num(e.rawPosition) ?? 0 : 0)),
+		temperatures: heaters.map(h => (isRecord(h) ? num(h.current) ?? 0 : 0)),
+	};
 }
 
 function pickNumbers(source: Record<string, unknown>): Record<string, number> {
