@@ -11,7 +11,7 @@
  * carried before the conversion. User screens (overlay entries with minted
  * stable ids) join this list in phase A7b.
  */
-import { parseComposition, slotsOf, type Composition } from "./composition.ts";
+import { parseComposition, slotsOf, toSlotRect, type Composition } from "./composition.ts";
 import { readCanvasState } from "../shell/panelCanvas.ts";
 import { LAB_ROUTE } from "../shell/router.ts";
 import type { SlotRect, UiConfig, UserScreenId } from "../config/types.ts";
@@ -211,8 +211,7 @@ export function captureScreenGeometry(store: {
 		if (stored === null) continue; // nothing local — the overlay copy stands
 		const cards: Record<string, SlotRect> = {};
 		for (const [id, slot] of slotsOf(entry.def.composition)) {
-			const s = stored[id] ?? slot;
-			cards[id] = { col: s.col, row: s.row, colSpan: s.colSpan, rowSpan: s.rowSpan };
+			cards[id] = toSlotRect(stored[id] ?? slot);
 		}
 		store.updateScreenCards(entry.id, cards);
 	}

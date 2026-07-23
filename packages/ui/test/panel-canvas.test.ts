@@ -264,3 +264,28 @@ test("it re-arms on the way back up so the detent is felt in both directions", (
 	assert.equal(back.state.broken, false, "re-armed, so shrinking again must catch at the minimum");
 });
 
+
+// ---- audit H6: slot adoption obeys the collision contract like a drag ----
+
+test("ensureSlot never persists an overlap - a colliding adoption is re-placed", async () => {
+	const { createPanelCanvas, findFreePosition } = await import("../src/shell/panelCanvas.ts");
+	const canvas = createPanelCanvas("dwc-ng.canvas.test-h6", [
+		{ id: "a", ...rect(0, 0, 12, 40) },
+	]);
+	// Adopt a slot whose requested rect sits exactly on top of "a" - the
+	// divergent-tiers case that used to persist an overlap and cost the
+	// user their whole stored layout at the next mount.
+	canvas.ensureSlot("b", rect(0, 0, 12, 40));
+	const style = canvas.styleFor("b");
+	assert.notDeepEqual(style, {}, "the slot was adopted");
+	assert.deepEqual(
+		{ col: style["grid-column"], row: style["grid-row"] },
+		{ col: `${12 + 1} / span 12`, row: `${0 + 1} / span 40` },
+		"re-placed to the first free spot (beside the occupant), never onto it",
+	);
+	// A non-colliding adoption keeps its requested rect exactly.
+	canvas.ensureSlot("c", rect(24, 0, 12, 40));
+	assert.equal(canvas.styleFor("c")["grid-column"], `${24 + 1} / span 12`);
+	assert.equal(canvas.styleFor("c")["grid-row"], `${0 + 1} / span 40`);
+	void findFreePosition;
+});

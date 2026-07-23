@@ -78,6 +78,28 @@ export function collidesWithAny(state: CanvasState, id: string, rect: PanelRect)
 	return false;
 }
 
+/**
+ * First free position for a rect of the given size: scan rows top-down (4px
+ * quantum), columns left-right, return the first spot that fits the grid and
+ * overlaps nothing. Total — the grid is unbounded downward, so a fit below
+ * everything always exists.
+ */
+export function findFreePosition(
+	occupied: readonly PanelRect[],
+	size: { colSpan: number; rowSpan: number },
+): { col: number; row: number } {
+	const colSpan = Math.min(Math.max(1, size.colSpan), GRID_COLS);
+	const rowSpan = Math.max(1, size.rowSpan);
+	const bottom = occupied.reduce((max, s) => Math.max(max, s.row + s.rowSpan), 0);
+	for (let row = 0; row <= bottom; row++) {
+		for (let col = 0; col + colSpan <= GRID_COLS; col++) {
+			const candidate = { col, row, colSpan, rowSpan };
+			if (!occupied.some(s => rectsOverlap(candidate, s))) return { col, row };
+		}
+	}
+	return { col: 0, row: bottom };
+}
+
 export function hasCollisions(state: CanvasState): boolean {
 	const ids = Object.keys(state);
 	for (let i = 0; i < ids.length; i++) {
@@ -440,7 +462,17 @@ export function createPanelCanvas(storageKey: string, defaults: PanelDefault[], 
 
 	const ensureSlot = (id: string, rect: PanelRect): void => {
 		if (state()[id] !== undefined) return;
-		persist({ ...state(), [id]: clampRect(rect) });
+		// Adoption obeys the same collision contract as a drag (audit H6): the
+		// requested rect may overlap LIVE geometry (composition and canvas
+		// tiers diverge after drags), and persisting an overlap would make the
+		// next mount's collision check discard the user's entire stored
+		// layout. Overlapping rects get the first free spot instead.
+		const wanted = clampRect(rect);
+		const occupied = Object.values(collidableState(id));
+		const placed = occupied.some(r => rectsOverlap(wanted, r))
+			? { ...wanted, ...findFreePosition(occupied, wanted) }
+			: wanted;
+		persist({ ...state(), [id]: placed });
 	};
 
 	const removeSlot = (id: string): void => {

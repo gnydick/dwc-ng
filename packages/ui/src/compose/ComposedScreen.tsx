@@ -20,7 +20,7 @@ import { PanelCanvas } from "../shell/PanelCanvas.tsx";
 import { createPanelCanvas } from "../shell/panelCanvas.ts";
 import { CARD_DEFS, allCardIds, parseCardId, type CardId } from "./defs.ts";
 import { RegistryCard, cardTitleOf } from "./RegistryCard.tsx";
-import { addCard, customCardIds, isCustomCardId, removeCard, slotsOf, type Composition, type CustomCardId, type SlotId } from "./composition.ts";
+import { addCard, compositionRects, customCardIds, isCustomCardId, removeCard, slotsOf, type Composition, type CustomCardId, type SlotId } from "./composition.ts";
 import { createServicePool } from "./services.ts";
 import { resolveScreen, type ScreenEntry } from "./screens.ts";
 import { CustomCard } from "./CustomCard.tsx";
@@ -90,12 +90,15 @@ export function ComposedScreen(props: { screenId: string }) {
 
 	// Composition edits → canvas slots. Adding a card adopts its (auto-placed)
 	// rect; removing forgets it. Untouched cards keep their state and DOM.
+	// The composition is the TOTAL slot truth for a screen, so anything the
+	// canvas tracks that isn't in it is stale — including unrecognizable junk
+	// ids from old storage, which the previous "known ids only" sweep kept
+	// forever (audit L5).
 	createEffect(() => {
 		const comp = composition();
 		for (const [id, slot] of slotsOf(comp)) canvas.ensureSlot(id, slot);
 		for (const id of canvas.slotIds()) {
-			const known = parseCardId(id) !== null || isCustomCardId(id);
-			if (known && !(id in comp)) canvas.removeSlot(id);
+			if (!(id in comp)) canvas.removeSlot(id);
 		}
 	});
 
@@ -174,8 +177,7 @@ function ComposeDrawer(props: { screenId: string; entry: ScreenEntry | null; com
 		setOpen(false);
 	};
 
-	const asRects = (comp: Composition): Record<string, { col: number; row: number; colSpan: number; rowSpan: number }> =>
-		Object.fromEntries(slotsOf(comp).map(([id, s]) => [id, { col: s.col, row: s.row, colSpan: s.colSpan, rowSpan: s.rowSpan }]));
+	const asRects = compositionRects;
 
 	const toggleCard = (id: SlotId): void => {
 		const has = props.composition[id] !== undefined;

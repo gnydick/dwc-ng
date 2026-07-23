@@ -16,9 +16,14 @@
  * therefore never wipe or shuffle an existing layout — placement is additive
  * by construction.
  */
-import { GRID_COLS, clampRect, rectsOverlap, type PanelRect } from "../shell/panelCanvas.ts";
+import { clampRect, findFreePosition, type PanelRect } from "../shell/panelCanvas.ts";
 import { CARD_DEFS, parseCardId, type CardId } from "./defs.ts";
-import { isCustomCardId, type CustomCardId, type UiConfig } from "../config/types.ts";
+import { isCustomCardId, type CustomCardId, type SlotRect, type UiConfig } from "../config/types.ts";
+
+/** Placement is geometry — it lives in panelCanvas.ts (one implementation,
+ *  shared with the controller's own slot adoption); re-exported here for
+ *  the compose layer's consumers. */
+export { findFreePosition };
 
 /** One card's placement on a screen. */
 export type Slot = PanelRect;
@@ -81,26 +86,15 @@ export function slotsOf(composition: Composition): Array<[SlotId, Slot]> {
 	return Object.entries(composition) as Array<[SlotId, Slot]>;
 }
 
-/**
- * First free position for a rect of the given size: scan rows top-down (4px
- * quantum), columns left-right, return the first spot that fits the grid and
- * overlaps nothing. Total — the grid is unbounded downward, so a fit below
- * everything always exists.
- */
-export function findFreePosition(
-	occupied: readonly Slot[],
-	size: { colSpan: number; rowSpan: number },
-): { col: number; row: number } {
-	const colSpan = Math.min(Math.max(1, size.colSpan), GRID_COLS);
-	const rowSpan = Math.max(1, size.rowSpan);
-	const bottom = occupied.reduce((max, s) => Math.max(max, s.row + s.rowSpan), 0);
-	for (let row = 0; row <= bottom; row++) {
-		for (let col = 0; col + colSpan <= GRID_COLS; col++) {
-			const candidate = { col, row, colSpan, rowSpan };
-			if (!occupied.some(s => rectsOverlap(candidate, s))) return { col, row };
-		}
-	}
-	return { col: 0, row: bottom };
+/** Project a slot to the plain rect the config overlay stores — the ONE
+ *  Slot→SlotRect projection (it was inlined at two call sites before). */
+export function toSlotRect(slot: Readonly<Slot>): SlotRect {
+	return { col: slot.col, row: slot.row, colSpan: slot.colSpan, rowSpan: slot.rowSpan };
+}
+
+/** A whole composition as the overlay's rect record. */
+export function compositionRects(composition: Composition): Record<string, SlotRect> {
+	return Object.fromEntries(slotsOf(composition).map(([id, slot]) => [id, toSlotRect(slot)]));
 }
 
 /** A custom card's default footprint until its author resizes it. */
