@@ -15,6 +15,7 @@
  * stripping cannot load JSX).
  */
 import { layerStats } from "../charts/layerData.ts";
+import { isManualFan } from "../om/fans.ts";
 import type { CardCtx } from "./ctx.ts";
 
 export interface CardSize {
@@ -132,6 +133,68 @@ export const CARD_DEFS = {
 		tip: "job.layers",
 		size: { colSpan: 24, rowSpan: 67 },
 		visibleWhen: ctx => layerStats(ctx.om.om.job.layers).count > 0,
+	}),
+	/** Home all / per-axis + release (M84). */
+	homing: defineCard({
+		title: "Homing",
+		ariaLabel: "Homing",
+		tip: "G28 · M84",
+		size: { colSpan: 12, rowSpan: 51 },
+	}),
+	/** ATX PSU — state.atxPower is null on a board with no PS_ON port
+	 *  configured, and a dead switch is worse than none. */
+	atx: defineCard({
+		title: "ATX power",
+		ariaLabel: "ATX power",
+		tip: "M80 · M81",
+		size: { colSpan: 12, rowSpan: 32 },
+		visibleWhen: ctx => ctx.om.om.state.atxPower !== null,
+	}),
+	/** Tool select / deselect with the tool-change macro bitmask. */
+	tools: defineCard({
+		title: "Tools",
+		ariaLabel: "Tools",
+		tip: "T · state.currentTool",
+		size: { colSpan: 12, rowSpan: 33 },
+	}),
+	/** Filament load/unload — a tool with no extruder cannot hold filament. */
+	filament: defineCard({
+		title: "Filament",
+		ariaLabel: "Filament",
+		tip: "M701 · M702 · M703",
+		size: { colSpan: 12, rowSpan: 50 },
+		visibleWhen: ctx => ctx.om.om.tools.some(t => t !== null && t.filamentExtruder >= 0),
+	}),
+	/** Heater setpoints per tool + bed (M568/M140). */
+	heaters: defineCard({
+		title: "Heaters",
+		ariaLabel: "Heaters",
+		tip: "M568 · M140",
+		size: { colSpan: 12, rowSpan: 62 },
+	}),
+	/** Jog pad, aux axes, coupler, extrude. */
+	movement: defineCard({
+		title: "Movement",
+		ariaLabel: "Movement",
+		tip: "M120 · G91 · M121",
+		size: { colSpan: 12, rowSpan: 123 },
+	}),
+	/** Manual fans only — thermostatic ones belong to the firmware. Same
+	 *  isManualFan the body filters by, so the gate and the list agree. */
+	fans: defineCard({
+		title: "Fans",
+		ariaLabel: "Fans",
+		tip: "M106",
+		orientationToggle: true,
+		size: { colSpan: 12, rowSpan: 62 },
+		visibleWhen: ctx => ctx.om.om.fans.some(isManualFan),
+	}),
+	/** Speed factor + babystep. */
+	tuning: defineCard({
+		title: "Tuning",
+		ariaLabel: "Tuning",
+		tip: "M220 · M221 · M290",
+		size: { colSpan: 12, rowSpan: 33 },
 	}),
 } as const satisfies Record<string, CardMeta>;
 

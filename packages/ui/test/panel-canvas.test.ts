@@ -8,7 +8,6 @@ import {
 import { JOBS_PANEL_DEFAULTS } from "../src/views/jobs.panelDefaults.ts";
 import { MACROS_PANEL_DEFAULTS } from "../src/views/macros.panelDefaults.ts";
 import { SYSTEM_PANEL_DEFAULTS } from "../src/views/system.panelDefaults.ts";
-import { CONTROL_PANEL_DEFAULTS } from "../src/views/control.panelDefaults.ts";
 import { SETTINGS_PANEL_DEFAULTS } from "../src/views/settings.panelDefaults.ts";
 import { BED_PANEL_DEFAULTS } from "../src/views/bed.panelDefaults.ts";
 
@@ -188,9 +187,8 @@ test("System view's default panel layout is collision-free", () => {
 	assert.equal(hasCollisions(defaultCanvas(SYSTEM_PANEL_DEFAULTS)), false);
 });
 
-test("Control view's default panel layout is collision-free", () => {
-	assert.equal(hasCollisions(defaultCanvas(CONTROL_PANEL_DEFAULTS)), false);
-});
+// Control's layout is asserted in composition.test.ts against its composed
+// screen — the defaults file this checked was deleted in the A4 conversion.
 
 test("Settings view's default panel layout is collision-free", () => {
 	assert.equal(hasCollisions(defaultCanvas(SETTINGS_PANEL_DEFAULTS)), false);

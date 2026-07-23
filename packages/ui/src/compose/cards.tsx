@@ -16,6 +16,9 @@ import { ActiveJobBody } from "../cards/ActiveJobCard.tsx";
 import { SensorsBody } from "../cards/SensorsCard.tsx";
 import { TemperaturesBody } from "../cards/TemperaturesCard.tsx";
 import { BuildObjects } from "../cards/BuildObjects.tsx";
+import {
+	HomingBody, AtxBody, ToolsBody, FilamentBody, HeatersBody, MovementBody, FansBody, TuningBody,
+} from "../cards/ControlCards.tsx";
 import { LayersBody } from "../cards/LayersCard.tsx";
 import { GcodeViewerBody } from "../gcode/GcodeViewer.tsx";
 import { ConsoleBody } from "../shell/ConsolePanel.tsx";
@@ -41,4 +44,12 @@ export const CARD_RENDER: Record<CardId, CardRender> = {
 	"build-objects": { body: () => <BuildObjects /> },
 	"gcode-viewer": { body: () => <GcodeViewerBody /> },
 	layers: { body: () => <LayersBody /> },
+	homing: { body: () => <HomingBody /> },
+	atx: { body: () => <AtxBody /> },
+	tools: { body: () => <ToolsBody /> },
+	filament: { body: () => <FilamentBody /> },
+	heaters: { body: () => <HeatersBody /> },
+	movement: { body: () => <MovementBody /> },
+	fans: { body: ctx => <FansBody orientation={ctx.orientation} /> },
+	tuning: { body: () => <TuningBody /> },
 };

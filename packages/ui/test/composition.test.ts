@@ -85,10 +85,11 @@ test("removeCard removes only the named slot and never reflows", () => {
 // ---- built-in screens: shippable by construction ----
 
 test("built-in screen compositions are collision-free and round-trip parse", async () => {
-	const { MACHINE_COMPOSITION, ACTIVITY_COMPOSITION } = await import("../src/compose/screens.ts");
+	const { MACHINE_COMPOSITION, CONTROL_COMPOSITION, ACTIVITY_COMPOSITION } = await import("../src/compose/screens.ts");
 	const { hasCollisions } = await import("../src/shell/panelCanvas.ts");
 	for (const [name, composition] of [
 		["machine", MACHINE_COMPOSITION],
+		["control", CONTROL_COMPOSITION],
 		["activity", ACTIVITY_COMPOSITION],
 	] as const) {
 		// keys are CardIds by type; prove the runtime data survives its own boundary
