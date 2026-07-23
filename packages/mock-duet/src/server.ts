@@ -2,9 +2,10 @@ import http from "node:http";
 import { Buffer } from "node:buffer";
 import { Machine } from "./machine.ts";
 import type { Om } from "./snapshot.ts";
-import { SessionManager, type Session } from "./sessions.ts";
+import { SessionManager } from "./sessions.ts";
 import { buildModelResponse } from "./model-query.ts";
 import { crc32 } from "./crc32.ts";
+import { createDsfEndpoint, type DsfEndpoint } from "./dsf.ts";
 import { scenarios, type Scenario } from "./scenarios/index.ts";
 
 export interface MockServerOptions {
@@ -32,6 +33,11 @@ export interface MockServerOptions {
 	 * does — the endpoint the connector's layer-history enrichment reads.
 	 */
 	emulated?: boolean;
+	/**
+	 * Serve the full DSF surface (design D11): /machine/* REST routes and
+	 * the /machine WebSocket push loop, alongside the rr_ dialect.
+	 */
+	dsf?: boolean;
 }
 
 export interface MockServer {
@@ -64,7 +70,11 @@ export function createMockServer(options: MockServerOptions = {}): MockServer {
 		replyExpiryMs: options.replyExpiryMs ?? 3000,
 	});
 
-	machine.onReply = text => sessions.pushReply(text);
+	machine.onReply = text => {
+		sessions.pushReply(text);
+		// In DSF mode the same reply ALSO rides the WS messages channel
+		dsf?.queueReply(text);
+	};
 	machine.onReset = () => sessions.clear();
 	machine.onOutage = () => sessions.clear();
 
@@ -91,6 +101,14 @@ export function createMockServer(options: MockServerOptions = {}): MockServer {
 			res.writeHead(status, { "Content-Type": "text/plain", "Content-Length": Buffer.byteLength(body) });
 			res.end(body);
 		};
+
+		// Full DSF surface (dsf: true): every /machine/* route belongs to
+		// the DSF endpoint. Without it, only the emulated model route below
+		// exists — dsf: false must behave exactly as before.
+		if (dsf !== null && (endpoint === "machine" || endpoint.startsWith("machine/"))) {
+			dsf.handleRest(req, res, endpoint, url);
+			return;
+		}
 
 		// DSF's model endpoint, present only when emulating SBC mode. DSF
 		// serves it without an rr_ session (its own auth is separate).
@@ -131,11 +149,7 @@ export function createMockServer(options: MockServerOptions = {}): MockServer {
 		}
 
 		// --- session check ---
-		let session: Session | null = null;
-		const keyHeader = req.headers["x-session-key"];
-		if (typeof keyHeader === "string" && /^\d+$/.test(keyHeader)) {
-			session = sessions.get(parseInt(keyHeader, 10));
-		}
+		const session = sessions.fromHeader(req.headers["x-session-key"]);
 		if (requireAuth && session === null) {
 			plain("", 401);
 			return;
@@ -212,14 +226,14 @@ export function createMockServer(options: MockServerOptions = {}): MockServer {
 			}
 
 			case "rr_delete": {
-				const ok = machine.sd.delete(q("name"), q("recursive") === "yes");
+				const ok = machine.sd.delete(q("name"), q("recursive") === "yes") === "ok";
 				if (ok) machine.bumpVolume(0);
 				json({ err: ok ? 0 : 1 });
 				return;
 			}
 
 			case "rr_move": {
-				const ok = machine.sd.move(q("old"), q("new"), q("deleteexisting") === "yes");
+				const ok = machine.sd.move(q("old"), q("new"), q("deleteexisting") === "yes") === "ok";
 				if (ok) machine.bumpVolume(0);
 				json({ err: ok ? 0 : 1 });
 				return;
@@ -299,6 +313,12 @@ export function createMockServer(options: MockServerOptions = {}): MockServer {
 		}
 	});
 
+	// Created after `server` because attachWebSocket hooks its upgrade
+	// event; the request handler above only dereferences it per-request.
+	const dsf: DsfEndpoint | null = options.dsf === true
+		? createDsfEndpoint(server, { machine, sessions, password })
+		: null;
+
 	let tickTimer: NodeJS.Timeout | null = null;
 
 	return {
@@ -320,6 +340,9 @@ export function createMockServer(options: MockServerOptions = {}): MockServer {
 		},
 		close(): Promise<void> {
 			if (tickTimer !== null) clearInterval(tickTimer);
+			// Upgraded WS sockets are invisible to closeAllConnections —
+			// dispose() reaps them or server.close() would hang forever
+			dsf?.dispose();
 			server.closeAllConnections();
 			return new Promise((resolve, reject) => server.close(err => (err ? reject(err) : resolve())));
 		},

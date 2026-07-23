@@ -124,26 +124,33 @@ export class VirtualSD {
 		return true;
 	}
 
-	delete(path: string, recursive: boolean): boolean {
+	/**
+	 * Outcomes are a union, not a boolean, because the two HTTP dialects
+	 * map them differently (rr_delete: err 0/1; DSF: 204/404/500). The
+	 * distinction lives HERE, in the one store — callers never pre-probe.
+	 */
+	delete(path: string, recursive: boolean): "ok" | "missing" | "not-empty" {
 		const loc = this.parent(path);
-		if (loc === null) return false;
+		if (loc === null) return "missing";
 		const node = loc.dir.entries.get(loc.name);
-		if (node === undefined) return false;
-		if (node.type === "d" && node.entries.size > 0 && !recursive) return false;
-		return loc.dir.entries.delete(loc.name);
+		if (node === undefined) return "missing";
+		if (node.type === "d" && node.entries.size > 0 && !recursive) return "not-empty";
+		loc.dir.entries.delete(loc.name);
+		return "ok";
 	}
 
-	move(from: string, to: string, overwrite: boolean): boolean {
+	/** Same union rationale as delete: "exists" = destination clobber refused. */
+	move(from: string, to: string, overwrite: boolean): "ok" | "missing" | "exists" {
 		const src = this.parent(from);
-		if (src === null) return false;
+		if (src === null) return "missing";
 		const node = src.dir.entries.get(src.name);
-		if (node === undefined) return false;
+		if (node === undefined) return "missing";
 		const dst = this.parent(to);
-		if (dst === null) return false;
-		if (dst.dir.entries.has(dst.name) && !overwrite) return false;
+		if (dst === null) return "missing";
+		if (dst.dir.entries.has(dst.name) && !overwrite) return "exists";
 		src.dir.entries.delete(src.name);
 		dst.dir.entries.set(dst.name, node);
-		return true;
+		return "ok";
 	}
 }
 

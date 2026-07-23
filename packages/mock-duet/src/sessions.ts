@@ -9,6 +9,8 @@ export interface Session {
 	key: number;
 	lastSeen: number;
 	replies: { text: string; expiresAt: number }[];
+	/** Open WebSockets holding this session; > 0 exempts it from idle sweep. */
+	pins: number;
 }
 
 export interface SessionOptions {
@@ -34,7 +36,7 @@ export class SessionManager {
 	connect(): Session | null {
 		this.sweep();
 		if (this.sessions.size >= this.opts.maxSessions) return null;
-		const session: Session = { key: this.nextKey++, lastSeen: Date.now(), replies: [] };
+		const session: Session = { key: this.nextKey++, lastSeen: Date.now(), replies: [], pins: 0 };
 		this.sessions.set(session.key, session);
 		return session;
 	}
@@ -46,6 +48,36 @@ export class SessionManager {
 		if (session === undefined) return null;
 		session.lastSeen = Date.now();
 		return session;
+	}
+
+	/**
+	 * Resolve an X-Session-Key request header. The ONE place header text
+	 * becomes a session — both the rr_ and /machine dialects go through it.
+	 */
+	fromHeader(value: string | string[] | undefined): Session | null {
+		if (typeof value !== "string" || !/^\d+$/.test(value)) return null;
+		return this.get(parseInt(value, 10));
+	}
+
+	/**
+	 * Bind a session to an open WebSocket: pinned sessions never idle-expire
+	 * (design D11 "sessions holding a WS never idle-expire"). Counted, not
+	 * boolean, so two sockets sharing a key don't unpin each other early.
+	 * Returns false for unknown/expired keys — the caller must not assume.
+	 */
+	pin(key: number): boolean {
+		const session = this.get(key);
+		if (session === null) return false;
+		session.pins++;
+		return true;
+	}
+
+	/** Release one WS binding; the idle clock restarts from now. */
+	unpin(key: number): void {
+		const session = this.sessions.get(key);
+		if (session === undefined) return;
+		session.pins = Math.max(0, session.pins - 1);
+		session.lastSeen = Date.now();
 	}
 
 	disconnect(key: number): void {
@@ -80,7 +112,7 @@ export class SessionManager {
 	private sweep(): void {
 		const cutoff = Date.now() - this.opts.sessionTimeout;
 		for (const [key, session] of this.sessions) {
-			if (session.lastSeen < cutoff) this.sessions.delete(key);
+			if (session.pins === 0 && session.lastSeen < cutoff) this.sessions.delete(key);
 		}
 	}
 }

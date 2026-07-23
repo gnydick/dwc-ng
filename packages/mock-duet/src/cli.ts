@@ -17,6 +17,7 @@ const { values } = parseArgs({
 		"chunk-size": { type: "string", default: "8" },
 		"reply-expiry": { type: "string", default: "3000" },
 		"no-auth": { type: "boolean", default: false },
+		dsf: { type: "boolean", default: false },
 		list: { type: "boolean", default: false },
 		help: { type: "boolean", short: "h", default: false },
 	},
@@ -38,6 +39,8 @@ Options:
       --chunk-size <n>    Array elements per rr_model chunk / files per page (default: 8).
       --reply-expiry <ms> Drop unread G-code replies after this long (default: 3000).
       --no-auth           Don't require X-Session-Key (handy for curl).
+      --dsf               Also serve the DSF (SBC) surface: /machine/* REST
+                          routes and the /machine WebSocket push loop.
       --list              List scenarios and exit.`);
 	process.exit(0);
 }
@@ -65,6 +68,7 @@ const mock = createMockServer({
 	chunkSize: parseInt(values["chunk-size"], 10),
 	replyExpiryMs: parseInt(values["reply-expiry"], 10),
 	requireAuth: !values["no-auth"],
+	dsf: values.dsf,
 });
 
 const port = await mock.listen(parseInt(values.port, 10));
@@ -75,6 +79,7 @@ if (model !== undefined) {
 	console.log(`snapshot: ${values.snapshot} (${model.tools?.length ?? 0} tools, axes ${axes || "n/a"})`);
 }
 if (values["no-auth"]) console.log("auth disabled (--no-auth): X-Session-Key not required");
+if (values.dsf) console.log(`DSF mode (--dsf): REST http://127.0.0.1:${port}/machine/*, push ws://127.0.0.1:${port}/machine`);
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
 	process.on(signal, () => {

@@ -87,10 +87,15 @@ export class Machine {
 		this.onReply?.(text);
 	}
 
-	/** Execute a G/M/T-code and emit its reply. */
-	execute(code: string): void {
+	/**
+	 * Execute a G/M/T-code and emit its reply. The ONE execution authority
+	 * for both HTTP dialects: rr_gcode ignores the return (its clients
+	 * drain rr_reply), POST /machine/code answers with it directly.
+	 */
+	execute(code: string): string {
 		const reply = executeGCode(this, code);
 		this.emitReply(reply);
+		return reply;
 	}
 
 	get outageActive(): boolean {
