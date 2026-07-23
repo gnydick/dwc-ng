@@ -6,6 +6,7 @@ import {
 } from "./types.ts";
 import { crc32 } from "./crc32.ts";
 import { RequestQueue, type RequestPriority } from "./requestQueue.ts";
+import { isPlainObject as isRecord, safeEntries } from "../util/safeObject.ts";
 
 /**
  * Standalone-mode connector speaking RRF's rr_ HTTP dialect.
@@ -590,13 +591,11 @@ function delay(ms: number): Promise<void> {
 	return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 function pickNumbers(source: Record<string, unknown>): Record<string, number> {
 	const out: Record<string, number> = {};
-	for (const [k, v] of Object.entries(source)) {
+	// safeEntries: source is the board's raw seqs object; a hostile key must
+	// not become a store path or an rr_model key= parameter.
+	for (const [k, v] of safeEntries(source)) {
 		if (typeof v === "number") out[k] = v;
 	}
 	return out;

@@ -23,6 +23,8 @@ import { isCustomCardId } from "./composition.ts";
 import { cardTitleOf, parseCardId } from "./defs.ts";
 import type { SlotRect, UiConfig } from "../config/types.ts";
 import type { ScreenEntry } from "./screens.ts";
+import { isPlainObject, safeEntries } from "../util/safeObject.ts";
+import { unreachable } from "../util/unreachable.ts";
 
 export const SHARE_VERSION = 1;
 
@@ -85,6 +87,10 @@ export function reviewSpec(spec: CompiledControlSpec): SpecReview {
 				walk(node.node);
 				return;
 		}
+		// Totality weld: the import review's completeness IS the safety
+		// contract — a new CompiledNode variant that isn't inventoried above
+		// must be a compile error here, never a silently-unreviewed control.
+		unreachable(node);
 	};
 	spec.nodes.forEach(walk);
 	return review;
@@ -188,32 +194,34 @@ export function parseShareFile(text: string): ShareImport {
 	const root = json as Record<string, unknown>;
 
 	if (root.dwcng === "card") {
-		const card = root.card as Record<string, unknown> | undefined;
-		if (card === undefined || typeof card.name !== "string") return { kind: "error", error: "Malformed card file." };
+		const card = root.card;
+		if (!isPlainObject(card) || typeof card.name !== "string") return { kind: "error", error: "Malformed card file." };
 		const { specText, parsed } = specOf(card.spec);
 		if (!parsed.ok) return { kind: "error", error: `The card's spec is invalid: ${parsed.error}` };
 		return { kind: "card", name: card.name, specText, review: reviewSpec(parsed.spec) };
 	}
 
 	if (root.dwcng === "screen") {
-		const screen = root.screen as Record<string, unknown> | undefined;
-		if (screen === undefined || typeof screen.name !== "string" || typeof screen.cards !== "object" || screen.cards === null) {
+		const screen = root.screen;
+		if (!isPlainObject(screen) || typeof screen.name !== "string" || !isPlainObject(screen.cards)) {
 			return { kind: "error", error: "Malformed screen file." };
 		}
-		const rawCustom = (root.customCards ?? {}) as Record<string, unknown>;
+		const rawCustom = root.customCards ?? {};
+		if (!isPlainObject(rawCustom)) return { kind: "error", error: "Malformed screen file." };
 		const customCards: ScreenImport["customCards"] = [];
-		for (const [fileId, entry] of Object.entries(rawCustom)) {
-			const e = entry as Record<string, unknown>;
-			if (typeof e?.name !== "string") return { kind: "error", error: `Malformed embedded card "${fileId}".` };
-			const { specText, parsed } = specOf(e.spec);
-			if (!parsed.ok) return { kind: "error", error: `Embedded card "${e.name}" is invalid: ${parsed.error}` };
-			customCards.push({ fileId, name: e.name, specText, review: reviewSpec(parsed.spec) });
+		for (const [fileId, entry] of safeEntries(rawCustom)) {
+			if (!isPlainObject(entry) || typeof entry.name !== "string") {
+				return { kind: "error", error: `Malformed embedded card "${fileId}".` };
+			}
+			const { specText, parsed } = specOf(entry.spec);
+			if (!parsed.ok) return { kind: "error", error: `Embedded card "${entry.name}" is invalid: ${parsed.error}` };
+			customCards.push({ fileId, name: entry.name, specText, review: reviewSpec(parsed.spec) });
 		}
 		const cards: Record<string, SlotRect> = {};
 		const registryCards: string[] = [];
 		const dangling: string[] = [];
 		const embedded = new Set(Object.keys(rawCustom));
-		for (const [key, rect] of Object.entries(screen.cards as Record<string, unknown>)) {
+		for (const [key, rect] of safeEntries(screen.cards)) {
 			const slot = asSlotRect(rect);
 			if (slot === null) continue;
 			if (parseCardId(key) !== null) {

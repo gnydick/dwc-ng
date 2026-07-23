@@ -9,6 +9,8 @@
  * system in panelCanvas.ts didn't need to change shape for this.
  */
 
+import { safeEntries } from "../util/safeObject.ts";
+
 export type Orientation = "vertical" | "horizontal";
 
 export type OrientationState = Record<string, Orientation>;
@@ -28,7 +30,7 @@ export function parseOrientationState(raw: string | null): OrientationState {
 	}
 	if (typeof parsed !== "object" || parsed === null) return {};
 	const out: OrientationState = {};
-	for (const [id, value] of Object.entries(parsed as Record<string, unknown>)) {
+	for (const [id, value] of safeEntries(parsed as Record<string, unknown>)) {
 		if (isOrientation(value)) out[id] = value;
 	}
 	return out;

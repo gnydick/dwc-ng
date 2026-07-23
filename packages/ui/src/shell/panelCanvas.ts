@@ -14,6 +14,7 @@ import {
 	type Orientation, type OrientationState,
 	parseOrientationState, serializeOrientationState, toggledOrientation,
 } from "./panelOrientation.ts";
+import { safeEntries } from "../util/safeObject.ts";
 
 export const GRID_COLS = 48;
 /**
@@ -260,7 +261,7 @@ function isEnvelope(value: unknown): value is StoredCanvasEnvelope {
 function migrateLegacyDoubleWidth(value: unknown): unknown {
 	if (typeof value !== "object" || value === null) return value;
 	const out: Record<string, unknown> = {};
-	for (const [id, entry] of Object.entries(value as Record<string, unknown>)) {
+	for (const [id, entry] of safeEntries(value as Record<string, unknown>)) {
 		out[id] = isPanelRect(entry) ? { ...entry, col: entry.col * 2, colSpan: entry.colSpan * 2 } : entry;
 	}
 	return out;
@@ -284,7 +285,7 @@ function migrateRowGranularity(value: unknown): unknown {
 	const OLD_PITCH = 30; // 24px row + 6px gap
 	const toNewEdge = (oldEdge: number): number => Math.round((oldEdge * OLD_PITCH) / ROW_UNIT_PX);
 	const out: Record<string, unknown> = {};
-	for (const [id, entry] of Object.entries(value as Record<string, unknown>)) {
+	for (const [id, entry] of safeEntries(value as Record<string, unknown>)) {
 		if (!isPanelRect(entry)) {
 			out[id] = entry;
 			continue;
@@ -608,7 +609,7 @@ export function readCanvasState(storageKey: string): CanvasState | null {
 	const parsed = parseStoredCanvas(readStorage(storageKey));
 	if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return null;
 	const out: CanvasState = {};
-	for (const [id, rect] of Object.entries(parsed as Record<string, unknown>)) {
+	for (const [id, rect] of safeEntries(parsed as Record<string, unknown>)) {
 		if (isPanelRect(rect)) out[id] = clampRect(rect);
 	}
 	return Object.keys(out).length > 0 ? out : null;

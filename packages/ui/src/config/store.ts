@@ -1,6 +1,7 @@
 import { createStore, reconcile, unwrap } from "solid-js/store";
 import type { Connector } from "../connector/types.ts";
 import { FileNotFoundError } from "../connector/types.ts";
+import { isPlainObject, safeEntries } from "../util/safeObject.ts";
 import {
 	CONFIG_CACHE_KEY, CONFIG_FILE, CONFIG_VERSION, DEFAULT_CONFIG, MAX_SNAPSHOTS,
 	type CameraConfig, type ConfigOverlay, type ConfigSnapshot, type DockSensorRef,
@@ -239,7 +240,10 @@ function effective(overlay: ConfigOverlay): UiConfig {
 }
 
 function mergeInto(base: Record<string, unknown>, patch: Record<string, unknown>): Record<string, unknown> {
-	for (const [key, value] of Object.entries(patch)) {
+	// safeEntries, not Object.entries: the patch may be raw JSON.parse output
+	// (SD card / localStorage) and a "__proto__" key here would recurse into
+	// Object.prototype and pollute it globally.
+	for (const [key, value] of safeEntries(patch)) {
 		if (value === undefined) continue;
 		const existing = base[key];
 		if (isPlainObject(value) && isPlainObject(existing)) {
@@ -254,7 +258,7 @@ function mergeInto(base: Record<string, unknown>, patch: Record<string, unknown>
 /** Remove empty objects so "customized then cleared" equals "never touched". */
 function prune(value: ConfigOverlay): ConfigOverlay | undefined {
 	const out: Record<string, unknown> = {};
-	for (const [key, entry] of Object.entries(value)) {
+	for (const [key, entry] of safeEntries(value)) {
 		if (isPlainObject(entry)) {
 			const pruned = prune(entry as ConfigOverlay);
 			if (pruned !== undefined) out[key] = pruned;
@@ -285,8 +289,4 @@ function loadCache(): ConfigOverlay | null {
 function writeCache(overlay: ConfigOverlay): void {
 	if (typeof localStorage === "undefined") return;
 	localStorage.setItem(CONFIG_CACHE_KEY, JSON.stringify({ version: CONFIG_VERSION, overlay }));
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
 }

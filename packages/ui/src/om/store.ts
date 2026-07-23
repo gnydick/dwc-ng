@@ -2,6 +2,7 @@ import { createStore, reconcile, produce, type SetStoreFunction } from "solid-js
 import type { ConnectorEvents, ConnectionStatus } from "../connector/types.ts";
 import { emptyModel, type ObjectModel } from "./types.ts";
 import { CONSOLE_LIMIT, loadConsole, saveConsole, type ConsoleLine } from "./consoleLog.ts";
+import { isPlainObject, isSafeKey, safeEntries } from "../util/safeObject.ts";
 
 /**
  * The two stores of machine truth, and the bridge from a Connector.
@@ -63,6 +64,9 @@ export function createOmStore(): OmStore {
 
 	const events: ConnectorEvents = {
 		onModelKey(key, value) {
+			// The key comes off the wire (the board's seqs object). A
+			// prototype-reaching key must never become a store path.
+			if (!isSafeKey(key)) return;
 			// Authoritative subtree: replace wholesale, reconcile diffs the rest
 			setOm(key as keyof ObjectModel, reconcile(value as never));
 		},
@@ -96,7 +100,9 @@ export function createOmStore(): OmStore {
  * - primitives and null replace.
  */
 export function deepMergeInto(target: Record<string, unknown>, patch: Record<string, unknown>): void {
-	for (const [key, value] of Object.entries(patch)) {
+	// safeEntries, not Object.entries: the patch is raw board JSON and a
+	// "__proto__" key would recurse into Object.prototype (global pollution).
+	for (const [key, value] of safeEntries(patch)) {
 		const existing = target[key];
 		if (isPlainObject(value) && isPlainObject(existing)) {
 			deepMergeInto(existing, value);
@@ -113,8 +119,4 @@ export function deepMergeInto(target: Record<string, unknown>, patch: Record<str
 			target[key] = value;
 		}
 	}
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
 }

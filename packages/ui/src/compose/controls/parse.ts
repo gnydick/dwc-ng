@@ -13,6 +13,7 @@
  * vocabulary can't say.
  */
 import { compileControlSpec, ENRICHMENT_IDS, type CompiledControlSpec, type ControlNode, type ControlSpec, type InputDef, type RowItem } from "./spec.ts";
+import { isSafeKey } from "../../util/safeObject.ts";
 
 export type ParsedSpec =
 	| { ok: true; spec: CompiledControlSpec; data: ControlSpec }
@@ -139,7 +140,12 @@ export function parseControlSpecText(text: string): ParsedSpec {
 		const root = asRecord(json, "spec");
 		const inputsRaw = root.inputs === undefined ? {} : asRecord(root.inputs, "inputs");
 		const inputs: Record<string, InputDef> = {};
-		for (const [name, def] of Object.entries(inputsRaw)) inputs[name] = validateInput(def, `inputs.${name}`);
+		for (const [name, def] of Object.entries(inputsRaw)) {
+			// Untrusted side rejects, never skips: a prototype-reaching input
+			// name is a named error, not a silently vanishing input.
+			if (!isSafeKey(name)) fail(`inputs: "${name}" is not a usable input name`);
+			inputs[name] = validateInput(def, `inputs.${name}`);
+		}
 		if (!Array.isArray(root.nodes)) fail("nodes: expected an array");
 		const nodes = root.nodes.map((n, i) => validateNode(n, `nodes[${i}]`));
 		const data: ControlSpec = { inputs, nodes };
