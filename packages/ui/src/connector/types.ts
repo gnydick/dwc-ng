@@ -43,9 +43,12 @@ export interface ConnectorEvents {
 	/**
 	 * Board facts learned at connect time. `emulated` is true when the rr_ API
 	 * is served by DSF on an SBC (rr_connect isEmulated) rather than by a
-	 * standalone board's own firmware.
+	 * standalone board's own firmware. `transport` names which transport
+	 * serves this session: "rr" = standalone rr_, "rr-emulated" = rr_ served
+	 * by DSF (i.e. emulated — the flag keeps that exact meaning), "dsf" =
+	 * DSF's native /machine API.
 	 */
-	onBoardInfo?(info: { emulated: boolean; boardType?: string }): void;
+	onBoardInfo?(info: { emulated: boolean; boardType?: string; transport?: "rr" | "rr-emulated" | "dsf" }): void;
 }
 
 export interface FileListEntry {
