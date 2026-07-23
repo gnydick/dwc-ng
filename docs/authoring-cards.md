@@ -30,6 +30,19 @@ never a broken screen. Custom cards live in the config overlay: **unsaved
 until "Save to machine"** (Settings → the Configuration card), reset-able
 like all config.
 
+### Authoring from the Card Lab (dev builds)
+
+The Card Lab (nav → **Card Lab**) is the authoring *bench*: its
+**+ New card** pill opens the same studio, and your cards appear as
+dashed pills beside the registry cards (**✎ Edit** when featured). The
+difference from authoring on a screen: the studio's preview and the bench
+resolve `{om:…}` template reads against the lab's **synthetic scenario
+model** — so a card that reads machine state can be exercised against
+printing / paused / heater-fault / multi-tool states no real machine
+produces on demand, before it ever touches a screen. A card created here
+lands featured on the bench (not on any screen); add it to screens later
+via any compose drawer.
+
 ### The spec vocabulary
 
 ```json
