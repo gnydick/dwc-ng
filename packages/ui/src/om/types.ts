@@ -252,3 +252,81 @@ export function emptyModel(): ObjectModel {
 		tools: [],
 	};
 }
+
+const arrayOr = (value: unknown, fallback: unknown[]): unknown[] =>
+	Array.isArray(value) ? value : fallback;
+
+/**
+ * The per-key shape gate at the OM's single entry (audit M8). The wire is a
+ * trusted-ish cast beyond this point, so the fields render code ITERATES
+ * (`move.axes.filter`, `heat.heaters.some`, `job.layers` totals — the
+ * 2026-07-23 layerStats incident) must be guaranteed here, by construction:
+ *
+ * - a known key whose top-level shape is unusable (an object key arriving
+ *   as a string) is REJECTED — the store keeps the last good subtree;
+ * - a usable object is CONFORMED: promised container fields that are
+ *   missing or mis-typed are filled from the empty model. A board that
+ *   legitimately omits `job.layers` must not have its whole job update
+ *   rejected — the incident's lesson — so fill, don't refuse;
+ * - unknown keys pass through untouched (the model is open; the OM
+ *   inspector renders whatever the board serves).
+ */
+export function conformModelKey(key: string, value: unknown): { ok: true; value: unknown } | { ok: false } {
+	const isObject = (v: unknown): v is Record<string, unknown> =>
+		typeof v === "object" && v !== null && !Array.isArray(v);
+	const defaults = emptyModel();
+	switch (key as keyof KnownModel) {
+		case "boards":
+		case "fans":
+		case "tools":
+			return Array.isArray(value) ? { ok: true, value } : { ok: false };
+		case "heat": {
+			if (!isObject(value)) return { ok: false };
+			const d = defaults.heat;
+			return { ok: true, value: {
+				...value,
+				bedHeaters: arrayOr(value.bedHeaters, d.bedHeaters),
+				chamberHeaters: arrayOr(value.chamberHeaters, d.chamberHeaters),
+				heaters: arrayOr(value.heaters, d.heaters),
+			} };
+		}
+		case "job": {
+			if (!isObject(value)) return { ok: false };
+			const d = defaults.job;
+			return { ok: true, value: {
+				...d,
+				...value,
+				layers: arrayOr(value.layers, []),
+				timesLeft: isObject(value.timesLeft) ? value.timesLeft : d.timesLeft,
+			} };
+		}
+		case "move": {
+			if (!isObject(value)) return { ok: false };
+			const d = defaults.move;
+			return { ok: true, value: {
+				...d,
+				...value,
+				axes: arrayOr(value.axes, []),
+				extruders: arrayOr(value.extruders, []),
+				currentMove: isObject(value.currentMove) ? value.currentMove : d.currentMove,
+			} };
+		}
+		case "sensors": {
+			if (!isObject(value)) return { ok: false };
+			const d = defaults.sensors;
+			return { ok: true, value: {
+				...value,
+				gpIn: arrayOr(value.gpIn, d.gpIn),
+				endstops: arrayOr(value.endstops, d.endstops),
+				filamentMonitors: arrayOr(value.filamentMonitors, d.filamentMonitors),
+				probes: arrayOr(value.probes, d.probes),
+			} };
+		}
+		case "state": {
+			if (!isObject(value)) return { ok: false };
+			return { ok: true, value: { ...defaults.state, ...value } };
+		}
+		default:
+			return { ok: true, value };
+	}
+}

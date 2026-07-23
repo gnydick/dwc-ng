@@ -1,6 +1,6 @@
 import { createStore, reconcile, produce, type SetStoreFunction } from "solid-js/store";
 import type { ConnectorEvents, ConnectionStatus } from "../connector/types.ts";
-import { emptyModel, type ObjectModel } from "./types.ts";
+import { conformModelKey, emptyModel, type ObjectModel } from "./types.ts";
 import { CONSOLE_LIMIT, loadConsole, saveConsole, type ConsoleLine } from "./consoleLog.ts";
 import { isPlainObject, isSafeKey, safeEntries } from "../util/safeObject.ts";
 
@@ -67,8 +67,12 @@ export function createOmStore(): OmStore {
 			// The key comes off the wire (the board's seqs object). A
 			// prototype-reaching key must never become a store path.
 			if (!isSafeKey(key)) return;
+			// Shape gate (audit M8): the fields render code iterates are
+			// guaranteed here; an unusable subtree keeps the last good one.
+			const conformed = conformModelKey(key, value);
+			if (!conformed.ok) return;
 			// Authoritative subtree: replace wholesale, reconcile diffs the rest
-			setOm(key as keyof ObjectModel, reconcile(value as never));
+			setOm(key as keyof ObjectModel, reconcile(conformed.value as never));
 		},
 		onModelPatch(patch) {
 			setOm(produce(draft => deepMergeInto(draft as Record<string, unknown>, patch)));
