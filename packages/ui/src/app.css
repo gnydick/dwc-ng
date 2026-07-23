@@ -191,18 +191,16 @@
 /* Fixed-width columns (not minmax(0,1fr)) — a card's pixel size depends only
    on its own colSpan, never on viewport width. A wide window just shows more
    empty grid to the right; a narrow one scrolls horizontally (see .main)
-   instead of shrinking every card to fit. Matches panelCanvas.ts's
-   COL_UNIT_PX — keep the two in sync. */
+   instead of shrinking every card to fit.
+   The metrics themselves (track count/width, row quantum, gaps) are inline
+   styles emitted by PanelCanvas.tsx from panelCanvas.ts's constants — the
+   one source the drag math also reads; this file deliberately has NO copy
+   to keep in sync. 4px rows with NO row gap: the vertical quantum is the
+   greatest common divisor of the control heights, so a card can be sized to
+   what it draws; the gap between stacked cards is a margin on the card
+   (below) so it does not add itself back into the quantum. */
 .panel-canvas {
 	display: grid;
-	grid-template-columns: repeat(48, 46px);
-	/* 4px rows with NO row gap: the vertical quantum is now the greatest common
-	   divisor of the control heights, so a card can be sized to what it draws.
-	   The gap between stacked cards is a margin on the card (below) so that it
-	   does not add itself back into the quantum. Columns keep their gutter. */
-	grid-auto-rows: 4px;
-	column-gap: 6px;
-	row-gap: 0;
 }
 /* The vertical gutter, moved off the grid and onto the item. A card spanning
    n rows renders (4n - 8)px tall — still a multiple of 4, so a card height can
