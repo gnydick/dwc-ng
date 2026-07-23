@@ -78,7 +78,7 @@ export const MOVEMENT_SPEC = compileControlSpec({
 				type: "row",
 				label: "Coupler",
 				sub: "C",
-				class: "coupler-row",
+				class: "coupler-row coupler-stack",
 				items: [
 					{ type: "gcode-button", label: "Lock", template: 'M98 P"/macros/tool_lock"' },
 					{ type: "gcode-button", label: "Unlock", template: 'M98 P"/macros/tool_unlock"', variant: "quiet" },
@@ -88,7 +88,7 @@ export const MOVEMENT_SPEC = compileControlSpec({
 		{
 			type: "row",
 			label: "Extruder",
-			class: "extrude-row",
+			class: "extrude-row extrude-stack",
 			items: [
 				{ input: "extMm" },
 				{ input: "extFeed" },
