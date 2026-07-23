@@ -151,7 +151,7 @@ export function SpeedSlider(props: { currentPct: number }) {
 								class="speed-stop"
 								classList={{ current: stop === Math.round(value()) }}
 								style={{ left: stopOffset(stop) }}
-								title={`M220 S${stop}`}
+								title={cmd.speedFactor(stop)}
 								aria-label={`Set speed to ${stop} percent`}
 								onClick={() => void send(stop)}
 							/>

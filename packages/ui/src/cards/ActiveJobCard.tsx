@@ -109,13 +109,13 @@ export function ActiveJobBody(props: { detailed?: boolean }) {
 							    slide under the pointer when the job changes state. */}
 							<Switch>
 								<Match when={app.om.om.state.status === "paused"}>
-									<button class="btn job-toggle" onClick={() => void app.connector.sendCode("M24")}>Resume</button>
+									<button class="btn job-toggle" title={cmd.resumePrint()} onClick={() => void app.connector.sendCode(cmd.resumePrint())}>Resume</button>
 								</Match>
 								<Match when={true}>
-									<button class="btn job-toggle" onClick={() => void app.connector.sendCode("M25")}>Pause</button>
+									<button class="btn job-toggle" title={cmd.pausePrint()} onClick={() => void app.connector.sendCode(cmd.pausePrint())}>Pause</button>
 								</Match>
 							</Switch>
-							<button class="btn btn-danger" onClick={() => void app.connector.sendCode("M0")}>Cancel</button>
+							<button class="btn btn-danger" title={cmd.cancelPrint()} onClick={() => void app.connector.sendCode(cmd.cancelPrint())}>Cancel</button>
 						</div>
 					</>
 				)}

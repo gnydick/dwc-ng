@@ -118,7 +118,9 @@ export function MacrosBody(props: { ctx: CardCtx }) {
 			return;
 		}
 		setArmed(null);
-		void app.connector.sendCode(`M98 P"${path}"`).catch(() => undefined);
+		// cmd.runMacro quotes the path — a filename with an embedded quote
+		// used to interpolate raw and malform the command (audit M3).
+		void app.connector.sendCode(cmd.runMacro(path)).catch(() => undefined);
 	};
 
 	return (
@@ -151,7 +153,7 @@ export function MacrosBody(props: { ctx: CardCtx }) {
 						<button
 							class="run-btn"
 							classList={{ armed: armed() === path }}
-							title={`M98 P"${path}"`}
+							title={cmd.runMacro(path)}
 							onClick={() => run(path)}
 						>
 							{armed() === path ? "Confirm" : "▶ Run"}

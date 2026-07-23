@@ -14,6 +14,20 @@ import { EMERGENCY_STOP } from "../connector/emergency.ts";
 /** Trim a number to a compact G-code literal (no trailing ".00"). */
 const n = (v: number): string => String(v);
 
+/**
+ * Quote a string parameter the way RRF's quoted strings demand: quotes are
+ * mandatory (RRF 3), an embedded `"` escapes by DOUBLING, and `'` (RRF's
+ * lowercase-next flag) doubles likewise — an unescaped quote from a
+ * filename or an operator's free text would otherwise produce a malformed
+ * command. Verified against reference/duet-gcode.md (M98 notes, Quoted
+ * Strings). THE one quoting implementation — messagebox/ack.ts imports it.
+ */
+export const gcodeQuote = (value: string): string =>
+	`"${value.replace(/"/g, '""').replace(/'/g, "''")}"`;
+
+/** Run a macro file (M98). The P filename is quoted through gcodeQuote. */
+const runMacro = (path: string): string => `M98 P${gcodeQuote(path)}`;
+
 export interface FilamentOpts {
 	/** Select this tool first. Undefined = act on whatever is already selected. */
 	selectTool?: number;
@@ -75,8 +89,9 @@ export const cmd = {
 	jog: (axis: string, delta: number, feed: number): string =>
 		`M120\nG91\nG1 ${axis}${n(delta)} F${n(feed)}\nM121`,
 	extrude: (amount: number, feed: number): string => `M83\nG1 E${n(amount)} F${n(feed)}`,
-	couplerLock: (): string => 'M98 P"/macros/tool_lock"',
-	couplerUnlock: (): string => 'M98 P"/macros/tool_unlock"',
+	runMacro,
+	couplerLock: (): string => runMacro("/macros/tool_lock"),
+	couplerUnlock: (): string => runMacro("/macros/tool_unlock"),
 
 	/**
 	 * Release the steppers (M84 — "stop idle hold"). Bare M84 releases every
@@ -92,6 +107,16 @@ export const cmd = {
 
 	/** Start printing a job file (reference/dwc JobFileList.vue / M32). */
 	print: (path: string): string => `M32 "${path}"`,
+
+	// --- job control (forms per reference/duet-gcode.md M24/M25/M0; these
+	// were raw literals in ActiveJobCard before — audit M3) ---
+	resumePrint: (): string => "M24",
+	pausePrint: (): string => "M25",
+	/** M0: runs cancel.g when paused-and-homed, stop.g otherwise. */
+	cancelPrint: (): string => "M0",
+
+	/** Load + activate the saved height map (G29 S1, reference/duet-gcode.md). */
+	loadHeightmap: (): string => "G29 S1",
 
 	/**
 	 * Update a board's main firmware (M997, module S0 = default). Params per

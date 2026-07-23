@@ -350,13 +350,15 @@ export class PollConnector implements Connector {
 		const headers: Record<string, string> = this.sessionKey !== null ? { "X-Session-Key": String(this.sessionKey) } : {};
 		// Node (tests) has no XMLHttpRequest — fall back to fetch there. It just
 		// loses the progress events, which are a browser-only UI nicety anyway;
-		// upload correctness is exercised either way.
+		// upload correctness is exercised either way. Same uploadTimeoutMs as
+		// the XHR path — the fallback once used the 5s request timeout, which
+		// aborted any multi-MB upload (audit M4).
 		if (typeof XMLHttpRequest === "undefined") {
 			return fetch(`${this.base}/${path}`, {
 				method: "POST",
 				body: bytes as BodyInit,
 				headers,
-				signal: AbortSignal.timeout(this.requestTimeoutMs),
+				signal: AbortSignal.timeout(this.uploadTimeoutMs),
 			}).then(async res => ({ status: res.status, text: await res.text() }));
 		}
 		return new Promise((resolve, reject) => {

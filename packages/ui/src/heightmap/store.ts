@@ -16,6 +16,7 @@ import { createMemo, createSignal, type Accessor } from "solid-js";
 import type { Connector } from "../connector/types.ts";
 import type { OpResult } from "../files/browser.ts";
 import { parseHeightMap, serializeHeightMap, type HeightMap } from "./parse.ts";
+import { cmd } from "../control/commands.ts";
 
 export const HEIGHTMAP_FILE = "0:/sys/heightmap.csv";
 
@@ -105,7 +106,7 @@ export function createHeightMapStore(connector: Connector): HeightMapStore {
 			await connector.upload(HEIGHTMAP_FILE, serializeHeightMap(edited));
 			// Only now: the file on the card and the machine's live map must not be
 			// able to diverge.
-			await connector.sendCode("G29 S1");
+			await connector.sendCode(cmd.loadHeightmap());
 		} catch (err) {
 			return { ok: false, error: reasonOf(err) };
 		}

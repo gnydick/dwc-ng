@@ -12,6 +12,7 @@
  * model (reference/objectmodel/src/state/MessageBox.ts) — not from memory.
  */
 import type { MessageBox } from "../om/types.ts";
+import { gcodeQuote } from "../control/commands.ts";
 
 /** reference/objectmodel/src/state/MessageBox.ts (MessageBoxMode) — order is the wire value. */
 export const MessageBoxMode = {
@@ -69,14 +70,9 @@ export function axisControlIndices(box: MessageBox): number[] {
 	return out;
 }
 
-/**
- * Quote a string as an RRF expression literal. RRF escapes a quote by doubling
- * it; an unescaped quote from an operator's free text would otherwise produce a
- * malformed expression and leave the machine blocked forever.
- */
-function quote(value: string): string {
-	return `"${value.replace(/"/g, '""').replace(/'/g, "''")}"`;
-}
+// String quoting comes from the one authority (control/commands.ts
+// gcodeQuote): an unescaped quote from an operator's free text would
+// produce a malformed expression and leave the machine blocked forever.
 
 /**
  * The M292 that answers `box`, or null when there is nothing to answer.
@@ -103,7 +99,7 @@ export function ackCommand(box: MessageBox, input: AckInput | null): string | nu
 		case MessageBoxMode.floatInput:
 			return `M292 R{${Number(input?.value ?? 0)}} S${box.seq}`;
 		case MessageBoxMode.stringInput:
-			return `M292 R{${quote(String(input?.value ?? ""))}} S${box.seq}`;
+			return `M292 R{${gcodeQuote(String(input?.value ?? ""))}} S${box.seq}`;
 		default:
 			// An unknown future mode still needs answering, or the machine hangs.
 			return `M292 S${box.seq}`;

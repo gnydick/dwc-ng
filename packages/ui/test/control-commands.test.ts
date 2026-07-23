@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { cmd } from "../src/control/commands.ts";
+import { cmd, gcodeQuote } from "../src/control/commands.ts";
 
 /**
  * The command builders are the whole 1:1-with-G-code contract in one place:
@@ -159,4 +159,31 @@ test("object 0 is a real object, not an absent one", () => {
 	// A falsy check on the index would silently address the wrong object.
 	assert.notEqual(cmd.cancelObject(0), cmd.cancelObject(1));
 	assert.match(cmd.cancelObject(0), /0$/);
+});
+
+// Job control + macros (audit M3: these were raw literals in components).
+// Forms verified against reference/duet-gcode.md (M24/M25/M0, M98, G29).
+test("job control forms", () => {
+	assert.equal(cmd.resumePrint(), "M24");
+	assert.equal(cmd.pausePrint(), "M25");
+	assert.equal(cmd.cancelPrint(), "M0");
+	assert.equal(cmd.loadHeightmap(), "G29 S1");
+});
+
+test("runMacro quotes the path; embedded quotes escape by doubling", () => {
+	assert.equal(cmd.runMacro("/macros/park.g"), 'M98 P"/macros/park.g"');
+	// The bug class the quoting kills: a filename carrying a quote used to
+	// interpolate raw and malform the command.
+	assert.equal(cmd.runMacro('odd"name.g'), 'M98 P"odd""name.g"');
+	assert.equal(cmd.runMacro("it's.g"), "M98 P\"it''s.g\"");
+});
+
+test("gcodeQuote is the one quoting authority (ack.ts imports it)", () => {
+	assert.equal(gcodeQuote('say "hi"'), '"say ""hi"""');
+	assert.equal(gcodeQuote("a'b"), "\"a''b\"");
+});
+
+test("the coupler macros derive from runMacro (no second M98 form)", () => {
+	assert.equal(cmd.couplerLock(), cmd.runMacro("/macros/tool_lock"));
+	assert.equal(cmd.couplerUnlock(), cmd.runMacro("/macros/tool_unlock"));
 });
