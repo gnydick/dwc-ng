@@ -77,3 +77,27 @@ test("a custom card lands on a screen via the same addCard path and survives res
 	store.removeCustomCard(cardId);
 	assert.deepEqual(resolveScreen(store.config, screenId)!.def.composition, {});
 });
+
+// ---- the studio's form model: a projection, not a second semantics ----
+
+test("form → spec → form round-trips; the spindle example lifts to the form", async () => {
+	const { toSpec, tryFromSpec } = await import("../src/compose/controls/formModel.ts");
+	const { SPINDLE_EXAMPLE } = await import("../src/compose/controls/examples.ts");
+	const lifted = tryFromSpec(SPINDLE_EXAMPLE);
+	assert.ok(lifted !== null, "the example is form-shaped");
+	assert.deepEqual(toSpec(lifted!), SPINDLE_EXAMPLE, "lower(lift(spec)) is identity");
+	// and the lowered spec passes the one true boundary
+	assert.ok(parseControlSpecText(JSON.stringify(toSpec(lifted!))).ok);
+});
+
+test("power-vocabulary specs refuse to lift (edited as JSON, never approximated)", async () => {
+	const { tryFromSpec } = await import("../src/compose/controls/formModel.ts");
+	assert.equal(tryFromSpec({
+		inputs: {},
+		nodes: [{ type: "forEach", from: "move.axes[visible]", as: "a", node: { type: "gcode-button", label: "x", template: "G4" } }],
+	}), null, "forEach is JSON territory");
+	assert.equal(tryFromSpec({
+		inputs: { step: { kind: "number", label: "s", default: 1 }, feed: { kind: "number", label: "f", default: 6000 } },
+		nodes: [{ type: "jog-pad", step: "step", feed: "feed" }],
+	}), null, "jog primitives are JSON territory");
+});

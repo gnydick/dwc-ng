@@ -26,7 +26,7 @@ import { createServicePool } from "./services.ts";
 import { resolveScreen, screenList, type ScreenEntry } from "./screens.ts";
 import { ControlList } from "./controls/ControlList.tsx";
 import { parseControlSpecText } from "./controls/parse.ts";
-import { SPINDLE_EXAMPLE_JSON, SPINDLE_EXAMPLE_NAME } from "./controls/examples.ts";
+import { CardStudio } from "./CardStudio.tsx";
 import type { CardCtx } from "./ctx.ts";
 
 export function ComposedScreen(props: { screenId: string }) {
@@ -93,7 +93,7 @@ export function ComposedScreen(props: { screenId: string }) {
 	return (
 		<>
 			<div class="layout-toolbar">
-				<ComposeDrawer screenId={props.screenId} entry={entry()} composition={composition()} />
+				<ComposeDrawer screenId={props.screenId} entry={entry()} composition={composition()} previewCtx={ctxFor("console")} />
 				<button class="layout-reset" onClick={() => canvas.reset()}>↺ Reset layout</button>
 			</div>
 			<PanelCanvas class={entry()?.def.class}>
@@ -158,12 +158,12 @@ function CustomCard(props: { id: CustomCardId; canvas: Parameters<typeof Registr
  * membership edits write through updateScreenCards (custom in place, built-in
  * via the layouts override), so Reset-everything on Settings undoes the lot.
  */
-function ComposeDrawer(props: { screenId: string; entry: ScreenEntry | null; composition: Composition }) {
+function ComposeDrawer(props: { screenId: string; entry: ScreenEntry | null; composition: Composition; previewCtx: CardCtx }) {
 	const app = useApp();
 	const [open, setOpen] = createSignal(false);
 	const [newName, setNewName] = createSignal("");
-	// The card-authoring editor: null = closed; id null = authoring a new card.
-	const [editing, setEditing] = createSignal<{ id: CustomCardId | null; name: string; json: string; error: string } | null>(null);
+	// The card studio: null = closed; id null = authoring a new card.
+	const [studio, setStudio] = createSignal<{ id: CustomCardId | null } | null>(null);
 
 	const asRects = (comp: Composition): Record<string, { col: number; row: number; colSpan: number; rowSpan: number }> =>
 		Object.fromEntries(slotsOf(comp).map(([id, s]) => [id, { col: s.col, row: s.row, colSpan: s.colSpan, rowSpan: s.rowSpan }]));
@@ -174,29 +174,17 @@ function ComposeDrawer(props: { screenId: string; entry: ScreenEntry | null; com
 		app.config.updateScreenCards(props.screenId, asRects(next));
 	};
 
-	/** Validate through the SAME boundary the renderer uses, then store. */
-	const saveCard = (): void => {
-		const e = editing();
-		if (e === null) return;
-		const name = e.name.trim();
-		if (name === "") {
-			setEditing({ ...e, error: "The card needs a name." });
-			return;
-		}
-		const parsed = parseControlSpecText(e.json);
-		if (!parsed.ok) {
-			setEditing({ ...e, error: parsed.error });
-			return;
-		}
-		if (e.id === null) {
-			const id = app.config.addCustomCard(name, e.json) as CustomCardId;
+	/** The studio already validated through the one boundary; just store. */
+	const onStudioSaved = (id: CustomCardId | null, name: string, specJson: string): void => {
+		if (id === null) {
+			const minted = app.config.addCustomCard(name, specJson) as CustomCardId;
 			// A just-made card lands on the current screen immediately — the
 			// author is composing here, not filing it away.
-			app.config.updateScreenCards(props.screenId, asRects(addCard(props.composition, id)));
+			app.config.updateScreenCards(props.screenId, asRects(addCard(props.composition, minted)));
 		} else {
-			app.config.updateCustomCard(e.id, { name, spec: e.json });
+			app.config.updateCustomCard(id, { name, spec: specJson });
 		}
-		setEditing(null);
+		setStudio(null);
 	};
 
 	const createScreen = (): void => {
@@ -232,92 +220,43 @@ function ComposeDrawer(props: { screenId: string; entry: ScreenEntry | null; com
 							<button class="fb-act" onClick={() => app.config.setScreenHidden(props.screenId, true)}>Hide screen</button>
 						</Show>
 					</div>
-					<Show
-						when={editing()}
-						fallback={
-							<>
-								<div class="compose-cards">
-									<For each={allCardIds()}>
-										{id => (
-											<label class="compose-card">
-												<input
-													type="checkbox"
-													checked={props.composition[id] !== undefined}
-													onChange={() => toggleCard(id)}
-												/>
-												{cardTitleOf(id)}
-											</label>
-										)}
-									</For>
-								</div>
-								<div class="compose-row compose-custom-head">
-									<span class="lab-cap">Your cards</span>
-									<button
-										class="fb-act ok"
-										onClick={() => setEditing({ id: null, name: "", json: "{\n\t\"inputs\": {},\n\t\"nodes\": []\n}", error: "" })}
-									>
-										+ New card
-									</button>
-								</div>
-								<Show when={Object.keys(app.config.config.cards).length > 0}>
-									<div class="compose-cards compose-custom-list">
-										<For each={Object.keys(app.config.config.cards) as CustomCardId[]}>
-											{id => (
-												<div class="compose-customrow">
-													<label class="compose-card">
-														<input
-															type="checkbox"
-															checked={props.composition[id] !== undefined}
-															onChange={() => toggleCard(id)}
-														/>
-														{app.config.config.cards[id]!.name}
-													</label>
-													<button
-														class="link-btn"
-														onClick={() => setEditing({ id, name: app.config.config.cards[id]!.name, json: app.config.config.cards[id]!.spec, error: "" })}
-													>
-														Edit
-													</button>
-													<button class="link-btn" onClick={() => app.config.removeCustomCard(id)}>✕</button>
-												</div>
-											)}
-										</For>
-									</div>
-								</Show>
-							</>
-						}
-					>
-						{edit => (
-							<div class="compose-editor">
-								<div class="compose-row">
+					<div class="compose-cards">
+						<For each={allCardIds()}>
+							{id => (
+								<label class="compose-card">
 									<input
-										class="fb-input"
-										placeholder="Card name"
-										value={edit().name}
-										onInput={e => setEditing({ ...edit(), name: e.currentTarget.value })}
+										type="checkbox"
+										checked={props.composition[id] !== undefined}
+										onChange={() => toggleCard(id)}
 									/>
-									<button
-										class="fb-act"
-										title="Insert a working spindle-control example (M3/M4/M5)"
-										onClick={() => setEditing({ ...edit(), name: edit().name || SPINDLE_EXAMPLE_NAME, json: SPINDLE_EXAMPLE_JSON, error: "" })}
-									>
-										Insert example
-									</button>
-								</div>
-								<textarea
-									class="compose-json"
-									spellcheck={false}
-									value={edit().json}
-									onInput={e => setEditing({ ...edit(), json: e.currentTarget.value })}
-								/>
-								{/* Reserved line: an error appearing must not shove the buttons. */}
-								<p class="fb-msg" classList={{ show: edit().error !== "" }}>{edit().error || " "}</p>
-								<div class="compose-row">
-									<button class="fb-act ok" onClick={saveCard}>{edit().id === null ? "Create card" : "Save card"}</button>
-									<button class="fb-act" onClick={() => setEditing(null)}>Cancel</button>
-								</div>
-							</div>
-						)}
+									{cardTitleOf(id)}
+								</label>
+							)}
+						</For>
+					</div>
+					<div class="compose-row compose-custom-head">
+						<span class="lab-cap">Your cards</span>
+						<button class="fb-act ok" onClick={() => setStudio({ id: null })}>+ New card</button>
+					</div>
+					<Show when={Object.keys(app.config.config.cards).length > 0}>
+						<div class="compose-cards compose-custom-list">
+							<For each={Object.keys(app.config.config.cards) as CustomCardId[]}>
+								{id => (
+									<div class="compose-customrow">
+										<label class="compose-card">
+											<input
+												type="checkbox"
+												checked={props.composition[id] !== undefined}
+												onChange={() => toggleCard(id)}
+											/>
+											{app.config.config.cards[id]!.name}
+										</label>
+										<button class="link-btn" onClick={() => setStudio({ id })}>Edit</button>
+										<button class="link-btn" onClick={() => app.config.removeCustomCard(id)}>✕</button>
+									</div>
+								)}
+							</For>
+						</div>
 					</Show>
 					<div class="compose-row">
 						<input
@@ -340,6 +279,16 @@ function ComposeDrawer(props: { screenId: string; entry: ScreenEntry | null; com
 						</div>
 					</Show>
 				</div>
+			</Show>
+			<Show when={studio()} keyed>
+				{s => (
+					<CardStudio
+						cardId={s.id}
+						ctx={props.previewCtx}
+						onSaved={onStudioSaved}
+						onClose={() => setStudio(null)}
+					/>
+				)}
 			</Show>
 		</div>
 	);
