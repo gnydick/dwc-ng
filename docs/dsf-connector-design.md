@@ -167,6 +167,31 @@ P6. Live verification against the Pi: read-only first (connect, model,
     patches, layers, console replies), then supervised writes per the
     verify-before-hardware rule (config save, macro run) with Gabe.
 
+## P6 live results (2026-07-23, duet3.nydick.net, READ-ONLY)
+
+Driven twice: the real `DsfConnector` from node, and the whole app in
+Chrome through the dev proxy. Everything below is observed, not inferred.
+
+- connect → `connected` in **0.18 s**; `transport: "dsf"`, board MB6HC.
+- Full model: **18 top-level keys** — one fewer than the raw socket sends,
+  because `messages` is consumed into the reply channel (C5 confirmed on
+  the wire, not just in tests).
+- `job.layers`: **281 entries** delivered natively via `onJobLayers` — the
+  starvation that motivated this campaign is simply absent here.
+- Live diffs flow under the ack loop; liveness quiet-period holds.
+- REST reads: `list 0:/gcodes` = 405 entries with lexicographic dates
+  (recent-sort correct); `download config.g` = 8954 B; a missing file
+  raises **FileNotFoundError** (the config-boot contract); `fileinfo` +
+  `getThumbnail` round-trip an opaque offset to **12756 decoded QOI bytes**.
+- In the browser: Machine renders 7 axes with role labels, real temps and
+  the operator's own sensor names (so the SD config downloaded over DSF);
+  Jobs renders the listing and a job's thumbnail/metadata; the footer
+  states "SBC · DSF native"; the guard shows WRITES LOCKED on `real-dsf`.
+
+WRITES REMAIN UNVERIFIED against hardware, deliberately (house rule): the
+supervised pass covers config save, macro run, and an e-stop — with Gabe
+present and writes armed.
+
 Worker rule (standing order): every implementing/reviewing agent reads
 `C:/Users/Gabe E. Nydick/.claude/skills/cant-break-by-design/SKILL.md`
 FIRST, then this design, then the cited contracts.
