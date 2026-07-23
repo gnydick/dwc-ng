@@ -101,3 +101,34 @@ test("power-vocabulary specs refuse to lift (edited as JSON, never approximated)
 		nodes: [{ type: "jog-pad", step: "step", feed: "feed" }],
 	}), null, "jog primitives are JSON territory");
 });
+
+// ---- reset semantics: overrides reset, creations survive ----
+
+test("Reset everything drops overrides but KEEPS custom cards and screens", async () => {
+	const { BUILTIN_SCREENS } = await import("../src/compose/screens.ts");
+	const store = createConfigStore();
+	const cardId = store.addCustomCard("Spindle", SPINDLE_EXAMPLE_JSON);
+	const screenId = store.addScreen("CNC");
+	store.updateScreenCards(screenId, { [cardId]: { col: 0, row: 0, colSpan: 12, rowSpan: 40 } });
+	store.setAxisRole("U", "Z motor 1");
+	store.renameScreen("machine", "Printer");
+	store.setScreenHidden("bed", true);
+	store.updateScreenCards("machine", { position: { col: 0, row: 0, colSpan: 24, rowSpan: 95 } });
+
+	store.resetAll();
+
+	// Overrides are gone — built-ins back to how they shipped.
+	assert.equal(store.config.axisRoles["U"], undefined);
+	assert.equal(resolveScreen(store.config, "machine")!.def.name, "Machine");
+	assert.ok(resolveScreen(store.config, "bed"), "hidden builtin restored");
+	assert.deepEqual(
+		resolveScreen(store.config, "machine")!.def.composition,
+		BUILTIN_SCREENS.machine.composition,
+		"layout override dropped",
+	);
+	// Creations survive — they have no default to return to.
+	assert.ok(store.config.cards[cardId], "custom card kept");
+	const screen = resolveScreen(store.config, screenId);
+	assert.ok(screen !== null, "custom screen kept");
+	assert.deepEqual(Object.keys(screen!.def.composition), [cardId], "its composition kept");
+});

@@ -27,8 +27,10 @@ The saved card lands on the current screen and appears under **Your
 cards** in every screen's drawer (checkbox to add/remove per screen, Edit,
 ✕). A card that later breaks shows an error body naming the problem —
 never a broken screen. Custom cards live in the config overlay: **unsaved
-until "Save to machine"** (Settings → the Configuration card), reset-able
-like all config.
+until "Save to machine"** (Settings → the Configuration card). **Reset
+everything does NOT delete them** — it resets overrides (settings,
+renames, hides, layouts) while creations survive; a custom card or screen
+is only removed by its own explicit ✕/Delete.
 
 ### Authoring from the Card Lab (dev builds)
 

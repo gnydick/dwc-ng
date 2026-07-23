@@ -226,7 +226,13 @@ export function ConfigSaveBody() {
 			<button class="primary-btn" disabled={!app.config.dirty} onClick={save}>
 				Save to machine
 			</button>
-			<button class="link-btn" onClick={() => app.config.resetAll()}>Reset everything</button>
+			<button
+				class="link-btn"
+				title="Return every setting and built-in screen to defaults. Your custom cards and screens are kept — delete those individually."
+				onClick={() => app.config.resetAll()}
+			>
+				Reset everything
+			</button>
 		</div>
 	);
 }

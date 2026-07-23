@@ -42,9 +42,18 @@ export interface ConfigStore {
 	updateCustomCard(id: string, patch: { name?: string; spec?: string }): void;
 	removeCustomCard(id: string): void;
 
-	/** Drop one section's overlay — that section returns to defaults. */
+	/** Drop one section's overlay — that section returns to defaults. NOTE:
+	 *  this is the raw primitive; resetting "cards" or "screens" destroys
+	 *  creations. No UI path does — the UI resets through resetAll. */
 	resetSection(section: keyof UiConfig): void;
-	/** Drop the whole overlay — everything returns to defaults. */
+	/**
+	 * Drop every OVERRIDE — settings, screen renames/hides, layout overrides —
+	 * returning the built-ins to defaults. The user's CREATIONS (custom cards,
+	 * custom screens) are kept: they are not deviations from a default, they
+	 * are authored content with no default to return to, and deleting them
+	 * would make reset destructive — the opposite of "modify without fear".
+	 * Each creation has its own explicit delete for when that is meant.
+	 */
 	resetAll(): void;
 
 	snapshot(label: string): void;
@@ -164,7 +173,20 @@ export function createConfigStore(): ConfigStore {
 			apply(draft => { delete draft[section]; });
 		},
 		resetAll() {
-			apply(draft => { for (const key of Object.keys(draft)) delete draft[key as keyof ConfigOverlay]; });
+			apply(draft => {
+				for (const key of Object.keys(draft)) {
+					// Creations survive a reset (see the interface doc).
+					if (key === "cards" || key === "screens") continue;
+					delete draft[key as keyof ConfigOverlay];
+				}
+				// Within screens, only `custom` is a creation — renames, hidden,
+				// and layout overrides are overrides and reset like everything else.
+				const customScreens = draft.screens?.custom;
+				delete draft.screens;
+				if (customScreens !== undefined && Object.keys(customScreens).length > 0) {
+					draft.screens = { custom: customScreens };
+				}
+			});
 		},
 
 		snapshot(label) {
