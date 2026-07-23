@@ -41,9 +41,11 @@ export function ToolsHeatersBody(props: { orientation: () => Orientation }) {
 			{/* The designator leads the row: T0/T1/… (and the bed's heater0) are the
 			    copy tips you scan and click, so they get the first column. */}
 			<span class="des">{p.des}</span>
-			<span class="heat-tool">{p.name}</span>
-			{/* Dock presence: a single dot by the tool, no column to scroll off.
-			    Green = docked, gold = away. */}
+			{/* Dock presence: a single dot in the second column, between the
+			    designator and the name. Green = docked, gold = away. Rows without a
+			    dot (the bed, or a tool with no mapped sensor) leave the column empty
+			    rather than closing it up — .heat-tool is pinned to column 3 in CSS,
+			    so every name still lands on the same x. */}
 			<Show when={p.dock}>
 				{state => (
 					<span
@@ -53,6 +55,7 @@ export function ToolsHeatersBody(props: { orientation: () => Orientation }) {
 					/>
 				)}
 			</Show>
+			<span class="heat-tool">{p.name}</span>
 		</span>
 	);
 
@@ -68,7 +71,6 @@ export function ToolsHeatersBody(props: { orientation: () => Orientation }) {
 								<th scope="col">Current</th>
 								<th scope="col">Active</th>
 								<th scope="col">Standby</th>
-								<th scope="col">State</th>
 								<th scope="col">Set</th>
 							</tr>
 						</thead>
@@ -87,7 +89,7 @@ export function ToolsHeatersBody(props: { orientation: () => Orientation }) {
 												</td>
 												<Show
 													when={heaterAt(t().heaters[0] ?? -1)}
-													fallback={<td colspan="5" class="heat-set">no heater</td>}
+													fallback={<td colspan="4" class="heat-set">no heater</td>}
 												>
 													{h => (
 														<HeaterCells
@@ -136,7 +138,7 @@ export function ToolsHeatersBody(props: { orientation: () => Orientation }) {
 														<b>{h().active}</b>°&nbsp;/&nbsp;{h().standby}°
 														<HeaterState heater={h()} index={t().heaters[0] ?? -1} />
 													</span>
-													<HeaterActions kind="tool" num={t().number} active={h().active} standby={h().standby} />
+													<HeaterActions kind="tool" num={t().number} active={h().active} standby={h().standby} state={h().state} />
 												</>
 											)}
 										</Show>
@@ -154,7 +156,7 @@ export function ToolsHeatersBody(props: { orientation: () => Orientation }) {
 									<b>{h().active}</b>°&nbsp;/&nbsp;—
 									<HeaterState heater={h()} index={bedHeaterIndex()} />
 								</span>
-								<HeaterActions kind="bed" num={0} active={h().active} standby={null} />
+								<HeaterActions kind="bed" num={0} active={h().active} standby={null} state={h().state} />
 							</div>
 						)}
 					</Show>
@@ -199,22 +201,35 @@ function HeaterCells(props: { heater: Heater; index: number; kind: "tool" | "bed
 					/>
 				</Show>
 			</td>
-			<td><HeaterState heater={props.heater} index={props.index} /></td>
 			<td>
+				{/* The three buttons are modal: the one matching the heater's reported
+				    state lights up, which is what the State column used to say in
+				    words. HeaterState leads the row only for states no button can
+				    show (fault/tuning/offline) — see its comment. */}
 				<div class="heat-actions">
+					<HeaterState heater={props.heater} index={props.index} />
 					<GcodeButton
 						label="Active"
 						variant="go"
 						stamp={false}
+						engaged={props.heater.state === "active"}
 						command={isBed() ? cmd.bedActive(props.num, active()) : cmd.toolActive(props.num, active())}
 					/>
 					<Show when={!isBed()}>
-						<GcodeButton label="Standby" stamp={false} command={cmd.toolStandby(props.num, standby())} />
+						<GcodeButton
+							label="Standby"
+							class="heat-standby"
+							stamp={false}
+							engaged={props.heater.state === "standby"}
+							command={cmd.toolStandby(props.num, standby())}
+						/>
 					</Show>
 					<GcodeButton
 						label="Off"
 						variant="danger"
+						class="heat-off"
 						stamp={false}
+						engaged={props.heater.state === "off"}
 						command={isBed() ? cmd.bedOff(props.num) : cmd.toolOff(props.num)}
 					/>
 				</div>
@@ -224,7 +239,14 @@ function HeaterCells(props: { heater: Heater; index: number; kind: "tool" | "bed
 }
 
 /** The horizontal strip's compact actions — the machine's own setpoints, no entry. */
-function HeaterActions(props: { kind: "tool" | "bed"; num: number; active: number; standby: number | null }) {
+function HeaterActions(props: {
+	kind: "tool" | "bed";
+	num: number;
+	active: number;
+	standby: number | null;
+	/** heater.state — lights the button for the mode the machine is in. */
+	state: string;
+}) {
 	const isBed = (): boolean => props.kind === "bed";
 	return (
 		<div class="heat-actions">
@@ -232,15 +254,24 @@ function HeaterActions(props: { kind: "tool" | "bed"; num: number; active: numbe
 				label="Active"
 				variant="go"
 				stamp={false}
+				engaged={props.state === "active"}
 				command={isBed() ? cmd.bedActive(props.num, props.active) : cmd.toolActive(props.num, props.active)}
 			/>
 			<Show when={!isBed() && props.standby !== null}>
-				<GcodeButton label="Standby" stamp={false} command={cmd.toolStandby(props.num, props.standby ?? 0)} />
+				<GcodeButton
+					label="Standby"
+					class="heat-standby"
+					stamp={false}
+					engaged={props.state === "standby"}
+					command={cmd.toolStandby(props.num, props.standby ?? 0)}
+				/>
 			</Show>
 			<GcodeButton
 				label="Off"
 				variant="danger"
+				class="heat-off"
 				stamp={false}
+				engaged={props.state === "off"}
 				command={isBed() ? cmd.bedOff(props.num) : cmd.toolOff(props.num)}
 			/>
 		</div>

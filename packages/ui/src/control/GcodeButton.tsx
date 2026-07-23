@@ -31,6 +31,14 @@ export function GcodeButton(props: {
 	onSent?: () => void;
 	/** Hide the mono stamp (dense rows where the command is obvious/shown once). */
 	stamp?: boolean;
+	/**
+	 * This button's mode is the one the machine is currently IN — it lights up.
+	 * Purely a mirror of reported state: an engaged button stays clickable (you
+	 * may well want to re-send Active after editing the setpoint), because a
+	 * control that greys itself out is the UI deciding what the firmware will
+	 * accept, which this project does not do.
+	 */
+	engaged?: boolean;
 	/** Extra class(es) for layout variants (e.g. the jog pad's square keys). */
 	class?: string;
 }) {
@@ -70,11 +78,13 @@ export function GcodeButton(props: {
 				"gcode-go": props.variant === "go",
 				"gcode-danger": props.variant === "danger",
 				"gcode-quiet": props.variant === "quiet",
+				"is-engaged": props.engaged === true,
 				"is-sending": state() === "sending",
 				"is-sent": state() === "sent",
 				"is-failed": state() === "failed",
 			}}
 			disabled={props.disabled}
+			aria-pressed={props.engaged}
 			title={props.command}
 			onClick={() => void send()}
 		>

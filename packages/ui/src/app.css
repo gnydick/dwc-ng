@@ -540,10 +540,12 @@
 .heat-table th:nth-child(2), .heat-table td:nth-child(2) { width: 88px; }
 .heat-table th:nth-child(3), .heat-table td:nth-child(3) { width: 62px; }
 .heat-table th:nth-child(4), .heat-table td:nth-child(4) { width: 62px; }
-.heat-table th:nth-child(5), .heat-table td:nth-child(5) { width: 68px; }
 /* Setpoint entry + the buttons that send it. Fixed widths so a three-digit
-   temperature or a fault badge can never re-flow the columns. */
-.heat-table th:nth-child(6), .heat-table td:nth-child(6) { width: 162px; }
+   temperature or a fault badge can never re-flow the columns. The old State
+   column's 68px moved in HERE: the actions are flex-end aligned, so that slack
+   sits empty on a healthy row and is where a fault/tuning badge lands — the
+   buttons keep their x either way. */
+.heat-table th:nth-child(5), .heat-table td:nth-child(5) { width: 230px; }
 .heat-input {
 	width: 56px;
 	padding: 4px 6px;
@@ -556,8 +558,13 @@
 	text-align: right;
 }
 .heat-input:focus-visible { outline: none; border-color: var(--copper); }
-.heat-actions { display: flex; gap: 4px; justify-content: flex-end; }
-.heat-actions .gcode-btn { padding: 5px 8px; }
+.heat-actions { display: flex; gap: 4px; justify-content: flex-end; align-items: center; }
+/* Never compress: the three buttons must land at the same x on every row, so a
+   fault badge appearing in the slack to their left may not squeeze them. */
+.heat-actions .gcode-btn { padding: 5px 8px; flex: 0 0 auto; }
+/* The residual-state slot (fault/tuning/offline). Narrower than the standalone
+   badge — it shares a column with the buttons now. */
+.heat-actions .heat-state { min-width: 56px; text-align: right; }
 .heat-table th {
 	font-family: var(--font-display);
 	font-weight: 600;
@@ -586,7 +593,7 @@
 	font-weight: 600;
 	font-size: 15px;
 	display: grid;
-	grid-template-columns: 58px 84px 12px; /* designator | name | dock dot */
+	grid-template-columns: 58px 12px 84px; /* designator | dock dot | name */
 	align-items: center;
 	gap: 8px;
 }
@@ -595,6 +602,10 @@
    to the full slot. Hug the text; only the slot's left edge needs to be fixed. */
 .heat-name .des { justify-self: start; }
 .heat-name .dock-dot { justify-self: center; margin-left: 0; }
+/* Pin the name to the third column so a row WITHOUT a dock dot (the bed, or a
+   tool with no mapped sensor) still lines its name up with every other row,
+   instead of auto-placing into the empty dot slot. */
+.heat-name .heat-tool { grid-column: 3; }
 
 .heat-cur {
 	font-family: var(--font-display);
@@ -969,7 +980,8 @@
 	.heat-table th:nth-child(2), .heat-table td:nth-child(2) { width: 68px; }
 	.heat-table th:nth-child(3), .heat-table td:nth-child(3) { width: 48px; }
 	.heat-table th:nth-child(4), .heat-table td:nth-child(4) { width: 48px; }
-	.heat-table th:nth-child(5), .heat-table td:nth-child(5) { width: 56px; }
+	/* Set column: still the buttons + the residual-state slot, just tighter. */
+	.heat-table th:nth-child(5), .heat-table td:nth-child(5) { width: 196px; }
 	.heat-cur { font-size: 18px; }
 	/* tighten headers so labels ("STANDBY") fit their narrower columns */
 	.heat-table th { font-size: 9.5px; letter-spacing: 0.05em; }
@@ -1170,6 +1182,25 @@
 .gcode-danger { border-color: rgba(224, 92, 74, 0.5); }
 .gcode-danger .gcode-label { color: var(--fault); }
 .gcode-quiet .gcode-label { color: var(--silk-dim); }
+
+/* Modal buttons: the one whose mode the machine is IN lights up (heater rows
+   use this in place of a State column). Deliberately expressed as box-shadow
+   and colour ONLY — never border-width, padding or size — so lighting up can
+   not move the button, and so :hover's background/border still work on top of
+   it instead of cancelling the glow. */
+.gcode-btn { --btn-accent: var(--copper-bright); }
+.gcode-go { --btn-accent: var(--ok); }
+.heat-standby { --btn-accent: var(--gold); }
+/* after .gcode-danger: the Off button is danger-styled, but a cold heater is
+   not an alarm — engaged Off reads as "current mode", not "fault". */
+.heat-off { --btn-accent: var(--copper); }
+.gcode-btn.is-engaged {
+	box-shadow:
+		inset 0 0 0 1px var(--btn-accent),
+		inset 0 0 12px color-mix(in srgb, var(--btn-accent) 22%, transparent),
+		0 0 10px color-mix(in srgb, var(--btn-accent) 30%, transparent);
+}
+.gcode-btn.is-engaged .gcode-label { color: var(--btn-accent); }
 
 /* Send acknowledgement. Absolutely positioned at a fixed size so no state
    change can alter the button's box - only colour moves. */
