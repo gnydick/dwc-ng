@@ -1488,6 +1488,21 @@
 .compose-card input { accent-color: var(--copper); }
 .compose-hidden { flex-wrap: wrap; }
 
+/* Card authoring (B2): the JSON editor inside the drawer. */
+.compose-custom-head { justify-content: space-between; border-top: 1px solid var(--hairline); padding-top: 8px; }
+.compose-custom-list { grid-template-columns: 1fr; border: none; padding: 0; }
+.compose-customrow { display: flex; align-items: center; gap: 6px; }
+.compose-customrow .compose-card { flex: 1; }
+.compose-editor { display: flex; flex-direction: column; gap: 8px; }
+.compose-json {
+	width: 100%; min-height: 220px; resize: vertical;
+	background: var(--mask-900); color: var(--silk);
+	border: 1px solid var(--hairline); border-radius: 5px; padding: 8px;
+	font: 400 12px/1.5 ui-monospace, "Cascadia Code", Consolas, monospace;
+	tab-size: 2;
+}
+.compose-json:focus { outline: none; border-color: var(--copper); }
+
 /* Macros: AutoConfirm — visible wherever the Run buttons are, so the mode can
    always be read off the screen rather than remembered. */
 .macro-autoconfirm {

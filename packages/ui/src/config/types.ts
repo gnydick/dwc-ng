@@ -65,6 +65,21 @@ export interface CustomScreen {
 }
 
 /**
+ * A user-authored card: a name and a control spec. The spec is stored as
+ * OPAQUE JSON TEXT, deliberately: the overlay's prune() strips empty objects
+ * recursively and mergeInto() deep-merges — either would corrupt spec data
+ * it recursed into. A string passes both untouched and round-trips the
+ * author's own formatting. It is parsed and compiled at the use site
+ * (compose/controls/parse.ts), where a broken spec costs that card an error
+ * body, never the screen.
+ */
+export interface CustomCardDef {
+	name: string;
+	/** JSON text of a compose/controls ControlSpec. */
+	spec: string;
+}
+
+/**
  * Screens as user truth (design phase A7b). Built-in screens are immutable
  * code; everything the user does to them — rename, hide, change membership
  * or layout — is overlay data here, and reset drops it. Custom screens live
@@ -97,6 +112,9 @@ export interface UiConfig {
 	macros: MacrosConfig;
 	bed: BedConfig;
 	screens: ScreensConfig;
+	/** User-authored cards, keyed by minted "c-" ids (the prefix keeps them
+	 *  out of the registry CardId namespace by construction). */
+	cards: Record<string, CustomCardDef>;
 }
 
 export type DeepPartial<T> = {
@@ -120,6 +138,7 @@ export const DEFAULT_CONFIG: UiConfig = {
 	macros: { autoConfirmRun: false },
 	bed: { probePointCommand: 'M98 P"0:/macros/dwc-ng/reprobe.g" X{x} Y{y}' },
 	screens: { custom: {}, renames: {}, hidden: [], layouts: {} },
+	cards: {},
 };
 
 /** Where the overlay lives on the machine's SD card. */

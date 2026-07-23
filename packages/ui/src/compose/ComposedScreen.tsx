@@ -16,13 +16,17 @@
  */
 import { For, Show, createEffect, createMemo, createSignal, untrack } from "solid-js";
 import { useApp } from "../shell/context.ts";
+import { Card } from "../shell/Card.tsx";
 import { PanelCanvas } from "../shell/PanelCanvas.tsx";
 import { createPanelCanvas } from "../shell/panelCanvas.ts";
 import { CARD_DEFS, allCardIds, parseCardId, type CardId } from "./defs.ts";
 import { RegistryCard, cardTitleOf } from "./RegistryCard.tsx";
-import { addCard, removeCard, slotsOf, type Composition } from "./composition.ts";
+import { addCard, isCustomCardId, removeCard, slotsOf, type Composition, type CustomCardId, type SlotId } from "./composition.ts";
 import { createServicePool } from "./services.ts";
 import { resolveScreen, screenList, type ScreenEntry } from "./screens.ts";
+import { ControlList } from "./controls/ControlList.tsx";
+import { parseControlSpecText } from "./controls/parse.ts";
+import { SPINDLE_EXAMPLE_JSON, SPINDLE_EXAMPLE_NAME } from "./controls/examples.ts";
 import type { CardCtx } from "./ctx.ts";
 
 export function ComposedScreen(props: { screenId: string }) {
@@ -38,7 +42,7 @@ export function ComposedScreen(props: { screenId: string }) {
 	// map) provisions on first access and dies with the screen.
 	const service = createServicePool({ ...app, connected });
 
-	const ctxFor = (id: CardId): CardCtx => ({
+	const ctxFor = (id: SlotId): CardCtx => ({
 		...app,
 		connected,
 		orientation: () => canvas.orientationFor(id),
@@ -78,13 +82,13 @@ export function ComposedScreen(props: { screenId: string }) {
 		const comp = composition();
 		for (const [id, slot] of slotsOf(comp)) canvas.ensureSlot(id, slot);
 		for (const id of canvas.slotIds()) {
-			const known = parseCardId(id);
-			if (known !== null && !(known in comp)) canvas.removeSlot(id);
+			const known = parseCardId(id) !== null || isCustomCardId(id);
+			if (known && !(id in comp)) canvas.removeSlot(id);
 		}
 	});
 
 	// Stable primitive keys: <For> keeps DOM/state for ids that remain.
-	const slotIdList = createMemo<CardId[]>(() => slotsOf(composition()).map(([id]) => id));
+	const slotIdList = createMemo<SlotId[]>(() => slotsOf(composition()).map(([id]) => id));
 
 	return (
 		<>
@@ -95,14 +99,56 @@ export function ComposedScreen(props: { screenId: string }) {
 			<PanelCanvas class={entry()?.def.class}>
 				<For each={slotIdList()}>
 					{id => (
-						// I3, mount half — same predicate the canvas filter uses.
-						<Show when={visibleFor(id)}>
-							<RegistryCard id={id} canvas={canvas} ctx={ctxFor(id)} />
+						<Show
+							when={isCustomCardId(id) ? id : null}
+							fallback={
+								// I3, mount half — same predicate the canvas filter uses.
+								<Show when={visibleFor(id as CardId)}>
+									<RegistryCard id={id as CardId} canvas={canvas} ctx={ctxFor(id)} />
+								</Show>
+							}
+						>
+							{customId => <CustomCard id={customId()} canvas={canvas} ctx={ctxFor(id)} />}
 						</Show>
 					)}
 				</For>
 			</PanelCanvas>
 		</>
+	);
+}
+
+/**
+ * A user-authored card (phase B2): its spec is JSON text in the config
+ * overlay, parsed and compiled through the untrusted boundary HERE — a
+ * broken spec costs this card an error body naming the problem, never the
+ * screen. The title is the author's name for it; the tip declares its
+ * provenance so a shared card can't masquerade as a built-in.
+ */
+function CustomCard(props: { id: CustomCardId; canvas: Parameters<typeof RegistryCard>[0]["canvas"]; ctx: CardCtx }) {
+	const app = useApp();
+	const def = createMemo(() => app.config.config.cards[props.id]);
+	const parsed = createMemo(() => {
+		const d = def();
+		return d === undefined ? null : parseControlSpecText(d.spec);
+	});
+	return (
+		<Show when={def()}>
+			{d => (
+				<Card id={props.id} canvas={props.canvas} ariaLabel={d().name} title={d().name} tip="custom card">
+					<Show
+						when={(() => { const p = parsed(); return p !== null && p.ok ? p.spec : null; })()}
+						fallback={
+							<p class="job-empty">
+								Card error: {(() => { const p = parsed(); return p !== null && !p.ok ? p.error : ""; })()}
+							</p>
+						}
+						keyed
+					>
+						{spec => <ControlList spec={spec} ctx={props.ctx} />}
+					</Show>
+				</Card>
+			)}
+		</Show>
 	);
 }
 
@@ -116,14 +162,41 @@ function ComposeDrawer(props: { screenId: string; entry: ScreenEntry | null; com
 	const app = useApp();
 	const [open, setOpen] = createSignal(false);
 	const [newName, setNewName] = createSignal("");
+	// The card-authoring editor: null = closed; id null = authoring a new card.
+	const [editing, setEditing] = createSignal<{ id: CustomCardId | null; name: string; json: string; error: string } | null>(null);
 
 	const asRects = (comp: Composition): Record<string, { col: number; row: number; colSpan: number; rowSpan: number }> =>
 		Object.fromEntries(slotsOf(comp).map(([id, s]) => [id, { col: s.col, row: s.row, colSpan: s.colSpan, rowSpan: s.rowSpan }]));
 
-	const toggleCard = (id: CardId): void => {
+	const toggleCard = (id: SlotId): void => {
 		const has = props.composition[id] !== undefined;
 		const next = has ? removeCard(props.composition, id) : addCard(props.composition, id);
 		app.config.updateScreenCards(props.screenId, asRects(next));
+	};
+
+	/** Validate through the SAME boundary the renderer uses, then store. */
+	const saveCard = (): void => {
+		const e = editing();
+		if (e === null) return;
+		const name = e.name.trim();
+		if (name === "") {
+			setEditing({ ...e, error: "The card needs a name." });
+			return;
+		}
+		const parsed = parseControlSpecText(e.json);
+		if (!parsed.ok) {
+			setEditing({ ...e, error: parsed.error });
+			return;
+		}
+		if (e.id === null) {
+			const id = app.config.addCustomCard(name, e.json) as CustomCardId;
+			// A just-made card lands on the current screen immediately — the
+			// author is composing here, not filing it away.
+			app.config.updateScreenCards(props.screenId, asRects(addCard(props.composition, id)));
+		} else {
+			app.config.updateCustomCard(e.id, { name, spec: e.json });
+		}
+		setEditing(null);
 	};
 
 	const createScreen = (): void => {
@@ -159,20 +232,93 @@ function ComposeDrawer(props: { screenId: string; entry: ScreenEntry | null; com
 							<button class="fb-act" onClick={() => app.config.setScreenHidden(props.screenId, true)}>Hide screen</button>
 						</Show>
 					</div>
-					<div class="compose-cards">
-						<For each={allCardIds()}>
-							{id => (
-								<label class="compose-card">
+					<Show
+						when={editing()}
+						fallback={
+							<>
+								<div class="compose-cards">
+									<For each={allCardIds()}>
+										{id => (
+											<label class="compose-card">
+												<input
+													type="checkbox"
+													checked={props.composition[id] !== undefined}
+													onChange={() => toggleCard(id)}
+												/>
+												{cardTitleOf(id)}
+											</label>
+										)}
+									</For>
+								</div>
+								<div class="compose-row compose-custom-head">
+									<span class="lab-cap">Your cards</span>
+									<button
+										class="fb-act ok"
+										onClick={() => setEditing({ id: null, name: "", json: "{\n\t\"inputs\": {},\n\t\"nodes\": []\n}", error: "" })}
+									>
+										+ New card
+									</button>
+								</div>
+								<Show when={Object.keys(app.config.config.cards).length > 0}>
+									<div class="compose-cards compose-custom-list">
+										<For each={Object.keys(app.config.config.cards) as CustomCardId[]}>
+											{id => (
+												<div class="compose-customrow">
+													<label class="compose-card">
+														<input
+															type="checkbox"
+															checked={props.composition[id] !== undefined}
+															onChange={() => toggleCard(id)}
+														/>
+														{app.config.config.cards[id]!.name}
+													</label>
+													<button
+														class="link-btn"
+														onClick={() => setEditing({ id, name: app.config.config.cards[id]!.name, json: app.config.config.cards[id]!.spec, error: "" })}
+													>
+														Edit
+													</button>
+													<button class="link-btn" onClick={() => app.config.removeCustomCard(id)}>✕</button>
+												</div>
+											)}
+										</For>
+									</div>
+								</Show>
+							</>
+						}
+					>
+						{edit => (
+							<div class="compose-editor">
+								<div class="compose-row">
 									<input
-										type="checkbox"
-										checked={props.composition[id] !== undefined}
-										onChange={() => toggleCard(id)}
+										class="fb-input"
+										placeholder="Card name"
+										value={edit().name}
+										onInput={e => setEditing({ ...edit(), name: e.currentTarget.value })}
 									/>
-									{cardTitleOf(id)}
-								</label>
-							)}
-						</For>
-					</div>
+									<button
+										class="fb-act"
+										title="Insert a working spindle-control example (M3/M4/M5)"
+										onClick={() => setEditing({ ...edit(), name: edit().name || SPINDLE_EXAMPLE_NAME, json: SPINDLE_EXAMPLE_JSON, error: "" })}
+									>
+										Insert example
+									</button>
+								</div>
+								<textarea
+									class="compose-json"
+									spellcheck={false}
+									value={edit().json}
+									onInput={e => setEditing({ ...edit(), json: e.currentTarget.value })}
+								/>
+								{/* Reserved line: an error appearing must not shove the buttons. */}
+								<p class="fb-msg" classList={{ show: edit().error !== "" }}>{edit().error || " "}</p>
+								<div class="compose-row">
+									<button class="fb-act ok" onClick={saveCard}>{edit().id === null ? "Create card" : "Save card"}</button>
+									<button class="fb-act" onClick={() => setEditing(null)}>Cancel</button>
+								</div>
+							</div>
+						)}
+					</Show>
 					<div class="compose-row">
 						<input
 							class="fb-input"

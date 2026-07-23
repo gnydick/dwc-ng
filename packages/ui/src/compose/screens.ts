@@ -143,11 +143,15 @@ export interface ScreenEntry {
  */
 export function screenList(config: UiConfig): ScreenEntry[] {
 	const screens = config.screens;
+	// "c-" slots survive the composition parse only while their card
+	// definition exists — deleting a custom card degrades screens by exactly
+	// that slot.
+	const customCards = new Set(Object.keys(config.cards));
 	const builtins = (Object.entries(BUILTIN_SCREENS) as Array<[BuiltinScreenId, ScreenDef]>)
 		.filter(([id]) => !screens.hidden.includes(id))
 		.map(([id, def]): ScreenEntry => {
 			const override = screens.layouts[id];
-			const overridden = override !== undefined ? parseComposition(override) : null;
+			const overridden = override !== undefined ? parseComposition(override, customCards) : null;
 			return {
 				id,
 				builtin: true,
@@ -164,7 +168,7 @@ export function screenList(config: UiConfig): ScreenEntry[] {
 	const custom = Object.entries(screens.custom).map(([id, c]): ScreenEntry => ({
 		id,
 		builtin: false,
-		def: { name: c.name, composition: parseComposition(c.cards) },
+		def: { name: c.name, composition: parseComposition(c.cards, customCards) },
 	}));
 	const list = [...builtins, ...custom];
 	if (list.length > 0) return list;

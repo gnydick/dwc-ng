@@ -22,8 +22,19 @@ import { CARD_DEFS, parseCardId, type CardId } from "./defs.ts";
 /** One card's placement on a screen. */
 export type Slot = PanelRect;
 
-/** I2: keyed by CardId — duplicates unrepresentable. */
-export type Composition = Partial<Record<CardId, Slot>>;
+/** A user-authored card's id — the "c-" prefix IS the namespace boundary:
+ *  registry CardIds never start with it, so the union below can't collide. */
+export type CustomCardId = `c-${string}`;
+
+export function isCustomCardId(id: string): id is CustomCardId {
+	return id.startsWith("c-");
+}
+
+/** Everything a slot can hold: a registry card or a user-authored one. */
+export type SlotId = CardId | CustomCardId;
+
+/** I2: keyed by SlotId — duplicates unrepresentable. */
+export type Composition = Partial<Record<SlotId, Slot>>;
 
 function isSlotShape(value: unknown): value is Record<keyof PanelRect, unknown> {
 	return typeof value === "object" && value !== null
@@ -32,14 +43,18 @@ function isSlotShape(value: unknown): value is Record<keyof PanelRect, unknown> 
 
 /**
  * Tolerant boundary parse (I1): anything not a plain object yields an empty
- * composition; entries survive only with a registered CardId and a rect that
- * clamps to sanity. Per-slot dropping is deliberate — see module doc.
+ * composition; entries survive only with a registered CardId — or, when
+ * `customIds` is given, a "c-" id that actually exists in the user's card
+ * definitions — and a rect that clamps to sanity. Per-slot dropping is
+ * deliberate — see module doc: deleting a custom card degrades every screen
+ * that held it by exactly that slot.
  */
-export function parseComposition(raw: unknown): Composition {
+export function parseComposition(raw: unknown, customIds?: ReadonlySet<string>): Composition {
 	if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return {};
 	const result: Composition = {};
 	for (const [key, value] of Object.entries(raw)) {
-		const id = parseCardId(key);
+		const id: SlotId | null =
+			parseCardId(key) ?? (isCustomCardId(key) && customIds?.has(key) ? key : null);
 		if (id === null || !isSlotShape(value)) continue;
 		result[id] = clampRect({
 			col: Number(value.col), row: Number(value.row),
@@ -50,8 +65,8 @@ export function parseComposition(raw: unknown): Composition {
 }
 
 /** Slots as (id, rect) pairs without lying about the key type. */
-export function slotsOf(composition: Composition): Array<[CardId, Slot]> {
-	return Object.entries(composition) as Array<[CardId, Slot]>;
+export function slotsOf(composition: Composition): Array<[SlotId, Slot]> {
+	return Object.entries(composition) as Array<[SlotId, Slot]>;
 }
 
 /**
@@ -76,20 +91,24 @@ export function findFreePosition(
 	return { col: 0, row: bottom };
 }
 
+/** A custom card's default footprint until its author resizes it. */
+const CUSTOM_CARD_SIZE = { colSpan: 12, rowSpan: 40 };
+
 /**
- * Add a card at its natural size in the first free spot. No-op if already
- * present (I2 makes the duplicate unrepresentable; this makes re-adding
- * idempotent rather than an error).
+ * Add a card at its natural size (registry cards) or the custom default in
+ * the first free spot. No-op if already present (I2 makes the duplicate
+ * unrepresentable; this makes re-adding idempotent rather than an error).
  */
-export function addCard(composition: Composition, id: CardId): Composition {
+export function addCard(composition: Composition, id: SlotId): Composition {
 	if (composition[id] !== undefined) return composition;
-	const size = CARD_DEFS[id].size;
-	const { col, row } = findFreePosition(Object.values(composition), size);
+	const size = isCustomCardId(id) ? CUSTOM_CARD_SIZE : CARD_DEFS[id].size;
+	const occupied = Object.values(composition).filter((s): s is Slot => s !== undefined);
+	const { col, row } = findFreePosition(occupied, size);
 	return { ...composition, [id]: { col, row, ...size } };
 }
 
 /** Remove a card. Other slots are untouched — removal never reflows. */
-export function removeCard(composition: Composition, id: CardId): Composition {
+export function removeCard(composition: Composition, id: SlotId): Composition {
 	if (composition[id] === undefined) return composition;
 	const next = { ...composition };
 	delete next[id];

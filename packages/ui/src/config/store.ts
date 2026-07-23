@@ -37,6 +37,11 @@ export interface ConfigStore {
 	 *  in place, built-ins via the layouts overlay. */
 	updateScreenCards(id: string, cards: Record<string, SlotRect>): void;
 
+	/** Create a user-authored card; returns its minted stable id ("c-…"). */
+	addCustomCard(name: string, spec: string): string;
+	updateCustomCard(id: string, patch: { name?: string; spec?: string }): void;
+	removeCustomCard(id: string): void;
+
 	/** Drop one section's overlay — that section returns to defaults. */
 	resetSection(section: keyof UiConfig): void;
 	/** Drop the whole overlay — everything returns to defaults. */
@@ -134,6 +139,25 @@ export function createConfigStore(): ConfigStore {
 				if (custom !== undefined) custom.cards = cards;
 				else ((draft.screens ??= {}).layouts ??= {})[id] = cards;
 			});
+		},
+
+		addCustomCard(name, spec) {
+			// "c-" prefix keeps minted ids out of the registry CardId namespace
+			// by construction — a collision has no way to occur.
+			const id = `c-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+			apply(draft => { ((draft.cards ??= {}) as Record<string, unknown>)[id] = { name, spec }; });
+			return id;
+		},
+		updateCustomCard(id, patch) {
+			apply(draft => {
+				const card = draft.cards?.[id];
+				if (card === undefined) return;
+				if (patch.name !== undefined) card.name = patch.name;
+				if (patch.spec !== undefined) card.spec = patch.spec;
+			});
+		},
+		removeCustomCard(id) {
+			apply(draft => { delete draft.cards?.[id]; });
 		},
 
 		resetSection(section) {
