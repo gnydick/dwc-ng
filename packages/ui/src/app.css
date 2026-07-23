@@ -1705,17 +1705,16 @@
 .rel-key { width: 44px; padding: 0; }
 .rel-key .gcode-label { min-width: 0; }
 
-/* Tuning: the action leads the row, as it does on the Tools card. Scoped to
-   this panel — Heaters and Fans keep their right-hand button alignment, where
-   the value being set is the thing you scan down the column for.
-   The cluster carries a fixed width so the labels after it line up: "Set" is
-   one button and babystep is two, which would otherwise start the two rows'
-   text at different x. */
-[data-panel-id="tuning"] .heater-ctl .btn-cluster {
-	order: -1;
-	margin-left: 0;
-	min-width: 152px;
-}
+/* Tuning reads as two labelled sections stacked vertically: the label leads
+   each row (a left column you scan straight down); the controls follow,
+   starting at the same x on both rows. Speed's label is reordered ahead of its
+   reset button to sit in that column, and the rows carry extra vertical space
+   so the babystep buttons no longer crowd the speed slider directly above.
+   Scoped to this panel - Heaters and Fans keep their right-hand alignment. */
+[data-panel-id="tuning"] .ctl-name { min-width: 88px; }
+[data-panel-id="tuning"] .speed-row .ctl-name { order: -1; }
+[data-panel-id="tuning"] .heater-list { gap: 16px; }
+[data-panel-id="tuning"] .heater-ctl .btn-cluster { margin-left: 0; }
 
 /* The firmware's accumulated babystep, mirrored live. Reserved width and
    tabular figures: this updates on every poll and must not shove the row
