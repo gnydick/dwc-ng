@@ -22,15 +22,15 @@ export default defineConfig({
       // server-side so the browser never hits the board directly (no CORS).
       '^/real/rr_.*': { target: realTarget, changeOrigin: true, rewrite: p => p.replace(/^\/real/, '') },
       '^/rr_.*': { target, changeOrigin: true },
-      // DSF's REST surface: the native connector's files/code/session routes,
-      // and the rr_ connector's layer-history enrichment (GET /machine/model).
-      '^/real/machine/.*': { target: realTarget, changeOrigin: true, rewrite: p => p.replace(/^\/real/, '') },
-      '^/machine/.*': { target, changeOrigin: true },
-      // DSF's WebSocket. Separate entries because the patterns above require a
-      // character after the slash and so cannot match the bare `/machine`
-      // endpoint, and because proxying an Upgrade needs ws: true.
-      '^/real/machine$': { target: realTarget, changeOrigin: true, ws: true, rewrite: p => p.replace(/^\/real/, '') },
-      '^/machine$': { target, changeOrigin: true, ws: true },
+      // DSF's whole surface, HTTP and WebSocket, in ONE entry per backend:
+      // the REST routes (/machine/file, /machine/code, … and the rr_
+      // connector's layer-history enrichment GET /machine/model) and the bare
+      // `/machine` WebSocket endpoint, which carries `?sessionKey=…`. The
+      // pattern is deliberately unanchored at the end — an anchored `$` cannot
+      // match the query string, and a `/.*` form cannot match the bare
+      // endpoint at all. ws:true is required for Vite to proxy the Upgrade.
+      '^/real/machine': { target: realTarget, changeOrigin: true, ws: true, rewrite: p => p.replace(/^\/real/, '') },
+      '^/machine': { target, changeOrigin: true, ws: true },
     },
   },
 })
