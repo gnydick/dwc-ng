@@ -1,5 +1,6 @@
 import { Show, For, Switch, Match, createSignal, createMemo, createEffect, on } from "solid-js";
 import { useApp } from "../shell/context.ts";
+import { cmd } from "../control/commands.ts";
 import { MessageBoxMode, ackCommand, initialInput, isBlocking, needsInput, type AckInput } from "./ack.ts";
 
 /**
@@ -53,7 +54,10 @@ export function MessageBoxPrompt() {
 	};
 
 	const emergencyStop = (): void => {
-		void app.connector.sendCode("M112\nM999").catch(() => undefined);
+		// A STOP that did not reach the board must say so, in the prompt's
+		// existing error line — never a silent no-op.
+		void app.connector.sendCode(cmd.emergencyStop())
+			.catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)));
 	};
 
 	const numeric = (): boolean =>

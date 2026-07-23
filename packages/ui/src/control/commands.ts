@@ -9,6 +9,8 @@
  * toolchange macros — do not "improve" them from memory.
  */
 
+import { EMERGENCY_STOP } from "../connector/emergency.ts";
+
 /** Trim a number to a compact G-code literal (no trailing ".00"). */
 const n = (v: number): string => String(v);
 
@@ -29,6 +31,14 @@ const withTool = (tool: number | undefined, code: string): string =>
 ${code}`;
 
 export const cmd = {
+	/**
+	 * The STOP button's payload (M112 halt + M999 reset), from the one
+	 * definition the write guard and the connector's unblockable path also
+	 * read — the button, the guard's allow-through, and the transport's
+	 * queue-bypass cannot disagree about what an e-stop is.
+	 */
+	emergencyStop: (): string => EMERGENCY_STOP,
+
 	// --- homing ---
 	homeAll: (): string => "G28",
 	homeAxis: (axis: string): string => `G28 ${axis}`,

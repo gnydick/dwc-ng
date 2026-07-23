@@ -6,6 +6,7 @@ import {
 } from "./types.ts";
 import { crc32 } from "./crc32.ts";
 import { RequestQueue, type RequestPriority } from "./requestQueue.ts";
+import { isEmergencyStop } from "./emergency.ts";
 import { isPlainObject as isRecord, safeEntries } from "../util/safeObject.ts";
 
 /**
@@ -240,6 +241,16 @@ export class PollConnector implements Connector {
 	// ---------- Connector surface ----------
 
 	async sendCode(code: string): Promise<string> {
+		// The unblockable path: an e-stop never waits for a queue slot (an
+		// in-flight upload can hold the only one for minutes) and is never
+		// status-gated (a "reconnecting" session must still be able to halt
+		// the machine). Recognized here, at the transport, so EVERY caller
+		// that sends the e-stop payload gets the unblocked path — not just
+		// the STOP button.
+		if (isEmergencyStop(code)) {
+			await this.sendEmergencyStop(code, false);
+			return "";
+		}
 		if (this.status !== "connected") throw new DisconnectedError();
 		let settle!: (text: string) => void;
 		const replyPromise = new Promise<string>(resolve => {
@@ -263,6 +274,27 @@ export class PollConnector implements Connector {
 			settle("");
 		}, REPLY_GRACE_MS);
 		return replyPromise;
+	}
+
+	/**
+	 * Fire the e-stop straight at the board: no queue, no status gate, no
+	 * backoff ladder. RRF tolerates the extra concurrent connection, and
+	 * this is exactly the moment to spend it — M112 kills whatever the held
+	 * slot was doing anyway. One transparent re-auth on a culled session
+	 * (also unqueued), then re-fire; any other failure surfaces to the
+	 * button, which honestly reports "failed" rather than pretending.
+	 */
+	private async sendEmergencyStop(code: string, retried: boolean): Promise<void> {
+		const res = await fetch(`${this.base}/rr_gcode?gcode=${encodeURIComponent(code)}`, {
+			headers: this.sessionKey !== null ? { "X-Session-Key": String(this.sessionKey) } : {},
+			signal: AbortSignal.timeout(this.requestTimeoutMs),
+		});
+		if ((res.status === 401 || res.status === 403) && !retried) {
+			const body = await (await this.fetchConnect()).json() as { err: number; sessionKey?: number };
+			if (body.err === 0) this.sessionKey = body.sessionKey ?? null;
+			return this.sendEmergencyStop(code, true);
+		}
+		if (!res.ok) throw new OperationFailedError(`emergency stop: HTTP ${res.status}`);
 	}
 
 	async upload(path: string, content: Uint8Array | string, onProgress?: (fraction: number) => void): Promise<void> {
@@ -558,12 +590,18 @@ export class PollConnector implements Connector {
 		this.events.onReply?.(text);
 	}
 
-	/** Re-auth after a culled session. High priority: nothing else can proceed. */
-	private async openSessionDirect(): Promise<void> {
-		const res = await this.requests.enqueue(() => fetch(
+	/** The bare rr_connect fetch — shared by the queued re-auth and the
+	 *  emergency path's unqueued one, so the auth form exists once. */
+	private fetchConnect(): Promise<Response> {
+		return fetch(
 			`${this.base}/rr_connect?password=${encodeURIComponent(this.password)}&time=${encodeURIComponent(isoNow())}&sessionKey=yes`,
 			{ signal: AbortSignal.timeout(this.requestTimeoutMs) },
-		), "high");
+		);
+	}
+
+	/** Re-auth after a culled session. High priority: nothing else can proceed. */
+	private async openSessionDirect(): Promise<void> {
+		const res = await this.requests.enqueue(() => this.fetchConnect(), "high");
 		const body = await res.json() as { err: number; sessionKey?: number };
 		if (body.err !== 0) throw new InvalidPasswordError();
 		this.sessionKey = body.sessionKey ?? null;

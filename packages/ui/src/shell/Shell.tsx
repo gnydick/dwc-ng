@@ -1,5 +1,6 @@
 import { For, Match, Show, Suspense, Switch, createMemo, createSignal, lazy } from "solid-js";
 import { useApp } from "./context.ts";
+import { cmd } from "../control/commands.ts";
 import { createRouter, LAB_ROUTE } from "./router.ts";
 import {
 	BACKENDS, type Backend, rememberBackend,
@@ -29,12 +30,23 @@ export default function Shell() {
 	const anyHeaterFault = createMemo(() =>
 		app.om.om.heat.heaters.some(h => h !== null && h.state === "fault"));
 
+	// A STOP that did not reach the board must say so — a silently failed
+	// e-stop is the worst possible no-op. Colour only: fixed geometry.
+	const [stopFailed, setStopFailed] = createSignal(false);
+	let stopFailedTimer: ReturnType<typeof setTimeout> | undefined;
 	const emergencyStop = (): void => {
-		// M112 halts immediately; M999 resets so the board comes back. ONE payload,
-		// not two calls: as two un-awaited requests they race (order not guaranteed)
-		// and the reset has to reach a board that just halted. Matches DWC —
-		// reference/dwc/src/components/buttons/EmergencyBtn.vue:2 sends 'M112\nM999'.
-		void app.connector.sendCode("M112\nM999").catch(() => undefined);
+		// ONE payload, not two calls: as two un-awaited requests they'd race
+		// (order not guaranteed) and the reset has to reach a board that just
+		// halted. The payload comes from cmd.emergencyStop() — the same
+		// definition the write guard lets through and the connector's
+		// unqueued path recognizes, so the three cannot drift apart.
+		void app.connector.sendCode(cmd.emergencyStop())
+			.then(() => setStopFailed(false))
+			.catch(() => {
+				setStopFailed(true);
+				clearTimeout(stopFailedTimer);
+				stopFailedTimer = setTimeout(() => setStopFailed(false), 5000);
+			});
 	};
 
 	return (
@@ -118,7 +130,12 @@ export default function Shell() {
 								Connect
 							</button>
 						</Show>
-						<button class="estop" title="Emergency stop — sends M112 + M999" onClick={emergencyStop}>
+						<button
+							class="estop"
+							classList={{ "estop-failed": stopFailed() }}
+							title={stopFailed() ? "STOP DID NOT REACH THE BOARD — network failure" : "Emergency stop — sends M112 + M999"}
+							onClick={emergencyStop}
+						>
 							STOP<small>M112</small>
 						</button>
 					</div>
