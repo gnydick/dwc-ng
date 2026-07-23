@@ -1,7 +1,10 @@
 # Composable Cards — architecture design
 
-**Status:** ratified 2026-07-23 (Gabe: instances, persistence, migration, v1 scope
-decided; control types added to scope). Supersedes the fixed-view architecture.
+**Status:** ratified 2026-07-23; **phase A (A1–A9) COMPLETE 2026-07-23** —
+all eight screens are compositions, user screens + compose drawer + SD
+persistence shipped, the Card Lab consumes the registry, every legacy
+wrapper and view file deleted. Phase B (control types) is next.
+Supersedes the fixed-view architecture.
 **Method:** cant-break-by-design — every invariant below names its enforcement
 rung; grounded in a six-agent code sweep (2026-07-23) of all views, the panel
 system, persistence, cards, the Card Lab, and cross-card couplings.
