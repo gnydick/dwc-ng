@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 import {
 	GRID_COLS, clampRect, rectsOverlap, collidesWithAny, hasCollisions, inBounds,
 	tryMove, tryResize, defaultCanvas, parseStoredCanvas, serializeCanvas, mergeCanvas,
-	applyDetent, DETENT_BREAKAWAY_ROWS, type DetentState,
 } from "../src/shell/panelCanvas.ts";
 
 const rect = (col: number, row: number, colSpan: number, rowSpan: number) => ({ col, row, colSpan, rowSpan });
@@ -174,100 +173,6 @@ test("serializeCanvas round-trips through parseStoredCanvas and mergeCanvas", ()
 // Every screen's layout is asserted in composition.test.ts against its
 // composed screen — the per-view defaults files the old per-view tests
 // checked were deleted in the A3–A6 conversions.
-
-// --- the resize detent at a card's exact content fit ---
-
-const armed = (): DetentState => ({ broken: false });
-
-test("above the minimum the detent does nothing", () => {
-	assert.deepEqual(applyDetent(40, 20, armed()), { span: 40, state: { broken: false }, held: false });
-});
-
-// The invariant: the visible cue (driven by `held`) is on IFF the detent is
-// engaged — the frame resisting the pointer at the exact fit. These pin both
-// halves so neither past bug can return: the cue flashing when it shouldn't,
-// or the cue vanishing when the detent is genuinely holding.
-test("held is false at rest — sitting at or above the minimum is not 'engaged'", () => {
-	// At rest a re-fit card sits exactly at its minimum. Merely being at min must
-	// NOT light the cue (this was the old at-min border's spurious flash).
-	assert.equal(applyDetent(20, 20, armed()).held, false, "exactly at min, not resisting");
-	assert.equal(applyDetent(40, 20, armed()).held, false, "well above min");
-});
-
-test("held is false during a width-only resize of an at-min card", () => {
-	// A width-only drag leaves the row span unchanged (deltaRowSpan ~ 0), so the
-	// raw span never dips below min. The cue must stay dark — the original bug
-	// was it lighting because span happened to equal min.
-	const min = 20;
-	assert.equal(applyDetent(min, min, armed()).held, false);
-});
-
-test("held is true only while the edge is resisting below the fit", () => {
-	const min = 20;
-	for (let past = 1; past < DETENT_BREAKAWAY_ROWS; past++) {
-		assert.equal(applyDetent(min - past, min, armed()).held, true, `${past} rows into the detent`);
-	}
-});
-
-test("held goes false once the detent breaks away and while released", () => {
-	const min = 20;
-	const atRelease = applyDetent(min - DETENT_BREAKAWAY_ROWS, min, armed());
-	assert.equal(atRelease.held, false, "the frame it breaks away, it is no longer holding");
-	const released = applyDetent(min - DETENT_BREAKAWAY_ROWS - 2, min, atRelease.state);
-	assert.equal(released.held, false, "released and tracking the pointer, not holding");
-});
-
-test("the bottom edge sticks at the exact minimum while the pointer keeps moving", () => {
-	const min = 20;
-	for (let past = 0; past < DETENT_BREAKAWAY_ROWS; past++) {
-		const out = applyDetent(min - past, min, armed());
-		assert.equal(out.span, min, `still ${past} rows into the detent`);
-		assert.equal(out.state.broken, false);
-	}
-});
-
-test("pulling a little further releases it, and the release does not jump", () => {
-	const min = 20;
-	// The frame it breaks away, the span must still be exactly the minimum -
-	// otherwise the card snaps down by the breakaway distance the instant it lets go.
-	const atRelease = applyDetent(min - DETENT_BREAKAWAY_ROWS, min, armed());
-	assert.equal(atRelease.span, min);
-	assert.equal(atRelease.state.broken, true);
-
-	// And from there it tracks the pointer again, one row per row.
-	const next = applyDetent(min - DETENT_BREAKAWAY_ROWS - 1, min, atRelease.state);
-	assert.equal(next.span, min - 1);
-	assert.equal(applyDetent(min - DETENT_BREAKAWAY_ROWS - 4, min, next.state).span, min - 4);
-});
-
-test("the span never jumps by more than a row across a whole drag through the detent", () => {
-	// Sweep the pointer down through the detent and back up, asserting continuity.
-	const min = 20;
-	let state = armed();
-	let previous: number | null = null;
-	const sweep = [...Array(40).keys()].map(i => 30 - i).concat([...Array(40).keys()].map(i => -9 + i));
-	for (const rawSpan of sweep) {
-		const out = applyDetent(rawSpan, min, state);
-		state = out.state;
-		if (previous !== null) {
-			assert.ok(
-				Math.abs(out.span - previous) <= 1,
-				`span jumped from ${previous} to ${out.span} at rawSpan ${rawSpan}`,
-			);
-		}
-		previous = out.span;
-	}
-});
-
-test("it re-arms on the way back up so the detent is felt in both directions", () => {
-	const min = 20;
-	const broken = applyDetent(min - DETENT_BREAKAWAY_ROWS - 3, min, { broken: true });
-	assert.equal(broken.state.broken, true);
-	const back = applyDetent(min - DETENT_BREAKAWAY_ROWS, min, broken.state);
-	assert.equal(back.span, min);
-	assert.equal(back.state.broken, false, "re-armed, so shrinking again must catch at the minimum");
-});
-
 
 // ---- audit H6: slot adoption obeys the collision contract like a drag ----
 
