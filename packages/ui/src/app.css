@@ -1871,12 +1871,12 @@
 .card-head { padding-top: 0; margin-bottom: 8px; height: 36px; flex: 0 0 36px; }
 .card-title { font-size: 12px; }
 
-/* The height detent is ENGAGED: while you drag a card shorter, the frame has
-   caught on its exact content fit and is resisting the pointer. A copper edge
-   confirms the catch you're already feeling. It is toggled from applyDetent's
-   `held` flag, so it appears ONLY while actively resisting — never at rest and
-   never during a width-only resize (the earlier at-min border did both, which
-   is why it read as a spurious warning).
+/* The height floor is ENGAGED: while you drag a card shorter, the frame has
+   hit its hard minimum (header + resize grip + 50%) and won't go lower. A
+   copper edge confirms the stop you're already feeling. Toggled only while the
+   bottom edge is pushed against the floor — never at rest and never during a
+   width-only resize (the earlier at-min border did both, which read as a
+   spurious warning).
 
    Recolour the card's OWN border rather than adding an outset box-shadow ring:
    an outset shadow paints in the 1px band OUTSIDE the border-box, which is

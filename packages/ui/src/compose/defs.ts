@@ -306,8 +306,8 @@ export const CARD_DEFS = {
 	}),
 	/** Camera stream URL (config overlay). */
 	"camera-config": defineCard({
-		title: "Camera",
-		ariaLabel: "Camera",
+		title: "Camera URL",
+		ariaLabel: "Camera URL",
 		size: { colSpan: 12, rowSpan: 40 },
 	}),
 	/** Sensor display names (config overlay). */
