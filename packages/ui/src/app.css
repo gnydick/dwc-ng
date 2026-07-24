@@ -2159,6 +2159,16 @@
 .tram-result dd { font-variant-numeric: tabular-nums; }
 .mesh-saveas input { width: 140px; }
 
+/* The subtraction that turns a raw stop height into a map value, shown so the
+   two numbers on screen visibly relate. Tabular so the digits line up against
+   the reply underneath. */
+.hm-derive {
+	margin: 0;
+	font: 400 11px/1.4 ui-monospace, "Cascadia Code", "SF Mono", Menlo, Consolas, monospace;
+	font-variant-numeric: tabular-nums;
+	color: var(--silk-dim);
+}
+
 .hm-nudge { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .hm-nudge .fb-act {
 	/* Reserved: the label carries the step, so "− 0.01" and "− 0.005" differ in

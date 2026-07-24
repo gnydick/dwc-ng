@@ -290,11 +290,15 @@ export function ProbePointBody(props: { ctx: CardCtx }) {
 	const [probing, setProbing] = createSignal(false);
 	const [reply, setReply] = createSignal("");
 	const [probed, setProbed] = createSignal<number | null>(null);
+	/** The RAW machine Z the probe stopped at, kept so the card can show the
+	 *  subtraction rather than only its result. */
+	const [rawStop, setRawStop] = createSignal<number | null>(null);
 	/** Manual nudge step, mm. Matches the babystep control's granularity. */
 	const [step, setStep] = createSignal(0.01);
 
 	const clearProbe = (): void => {
 		setProbed(null);
+		setRawStop(null);
 		setReply("");
 	};
 
@@ -372,6 +376,7 @@ export function ProbePointBody(props: { ctx: CardCtx }) {
 			// so storing it raw would be a ~13mm error. Subtracting makes a high spot
 			// read positive for any sign of triggerHeight.
 			svc.setMessage("");
+			setRawStop(stopHeight);
 			setProbed(heightmapValue(stopHeight, probe.triggerHeight));
 		}
 		setProbing(false);
@@ -434,6 +439,18 @@ export function ProbePointBody(props: { ctx: CardCtx }) {
 							<p class="hm-line">
 								{store.valueAt(target().row, target().col).toFixed(3)} → <b>{probed()!.toFixed(3)}</b> mm
 							</p>
+							{/* Show the ARITHMETIC, not just its result. The reply below is a
+							    raw machine Z sitting near the trigger height (~-13 here), so
+							    without the subtraction spelled out it looks unrelated to the
+							    value being stored — and a ~13mm error looks entirely
+							    plausible. Spelling it out makes the number auditable against
+							    the machine's own words directly underneath. */}
+							<Show when={rawStop() !== null}>
+								<p class="hm-derive">
+									{rawStop()!.toFixed(3)} raw − {(app.om.om.sensors.probes[0]?.triggerHeight ?? 0).toFixed(3)} trigger
+									{" = "}{probed()!.toFixed(3)} mm
+								</p>
+							</Show>
 							{/* The machine's own words, kept beside the number taken from
 							    them: a probe that landed on swarf or failed to trigger
 							    cleanly should be visible before it enters the map. */}
