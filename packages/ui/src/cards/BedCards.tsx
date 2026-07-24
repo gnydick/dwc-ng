@@ -214,9 +214,16 @@ export function MeshBody(props: { ctx: CardCtx }) {
 
 /**
  * Bed tramming — G32 runs bed.g, which on this machine levels by driving the Z
- * leadscrews (UVW) independently. M561 is its counterpart: it cancels the bed
- * PLANE fit, where Clear mesh on the Mesh card drops the mesh. Two different
- * compensations, so two different controls rather than one that guesses.
+ * leadscrews (UVW) independently.
+ *
+ * No M561 control here on purpose. M561 clears a bed PLANE fit, and this
+ * machine has none to clear: bed.g probes three points and finishes with S0
+ * while M671 and three Z motors are configured, so RRF moves the screws instead
+ * of skewing coordinates (hence "Leadscrew adjustments made", and
+ * compensation.type staying "none" with all skew tangents at zero). bed.g also
+ * already runs M561 as its own first line, which is the one place it earns its
+ * keep — clearing a stale correction before measuring. A button for it would be
+ * a control that does nothing on this machine.
  *
  * The result is read from the REPLY LOG, not from the button's promise.
  * Measured on the machine: sendCode resolves while bed.g is still probing, and
@@ -247,7 +254,6 @@ export function BedTramBody() {
 			<div class="mesh-actions">
 				<GcodeButton label="Tram bed" variant="go" stamp={false} command={cmd.bedTram()} />
 				<GcodeButton label="Home Z" stamp={false} command={cmd.homeAxis("Z")} />
-				<GcodeButton label="Clear transform" variant="danger" stamp={false} command={cmd.clearBedTransform()} />
 			</div>
 			<Show
 				when={lastTram()}

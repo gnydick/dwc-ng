@@ -94,10 +94,10 @@ export const SYSTEM_COMPOSITION: Composition = {
 export const BED_COMPOSITION: Composition = {
 	heightmap: { col: 0, row: 0, colSpan: 16, rowSpan: 150 },
 	mesh: { col: 16, row: 0, colSpan: 8, rowSpan: 60 },
-	"bed-tram": { col: 16, row: 60, colSpan: 8, rowSpan: 30 },
-	"probe-point": { col: 16, row: 90, colSpan: 8, rowSpan: 90 },
-	console: { col: 0, row: 180, colSpan: 24, rowSpan: 75 },
-	camera: { col: 0, row: 255, colSpan: 8, rowSpan: 75 },
+	"bed-tram": { col: 16, row: 60, colSpan: 8, rowSpan: 40 },
+	"probe-point": { col: 16, row: 100, colSpan: 8, rowSpan: 90 },
+	console: { col: 0, row: 190, colSpan: 24, rowSpan: 75 },
+	camera: { col: 0, row: 265, colSpan: 8, rowSpan: 75 },
 };
 
 /** Settings: config-overlay editors + the save card (the former save-bar). */

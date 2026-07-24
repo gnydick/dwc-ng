@@ -175,7 +175,9 @@ test("job control forms", () => {
 test("mesh commands: bare forms match what DWC sends", () => {
 	assert.equal(cmd.probeMesh(), "G29");
 	assert.equal(cmd.clearMesh(), "G29 S2");
-	assert.equal(cmd.clearBedTransform(), "M561");
+	// No M561 builder: this machine levels by moving leadscrews, never by a bed
+	// plane fit, so there is nothing for it to clear. See commands.ts.
+	assert.equal("clearBedTransform" in cmd, false);
 	// No argument = no P at all, NOT P"heightmap.csv": the bare form is the one
 	// verified on the board, so the default path must keep sending it.
 	assert.equal(cmd.loadHeightmap(), "G29 S1");

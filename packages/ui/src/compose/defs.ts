@@ -278,12 +278,12 @@ export const CARD_DEFS = {
 		tip: "G29 · G29 S1 · G29 S2 · G29 S3",
 		size: { colSpan: 8, rowSpan: 60 },
 	}),
-	/** Bed tramming (bed.g) and clearing the bed plane fit. */
+	/** Bed tramming (bed.g), the re-home it requires, and the last result. */
 	"bed-tram": defineCard({
 		title: "Bed tram",
 		ariaLabel: "Bed tram",
-		tip: "G32 · M561",
-		size: { colSpan: 8, rowSpan: 30 },
+		tip: "G32 · G28 Z",
+		size: { colSpan: 8, rowSpan: 40 },
 	}),
 	/** Axis role labels (config overlay). */
 	"axis-roles": defineCard({

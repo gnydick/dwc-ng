@@ -156,12 +156,11 @@ export const cmd = {
 	/** Disable mesh compensation AND clear the height map (G29 S2). */
 	clearMesh: (): string => "G29 S2",
 
-	/**
-	 * Cancel bed-plane fitting from probing (M561) — the G32/bed.g counterpart
-	 * to clearMesh. Distinct from G29 S2: that drops the mesh, this drops the
-	 * plane transform.
-	 */
-	clearBedTransform: (): string => "M561",
+	// NOTE: no M561 builder. It cancels a bed PLANE fit, and this machine never
+	// has one — bed.g probes three points with S0 while M671 and three Z motors
+	// are configured, so RRF drives the leadscrews instead of skewing
+	// coordinates. bed.g runs M561 itself as its first line, which is the only
+	// place it does anything. A control for it would send a no-op.
 
 	/**
 	 * Update a board's main firmware (M997, module S0 = default). Params per
