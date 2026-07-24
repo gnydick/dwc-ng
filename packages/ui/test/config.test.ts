@@ -273,3 +273,28 @@ test("keyed and keyless pins coexist without colliding", () => {
 	assert.equal(store.config.pins.filter(p => p.key === undefined).length, 1);
 	assert.equal(store.config.pins.filter(p => p.key === "fan:0").length, 1);
 });
+
+test("Save-to-machine backups (snapshots) survive a reload", () => {
+	const ls = new MemStore();
+	(globalThis as { localStorage?: unknown }).localStorage = ls;
+	try {
+		const store = createConfigStore();
+		store.setAxisRole("U", "Z motor 1");
+		store.snapshot("v1");
+		store.setAxisRole("V", "Z motor 2");
+		store.snapshot("v2");
+		assert.equal(store.snapshots.length, 2);
+
+		// "Reload": a fresh store from the same localStorage.
+		const reloaded = createConfigStore();
+		assert.equal(reloaded.snapshots.length, 2, "the backup history came back, not an empty set");
+		assert.equal(reloaded.snapshots.at(-1)!.label, "v2");
+
+		// The snapshot's overlay is intact — reverting to v1 undoes the V edit.
+		reloaded.revert(0);
+		assert.equal(reloaded.config.axisRoles["U"], "Z motor 1");
+		assert.equal(reloaded.config.axisRoles["V"], undefined, "reverted to before V was set");
+	} finally {
+		delete (globalThis as { localStorage?: unknown }).localStorage;
+	}
+});
