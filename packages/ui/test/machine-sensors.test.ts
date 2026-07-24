@@ -51,10 +51,10 @@ test("filament monitors: unrecognized status still shown, falls back to the raw 
 test("probes: type none and null are omitted; triggered is reading >= threshold", () => {
 	const sensors = emptySensors();
 	sensors.probes = [
-		{ type: 0, value: [999], threshold: 500, triggerHeight: 0 }, // configured type=none -> omitted
+		{ type: 0, value: [999], threshold: 500, triggerHeight: 0, lastStopHeight: null }, // configured type=none -> omitted
 		null,
-		{ type: 8, value: [200], threshold: 500, triggerHeight: 0 },
-		{ type: 8, value: [500], threshold: 500, triggerHeight: 0 }, // exactly at threshold counts as triggered
+		{ type: 8, value: [200], threshold: 500, triggerHeight: 0, lastStopHeight: null },
+		{ type: 8, value: [500], threshold: 500, triggerHeight: 0, lastStopHeight: null }, // exactly at threshold counts as triggered
 	];
 	const rows = sensorRows(sensors, []);
 	assert.deepEqual(rows, [
@@ -65,7 +65,7 @@ test("probes: type none and null are omitted; triggered is reading >= threshold"
 
 test("probes: missing value entry treated as 0", () => {
 	const sensors = emptySensors();
-	sensors.probes = [{ type: 8, value: [], threshold: 500, triggerHeight: 0 }];
+	sensors.probes = [{ type: 8, value: [], threshold: 500, triggerHeight: 0, lastStopHeight: null }];
 	assert.deepEqual(sensorRows(sensors, []), [{ key: "probe:0", label: "Probe 0", ok: true, state: "0" }]);
 });
 
@@ -74,7 +74,7 @@ test("combines all three kinds in endstops -> filament -> probes order", () => {
 		gpIn: [],
 		endstops: [{ triggered: true }],
 		filamentMonitors: [{ status: "ok" }],
-		probes: [{ type: 8, value: [0], threshold: 500, triggerHeight: 0 }],
+		probes: [{ type: 8, value: [0], threshold: 500, triggerHeight: 0, lastStopHeight: null }],
 	};
 	const rows = sensorRows(sensors, [axis("X")]);
 	assert.deepEqual(rows.map(r => r.label), ["X endstop", "Extruder 0 filament", "Probe 0"]);
@@ -85,7 +85,7 @@ test("names overrides the auto-generated label when set for that key", () => {
 		gpIn: [],
 		endstops: [{ triggered: false }],
 		filamentMonitors: [{ status: "ok" }],
-		probes: [{ type: 8, value: [0], threshold: 500, triggerHeight: 0 }],
+		probes: [{ type: 8, value: [0], threshold: 500, triggerHeight: 0, lastStopHeight: null }],
 	};
 	const names = {
 		[endstopKey(0)]: "Bed leveling switch",

@@ -11,20 +11,21 @@
  */
 import type { JSX } from "solid-js";
 import { PositionBody } from "../cards/PositionCard.tsx";
+import { FilamentEditorBody } from "../cards/FilamentEditor.tsx";
 import { ToolsHeatersBody } from "../cards/ToolsHeatersCard.tsx";
 import { ActiveJobBody } from "../cards/ActiveJobCard.tsx";
 import { SensorsBody } from "../cards/SensorsCard.tsx";
 import { TemperaturesBody } from "../cards/TemperaturesCard.tsx";
 import { BuildObjects } from "../cards/BuildObjects.tsx";
 import {
-	AtxBody, ToolsBody, FilamentBody, HeatersBody, FansBody, TuningBody,
+	AtxBody, FilamentBody, HeatersBody, FansBody, TuningBody,
 } from "../cards/ControlCards.tsx";
 import { ControlList } from "./controls/ControlList.tsx";
 import { HOMING_SPEC, MOVEMENT_SPEC } from "./controls/builtin.ts";
 import {
 	JobFilesBody, JobDetailsBody, MacrosBody, SystemFilesBody, OmInspectorBody, MacrosEditorBody, SystemEditorBody,
 } from "../cards/FileCards.tsx";
-import { HeightmapBody, ProbePointBody } from "../cards/BedCards.tsx";
+import { HeightmapBody, ProbePointBody, MeshBody, BedTramBody } from "../cards/BedCards.tsx";
 import {
 	AxisRolesBody, DockSensorsBody, BedProbeBody, CameraConfigBody, SensorNamesBody, SavedVersionsBody, ConfigSaveBody,
 } from "../cards/SettingsCards.tsx";
@@ -45,6 +46,7 @@ export interface CardRender {
 export const CARD_RENDER: Record<CardId, CardRender> = {
 	position: { body: ctx => <PositionBody orientation={ctx.orientation} /> },
 	"tools-heaters": { body: ctx => <ToolsHeatersBody orientation={ctx.orientation} /> },
+	"filament-editor": { body: () => <FilamentEditorBody /> },
 	"active-job": { body: () => <ActiveJobBody /> },
 	"active-job-detailed": { body: () => <ActiveJobBody detailed /> },
 	sensors: { body: ctx => <SensorsBody orientation={ctx.orientation} /> },
@@ -58,7 +60,6 @@ export const CARD_RENDER: Record<CardId, CardRender> = {
 	// the control vocabulary — the phase-B dogfood.
 	homing: { body: ctx => <ControlList spec={HOMING_SPEC} ctx={ctx} /> },
 	atx: { body: () => <AtxBody /> },
-	tools: { body: () => <ToolsBody /> },
 	filament: { body: () => <FilamentBody /> },
 	heaters: { body: () => <HeatersBody /> },
 	movement: { body: ctx => <div class="jog-controls"><ControlList spec={MOVEMENT_SPEC} ctx={ctx} /></div> },
@@ -74,6 +75,8 @@ export const CARD_RENDER: Record<CardId, CardRender> = {
 	firmware: { body: () => <FirmwareBody /> },
 	heightmap: { body: ctx => <HeightmapBody ctx={ctx} /> },
 	"probe-point": { body: ctx => <ProbePointBody ctx={ctx} /> },
+	mesh: { body: ctx => <MeshBody ctx={ctx} /> },
+	"bed-tram": { body: () => <BedTramBody /> },
 	"axis-roles": { body: () => <AxisRolesBody />, actions: resetAction("axisRoles") },
 	"tool-dock-sensors": { body: () => <DockSensorsBody />, actions: resetAction("dockSensors") },
 	"bed-probe": { body: () => <BedProbeBody />, actions: resetAction("bed") },

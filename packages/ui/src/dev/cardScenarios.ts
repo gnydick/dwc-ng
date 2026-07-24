@@ -73,6 +73,15 @@ function base(): ObjectModel {
 		currentMove: { requestedSpeed: 0, topSpeed: 0 },
 		speedFactor: 1,
 		extruders: [0, 1, 2, 3].map(() => ({ filamentDiameter: 1.75, filament: "" })),
+		// A mesh IS loaded here, so the Mesh card's status line has something to
+		// show. The real machine spends most of its time at type "none" (every
+		// G32 runs M561 first), which the empty model already covers.
+		compensation: {
+			type: "mesh",
+			file: "0:/sys/heightmap.csv",
+			meshDeviation: { mean: 0.012, deviation: 0.043 },
+			fadeHeight: 20,
+		},
 	};
 	model.heat = {
 		bedHeaters: [0], chamberHeaters: [],
@@ -93,7 +102,7 @@ function base(): ObjectModel {
 		gpIn: [{ value: 1 }, { value: 0 }, { value: 0 }, { value: 0 }],
 		endstops: [{ triggered: false }, { triggered: false }, { triggered: false }],
 		filamentMonitors: [{ status: "ok" }, { status: "ok" }, { status: "ok" }, { status: "ok" }],
-		probes: [{ type: 8, value: [0], threshold: 500, triggerHeight: 0 }],
+		probes: [{ type: 8, value: [0], threshold: 500, triggerHeight: 0, lastStopHeight: null }],
 	};
 	model.state = {
 		status: "idle", currentTool: -1, machineMode: "FFF", displayMessage: "",

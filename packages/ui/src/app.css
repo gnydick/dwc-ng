@@ -441,6 +441,9 @@
 }
 .card-tip:hover { color: var(--silk); border-color: var(--copper); }
 .card-tip.copied { color: var(--ok); border-color: var(--ok); }
+/* A refused copy has to be visible, or a broken clipboard is indistinguishable
+   from a dead button — which is exactly how this went unnoticed. */
+.card-tip.failed { color: var(--fault); border-color: var(--fault); }
 
 /* ---------- DRO ---------- */
 
@@ -533,14 +536,83 @@
    otherwise proportionally squeezes those fixed widths to fit a narrower
    container instead of overflowing it, and squeezed content overlaps
    rather than just needing a horizontal scroll. */
-.heat-table { width: 100%; min-width: 434px; border-collapse: collapse; font-variant-numeric: tabular-nums; table-layout: fixed; }
+/* min-width covers the fixed columns (152+54+54+76+156 = 492) plus enough for
+   the elastic Filament column to stay usable rather than collapsing to a sliver
+   when the panel is dragged narrow. */
+.heat-table { width: 100%; min-width: 592px; border-collapse: collapse; font-variant-numeric: tabular-nums; table-layout: fixed; }
 /* Widths carry slack past the widest content: cells have no horizontal
    padding, so a column sized exactly to its text leaves adjacent right-aligned
    labels touching ("ACTIVESTANDBY"). */
-.heat-table th:nth-child(2), .heat-table td:nth-child(2) { width: 88px; }
-.heat-table th:nth-child(3), .heat-table td:nth-child(3) { width: 62px; }
-.heat-table th:nth-child(4), .heat-table td:nth-child(4) { width: 62px; }
-.heat-table th:nth-child(5), .heat-table td:nth-child(5) { width: 68px; }
+/* Columns: Heater | Filament | Active | Standby | Current | Set. Current sits
+   last before the buttons so the reading and the control are one glance apart.
+
+   EXACTLY ONE column is left elastic, and it is FILAMENT — every other width is
+   fixed. This card lives on a resizable panel, so whichever column has no width
+   absorbs the whole difference. That used to be Heater, which meant widening the
+   card just grew dead space between the tool button and the picker (120px of it
+   at a 721px card) and narrowing it made the name overflow into Filament. Slack
+   now lands on the material name, where extra width is worth something. */
+.heat-table th:nth-child(1), .heat-table td:nth-child(1) { width: 152px; }
+/* col 2 = Filament: deliberately no width. Left-aligned with a gutter on both
+   sides, so the picker is tied to neither neighbour. */
+.heat-table th:nth-child(2), .heat-table td:nth-child(2) {
+	text-align: left;
+	padding-left: 16px;
+	padding-right: 16px;
+}
+.heat-table th:nth-child(3), .heat-table td:nth-child(3) { width: 54px; }
+.heat-table th:nth-child(4), .heat-table td:nth-child(4) { width: 54px; }
+/* Current: the padding is what keeps the reading off the Active button — right
+   aligned in a bare cell, its right edge met the button's left edge exactly. */
+.heat-table th:nth-child(5), .heat-table td:nth-child(5) { width: 76px; padding-right: 14px; }
+.heat-table th:nth-child(6), .heat-table td:nth-child(6) { width: 156px; }
+.heat-input {
+	width: 56px;
+	padding: 4px 6px;
+	background: var(--mask-900);
+	border: 1px solid var(--hairline);
+	border-radius: 4px;
+	color: var(--silk);
+	font: 600 13px/1 var(--font-display);
+	font-variant-numeric: tabular-nums;
+	text-align: right;
+}
+.heat-input:focus-visible { outline: none; border-color: var(--copper); }
+/* The in-row filament picker. Fills its fixed column and ellipsises a long
+   material name rather than widening it — the columns are load-bearing. */
+.heat-fil {
+	/* Fills its cell — the air on both sides is the cell's 16px gutters, so it
+	   stays symmetric at any card width instead of being a fixed shortfall. */
+	width: 100%;
+	max-width: 100%;
+	min-width: 0;
+	height: var(--ctl-h);
+	box-sizing: border-box;
+	font-size: 12px;
+	/* The cells are baseline-aligned; a select's baseline is its bottom edge, so
+	   left alone it added 3px of descender space and made every tool row taller
+	   than the bed's. */
+	vertical-align: middle;
+}
+/* The fault/tuning badge now sits in the Current cell, which is already
+   right-aligned — it no longer needs a reserved width of its own. */
+.heat-table .heat-state { min-width: 0; }
+/* A GRID, not a flex row: every mode gets its own fixed column, so the bed —
+   which has no standby — still puts Active and Off under the tools' Active and
+   Off instead of sliding them along. Alignment is then true by construction
+   rather than by the three labels happening to measure the same. */
+.heat-actions {
+	display: grid;
+	grid-template-columns: 52px 60px 32px;
+	gap: 6px;
+	align-items: center;
+	justify-content: end;
+}
+.heat-actions .heat-active { grid-column: 1; }
+.heat-actions .heat-standby { grid-column: 2; }
+.heat-actions .heat-off { grid-column: 3; }
+/* Fill the column and centre the label, so equal columns look equal. */
+.heat-actions .gcode-btn { padding: 5px 2px; width: 100%; justify-content: center; }
 .heat-table th {
 	font-family: var(--font-display);
 	font-weight: 600;
@@ -569,7 +641,11 @@
 	font-weight: 600;
 	font-size: 15px;
 	display: grid;
-	grid-template-columns: 84px 58px 12px; /* name | designator | dock dot */
+	/* designator | dock dot | name. The name track is minmax(0,1fr), NOT a fixed
+	   width: it takes whatever the Heater column has left, so it can neither
+	   overflow into Filament on a narrow card nor leave a hole on a wide one.
+	   The air before the picker is the Filament column's own left gutter. */
+	grid-template-columns: 56px 12px minmax(0, 1fr);
 	align-items: center;
 	gap: 8px;
 }
@@ -578,20 +654,40 @@
    to the full slot. Hug the text; only the slot's left edge needs to be fixed. */
 .heat-name .des { justify-self: start; }
 .heat-name .dock-dot { justify-self: center; margin-left: 0; }
+/* Pin the name to the third column so a row WITHOUT a dock dot (the bed, or a
+   tool with no mapped sensor) still lines its name up with every other row,
+   instead of auto-placing into the empty dot slot. */
+.heat-name .heat-tool { grid-column: 3; }
+/* The name-as-selector. Sized to the 84px track (a long tool name ellipsises
+   rather than widening the column) and height-matched by the plain-label case
+   below, so a bed row is exactly as tall as a tool row. */
+.heat-name .tool-select { width: 100%; padding: 0 8px; overflow: hidden; }
+.heat-name .tool-select .gcode-label {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	font-size: 13px;
+	text-transform: none;
+}
+.heat-name span.heat-tool { display: flex; align-items: center; min-height: var(--ctl-h); }
+/* Deselect + P: machine-wide, above the selector column they govern. */
+.heat-deselect { display: flex; align-items: center; gap: 10px; margin: 0 0 10px; }
 
+/* Same size as the tool label it sits in a row with — the reading is a peer of
+   the name, not a headline. */
 .heat-cur {
 	font-family: var(--font-display);
 	font-weight: 600;
-	font-size: 22px;
+	font-size: 15px;
 	line-height: 1;
 }
-.heat-cur small { font-size: 12px; color: var(--silk-dim); }
+.heat-cur small { font-size: 11px; color: var(--silk-dim); }
 
 .t-cold { color: var(--t-cold); }
 .t-warm { color: var(--t-warm); }
 .t-hot  { color: var(--t-hot); text-shadow: 0 0 14px rgba(239, 123, 69, 0.35); }
 
 .heat-set { color: var(--silk-dim); font-size: 13px; }
+
 .heat-set b { color: var(--silk); font-weight: 600; }
 
 .heat-state {
@@ -948,11 +1044,11 @@
 
 	/* Narrower fixed columns + smaller temp on phones so the Heater name never
 	   gets starved (and stays unclipped) while columns remain reflow-proof. */
-	.heat-table th:nth-child(2), .heat-table td:nth-child(2) { width: 68px; }
+	.heat-table th:nth-child(2), .heat-table td:nth-child(2) { width: 48px; }
 	.heat-table th:nth-child(3), .heat-table td:nth-child(3) { width: 48px; }
-	.heat-table th:nth-child(4), .heat-table td:nth-child(4) { width: 48px; }
-	.heat-table th:nth-child(5), .heat-table td:nth-child(5) { width: 56px; }
-	.heat-cur { font-size: 18px; }
+	.heat-table th:nth-child(4), .heat-table td:nth-child(4) { width: 56px; }
+	/* Set column: still the buttons + the residual-state slot, just tighter. */
+	.heat-table th:nth-child(5), .heat-table td:nth-child(5) { width: 196px; }
 	/* tighten headers so labels ("STANDBY") fit their narrower columns */
 	.heat-table th { font-size: 9.5px; letter-spacing: 0.05em; }
 }
@@ -1153,6 +1249,43 @@
 .gcode-danger .gcode-label { color: var(--fault); }
 .gcode-quiet .gcode-label { color: var(--silk-dim); }
 
+/* Modal buttons: the one whose mode the machine is IN lights up (heater rows
+   use this in place of a State column). Deliberately expressed as box-shadow
+   and colour ONLY — never border-width, padding or size — so lighting up can
+   not move the button, and so :hover's background/border still work on top of
+   it instead of cancelling the glow. */
+.gcode-btn { --btn-accent: var(--copper-bright); }
+.gcode-go { --btn-accent: var(--ok); }
+.heat-standby { --btn-accent: var(--gold); }
+/* after .gcode-danger: the Off button is danger-styled, but a cold heater is
+   not an alarm — engaged Off reads as "current mode", not "fault". */
+.heat-off { --btn-accent: var(--copper); }
+/* FILLED, not outlined. Across five rows an outline still reads as "a button";
+   only a ground change reads as "this one". This is the selected-chip language
+   the rest of the app already speaks (.chip-btn.active, .backend-opt.active,
+   .run-btn.armed): accent ground, mask-dark text. Still colour ONLY — no size,
+   border width or padding moves, so lighting up cannot shift a control.
+   Restated for :hover/:active, which would otherwise repaint the ground back. */
+.gcode-btn.is-engaged,
+.gcode-btn.is-engaged:hover:not(:disabled),
+.gcode-btn.is-engaged:active:not(:disabled) {
+	background: var(--btn-accent);
+	border-color: var(--btn-accent);
+}
+.gcode-btn.is-engaged {
+	box-shadow:
+		0 0 0 1px var(--btn-accent),
+		0 0 14px color-mix(in srgb, var(--btn-accent) 45%, transparent);
+}
+.gcode-btn.is-engaged .gcode-label,
+.gcode-btn.is-engaged .gcode-cmd { color: var(--mask-900); }
+/* The ack dot is sized to read against navy; on an accent ground it would sink,
+   so ring it — but only while it is actually showing, or every lit button would
+   wear a permanent speck. */
+.gcode-btn.is-engaged.is-sending .gcode-ack,
+.gcode-btn.is-engaged.is-sent .gcode-ack,
+.gcode-btn.is-engaged.is-failed .gcode-ack { outline: 1.5px solid var(--mask-900); }
+
 /* Send acknowledgement. Absolutely positioned at a fixed size so no state
    change can alter the button's box - only colour moves. */
 .gcode-ack {
@@ -1187,6 +1320,18 @@
 }
 .deg { color: var(--silk-dim); font-size: 12px; }
 .btn-cluster { display: flex; gap: 6px; margin-left: auto; }
+/* The Control card's mode cluster gets the table's pinned columns for the same
+   reason: the bed has no standby, and without a column to leave empty its
+   Active and Off would slide right and sit under the tools' Standby and Off. */
+.btn-cluster.heat-modes {
+	display: grid;
+	grid-template-columns: 64px 72px 44px;
+	justify-content: end;
+}
+.heat-modes .heat-active { grid-column: 1; }
+.heat-modes .heat-standby { grid-column: 2; }
+.heat-modes .heat-off { grid-column: 3; }
+.heat-modes .gcode-btn { width: 100%; justify-content: center; padding: 0 2px; }
 
 /* Horizontal Fans layout (orientationToggle) — same .heater-ctl rows, just
    reflowed into a row of compact vertical blocks instead of a stack. */
@@ -1873,6 +2018,39 @@
 }
 .filament-loaded.none { color: var(--silk-dim); }
 
+/* ---------- Filament editor (Settings) ----------
+   Materials this machine knows about: one row per filament directory under
+   0:/filaments, then the selected filament's macros in the editor. Rows keep
+   the file-browser's controls (fb-*) because the ACTIONS are the same shape —
+   but this is a material list, not a file listing. */
+.fil-editor { display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+.fil-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.fil-row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	height: var(--ctl-h);
+	padding: 0 4px;
+	border-bottom: 1px solid var(--hairline);
+}
+.fil-row.active { background: var(--mask-900); }
+/* Loaded filaments can't be renamed or deleted — say why, don't just grey out. */
+.fil-loaded {
+	font: 600 10px/1 var(--font-display);
+	text-transform: uppercase;
+	letter-spacing: 0.06em;
+	color: var(--ok);
+	border: 1px solid var(--ok);
+	border-radius: 3px;
+	padding: 3px 5px;
+}
+/* Actions sit at the right edge, at the same x on every row. */
+.fil-row .fb-act:first-of-type { margin-left: auto; }
+
+.fil-edit { display: flex; flex-direction: column; gap: 6px; flex: 1; min-height: 0; }
+.fil-tabs { display: flex; align-items: center; gap: 6px; }
+.fil-path { color: var(--silk-dim); font-size: 12px; margin-left: auto; font-variant-numeric: tabular-nums; }
+
 /* Speed slider send feedback. Colour only — the row's geometry is fixed so a
    refusal cannot move the track the pointer is still over. */
 .speed-value.is-sent { color: var(--ok); }
@@ -1954,6 +2132,94 @@
 .hm-actions { display: flex; gap: 8px; }
 
 /* Manual nudge: adjust a probe point by hand, no machine command. */
+/* Mesh card: which map is in use, then what you can do to it. Rows stack at a
+   fixed rhythm so nothing shifts when the file list or a message changes. */
+.mesh-card { display: flex; flex-direction: column; gap: 10px; }
+.mesh-pick { display: flex; align-items: center; gap: 8px; }
+.mesh-label {
+	font: 600 10.5px/1 var(--font-display);
+	letter-spacing: 0.14em;
+	text-transform: uppercase;
+	color: var(--silk-dim);
+	white-space: nowrap;
+}
+/* min-width: 0 so a long path ellipsises inside the select instead of forcing
+   the row wider than the card. */
+.mesh-pick .filament-pick { flex: 1 1 auto; min-width: 0; height: var(--ctl-h); }
+.mesh-actions { display: flex; flex-wrap: wrap; gap: var(--ctl-gap); }
+/* What the machine is compensating with NOW. Always present, so gaining or
+   losing a mesh cannot reflow the controls under it. */
+.mesh-status {
+	font: 600 11px/1.4 var(--font-display);
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	color: var(--silk-dim);
+	margin: 0;
+}
+.mesh-status.on { color: var(--ok); }
+/* Tram result: fixed, tabular figures — this is read by comparing runs, and
+   proportional digits make 0.001 and 0.007 hard to scan against each other. */
+.tram-result dd { font-variant-numeric: tabular-nums; }
+.mesh-saveas input { width: 140px; }
+
+/* A tool button that is MODAL — it stays lit while the mode it opens is the one
+   you are in. Same language as .gcode-btn.is-engaged (accent ground, mask-dark
+   text), so "this is the current mode" looks the same everywhere. */
+.fb-tool.is-engaged,
+.fb-tool.is-engaged:hover:not(:disabled) {
+	background: var(--copper-bright);
+	border-color: var(--copper-bright);
+	color: var(--mask-900);
+	box-shadow:
+		0 0 0 1px var(--copper-bright),
+		0 0 12px color-mix(in srgb, var(--copper-bright) 45%, transparent);
+}
+
+/* The 3D surface. Fills whatever the panel gives it — the canvas is sized by
+   Babylon from the host box, so the host must have a real height. */
+.hm-3d { position: relative; width: 100%; flex: 1 1 auto; min-height: 180px; }
+.hm-3d-canvas { width: 100%; height: 100%; display: block; border-radius: var(--radius); outline: none; touch-action: none; }
+/* Disclosure of the vertical exaggeration, over the canvas so it costs no
+   layout and cannot push the surface around as the factor changes. */
+.hm-3d-note {
+	position: absolute; left: 8px; bottom: 6px; margin: 0;
+	font: 600 10.5px/1 var(--font-display);
+	letter-spacing: 0.08em; text-transform: uppercase;
+	color: var(--silk-dim);
+	background: color-mix(in srgb, var(--mask-900) 72%, transparent);
+	padding: 3px 6px; border-radius: 3px;
+	pointer-events: none;
+}
+
+/* Colour scale for the surface. The ramp auto-scales to each map's own largest
+   deviation, so the numbers are the only thing that says what a colour means. */
+.hm-legend {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin-top: 8px;
+	font: 600 10.5px/1 var(--font-display);
+	font-variant-numeric: tabular-nums;
+	color: var(--silk-dim);
+}
+.hm-legend-bar {
+	flex: 1 1 auto;
+	height: 8px;
+	border-radius: 2px;
+	border: 1px solid var(--hairline);
+}
+.hm-legend-end { flex: 0 0 auto; }
+
+/* The subtraction that turns a raw stop height into a map value, shown so the
+   two numbers on screen visibly relate. Tabular so the digits line up against
+   the reply underneath. */
+.hm-derive {
+	margin: 0;
+	font: 400 11px/1.4 ui-monospace, "Cascadia Code", "SF Mono", Menlo, Consolas, monospace;
+	font-variant-numeric: tabular-nums;
+	color: var(--silk-dim);
+}
+
 .hm-nudge { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .hm-nudge .fb-act {
 	/* Reserved: the label carries the step, so "− 0.01" and "− 0.005" differ in

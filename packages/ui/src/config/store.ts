@@ -74,10 +74,14 @@ export interface ConfigStore {
 }
 
 export function createConfigStore(): ConfigStore {
-	let overlay: ConfigOverlay = loadCache() ?? {};
+	// Seed from the cache — AND restore its dirty flag, so unsaved edits made
+	// before a reload are still known to be unsaved and are not overwritten from
+	// the SD card on the next connect.
+	const cached = loadCache();
+	let overlay: ConfigOverlay = cached?.overlay ?? {};
 	const [config, setConfig] = createStore<UiConfig>(effective(overlay));
 	const [meta, setMeta] = createStore<{ dirty: boolean; snapshots: ConfigSnapshot[] }>({
-		dirty: false,
+		dirty: cached?.dirty ?? false,
 		snapshots: [],
 	});
 
@@ -87,6 +91,10 @@ export function createConfigStore(): ConfigStore {
 		overlay = prune(next) ?? {};
 		setConfig(reconcile(effective(overlay)));
 		setMeta("dirty", true);
+		// Cache on EVERY mutation, marked unsaved. This is the one path every
+		// edit — import, delete, card authoring, a role change — flows through,
+		// so caching here is what makes any of them survive a reload.
+		writeCache(overlay, true);
 	};
 
 	const store: ConfigStore = {
@@ -214,11 +222,17 @@ export function createConfigStore(): ConfigStore {
 			store.snapshot("saved");
 			const payload = JSON.stringify({ version: CONFIG_VERSION, overlay }, null, "\t");
 			await connector.upload(CONFIG_FILE, payload);
-			writeCache(overlay);
+			writeCache(overlay, false);
 			setMeta("dirty", false);
 		},
 
 		async loadFromMachine(connector) {
+			// NEVER clobber unsaved local edits. After an import/delete/edit the
+			// cache is the freshest local truth; pulling the SD config over it is
+			// exactly how imports vanished on the first reload after they were
+			// made. The operator still Saves to machine to push, or reverts to
+			// pull — but a mere reconnect must not silently discard their work.
+			if (meta.dirty) return;
 			let loaded: ConfigOverlay | null = null;
 			try {
 				loaded = parseOverlayPayload(await connector.download(CONFIG_FILE));
@@ -226,9 +240,10 @@ export function createConfigStore(): ConfigStore {
 				// No config on the SD card yet — a fresh machine, not an error
 				if (!(err instanceof FileNotFoundError)) throw err;
 			}
-			overlay = loaded ?? loadCache() ?? {};
+			// Keep the current (cache-seeded) overlay when the SD has none.
+			overlay = loaded ?? overlay;
 			setConfig(reconcile(effective(overlay)));
-			writeCache(overlay);
+			writeCache(overlay, false);
 			setMeta("dirty", false);
 		},
 	};
@@ -281,15 +296,32 @@ function prune(value: ConfigOverlay): ConfigOverlay | undefined {
 	return Object.keys(out).length > 0 ? (out as ConfigOverlay) : undefined;
 }
 
-function loadCache(): ConfigOverlay | null {
+/**
+ * The cache carries a `dirty` flag alongside the overlay so a reload can tell
+ * SAVED state from UNSAVED. Without it, an import, a delete, or any edit lived
+ * only in memory: the next connect ran loadFromMachine, which overwrote it from
+ * the SD card, and the work vanished with no warning (the "import doesn't work
+ * after reload" report).
+ */
+function loadCache(): { overlay: ConfigOverlay; dirty: boolean } | null {
 	if (typeof localStorage === "undefined") return null;
 	const raw = localStorage.getItem(CONFIG_CACHE_KEY);
-	// The real parse boundary (config/parse.ts): mis-typed leaves are
-	// dropped, so a bad cached overlay can no longer crash every boot.
-	return raw === null ? null : parseOverlayPayload(raw);
+	if (raw === null) return null;
+	// The real parse boundary (config/parse.ts): mis-typed leaves are dropped,
+	// so a bad cached overlay can no longer crash every boot.
+	const overlay = parseOverlayPayload(raw) ?? {};
+	// dirty is a hint, not safety-critical — a garbled flag defaults to clean,
+	// which at worst lets SD win, never destroys unsaved work silently.
+	let dirty = false;
+	try {
+		dirty = (JSON.parse(raw) as { dirty?: unknown }).dirty === true;
+	} catch {
+		// keep dirty false
+	}
+	return { overlay, dirty };
 }
 
-function writeCache(overlay: ConfigOverlay): void {
+function writeCache(overlay: ConfigOverlay, dirty: boolean): void {
 	if (typeof localStorage === "undefined") return;
-	localStorage.setItem(CONFIG_CACHE_KEY, JSON.stringify({ version: CONFIG_VERSION, overlay }));
+	localStorage.setItem(CONFIG_CACHE_KEY, JSON.stringify({ version: CONFIG_VERSION, overlay, dirty }));
 }

@@ -1,6 +1,17 @@
 import { For, createEffect, onCleanup } from "solid-js";
 import type { HeightMap } from "./parse.ts";
-import { gridExtent, renderSurface } from "./surface.ts";
+import { RAMP_STOPS, gridExtent, renderSurface } from "./surface.ts";
+
+/**
+ * The legend's gradient, built from the renderer's OWN stops.
+ *
+ * Derived rather than written out so adding or moving a stop updates the
+ * legend automatically — a hand-maintained gradient would silently start
+ * describing a surface it no longer matches. t runs -1..1, CSS wants 0..100%.
+ */
+const RAMP_GRADIENT = `linear-gradient(to right, ${RAMP_STOPS
+	.map(s => `rgb(${s.color.r}, ${s.color.g}, ${s.color.b}) ${((s.t + 1) / 2) * 100}%`)
+	.join(", ")})`;
 
 /** Off-screen resolution of the interpolated field, scaled up by the browser. */
 const SURFACE_PX = 96;
@@ -62,7 +73,11 @@ export function HeightMapGrid(props: {
 	const left = (col: number): string => `${num0 === 1 ? 50 : (col / (num0 - 1)) * 100}%`;
 	const top = (row: number): string => `${num1 === 1 ? 50 : (1 - row / (num1 - 1)) * 100}%`;
 
+	/** Largest absolute deviation the ramp is currently scaled to. */
+	const extent = (): number => gridExtent(currentRows());
+
 	return (
+		<>
 		<div
 			class="hm-surface"
 			// The BED's proportions, not the cell count: drawing a 330 x 290 bed
@@ -90,5 +105,16 @@ export function HeightMapGrid(props: {
 				)}
 			</For>
 		</div>
+		{/* The ramp is auto-scaled to the grid's own largest deviation, so the
+		    same colour means a different number on a different map. Without the
+		    numbers the surface says "there is a slope" but never "how much" —
+		    which is most of what makes a colour field intuitive. Built from
+		    terrainColor itself so it cannot drift from what is drawn. */}
+		<div class="hm-legend" aria-hidden="true">
+			<span class="hm-legend-end">−{extent().toFixed(3)}</span>
+			<span class="hm-legend-bar" style={{ background: RAMP_GRADIENT }} />
+			<span class="hm-legend-end">+{extent().toFixed(3)}</span>
+		</div>
+		</>
 	);
 }

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { sampleGrid, gridExtent, terrainColor, renderSurface } from "../src/heightmap/surface.ts";
+import { sampleGrid, sampleGridCubic, gridExtent, terrainColor, renderSurface } from "../src/heightmap/surface.ts";
 
 const GRID = [
 	[0, 10],
@@ -94,4 +94,43 @@ test("every rendered pixel is opaque", () => {
 
 test("a degenerate size renders nothing rather than throwing", () => {
 	assert.equal(renderSurface(GRID, 0, 0, 1).length, 0);
+});
+
+// --- bicubic sampling ---
+
+test("bicubic passes exactly through every probe point", () => {
+	// Interpolating, not approximating: a smoothed surface that shifted the
+	// measured values would be drawing something the machine never reported.
+	const rows = [[0, 0.1, -0.2], [0.05, -0.3, 0.2], [-0.1, 0.4, 0]];
+	for (let r = 0; r < rows.length; r++) {
+		for (let c = 0; c < rows[0]!.length; c++) {
+			assert.ok(
+				Math.abs(sampleGridCubic(rows, c, r) - rows[r]![c]!) < 1e-12,
+				`(${r},${c}) must return its own value`,
+			);
+		}
+	}
+});
+
+test("bicubic clamps outside the grid instead of extrapolating", () => {
+	const rows = [[0, 1], [2, 3]];
+	assert.equal(sampleGridCubic(rows, -5, -5), 0);
+	assert.equal(sampleGridCubic(rows, 99, 99), 3);
+});
+
+test("bicubic is smoother than bilinear across a sample line", () => {
+	// A ridge: bilinear puts a crease exactly at the middle column, so its slope
+	// jumps there. Catmull-Rom carries a continuous slope across it.
+	const rows = [[0, 0, 1, 0, 0], [0, 0, 1, 0, 0], [0, 0, 1, 0, 0]];
+	// One-sided slopes: sampled STRICTLY either side of col 2, so neither
+	// straddles the sample line (which was the flaw in the first version of
+	// this test — both windows spanned it and measured the same thing).
+	const slopeLeft = (f: (g: number[][], c: number, r: number) => number): number =>
+		(f(rows, 1.99, 1) - f(rows, 1.97, 1)) / 0.02;
+	const slopeRight = (f: (g: number[][], c: number, r: number) => number): number =>
+		(f(rows, 2.03, 1) - f(rows, 2.01, 1)) / 0.02;
+	const linJump = Math.abs(slopeRight(sampleGrid) - slopeLeft(sampleGrid));
+	const cubJump = Math.abs(slopeRight(sampleGridCubic) - slopeLeft(sampleGridCubic));
+	assert.ok(linJump > 0.5, `bilinear should crease at the ridge, jump was ${linJump}`);
+	assert.ok(cubJump < linJump / 10, `cubic should not crease, jump was ${cubJump}`);
 });

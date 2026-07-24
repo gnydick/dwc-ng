@@ -33,11 +33,25 @@ export interface Extruder {
 }
 
 /** reference/objectmodel/src/move/index.ts (Move) */
+/** reference/objectmodel/src/move/Compensation.ts — what the bed is currently
+ *  compensating WITH, which is not the same as what is on the SD card. */
+export interface Compensation {
+	/** "none" | "mesh" (RRF reports other kinds on non-Cartesian builds). */
+	type: string;
+	/** The height map file in use, or null when nothing is loaded. */
+	file: string | null;
+	/** Flatness of the loaded map, or null when there is none. */
+	meshDeviation: { mean: number; deviation: number } | null;
+	/** M376 taper height; compensation fades out above it. */
+	fadeHeight: number | null;
+}
+
 export interface Move {
 	axes: Axis[];
 	currentMove: { requestedSpeed: number; topSpeed: number };
 	speedFactor: number;
 	extruders: Extruder[];
+	compensation: Compensation;
 }
 
 /** reference/objectmodel/src/heat/Heater.ts */
@@ -222,6 +236,14 @@ export interface Probe {
 	 *  A re-probe's map value is (reported stop height - this); subtracting it makes a
 	 *  spot high of the reference read positive whatever the sign of this value. */
 	triggerHeight: number;
+	/**
+	 * Machine Z the probe last stopped at — the same number RRF prints as
+	 * "Stopped at height <n> mm", carried in the model rather than in reply
+	 * text. Preferred over parsing the reply: a re-probe macro can outlive the
+	 * connector's request timeout, and this survives that. null on a board that
+	 * has not probed since boot.
+	 */
+	lastStopHeight: number | null;
 }
 
 /** reference/objectmodel/src/sensors/index.ts (Sensors) */
@@ -253,7 +275,13 @@ export function emptyModel(): ObjectModel {
 		fans: [],
 		heat: { bedHeaters: [], chamberHeaters: [], heaters: [] },
 		job: { file: null, filePosition: null, duration: null, layer: null, layers: [], lastFileName: null, timesLeft: { filament: null, file: null, slicer: null }, build: null },
-		move: { axes: [], currentMove: { requestedSpeed: 0, topSpeed: 0 }, speedFactor: 1, extruders: [] },
+		move: {
+			axes: [],
+			currentMove: { requestedSpeed: 0, topSpeed: 0 },
+			speedFactor: 1,
+			extruders: [],
+			compensation: { type: "none", file: null, meshDeviation: null, fadeHeight: null },
+		},
 		sensors: { gpIn: [], endstops: [], filamentMonitors: [], probes: [] },
 		state: { status: "disconnected", currentTool: -1, machineMode: "FFF", displayMessage: "", upTime: 0, messageBox: null, atxPower: null },
 		tools: [],
@@ -316,6 +344,9 @@ export function conformModelKey(key: string, value: unknown): { ok: true; value:
 				axes: arrayOr(value.axes, []),
 				extruders: arrayOr(value.extruders, []),
 				currentMove: isObject(value.currentMove) ? value.currentMove : d.currentMove,
+				// A board that omits compensation (or sends it as a scalar) must not
+				// cost the whole move subtree — fill, don't refuse.
+				compensation: isObject(value.compensation) ? value.compensation : d.compensation,
 			} };
 		}
 		case "sensors": {
