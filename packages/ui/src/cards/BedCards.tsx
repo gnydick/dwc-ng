@@ -14,6 +14,7 @@
 import { For, Show, createEffect, createMemo, createResource, createSignal } from "solid-js";
 import { useApp } from "../shell/context.ts";
 import { HeightMapGrid } from "../heightmap/HeightMapGrid.tsx";
+import { HeightMapSurface3D } from "../heightmap/HeightMapSurface3D.tsx";
 import { buildProbeCommand } from "../heightmap/probeCommand.ts";
 import { parseProbeReply, heightmapValue } from "../heightmap/probeReply.ts";
 import { HEIGHTMAP_FILE } from "../heightmap/store.ts";
@@ -38,6 +39,10 @@ const PROBE_WAIT_MS = 90_000;
 export function HeightmapBody(props: { ctx: CardCtx }) {
 	const svc = props.ctx.service("heightmap");
 	const { store } = svc;
+	// 2D is the default and stays the PICKER: its probe points are real buttons,
+	// so selecting a cell to re-probe is precise and keyboard-reachable. 3D is
+	// for reading the bed's shape, and costs a lazy Babylon import when opened.
+	const [view, setView] = createSignal<"2d" | "3d">("2d");
 
 	const save = async (): Promise<void> => {
 		const result = await store.save();
@@ -52,6 +57,20 @@ export function HeightmapBody(props: { ctx: CardCtx }) {
 					Save{store.dirty() ? ` (${store.pending().size})` : ""}
 				</button>
 				<button class="fb-tool" disabled={!store.dirty()} onClick={() => store.discard()}>Discard</button>
+				{/* The LABEL never changes — it names the view this button gives you,
+				    and lighting up says you are in it. A label that swapped to "2D"
+				    had to be read before it could be understood, and read
+				    differently depending on state. Same modal treatment as the
+				    heater mode buttons. */}
+				<button
+					class="fb-tool"
+					classList={{ "is-engaged": view() === "3d" }}
+					aria-pressed={view() === "3d"}
+					title={view() === "3d" ? "Showing the 3D surface — click for the 2D grid" : "Show the surface in 3D"}
+					onClick={() => setView(v => (v === "2d" ? "3d" : "2d"))}
+				>
+					3D
+				</button>
 				{/* Always present so a message cannot reflow the grid below it. */}
 				<span class="hm-msg">{svc.message()}</span>
 			</div>
@@ -64,16 +83,23 @@ export function HeightmapBody(props: { ctx: CardCtx }) {
 				}
 			>
 				{map => (
-					<HeightMapGrid
-						map={map()}
-						valueAt={(r, c) => store.valueAt(r, c)}
-						isEdited={(r, c) => store.pending().has(`${r},${c}`)}
-						selected={svc.selected()}
-						onSelect={(row, col) => {
-							svc.setSelected({ row, col });
-							svc.setMessage("");
-						}}
-					/>
+					<Show
+						when={view() === "3d"}
+						fallback={
+							<HeightMapGrid
+								map={map()}
+								valueAt={(r, c) => store.valueAt(r, c)}
+								isEdited={(r, c) => store.pending().has(`${r},${c}`)}
+								selected={svc.selected()}
+								onSelect={(row, col) => {
+									svc.setSelected({ row, col });
+									svc.setMessage("");
+								}}
+							/>
+						}
+					>
+						<HeightMapSurface3D map={map()} valueAt={(r, c) => store.valueAt(r, c)} />
+					</Show>
 				)}
 			</Show>
 		</>

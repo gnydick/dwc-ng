@@ -2159,6 +2159,35 @@
 .tram-result dd { font-variant-numeric: tabular-nums; }
 .mesh-saveas input { width: 140px; }
 
+/* A tool button that is MODAL — it stays lit while the mode it opens is the one
+   you are in. Same language as .gcode-btn.is-engaged (accent ground, mask-dark
+   text), so "this is the current mode" looks the same everywhere. */
+.fb-tool.is-engaged,
+.fb-tool.is-engaged:hover:not(:disabled) {
+	background: var(--copper-bright);
+	border-color: var(--copper-bright);
+	color: var(--mask-900);
+	box-shadow:
+		0 0 0 1px var(--copper-bright),
+		0 0 12px color-mix(in srgb, var(--copper-bright) 45%, transparent);
+}
+
+/* The 3D surface. Fills whatever the panel gives it — the canvas is sized by
+   Babylon from the host box, so the host must have a real height. */
+.hm-3d { position: relative; width: 100%; flex: 1 1 auto; min-height: 180px; }
+.hm-3d-canvas { width: 100%; height: 100%; display: block; border-radius: var(--radius); outline: none; touch-action: none; }
+/* Disclosure of the vertical exaggeration, over the canvas so it costs no
+   layout and cannot push the surface around as the factor changes. */
+.hm-3d-note {
+	position: absolute; left: 8px; bottom: 6px; margin: 0;
+	font: 600 10.5px/1 var(--font-display);
+	letter-spacing: 0.08em; text-transform: uppercase;
+	color: var(--silk-dim);
+	background: color-mix(in srgb, var(--mask-900) 72%, transparent);
+	padding: 3px 6px; border-radius: 3px;
+	pointer-events: none;
+}
+
 /* Colour scale for the surface. The ramp auto-scales to each map's own largest
    deviation, so the numbers are the only thing that says what a colour means. */
 .hm-legend {
