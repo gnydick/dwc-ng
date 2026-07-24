@@ -141,8 +141,22 @@ export function ComposedScreen(props: { screenId: string }) {
  * keeps the user's creations — custom cards and screens die only by their
  * own explicit ✕/Delete.
  */
+/** Case- and accent-insensitive compare, so the picker sorts "ATX" next to
+ *  "atx-like" names naturally — "case doesn't matter". */
+const byName = (a: string, b: string): number => a.localeCompare(b, undefined, { sensitivity: "base" });
+
 function ComposeDrawer(props: { screenId: string; entry: ScreenEntry | null; composition: Composition; previewCtx: CardCtx }) {
 	const app = useApp();
+	// The card pickers, alphabetized. Spread before sort so the registry's own
+	// definition order is never mutated.
+	const sortedRegistryCards = createMemo(() =>
+		[...allCardIds()].sort((a, b) => byName(cardTitleOf(a), cardTitleOf(b))),
+	);
+	const sortedCustomCards = createMemo(() =>
+		[...customCardIds(app.config.config)].sort((a, b) =>
+			byName(app.config.config.cards[a]!.name, app.config.config.cards[b]!.name),
+		),
+	);
 	const [open, setOpen] = createSignal(false);
 	const [newName, setNewName] = createSignal("");
 	// The card studio: null = closed; id null = authoring a new card.
@@ -302,7 +316,7 @@ function ComposeDrawer(props: { screenId: string; entry: ScreenEntry | null; com
 						</div>
 					</Show>
 					<div class="compose-cards">
-						<For each={allCardIds()}>
+						<For each={sortedRegistryCards()}>
 							{id => (
 								<label class="compose-card">
 									<input
@@ -329,7 +343,7 @@ function ComposeDrawer(props: { screenId: string; entry: ScreenEntry | null; com
 					</div>
 					<Show when={customCardIds(app.config.config).length > 0}>
 						<div class="compose-cards compose-custom-list">
-							<For each={customCardIds(app.config.config)}>
+							<For each={sortedCustomCards()}>
 								{id => (
 									<div class="compose-customrow">
 										<label class="compose-card">
