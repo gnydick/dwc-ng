@@ -234,8 +234,10 @@ export function ToolsHeatersBody(props: { orientation: () => Orientation }) {
 							<div class="heat-h-cell">
 								<ToolName name="Bed" des={`heater${bedHeaterIndex()}`} dock={null} tool={null} />
 								<HeaterCurrent heater={h()} />
+								{/* Active only — no separator trailing off to a standby the bed
+								    does not have. */}
 								<span class="heat-h-meta">
-									<b>{h().active}</b>°&nbsp;/&nbsp;—
+									<b>{h().active}</b>°
 									<HeaterState heater={h()} index={bedHeaterIndex()} />
 								</span>
 								<HeaterActions kind="bed" num={0} active={h().active} standby={null} state={h().state} />
@@ -271,8 +273,10 @@ function HeaterCells(props: { heater: Heater; index: number; kind: "tool" | "bed
 				/>
 			</td>
 			<td>
-				{/* the bed has no standby mode — no standby cell, ever */}
-				<Show when={!isBed()} fallback={<span class="heat-set">—</span>}>
+				{/* The bed has no standby mode. The CELL stays (the column is what keeps
+				    every row's setpoints aligned) but it holds nothing — a placeholder
+				    dash just draws the eye to something that isn't there. */}
+				<Show when={!isBed()}>
 					<input
 						class="heat-input"
 						type="number"
