@@ -31,6 +31,22 @@
  *
  * The number of adjustments is NOT assumed to be three: M671 accepts 2 to 4
  * pivot points, and this machine's count must come from the line itself.
+ *
+ * ── A sample is only usable well ABOVE one full motor step. ──────────────────
+ * Measured on this machine: Z/U/V/W run 6400 steps/mm at 64x microstepping,
+ * non-interpolated, so one FULL step is 10um. Every correction in the trams
+ * captured on 2026-07-23 was a fraction of that (0.1 to 0.7 of a step), and
+ * below a full step a loaded leadscrew does not move proportionally to command
+ * — detent torque and stiction dominate, so the bed can move further than
+ * asked, or not at all, with unpredictable sign. Residual scatter of ~5um, half
+ * a full step, is consistent with that rather than with probe noise.
+ *
+ * The consequence for any geometry fit: corrections at this amplitude carry
+ * ACTUATOR behaviour, not pivot geometry, and cannot confirm or refute M671.
+ * Usable samples need differential motion of many full steps (~0.2mm = 20
+ * steps), which means deliberate single-screw excitation — bounded by the
+ * probe-damage limit, so predict the far-side lift before moving.
+ * ─────────────────────────────────────────────────────────────────────────────
  */
 
 export interface TramStats {

@@ -29,10 +29,17 @@ test("parses the real G32 reply from the board", () => {
 
 /**
  * The same machine once hot and settled, 2026-07-23 18:09:26 and 18:10:06, one
- * minute apart with nothing changed between them. Together they are the
- * evidence that this printer's tram CONVERGES: the first is at the probe's
- * repeatability floor, and the second's residual FLIPS SIGN rather than
- * repeating — noise, not a systematic geometry error.
+ * minute apart with nothing changed between them.
+ *
+ * These do NOT show the tram converging, and an earlier reading of them that
+ * said so was wrong. Applying run 3's 1um correction left run 4 measuring 7um
+ * of error — a response several times the command, with unpredictable sign.
+ * At 6400 steps/mm and 64x microstepping one FULL step is 10um, so both runs
+ * commanded a FRACTION of a step, where a loaded leadscrew moves by stiction
+ * rather than by instruction. Landing on 0.001 was luck, not control.
+ *
+ * They are kept as fixtures because they are real board output, and because
+ * they pin the amplitude below which a sample tells you nothing about geometry.
  */
 const CONVERGED =
 	"Leadscrew adjustments made: 0.001 0.001 0.002, points used 3, " +
@@ -41,7 +48,7 @@ const NOISE_FLOOR =
 	"Leadscrew adjustments made: -0.007 0.003 -0.001, points used 3, " +
 	"(mean, deviation) before (-0.001, 0.005) after (0.000, 0.000)";
 
-test("a converged tram parses — adjustments at the repeatability floor", () => {
+test("a near-zero tram parses — adjustments well below one full motor step", () => {
 	const r = parseTramReply(CONVERGED);
 	assert.ok(r !== null);
 	assert.deepEqual(r.adjustments, [0.001, 0.001, 0.002]);
