@@ -15,10 +15,11 @@
 
 .rail {
 	border-right: 1px solid var(--hairline);
-	padding: 18px 14px;
+	/* Tight right gutter — the nav text no longer floats far off the divider. */
+	padding: 14px 6px 14px 12px;
 	display: flex;
 	flex-direction: column;
-	gap: 22px;
+	gap: 18px;
 }
 
 .rail nav { display: flex; flex-direction: column; gap: 2px; }
@@ -51,7 +52,9 @@
 }
 
 .main {
-	padding: 0 24px 24px;
+	/* Tight left/right gutter around the content; the header (a .main child)
+	   shares this left padding, so it stays aligned with the cards. */
+	padding: 0 12px 14px;
 	display: flex;
 	flex-direction: column;
 	/* CAP the height (was min-height) so a tall view scrolls INSIDE .view-scroll
@@ -148,9 +151,11 @@
 	display: flex;
 	align-items: center;
 	gap: 10px;
-	padding: 12px 0;
+	/* Slimmer header + smaller gap to the cards — the top gutter was eating a
+	   lot of vertical space above the first row. */
+	padding: 7px 0;
 	border-bottom: 1px solid var(--hairline);
-	margin-bottom: 18px;
+	margin-bottom: 8px;
 	flex-wrap: wrap;
 }
 
