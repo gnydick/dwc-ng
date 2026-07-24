@@ -1,8 +1,8 @@
 // pnpm deploy --target http://duet3.nydick.net [--mode dsf|poll] [--name ng]
 //             [--dist ../ui/dist] [--dry-run] [--uninstall]
 
-import { fileURLToPath } from "node:url"
-import { dirname, join, resolve } from "node:path"
+import { fileURLToPath, pathToFileURL } from "node:url"
+import { dirname, resolve } from "node:path"
 import { deploy, uninstall } from "./deploy.ts"
 import { dsfTransport } from "./dsfTransport.ts"
 import { pollTransport } from "./pollTransport.ts"
@@ -83,11 +83,17 @@ async function main(): Promise<void> {
 	}
 }
 
-if (process.argv[1] !== undefined && import.meta.url === `file://${process.argv[1].replace(/\\/g, "/")}`) {
+// Run only when invoked directly. Hand-rolling this comparison gets Windows
+// wrong (file://N:/… vs file:///N:/…) — pathToFileURL is the one that agrees
+// with import.meta.url on every platform.
+const invokedDirectly =
+	process.argv[1] !== undefined && pathToFileURL(process.argv[1]).href === import.meta.url
+
+if (invokedDirectly) {
 	main().catch((err: unknown) => {
 		console.error(`deploy failed: ${err instanceof Error ? err.message : String(err)}`)
-		process.exit(1)
+		process.exitCode = 1
 	})
 }
 
-export { main, join }
+export { main }
