@@ -560,8 +560,15 @@
 .heat-input:focus-visible { outline: none; border-color: var(--copper); }
 /* The in-row filament picker. Fills its fixed column and ellipsises a long
    material name rather than widening it — the columns are load-bearing. */
+/* This column is the one left-aligned column past the first: the picker hugs
+   its left edge and the header sits over it, instead of both being right-
+   aligned against the setpoints. */
+.heat-table th:nth-child(2), .heat-table td:nth-child(2) { text-align: left; }
 .heat-fil {
-	width: 100%;
+	/* Short of the full column ON PURPOSE — stretched to 100% its right edge
+	   met the Active column exactly and it read as part of the setpoints. The
+	   shortfall is the air on its right, matching the air on its left. */
+	width: calc(100% - 16px);
 	max-width: 100%;
 	min-width: 0;
 	height: var(--ctl-h);
