@@ -25,6 +25,19 @@ export interface SpeedScale {
 	stops: number[];
 }
 
+/**
+ * Snap the speed to the next / previous multiple of 5, for the slider's −/+
+ * nudge. From 103% the up-step lands on 105 and the down-step on 100 — the
+ * value moves ONTO the 5% grid rather than carrying an odd offset forward.
+ * Never below 0.
+ */
+export function speedStepUp(pct: number): number {
+	return Math.floor(pct / 5) * 5 + 5;
+}
+export function speedStepDown(pct: number): number {
+	return Math.max(0, Math.ceil(pct / 5) * 5 - 5);
+}
+
 export function speedScale(currentPct: number): SpeedScale {
 	// Anything not a usable positive number (NaN before the first poll, a
 	// negative from a malformed model) falls back to the firmware default.

@@ -187,6 +187,13 @@ export const CARD_DEFS = {
 		size: { colSpan: 12, rowSpan: 62 },
 		visibleWhen: ctx => ctx.om.om.fans.some(isManualFan),
 	}),
+	/** Arbitrary G-code re-sent on an interval to override a running job. */
+	"pinned-commands": defineCard({
+		title: "Pinned commands",
+		ariaLabel: "Pinned commands",
+		tip: "M-code · re-sent 0.5s",
+		size: { colSpan: 12, rowSpan: 50 },
+	}),
 	/** Speed factor + babystep. */
 	tuning: defineCard({
 		title: "Tuning",

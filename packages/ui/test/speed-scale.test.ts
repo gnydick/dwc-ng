@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { speedScale, MIN_SCALE_MAX } from "../src/control/speedScale.ts";
+import { speedScale, speedStepUp, speedStepDown, MIN_SCALE_MAX } from "../src/control/speedScale.ts";
 
 /**
  * The slider's scale is always 0 .. 2x the machine's current speed factor, so
@@ -67,4 +67,18 @@ test("stops ascend", () => {
 	for (let i = 1; i < stops.length; i++) {
 		assert.ok(stops[i]! > stops[i - 1]!, `stop ${i} must exceed its predecessor`);
 	}
+});
+
+test("snap-to-5: up rounds to the next multiple of 5, down to the previous", () => {
+	// The exact example: from 103%, + lands on 105 and − on 100.
+	assert.equal(speedStepUp(103), 105);
+	assert.equal(speedStepDown(103), 100);
+	// On the grid already, it moves a whole step.
+	assert.equal(speedStepUp(100), 105);
+	assert.equal(speedStepDown(100), 95);
+	assert.equal(speedStepUp(105), 110);
+	assert.equal(speedStepDown(105), 100);
+	// Never below zero.
+	assert.equal(speedStepDown(3), 0);
+	assert.equal(speedStepDown(0), 0);
 });

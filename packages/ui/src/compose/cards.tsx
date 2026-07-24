@@ -20,6 +20,7 @@ import { BuildObjects } from "../cards/BuildObjects.tsx";
 import {
 	AtxBody, FilamentBody, HeatersBody, FansBody, TuningBody,
 } from "../cards/ControlCards.tsx";
+import { PinnedCommandsBody } from "../cards/PinnedCommandsCard.tsx";
 import { ControlList } from "./controls/ControlList.tsx";
 import { HOMING_SPEC, MOVEMENT_SPEC } from "./controls/builtin.ts";
 import {
@@ -64,6 +65,7 @@ export const CARD_RENDER: Record<CardId, CardRender> = {
 	heaters: { body: () => <HeatersBody /> },
 	movement: { body: ctx => <div class="jog-controls"><ControlList spec={MOVEMENT_SPEC} ctx={ctx} /></div> },
 	fans: { body: ctx => <FansBody orientation={ctx.orientation} /> },
+	"pinned-commands": { body: () => <PinnedCommandsBody /> },
 	tuning: { body: () => <TuningBody /> },
 	"job-files": { body: ctx => <JobFilesBody ctx={ctx} /> },
 	"job-details": { body: ctx => <JobDetailsBody ctx={ctx} /> },

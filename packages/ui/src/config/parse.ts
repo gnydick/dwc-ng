@@ -12,7 +12,7 @@
  */
 import {
 	CONFIG_VERSION, isCustomCardId, isUserScreenId,
-	type ConfigOverlay, type CustomScreen, type SlotRect, type UserScreenId,
+	type ConfigOverlay, type CustomScreen, type PinnedCommand, type SlotRect, type UserScreenId,
 } from "./types.ts";
 import { isPlainObject, safeEntries } from "../util/safeObject.ts";
 
@@ -128,6 +128,21 @@ function parseCards(raw: unknown): ConfigOverlay["cards"] {
 	return Object.keys(out).length > 0 ? out : undefined;
 }
 
+function parsePins(raw: unknown): ConfigOverlay["pins"] {
+	if (!Array.isArray(raw)) return undefined;
+	const out: PinnedCommand[] = [];
+	for (const value of raw) {
+		if (!isPlainObject(value)) continue;
+		if (typeof value.id !== "string" || typeof value.command !== "string" || typeof value.enabled !== "boolean") continue;
+		const pin: PinnedCommand = { id: value.id, command: value.command, enabled: value.enabled };
+		if (typeof value.key === "string") pin.key = value.key;
+		out.push(pin);
+	}
+	// An empty array survives (arrays replace wholesale) but says nothing, so
+	// treat it as never-customized like every other section.
+	return out.length > 0 ? out : undefined;
+}
+
 /** Rebuild an overlay from untrusted parsed JSON, dropping bad leaves. */
 export function parseOverlay(raw: unknown): ConfigOverlay {
 	if (!isPlainObject(raw)) return {};
@@ -141,6 +156,7 @@ export function parseOverlay(raw: unknown): ConfigOverlay {
 		bed: parseBed(raw.bed),
 		screens: parseScreens(raw.screens),
 		cards: parseCards(raw.cards),
+		pins: parsePins(raw.pins),
 	} satisfies { [K in keyof ConfigOverlay]: ConfigOverlay[K] };
 	for (const [key, value] of Object.entries(sections)) {
 		if (value !== undefined) (out as Record<string, unknown>)[key] = value;
