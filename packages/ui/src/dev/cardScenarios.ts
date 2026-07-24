@@ -102,7 +102,7 @@ function base(): ObjectModel {
 		gpIn: [{ value: 1 }, { value: 0 }, { value: 0 }, { value: 0 }],
 		endstops: [{ triggered: false }, { triggered: false }, { triggered: false }],
 		filamentMonitors: [{ status: "ok" }, { status: "ok" }, { status: "ok" }, { status: "ok" }],
-		probes: [{ type: 8, value: [0], threshold: 500, triggerHeight: 0 }],
+		probes: [{ type: 8, value: [0], threshold: 500, triggerHeight: 0, lastStopHeight: null }],
 	};
 	model.state = {
 		status: "idle", currentTool: -1, machineMode: "FFF", displayMessage: "",

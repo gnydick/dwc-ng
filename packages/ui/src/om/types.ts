@@ -236,6 +236,14 @@ export interface Probe {
 	 *  A re-probe's map value is (reported stop height - this); subtracting it makes a
 	 *  spot high of the reference read positive whatever the sign of this value. */
 	triggerHeight: number;
+	/**
+	 * Machine Z the probe last stopped at — the same number RRF prints as
+	 * "Stopped at height <n> mm", carried in the model rather than in reply
+	 * text. Preferred over parsing the reply: a re-probe macro can outlive the
+	 * connector's request timeout, and this survives that. null on a board that
+	 * has not probed since boot.
+	 */
+	lastStopHeight: number | null;
 }
 
 /** reference/objectmodel/src/sensors/index.ts (Sensors) */

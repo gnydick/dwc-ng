@@ -27,6 +27,14 @@ import type { CardCtx } from "../compose/ctx.ts";
 /** Height maps live beside the firmware's own default, in /sys. */
 const SYS_DIR = "0:/sys";
 
+/**
+ * How long to keep watching the model for a probe reading after the request
+ * itself has given up. Generous: the macro lifts, traverses the bed and taps up
+ * to five times, and abandoning a probe that is still running would leave the
+ * operator with no result for a move the machine did make.
+ */
+const PROBE_WAIT_MS = 90_000;
+
 export function HeightmapBody(props: { ctx: CardCtx }) {
 	const svc = props.ctx.service("heightmap");
 	const { store } = svc;
@@ -291,6 +299,25 @@ export function ProbePointBody(props: { ctx: CardCtx }) {
 		clearProbe();
 	});
 
+	/**
+	 * Watch the model for a reading that is genuinely NEW.
+	 *
+	 * Compared against the value from before the send, never against null: a
+	 * macro that aborts on one of its guards leaves lastStopHeight untouched, so
+	 * "changed" is the only honest evidence that a probe actually happened.
+	 * Failing closed here costs a re-probe; failing open would write a stale
+	 * number into the map.
+	 */
+	const waitForNewStopHeight = async (before: number | null): Promise<number | null> => {
+		const deadline = Date.now() + PROBE_WAIT_MS;
+		while (Date.now() < deadline) {
+			await new Promise(resolve => setTimeout(resolve, 400));
+			const now = app.om.om.sensors.probes[0]?.lastStopHeight ?? null;
+			if (now !== null && now !== before) return now;
+		}
+		return null;
+	};
+
 	const reprobe = async (): Promise<void> => {
 		const target = svc.cell();
 		if (target === null) return;
@@ -298,29 +325,50 @@ export function ProbePointBody(props: { ctx: CardCtx }) {
 		clearProbe();
 		svc.setMessage("");
 		const code = buildProbeCommand(app.config.config.bed.probePointCommand, target.x, target.y);
+		// What the model said BEFORE the probe. A macro that aborts on one of its
+		// own guards (bed below temperature, a tool undocked) leaves
+		// lastStopHeight at its PREVIOUS value, so reading it blindly would
+		// accept a stale number as a fresh measurement. Requiring it to change is
+		// what makes "a probe happened" observable rather than assumed.
+		const before = app.om.om.sensors.probes[0]?.lastStopHeight ?? null;
+		let stopHeight: number | null = null;
+		let sendError = "";
 		try {
 			const text = await app.connector.sendCode(code);
 			setReply(text);
-			const result = parseProbeReply(text);
-			const probe = app.om.om.sensors.probes[0];
-			if (result === null) {
-				// A reply with no stop height is a failure to read, not a probe of zero -
-				// there is nothing to offer for acceptance.
-				svc.setMessage("No stop height in the reply - nothing to accept.");
-			} else if (probe == null) {
-				svc.setMessage("No probe in the model - cannot make the reading relative to the trigger height.");
-			} else {
-				// The map value is the stop height RELATIVE to the probe's trigger height,
-				// not the raw stop: RRF reports machine Z near the trigger height (e.g. ~-13),
-				// so storing it raw would be a ~13mm error. Subtracting makes a high spot
-				// read positive for any sign of triggerHeight.
-				setProbed(heightmapValue(result.stopHeight, probe.triggerHeight));
-			}
+			const parsed = parseProbeReply(text);
+			if (parsed !== null) stopHeight = parsed.stopHeight;
 		} catch (err) {
-			svc.setMessage(err instanceof Error ? err.message : String(err));
-		} finally {
-			setProbing(false);
+			sendError = err instanceof Error ? err.message : String(err);
 		}
+		// The request can time out while the probe is still running and succeed
+		// anyway: measured on the machine, a real re-probe (lift, travel, probe,
+		// retract) outlives the connector's request timeout, the POST rejects,
+		// and the reading lands moments later. Losing a good probe to that is
+		// worse than waiting, so fall back to the object model — which carries
+		// the reading directly as sensors.probes[].lastStopHeight, no reply text
+		// to parse and nothing to lose if the reply never arrives.
+		if (stopHeight === null) {
+			svc.setMessage(sendError === "" ? "Waiting for the reading…" : `${sendError} — waiting for the reading…`);
+			stopHeight = await waitForNewStopHeight(before);
+			if (stopHeight !== null) setReply(`Stopped at height ${stopHeight} mm (from the object model)`);
+		}
+		const probe = app.om.om.sensors.probes[0];
+		if (stopHeight === null) {
+			// No reply AND no change in the model: nothing was measured. Reporting
+			// a value here would be inventing one.
+			svc.setMessage(sendError === "" ? "No reading - nothing to accept." : sendError);
+		} else if (probe == null) {
+			svc.setMessage("No probe in the model - cannot make the reading relative to the trigger height.");
+		} else {
+			// The map value is the stop height RELATIVE to the probe's trigger height,
+			// not the raw stop: RRF reports machine Z near the trigger height (e.g. ~-13),
+			// so storing it raw would be a ~13mm error. Subtracting makes a high spot
+			// read positive for any sign of triggerHeight.
+			svc.setMessage("");
+			setProbed(heightmapValue(stopHeight, probe.triggerHeight));
+		}
+		setProbing(false);
 	};
 
 	/**

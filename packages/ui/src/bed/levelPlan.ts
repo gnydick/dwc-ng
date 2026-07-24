@@ -16,6 +16,26 @@
  * and is re-established by homing afterwards. So the target is the readings'
  * own mean — the correction that moves the bed least, and the one least likely
  * to run a screw toward its limit.
+ *
+ * ── Trigger height is deliberately NOT subtracted here. ──────────────────────
+ * Readings are the RAW machine Z that G30 S-1 reports, sitting near the probe's
+ * G31 Z (about -13 on this machine). Every quantity this module computes is a
+ * DIFFERENCE — the spread, and each corner's error about the mean — so the
+ * trigger height is a constant common to all three readings and cancels
+ * identically. Subtracting it would change nothing.
+ *
+ * That is only true while the readings are compared against EACH OTHER. A
+ * consumer that ever wants an absolute bed height must apply
+ * heightmap/probeReply.ts's heightmapValue() instead, which is where that
+ * correction lives (and where omitting it once put a ~13mm error into every
+ * re-probed cell).
+ *
+ * Related and equally load-bearing: the bed is slightly WARPED, so these three
+ * readings are taken at three different XY and are NOT three samples of a
+ * plane — part of any difference between them is surface, not tilt. Levelling
+ * to agreement at these three spots is the goal; whatever surface variation
+ * remains is what the height map is probed afterwards to capture.
+ * ─────────────────────────────────────────────────────────────────────────────
  */
 
 /** Which screw a probe point reports on. */
