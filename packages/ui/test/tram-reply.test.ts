@@ -27,6 +27,38 @@ test("parses the real G32 reply from the board", () => {
 	assert.equal(JSON.stringify(r.after.mean), "0");
 });
 
+/**
+ * The same machine once hot and settled, 2026-07-23 18:09:26 and 18:10:06, one
+ * minute apart with nothing changed between them. Together they are the
+ * evidence that this printer's tram CONVERGES: the first is at the probe's
+ * repeatability floor, and the second's residual FLIPS SIGN rather than
+ * repeating — noise, not a systematic geometry error.
+ */
+const CONVERGED =
+	"Leadscrew adjustments made: 0.001 0.001 0.002, points used 3, " +
+	"(mean, deviation) before (0.001, 0.000) after (0.000, 0.000)";
+const NOISE_FLOOR =
+	"Leadscrew adjustments made: -0.007 0.003 -0.001, points used 3, " +
+	"(mean, deviation) before (-0.001, 0.005) after (0.000, 0.000)";
+
+test("a converged tram parses — adjustments at the repeatability floor", () => {
+	const r = parseTramReply(CONVERGED);
+	assert.ok(r !== null);
+	assert.deepEqual(r.adjustments, [0.001, 0.001, 0.002]);
+	assert.equal(r.before.deviation, 0);
+});
+
+test("negative adjustments parse; real replies carry them", () => {
+	// The board's own output, not a constructed case: a converged machine
+	// overshoots slightly and corrects back.
+	const r = parseTramReply(NOISE_FLOOR);
+	assert.ok(r !== null);
+	assert.deepEqual(r.adjustments, [-0.007, 0.003, -0.001]);
+	assert.equal(r.before.mean, -0.001);
+	// tiltSpan is unsigned — it is a SPREAD, and a mix of signs must not cancel.
+	assert.ok(Math.abs(tiltSpan(r) - 0.01) < 1e-9);
+});
+
 test("the reply survives being embedded in a larger console blob", () => {
 	const r = parseTramReply(`ok\n${REAL}\nsome trailing chatter`);
 	assert.ok(r !== null);
