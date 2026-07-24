@@ -25,11 +25,25 @@ import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData.js";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial.js";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector.js";
 import { Color3, Color4 } from "@babylonjs/core/Maths/math.color.js";
-import { terrainColor } from "./surface.ts";
+import { sampleGrid, terrainColor } from "./surface.ts";
 import type { HeightMapMeta } from "./parse.ts";
 
 /** The largest deviation is drawn as this fraction of the bed's longer side. */
 const RELIEF_FRACTION = 0.12;
+
+/**
+ * Vertices per side of the rendered mesh, independent of the probe grid.
+ *
+ * A mesh built one-vertex-per-probe-point is only 16x16 here, and the GPU can
+ * do nothing better than interpolate each triangle linearly — so you see the
+ * triangles, in the geometry AND in the colour. Sampling a finer mesh through
+ * the same bilinear function the 2D canvas uses smooths both at once, for the
+ * same reason the 2D view already looks smooth at 96px.
+ *
+ * 96 is ~9k vertices and ~18k triangles: nothing for the GPU, and it is
+ * rebuilt only when the map or an edit changes, never per frame.
+ */
+const MESH_RESOLUTION = 96;
 
 export interface Surface3D {
 	/** Rebuild the mesh from a grid. Cheap enough to call on every edit. */
@@ -93,16 +107,23 @@ export function createSurface3D(canvas: HTMLCanvasElement): Surface3D {
 		// bed must both show their deviation at a readable height.
 		exaggerationFactor = extent === 0 ? 1 : (Math.max(spanX, spanZ) * RELIEF_FRACTION) / extent;
 
+		// Sample a finer mesh out of the probe grid rather than using it directly:
+		// the map is 16x16 SAMPLES OF A SURFACE, not 256 independent readings, so
+		// interpolating it is representing it faithfully rather than inventing
+		// detail. Same reasoning, and the same function, as the 2D canvas.
+		const n = MESH_RESOLUTION;
 		const positions: number[] = [];
 		const colors: number[] = [];
-		for (let r = 0; r < numRows; r++) {
-			for (let c = 0; c < numCols; c++) {
-				const value = rows[r]![c]!;
+		for (let r = 0; r < n; r++) {
+			const fr = (r / (n - 1)) * (numRows - 1);
+			for (let c = 0; c < n; c++) {
+				const fc = (c / (n - 1)) * (numCols - 1);
+				const value = sampleGrid(rows, fc, fr);
 				// Centred on the origin so the camera orbits the bed's middle.
 				positions.push(
-					meta.min0 + (c / (numCols - 1)) * spanX - spanX / 2,
+					(c / (n - 1)) * spanX - spanX / 2,
 					value * exaggerationFactor,
-					meta.min1 + (r / (numRows - 1)) * spanZ - spanZ / 2,
+					(r / (n - 1)) * spanZ - spanZ / 2,
 				);
 				const { r: cr, g: cg, b: cb } = terrainColor(value, extent);
 				colors.push(cr / 255, cg / 255, cb / 255, 1);
@@ -110,11 +131,11 @@ export function createSurface3D(canvas: HTMLCanvasElement): Surface3D {
 		}
 
 		const indices: number[] = [];
-		for (let r = 0; r < numRows - 1; r++) {
-			for (let c = 0; c < numCols - 1; c++) {
-				const i0 = r * numCols + c;
+		for (let r = 0; r < n - 1; r++) {
+			for (let c = 0; c < n - 1; c++) {
+				const i0 = r * n + c;
 				const i1 = i0 + 1;
-				const i2 = i0 + numCols;
+				const i2 = i0 + n;
 				const i3 = i2 + 1;
 				indices.push(i0, i2, i1, i1, i2, i3);
 			}
