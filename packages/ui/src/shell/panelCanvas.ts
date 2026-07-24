@@ -102,6 +102,24 @@ export function findFreePosition(
 	return { col: 0, row: bottom };
 }
 
+/**
+ * Place `preferred` where it wants to be, but if that spot is taken KEEP THE
+ * COLUMN and slide the row DOWN until it fits. Used when a hidden card is
+ * shown again: it returns to exactly where it was, or the next open row
+ * straight below — never hops to a different column, which is what makes it
+ * feel like the card "came back" rather than being re-flowed somewhere new.
+ */
+export function slideDownToFree(occupied: readonly PanelRect[], preferred: PanelRect): PanelRect {
+	const base = clampRect(preferred);
+	let row = base.row;
+	// Terminates: a row below every occupied rect's bottom is always free.
+	for (;;) {
+		const candidate = { ...base, row };
+		if (!occupied.some(r => rectsOverlap(candidate, r))) return candidate;
+		row++;
+	}
+}
+
 export function hasCollisions(state: CanvasState): boolean {
 	const ids = Object.keys(state);
 	for (let i = 0; i < ids.length; i++) {
@@ -425,6 +443,20 @@ export function serializeCanvas(state: CanvasState): string {
  * collidable state; a visibility flip that reveals an overlap is the
  * operator's to rearrange, exactly as it already was at runtime.
  */
+/**
+ * A CanvasState from untrusted parsed storage, WITHOUT a defaults list — for
+ * the parked (hidden-card) store, whose ids are exactly the ones not in the
+ * composition. Keeps only entries that are valid rects; anything else drops.
+ */
+export function sanitizeCanvas(stored: unknown): CanvasState {
+	const out: CanvasState = {};
+	if (typeof stored !== "object" || stored === null) return out;
+	for (const [id, rect] of Object.entries(stored as Record<string, unknown>)) {
+		if (isPanelRect(rect)) out[id] = clampRect(rect);
+	}
+	return out;
+}
+
 export function mergeCanvas(stored: unknown, defaults: PanelDefault[]): CanvasState {
 	const fallback = defaultCanvas(defaults);
 	if (typeof stored !== "object" || stored === null) return fallback;
@@ -500,6 +532,17 @@ export function createPanelCanvas(storageKey: string, defaults: PanelDefault[], 
 	const orientationStorageKey = `${storageKey}.orientation`;
 	const [orientationState, setOrientationState] = createSignal(parseOrientationState(readStorage(orientationStorageKey)));
 
+	// Where hidden cards' rects go so a hide→show round-trip restores the spot.
+	// Persisted (same format as the canvas) so it survives a reload while the
+	// card is off the screen — a hidden card is not in the composition, so
+	// nothing else remembers where it was.
+	const parkedKey = `${storageKey}.parked`;
+	const [parked, setParked] = createSignal<CanvasState>(sanitizeCanvas(parseStoredCanvas(readStorage(parkedKey))));
+	const persistParked = (next: CanvasState): void => {
+		setParked(next);
+		writeStorage(parkedKey, serializeCanvas(next));
+	};
+
 	const persist = (next: CanvasState): void => {
 		setState(next);
 		writeStorage(storageKey, serializeCanvas(next));
@@ -536,21 +579,38 @@ export function createPanelCanvas(storageKey: string, defaults: PanelDefault[], 
 
 	const ensureSlot = (id: string, rect: PanelRect): void => {
 		if (state()[id] !== undefined) return;
-		// Adoption obeys the same collision contract as a drag (audit H6): the
-		// requested rect may overlap LIVE geometry (composition and canvas
-		// tiers diverge after drags), and persisting an overlap would make the
-		// next mount's collision check discard the user's entire stored
-		// layout. Overlapping rects get the first free spot instead.
-		const wanted = clampRect(rect);
 		const occupied = Object.values(collidableState(id));
-		const placed = occupied.some(r => rectsOverlap(wanted, r))
-			? { ...wanted, ...findFreePosition(occupied, wanted) }
-			: wanted;
+		const remembered = parked()[id];
+		let placed: PanelRect;
+		if (remembered !== undefined) {
+			// Shown again after a hide: return it to where it was. If that spot is
+			// now taken, slide it straight down (same column) to the next opening —
+			// don't scatter it to the first free cell somewhere else.
+			placed = slideDownToFree(occupied, remembered);
+			const nextParked = { ...parked() };
+			delete nextParked[id];
+			persistParked(nextParked);
+		} else {
+			// A card with no remembered spot (first placement). Adoption obeys the
+			// same collision contract as a drag (audit H6): the requested rect may
+			// overlap LIVE geometry (composition and canvas tiers diverge after
+			// drags), and persisting an overlap would make the next mount's
+			// collision check discard the user's entire stored layout. Overlapping
+			// rects get the first free spot instead.
+			const wanted = clampRect(rect);
+			placed = occupied.some(r => rectsOverlap(wanted, r))
+				? { ...wanted, ...findFreePosition(occupied, wanted) }
+				: wanted;
+		}
 		persist({ ...state(), [id]: placed });
 	};
 
 	const removeSlot = (id: string): void => {
-		if (state()[id] === undefined) return;
+		const rect = state()[id];
+		if (rect === undefined) return;
+		// Remember the spot BEFORE dropping it, so showing the card again can put
+		// it back. This is what fixes the "hiding a card forgets its position" bug.
+		persistParked({ ...parked(), [id]: rect });
 		const next = { ...state() };
 		delete next[id];
 		persist(next);
@@ -703,6 +763,10 @@ export function createPanelCanvas(storageKey: string, defaults: PanelDefault[], 
 		setState(defaultCanvas(defaults));
 		removeStorage(orientationStorageKey);
 		setOrientationState({});
+		// Reset is "back to the default layout" — remembered hidden spots are
+		// part of the deviation it clears.
+		removeStorage(parkedKey);
+		setParked({});
 	};
 
 	return { styleFor, startMove, startResize, reset, orientationFor, toggleOrientation, slotIds, ensureSlot, removeSlot };
