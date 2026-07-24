@@ -229,3 +229,47 @@ test("a CLEAN session still adopts the SD config on connect", async () => {
 		delete (globalThis as { localStorage?: unknown }).localStorage;
 	}
 });
+
+// --- pinned commands ---
+
+test("addPin appends a disabled row and returns its id", () => {
+	const store = createConfigStore();
+	const id = store.addPin("M204 P6000");
+	assert.equal(store.config.pins.length, 1);
+	assert.equal(store.config.pins[0]!.command, "M204 P6000");
+	assert.equal(store.config.pins[0]!.enabled, false, "a fresh pin must not immediately hit the machine");
+	assert.equal(store.config.pins[0]!.id, id);
+	assert.equal(store.dirty, true);
+});
+
+test("updatePin edits command and enabled; removePin drops it", () => {
+	const store = createConfigStore();
+	const id = store.addPin("M204 P6000");
+	store.updatePin(id, { enabled: true });
+	assert.equal(store.config.pins[0]!.enabled, true);
+	store.updatePin(id, { command: "M204 P8000" });
+	assert.equal(store.config.pins[0]!.command, "M204 P8000");
+	assert.equal(store.config.pins[0]!.enabled, true, "unrelated fields survive a patch");
+	store.removePin(id);
+	assert.equal(store.config.pins.length, 0);
+});
+
+test("setKeyedPin upserts by key — a fan re-pin replaces, never stacks", () => {
+	const store = createConfigStore();
+	store.setKeyedPin("fan:0", "M106 P0 S0.30", true);
+	store.setKeyedPin("fan:0", "M106 P0 S0.80", true); // re-pin at a new value
+	const fanPins = store.config.pins.filter(p => p.key === "fan:0");
+	assert.equal(fanPins.length, 1, "same key must not accumulate rows");
+	assert.equal(fanPins[0]!.command, "M106 P0 S0.80");
+	store.removeKeyedPin("fan:0");
+	assert.equal(store.config.pins.filter(p => p.key === "fan:0").length, 0);
+});
+
+test("keyed and keyless pins coexist without colliding", () => {
+	const store = createConfigStore();
+	store.addPin("M204 P6000");            // keyless (Pinned commands card)
+	store.setKeyedPin("fan:0", "M106 P0 S0.5", true); // fan pin
+	assert.equal(store.config.pins.length, 2);
+	assert.equal(store.config.pins.filter(p => p.key === undefined).length, 1);
+	assert.equal(store.config.pins.filter(p => p.key === "fan:0").length, 1);
+});

@@ -46,6 +46,15 @@ export interface ConfigStore {
 	updateCustomCard(id: CustomCardId, patch: { name?: string; spec?: string }): void;
 	removeCustomCard(id: CustomCardId): void;
 
+	/** Append an arbitrary pinned command (disabled). Returns its minted id. */
+	addPin(command: string): string;
+	updatePin(id: string, patch: { command?: string; enabled?: boolean }): void;
+	removePin(id: string): void;
+	/** Upsert a UI-owned pin by key (fan speed pins). Replaces any existing
+	 *  pin with the same key. */
+	setKeyedPin(key: string, command: string, enabled: boolean): void;
+	removeKeyedPin(key: string): void;
+
 	/**
 	 * Drop one section's overlay — that section returns to defaults. The
 	 * creation-holding sections ("cards", "screens") are excluded AT THE TYPE:
@@ -180,6 +189,30 @@ export function createConfigStore(): ConfigStore {
 			apply(draft => { delete draft.cards?.[id]; });
 		},
 
+		// Pins are a whole-array overlay (arrays replace wholesale in mergeInto),
+		// so each mutator reads the CURRENT array off the draft — never the
+		// config proxy, which structuredClone rejects — and writes the new one.
+		addPin(command) {
+			const id = mintPinId();
+			apply(draft => { draft.pins = [...(draft.pins ?? []), { id, command, enabled: false }]; });
+			return id;
+		},
+		updatePin(id, patch) {
+			apply(draft => { draft.pins = (draft.pins ?? []).map(p => (p.id === id ? { ...p, ...patch } : p)); });
+		},
+		removePin(id) {
+			apply(draft => { draft.pins = (draft.pins ?? []).filter(p => p.id !== id); });
+		},
+		setKeyedPin(key, command, enabled) {
+			apply(draft => {
+				const kept = (draft.pins ?? []).filter(p => p.key !== key);
+				draft.pins = [...kept, { id: mintPinId(), command, enabled, key }];
+			});
+		},
+		removeKeyedPin(key) {
+			apply(draft => { draft.pins = (draft.pins ?? []).filter(p => p.key !== key); });
+		},
+
 		resetSection(section) {
 			apply(draft => { delete draft[section]; });
 		},
@@ -259,6 +292,11 @@ export function createConfigStore(): ConfigStore {
  */
 function mintId<P extends "u-" | "c-">(prefix: P): `${P}${string}` {
 	return `${prefix}${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+}
+
+/** Pin ids need no namespace guarantee (they key nothing) — just uniqueness. */
+function mintPinId(): string {
+	return `p-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
 }
 
 /** defaults + overlay → the effective config (pure). */

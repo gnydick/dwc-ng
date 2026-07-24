@@ -2,7 +2,7 @@ import { For, createEffect, createSignal, onCleanup } from "solid-js";
 import { useApp } from "../shell/context.ts";
 import { cmd } from "./commands.ts";
 import { GcodeButton } from "./GcodeButton.tsx";
-import { speedScale, type SpeedScale } from "./speedScale.ts";
+import { speedScale, speedStepDown, speedStepUp, type SpeedScale } from "./speedScale.ts";
 
 type SendState = "idle" | "sending" | "sent" | "failed";
 
@@ -158,6 +158,22 @@ export function SpeedSlider(props: { currentPct: number }) {
 						)}
 					</For>
 				</div>
+			</div>
+			{/* Snap-to-5 nudge, next to the track. Sends through the same send()
+			    the slider uses, so the scale re-centres identically. */}
+			<div class="speed-step">
+				<button
+					class="fb-act"
+					title={cmd.speedFactor(speedStepDown(Math.round(value())))}
+					aria-label="Speed down to previous 5%"
+					onClick={() => void send(speedStepDown(Math.round(value())))}
+				>−</button>
+				<button
+					class="fb-act"
+					title={cmd.speedFactor(speedStepUp(Math.round(value())))}
+					aria-label="Speed up to next 5%"
+					onClick={() => void send(speedStepUp(Math.round(value())))}
+				>+</button>
 			</div>
 			{/* Tabular figures and a reserved width: this changes on every poll and
 			    must not shove the track around as the digit count changes. */}

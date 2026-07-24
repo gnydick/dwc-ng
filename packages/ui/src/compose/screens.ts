@@ -42,12 +42,13 @@ export const CONTROL_COMPOSITION: Composition = {
 	homing: { col: 0, row: 32, colSpan: 12, rowSpan: 51 },
 	heaters: { col: 0, row: 83, colSpan: 12, rowSpan: 62 },
 	fans: { col: 0, row: 145, colSpan: 12, rowSpan: 62 },
-	tuning: { col: 0, row: 207, colSpan: 12, rowSpan: 33 },
+	"pinned-commands": { col: 0, row: 207, colSpan: 12, rowSpan: 50 },
+	tuning: { col: 0, row: 257, colSpan: 12, rowSpan: 33 },
 	filament: { col: 12, row: 65, colSpan: 12, rowSpan: 50 },
 	movement: { col: 12, row: 115, colSpan: 12, rowSpan: 123 },
 	atx: { col: 12, row: 238, colSpan: 12, rowSpan: 32 },
-	console: { col: 0, row: 270, colSpan: 24, rowSpan: 75 },
-	camera: { col: 0, row: 345, colSpan: 8, rowSpan: 75 },
+	console: { col: 0, row: 290, colSpan: 24, rowSpan: 75 },
+	camera: { col: 0, row: 365, colSpan: 8, rowSpan: 75 },
 };
 
 /** Activity: live position + detailed job progress + the 3D toolpath.

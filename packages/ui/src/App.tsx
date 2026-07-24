@@ -5,6 +5,7 @@ import { createTemperatureHistory } from "./om/temperature.ts";
 import { createConnector } from "./connector/index.ts";
 import { currentBackend, isRealBackend, writesArmed } from "./dev/backend.ts";
 import { guardWrites } from "./dev/writeGuard.ts";
+import { startPinSender } from "./control/pinSender.ts";
 import { AppContext } from "./shell/context.ts";
 import Shell from "./shell/Shell.tsx";
 import "./app.css";
@@ -40,6 +41,16 @@ export default function App() {
 			.catch(() => undefined); // status chip + Connect button cover failures
 	});
 	onCleanup(() => void connector.disconnect());
+
+	// The pinned-command re-assert loop. Reads config.config.pins fresh each
+	// tick and sends through the guarded connector, so it respects the dev
+	// write guard exactly like every other control.
+	const stopPins = startPinSender({
+		pins: () => config.config.pins,
+		canSend: () => om.connection.status === "connected",
+		sendCode: code => connector.sendCode(code),
+	});
+	onCleanup(stopPins);
 
 	return (
 		<AppContext.Provider value={{ om, config, connector, temps }}>

@@ -94,6 +94,33 @@ export interface CustomCardDef {
 }
 
 /**
+ * A command the app RE-SENDS on an interval to override what a running job
+ * asks for — a fan speed held against the slicer, a max acceleration pinned
+ * to a value, and so on.
+ *
+ * This is a deliberate, user-requested EXCEPTION to the project's
+ * controls-are-1:1-with-gcode rule: while a pin is enabled the app, not the
+ * firmware, is the author of that value. Each pin is still a plain G-code
+ * string — no encoded logic beyond "keep sending this" — and all enabled
+ * pins are batched into ONE request per tick, so the re-assert loop costs the
+ * weak embedded server a fixed ~2 requests/sec however many pins exist.
+ */
+export interface PinnedCommand {
+	/** Stable id (minted "p-…"). */
+	id: string;
+	/** The G-code re-sent while enabled, e.g. "M204 P6000" or "M106 P0 S0.50". */
+	command: string;
+	/** Off by default: adding a row must not immediately start hitting the machine. */
+	enabled: boolean;
+	/**
+	 * A stable key for UI-owned pins so their card can find and toggle its own
+	 * pin — fan speed pins are keyed "fan:<n>". User-added arbitrary pins have
+	 * no key.
+	 */
+	key?: string;
+}
+
+/**
  * Screens as user truth (design phase A7b). Built-in screens are immutable
  * code; everything the user does to them — rename, hide, change membership
  * or layout — is overlay data here, and reset drops it. Custom screens live
@@ -129,6 +156,9 @@ export interface UiConfig {
 	/** User-authored cards, keyed by minted "c-" ids (the prefix keeps them
 	 *  out of the registry CardId namespace by construction). */
 	cards: Record<CustomCardId, CustomCardDef>;
+	/** Commands re-sent on an interval to override a running job — fan speed
+	 *  pins (keyed "fan:<n>") and arbitrary user rows. See PinnedCommand. */
+	pins: PinnedCommand[];
 }
 
 export type DeepPartial<T> = {
@@ -155,6 +185,7 @@ export const DEFAULT_CONFIG: UiConfig = {
 	bed: { probePointCommand: 'M98 P"0:/macros/dwc-ng/reprobe.g" X{x} Y{y}' },
 	screens: { custom: {}, renames: {}, hidden: [], layouts: {} },
 	cards: {},
+	pins: [],
 };
 
 /** Where the overlay lives on the machine's SD card. */

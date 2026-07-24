@@ -112,7 +112,15 @@ export function FansBody(props: { orientation: () => Orientation }) {
 			<For each={app.om.om.fans}>
 				{(fan, i) => (
 					<Show when={isManualFan(fan) ? fan : undefined}>
-						{f => <FanControl label={f().name || `Fan ${i()}`} index={i()} value={f().actualValue} rpm={f().rpm} />}
+						{f => (
+							<FanControl
+								label={f().name || `Fan ${i()}`}
+								index={i()}
+								actual={f().actualValue}
+								requested={f().requestedValue}
+								rpm={f().rpm}
+							/>
+						)}
 					</Show>
 				)}
 			</For>
@@ -228,24 +236,59 @@ function HeaterControl(props: {
 	);
 }
 
-function FanControl(props: { label: string; index: number; value: number; rpm: number }) {
-	const [pct, setPct] = createSignal(Math.round((props.value ?? 0) * 100));
+function FanControl(props: { label: string; index: number; actual: number; requested: number; rpm: number }) {
+	const app = useApp();
+	// Seeded from the requested value (the last set point), then operator-owned
+	// — one instance, so a poll never overwrites what is being typed.
+	const [pct, setPct] = createSignal(Math.round((props.requested ?? 0) * 100));
+	const key = `fan:${props.index}`;
+
+	const pinCommand = (): string => cmd.fan(props.index, pct());
+	const pinned = (): boolean => app.config.config.pins.some(p => p.key === key && p.enabled);
+	const togglePin = (): void => {
+		if (pinned()) app.config.removeKeyedPin(key);
+		else app.config.setKeyedPin(key, pinCommand(), true);
+	};
+
 	return (
 		<div class="heater-ctl">
 			<span class="ctl-name">{props.label}</span>
-			{/* Live tacho reading — shown only when a tacho is configured
-			    (rpm >= 0; RRF reports -1 otherwise). Tabular figures on a
-			    reserved width so the per-poll value never jitters the row. */}
-			<Show when={props.rpm >= 0}>
-				<span class="fan-rpm" title="Tacho reading (fans[].rpm)">{props.rpm}<small>rpm</small></span>
-			</Show>
+			{/* Readouts sit in ONE fixed-width block so the % input starts at the
+			    same x on every fan row — the alignment fix. Actual is the live
+			    value the firmware reports (distinct from the requested set point);
+			    RPM is the tacho, its slot RESERVED even when there is no tacho so a
+			    fan without one still lines its input up with the rest. */}
+			<span class="fan-readouts">
+				<span class="fan-actual" title="Actual speed (fans[].actualValue)">{Math.round(props.actual * 100)}<small>%</small></span>
+				<span class="fan-rpm" title="Tacho reading (fans[].rpm)">
+					<Show when={props.rpm >= 0}>{props.rpm}<small>rpm</small></Show>
+				</span>
+			</span>
 			<label class="temp-field">
 				<input type="number" min="0" max="100" value={pct()} onInput={e => setPct(Number(e.currentTarget.value))} aria-label={`${props.label} percent`} />
 				<span class="deg">%</span>
 			</label>
 			<div class="btn-cluster">
-				<GcodeButton label="Set" command={cmd.fan(props.index, pct())} stamp={false} />
+				{/* Set applies now AND, when pinned, re-pins at the new value, so the
+				    override tracks what you just set. */}
+				<GcodeButton
+					label="Set"
+					command={pinCommand()}
+					stamp={false}
+					onSent={() => { if (pinned()) app.config.setKeyedPin(key, pinCommand(), true); }}
+				/>
 				<GcodeButton label="Off" variant="quiet" command={cmd.fan(props.index, 0)} stamp={false} />
+				{/* Pin holds this fan at the set speed against the job (M106 re-sent
+				    every 0.5s). Glows while pinned; a config write, not a G-code. */}
+				<button
+					class="fb-tool fan-pin"
+					classList={{ "is-engaged": pinned() }}
+					aria-pressed={pinned()}
+					title={pinned() ? "Pinned — overriding the job. Click to release." : "Pin this speed to override the job"}
+					onClick={togglePin}
+				>
+					Pin
+				</button>
 			</div>
 		</div>
 	);
