@@ -67,6 +67,7 @@ export function JobDetailsBody(props: { ctx: CardCtx }) {
 
 	return (
 		<Switch>
+			<Match when={svc.selected() === null}><p class="job-empty">No job selected.</p></Match>
 			<Match when={svc.info.loading}><p class="job-empty">Reading metadata…</p></Match>
 			<Match when={svc.info.error}><p class="job-empty">No metadata for this file.</p></Match>
 			<Match when={svc.info()}>

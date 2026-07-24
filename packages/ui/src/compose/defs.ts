@@ -14,8 +14,6 @@
  * item. Kept apart so this module stays pure and node-testable (type
  * stripping cannot load JSX).
  */
-import { layerStats } from "../charts/layerData.ts";
-import { isManualFan } from "../om/fans.ts";
 import { baseName } from "../files/format.ts";
 import type { CardCtx } from "./ctx.ts";
 
@@ -114,13 +112,14 @@ export const CARD_DEFS = {
 		size: { colSpan: 8, rowSpan: 75 },
 		visibleWhen: ctx => ctx.config.config.camera.pinned,
 	}),
-	/** Per-object cancel (M486) — already content-only, zero props. */
+	/** Per-object cancel (M486) — already content-only, zero props. Always
+	 *  shown: with no objects it says the job didn't specify any, rather than
+	 *  vanishing (which reads as "the card is broken", not "nothing to cancel"). */
 	"build-objects": defineCard({
-		title: "Objects",
-		ariaLabel: "Objects",
+		title: "Cancel Objects",
+		ariaLabel: "Cancel Objects",
 		tip: "M486 · job.build",
 		size: { colSpan: 12, rowSpan: 53 },
-		visibleWhen: ctx => (ctx.om.om.job.build?.objects.length ?? 0) > 0,
 	}),
 	/** Live 3D toolpath of the active job. */
 	"gcode-viewer": defineCard({
@@ -129,15 +128,13 @@ export const CARD_DEFS = {
 		tip: "job.file · job.filePosition",
 		size: { colSpan: 24, rowSpan: 180 },
 	}),
-	/** Per-layer print times — no layers until a print completes one. The
-	 *  predicate derives from the same layerStats the body charts, so "has
-	 *  layers" cannot mean two different things. */
+	/** Per-layer print times — no layers until a print completes one; the body
+	 *  says so rather than the card vanishing. */
 	layers: defineCard({
 		title: "Layer times",
 		ariaLabel: "Layer times",
 		tip: "job.layers",
 		size: { colSpan: 24, rowSpan: 67 },
-		visibleWhen: ctx => layerStats(ctx.om.om.job.layers).count > 0,
 	}),
 	/** Home all / per-axis + release (M84). */
 	homing: defineCard({
@@ -146,14 +143,14 @@ export const CARD_DEFS = {
 		tip: "G28 · M84",
 		size: { colSpan: 12, rowSpan: 51 },
 	}),
-	/** ATX PSU — state.atxPower is null on a board with no PS_ON port
-	 *  configured, and a dead switch is worse than none. */
+	/** ATX PSU. state.atxPower is null on a board with no PS_ON port — the body
+	 *  shows a message there rather than a DEAD switch (which is worse than
+	 *  none), but the card no longer vanishes. */
 	atx: defineCard({
 		title: "ATX power",
 		ariaLabel: "ATX power",
 		tip: "M80 · M81",
 		size: { colSpan: 12, rowSpan: 32 },
-		visibleWhen: ctx => ctx.om.om.state.atxPower !== null,
 	}),
 	/** Filament load/unload — a tool with no extruder cannot hold filament. */
 	filament: defineCard({
@@ -161,7 +158,6 @@ export const CARD_DEFS = {
 		ariaLabel: "Filament",
 		tip: "M701 · M702 · M703",
 		size: { colSpan: 12, rowSpan: 50 },
-		visibleWhen: ctx => ctx.om.om.tools.some(t => t !== null && t.filamentExtruder >= 0),
 	}),
 	/** Tools: select a tool by its label, plus its heater setpoints. */
 	heaters: defineCard({
@@ -177,15 +173,14 @@ export const CARD_DEFS = {
 		tip: "M120 · G91 · M121",
 		size: { colSpan: 12, rowSpan: 123 },
 	}),
-	/** Manual fans only — thermostatic ones belong to the firmware. Same
-	 *  isManualFan the body filters by, so the gate and the list agree. */
+	/** Manual fans only — thermostatic ones belong to the firmware. The body
+	 *  says so when there are none rather than the card disappearing. */
 	fans: defineCard({
 		title: "Fans",
 		ariaLabel: "Fans",
 		tip: "M106",
 		orientationToggle: true,
 		size: { colSpan: 12, rowSpan: 62 },
-		visibleWhen: ctx => ctx.om.om.fans.some(isManualFan),
 	}),
 	/** Arbitrary G-code re-sent on an interval to override a running job. */
 	"pinned-commands": defineCard({
@@ -216,7 +211,6 @@ export const CARD_DEFS = {
 		class: "jobs-detail",
 		tip: "rr_fileinfo",
 		size: { colSpan: 12, rowSpan: 135 },
-		visibleWhen: ctx => ctx.service("jobsBrowser").selected() !== null,
 	}),
 	/** Macro listing (0:/macros) with two-step Run. */
 	macros: defineCard({
