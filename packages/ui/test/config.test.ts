@@ -145,3 +145,87 @@ test("a corrupt config file falls back to defaults instead of failing boot", asy
 		await mock.close();
 	}
 });
+
+// A minimal in-memory localStorage, so the cache path can be exercised in node
+// (the whole persistence model lives there). Same shape as browser-memory.test.
+class MemStore {
+	private m = new Map<string, string>();
+	getItem(k: string): string | null { return this.m.has(k) ? this.m.get(k)! : null; }
+	setItem(k: string, v: string): void { this.m.set(k, String(v)); }
+	removeItem(k: string): void { this.m.delete(k); }
+	clear(): void { this.m.clear(); }
+}
+
+test("unsaved edits survive a reload — the cache carries them AND their dirty flag", () => {
+	const ls = new MemStore();
+	(globalThis as { localStorage?: unknown }).localStorage = ls;
+	try {
+		const store = createConfigStore();
+		store.setAxisRole("U", "Z motor 1");
+		assert.equal(store.dirty, true);
+
+		// "Reload": a brand-new store built from the same localStorage.
+		const reloaded = createConfigStore();
+		assert.equal(reloaded.config.axisRoles["U"], "Z motor 1", "the edit came back");
+		assert.equal(reloaded.dirty, true, "and it is still known to be unsaved");
+	} finally {
+		delete (globalThis as { localStorage?: unknown }).localStorage;
+	}
+});
+
+test("loadFromMachine does NOT overwrite unsaved local edits", async () => {
+	const ls = new MemStore();
+	(globalThis as { localStorage?: unknown }).localStorage = ls;
+	const mock = createMockServer({ tickMs: 0 });
+	const port = await mock.listen(0);
+	const connector = new PollConnector({ baseUrl: `http://127.0.0.1:${port}`, autoPoll: false, retryDelayMs: 10 });
+	try {
+		await connector.connect();
+
+		// A saved config on the SD card.
+		const onMachine = createConfigStore();
+		onMachine.setAxisRole("U", "from SD");
+		await onMachine.saveToMachine(connector);
+
+		// A different session with its OWN unsaved edit — then a connect.
+		ls.clear();
+		const local = createConfigStore();
+		local.setAxisRole("V", "unsaved local");
+		assert.equal(local.dirty, true);
+		await local.loadFromMachine(connector);
+
+		// The unsaved edit stands; the SD config did not clobber it.
+		assert.equal(local.config.axisRoles["V"], "unsaved local", "local edit survives the connect");
+		assert.equal(local.config.axisRoles["U"], undefined, "SD value was NOT pulled over it");
+		assert.equal(local.dirty, true, "still unsaved");
+	} finally {
+		await connector.disconnect().catch(() => undefined);
+		await mock.close();
+		delete (globalThis as { localStorage?: unknown }).localStorage;
+	}
+});
+
+test("a CLEAN session still adopts the SD config on connect", async () => {
+	const ls = new MemStore();
+	(globalThis as { localStorage?: unknown }).localStorage = ls;
+	const mock = createMockServer({ tickMs: 0 });
+	const port = await mock.listen(0);
+	const connector = new PollConnector({ baseUrl: `http://127.0.0.1:${port}`, autoPoll: false, retryDelayMs: 10 });
+	try {
+		await connector.connect();
+		const onMachine = createConfigStore();
+		onMachine.setAxisRole("U", "from SD");
+		await onMachine.saveToMachine(connector);
+
+		// Fresh, clean session (no unsaved edits) must pick the SD config up.
+		ls.clear();
+		const fresh = createConfigStore();
+		assert.equal(fresh.dirty, false);
+		await fresh.loadFromMachine(connector);
+		assert.equal(fresh.config.axisRoles["U"], "from SD", "clean session adopts SD");
+	} finally {
+		await connector.disconnect().catch(() => undefined);
+		await mock.close();
+		delete (globalThis as { localStorage?: unknown }).localStorage;
+	}
+});

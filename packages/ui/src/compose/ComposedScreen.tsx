@@ -22,7 +22,7 @@ import { CARD_DEFS, allCardIds, parseCardId, type CardId } from "./defs.ts";
 import { RegistryCard, cardTitleOf } from "./RegistryCard.tsx";
 import { addCard, compositionRects, customCardIds, isCustomCardId, removeCard, slotsOf, type Composition, type CustomCardId, type SlotId } from "./composition.ts";
 import { createServicePool } from "./services.ts";
-import { resolveScreen, type ScreenEntry } from "./screens.ts";
+import { resolveScreen, screenList, type ScreenEntry } from "./screens.ts";
 import { CustomCard } from "./CustomCard.tsx";
 import { CardStudio } from "./CardStudio.tsx";
 import { ImportReview } from "./ImportReview.tsx";
@@ -165,6 +165,18 @@ function ComposeDrawer(props: { screenId: string; entry: ScreenEntry | null; com
 			const minted = app.config.addCustomCard(parsed.name, parsed.specText);
 			app.config.updateScreenCards(props.screenId, asRects(addCard(props.composition, minted)));
 		} else {
+			// Re-importing a screen with the same name REPLACES it rather than
+			// stacking a duplicate: "import my Control again" means update, not
+			// make a third. Only user screens are removed — a built-in that
+			// happens to share the name is a different thing and stays. Its
+			// embedded custom cards go too, so a replace does not leak them.
+			for (const existing of screenList(app.config.config)) {
+				if (existing.builtin || existing.def.name !== parsed.name) continue;
+				for (const slotId of Object.keys(existing.def.composition)) {
+					if (isCustomCardId(slotId)) app.config.removeCustomCard(slotId as CustomCardId);
+				}
+				app.config.removeScreen(existing.id);
+			}
 			const idMap = new Map<string, string>();
 			for (const card of parsed.customCards) {
 				idMap.set(card.fileId, app.config.addCustomCard(card.name, card.specText));
@@ -232,6 +244,11 @@ function ComposeDrawer(props: { screenId: string; entry: ScreenEntry | null; com
 		}
 		setArmedScreenDelete(false);
 		app.config.removeScreen(props.screenId);
+		// The hash still points at the screen just deleted, which would fall
+		// through to the first screen's cards while the nav highlights nothing —
+		// looking like the delete failed. Navigate somewhere real.
+		const first = screenList(app.config.config)[0];
+		if (first !== undefined) window.location.hash = `#/${first.id}`;
 	};
 
 	return (
