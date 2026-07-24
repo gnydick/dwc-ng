@@ -342,3 +342,73 @@ test("resolveMove: never expresses an overlap or an out-of-bounds rect", async (
 		}
 	}
 });
+
+// ---- hiding a card remembers its position (and slides down if taken) ----
+
+test("slideDownToFree keeps the column and drops the row until it fits", async () => {
+	const { slideDownToFree } = await import("../src/shell/panelCanvas.ts");
+	// Nothing in the way — returns the preferred rect unchanged.
+	assert.deepEqual(slideDownToFree([], rect(12, 3, 12, 40)), rect(12, 3, 12, 40));
+	// A blocker on the preferred spot: same column, next free row below it.
+	const blocker = rect(12, 0, 12, 40); // rows 0..39 in column 12
+	const placed = slideDownToFree([blocker], rect(12, 0, 12, 40));
+	assert.equal(placed.col, 12, "column is preserved — never hops sideways");
+	assert.equal(placed.row, 40, "slid straight down to just below the blocker");
+});
+
+const posOf = (canvas: { styleFor: (id: string) => Record<string, string> }, id: string) => {
+	const s = canvas.styleFor(id);
+	return { col: parseInt(s["grid-column"]!) - 1, row: parseInt(s["grid-row"]!) - 1 };
+};
+
+test("hiding a card then showing it restores its exact position", async () => {
+	const { createPanelCanvas } = await import("../src/shell/panelCanvas.ts");
+	const canvas = createPanelCanvas("dwc-ng.canvas.test-hide-restore", [
+		{ id: "a", ...rect(0, 0, 12, 40) },
+		{ id: "b", ...rect(12, 0, 12, 40) },
+	]);
+	canvas.removeSlot("b"); // hide
+	assert.deepEqual(canvas.styleFor("b"), {}, "hidden — no slot rendered");
+	// Show it with a DIFFERENT requested rect — the remembered spot must win.
+	canvas.ensureSlot("b", rect(0, 100, 12, 40));
+	assert.deepEqual(posOf(canvas, "b"), { col: 12, row: 0 }, "back where it was, not the requested rect");
+});
+
+test("showing a hidden card slides DOWN when its old spot is now taken", async () => {
+	const { createPanelCanvas } = await import("../src/shell/panelCanvas.ts");
+	const canvas = createPanelCanvas("dwc-ng.canvas.test-hide-slide", [
+		{ id: "a", ...rect(0, 0, 12, 40) },
+	]);
+	canvas.removeSlot("a"); // hide a (remembered at 0,0 spanning rows 0..39)
+	canvas.ensureSlot("blocker", rect(0, 0, 12, 40)); // something takes 0,0
+	canvas.ensureSlot("a", rect(0, 0, 12, 40)); // show a again
+	const p = posOf(canvas, "a");
+	assert.equal(p.col, 0, "same column");
+	assert.equal(p.row, 40, "slid straight down below the 40-tall blocker");
+});
+
+test("a remembered position survives a reload (persisted, card off the screen)", async () => {
+	class MemStore {
+		private m = new Map<string, string>();
+		getItem(k: string) { return this.m.has(k) ? this.m.get(k)! : null; }
+		setItem(k: string, v: string) { this.m.set(k, String(v)); }
+		removeItem(k: string) { this.m.delete(k); }
+	}
+	(globalThis as { localStorage?: unknown }).localStorage = new MemStore();
+	try {
+		const { createPanelCanvas } = await import("../src/shell/panelCanvas.ts");
+		const key = "dwc-ng.canvas.test-parked-persist";
+		const c1 = createPanelCanvas(key, [
+			{ id: "a", ...rect(0, 0, 12, 40) },
+			{ id: "b", ...rect(12, 0, 12, 40) },
+		]);
+		c1.removeSlot("b"); // hide — remembered rect persists to localStorage
+		// "Reload": a fresh controller from the same key, with b NOT in defaults
+		// (it's hidden, so it isn't in the composition any more).
+		const c2 = createPanelCanvas(key, [{ id: "a", ...rect(0, 0, 12, 40) }]);
+		c2.ensureSlot("b", rect(0, 200, 12, 40)); // show b again
+		assert.deepEqual(posOf(c2, "b"), { col: 12, row: 0 }, "restored from the persisted parked store");
+	} finally {
+		delete (globalThis as { localStorage?: unknown }).localStorage;
+	}
+});
