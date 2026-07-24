@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
 	GRID_COLS, clampRect, rectsOverlap, collidesWithAny, hasCollisions, inBounds,
 	tryMove, tryResize, defaultCanvas, parseStoredCanvas, serializeCanvas, mergeCanvas,
+	applyDetent, DETENT_BREAKAWAY_ROWS,
 } from "../src/shell/panelCanvas.ts";
 
 const rect = (col: number, row: number, colSpan: number, rowSpan: number) => ({ col, row, colSpan, rowSpan });
@@ -316,4 +317,72 @@ test("a remembered position survives a reload (persisted, card off the screen)",
 	} finally {
 		delete (globalThis as { localStorage?: unknown }).localStorage;
 	}
+});
+
+// --- content-fit detent (the gold snap) --------------------------------------
+// applyDetent is the pure half of the resize physics: a sticky snap at the
+// card's content fit that holds against the pointer, then breaks away. The
+// DOM-measuring contentRowSpan half needs a real element, so it's exercised
+// live in the browser, not here.
+const MIN = 20; // stand-in content-fit minimum, in rows
+const fresh = () => ({ broken: false });
+
+test("applyDetent passes a card larger than its content straight through, no hold", () => {
+	const r = applyDetent(MIN + 5, MIN, fresh());
+	assert.deepEqual(r, { span: MIN + 5, state: { broken: false }, held: false });
+});
+
+test("applyDetent at exactly the content fit does not engage (boundary is >=)", () => {
+	const r = applyDetent(MIN, MIN, fresh());
+	assert.equal(r.span, MIN);
+	assert.equal(r.held, false, "resting exactly on the fit is not 'being held against'");
+});
+
+test("applyDetent holds the edge AT the minimum while inside the breakaway zone", () => {
+	const r = applyDetent(MIN - 2, MIN, fresh()); // pulled 2 rows past the fit
+	assert.equal(r.span, MIN, "span pinned to the fit, not to the pointer");
+	assert.equal(r.held, true, "this is the one state that lights the gold cue");
+	assert.equal(r.state.broken, false, "not broken away yet");
+});
+
+test("applyDetent releases continuously: at the breakaway threshold span == min", () => {
+	// min - raw == DETENT_BREAKAWAY_ROWS is NOT < breakaway, so it releases here,
+	// and the released span (raw + breakaway) lands exactly on min — no jump.
+	const raw = MIN - DETENT_BREAKAWAY_ROWS;
+	const r = applyDetent(raw, MIN, fresh());
+	assert.equal(r.span, MIN, "no discontinuity the instant it lets go");
+	assert.equal(r.state.broken, true);
+	assert.equal(r.held, false);
+});
+
+test("applyDetent past breakaway tracks the pointer again, offset by the breakaway", () => {
+	const raw = MIN - DETENT_BREAKAWAY_ROWS - 3;
+	const r = applyDetent(raw, MIN, fresh());
+	assert.equal(r.span, raw + DETENT_BREAKAWAY_ROWS, "pointer tracked, minus the swallowed breakaway");
+	assert.equal(r.state.broken, true);
+});
+
+test("applyDetent stays broken while still below the fit on a later frame", () => {
+	const r = applyDetent(MIN - 8, MIN, { broken: true });
+	assert.equal(r.span, MIN - 8 + DETENT_BREAKAWAY_ROWS);
+	assert.equal(r.state.broken, true, "does not spuriously re-arm below the fit");
+	assert.equal(r.held, false);
+});
+
+test("applyDetent re-arms when dragged back up to the fit, exactly at the fit", () => {
+	// broken, now growing back: raw + breakaway crosses min → re-arm at min.
+	const r = applyDetent(MIN - DETENT_BREAKAWAY_ROWS + 1, MIN, { broken: true });
+	assert.equal(r.span, MIN, "snaps back to the fit on the way up");
+	assert.equal(r.state.broken, false, "detent felt in both directions");
+	assert.equal(r.held, false);
+});
+
+test("applyDetent never reports held while growing a card above its fit", () => {
+	for (const raw of [MIN, MIN + 1, MIN + 40]) {
+		assert.equal(applyDetent(raw, MIN, fresh()).held, false, `raw=${raw} is above the fit`);
+	}
+});
+
+test("DETENT_BREAKAWAY_ROWS is a small positive travel distance", () => {
+	assert.ok(DETENT_BREAKAWAY_ROWS > 0 && DETENT_BREAKAWAY_ROWS <= 10);
 });
