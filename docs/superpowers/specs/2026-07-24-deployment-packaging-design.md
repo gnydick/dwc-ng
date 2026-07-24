@@ -135,9 +135,12 @@ regression.
 - **CLAUDE.md line 15** ("Emit pre-gzipped assets (RRF serves .gz
   transparently)") is now demonstrably wrong for DSF and should be scoped to
   standalone. Editing a hard-constraints doc is the owner's call.
-- **Bundle size.** Eager path is 96.9 KB gz (inside the ~300 KB target); total
-  is 665 KB gz, over 2× it, because Babylon is 232 KB gz. Read as governing
-  the eager path this passes; read as total it does not. Separate decision.
+- ~~**Bundle size.**~~ **Resolved 2026-07-24 (Gabe): not a problem.** For the
+  record, the measurement is eager path 96.9 KB gz, total 665 KB gz, with
+  Babylon accounting for 232 KB gz of the total and loading only when the 3D
+  viewer opens. The packager therefore does no size-driven optimisation and
+  imposes no size gate — it ships what the build produces, minus sourcemaps.
+  CLAUDE.md's "under ~300KB gzipped" line should be read as non-binding.
 - **Unauthenticated writes.** The board accepts anonymous `PUT`/`DELETE` to its
   filesystem from any LAN host. Not introduced by this work, but it is the
   security posture the deploy runs against, and worth a deliberate decision.
