@@ -2,7 +2,7 @@ import { createStore, reconcile, unwrap } from "solid-js/store";
 import type { Connector } from "../connector/types.ts";
 import { FileNotFoundError } from "../connector/types.ts";
 import { isPlainObject, safeEntries } from "../util/safeObject.ts";
-import { parseOverlayPayload } from "./parse.ts";
+import { parseOverlay, parseOverlayPayload } from "./parse.ts";
 import {
 	CONFIG_CACHE_KEY, CONFIG_FILE, CONFIG_VERSION, DEFAULT_CONFIG, MAX_SNAPSHOTS,
 	isUserScreenId,
@@ -91,8 +91,14 @@ export function createConfigStore(): ConfigStore {
 	const [config, setConfig] = createStore<UiConfig>(effective(overlay));
 	const [meta, setMeta] = createStore<{ dirty: boolean; snapshots: ConfigSnapshot[] }>({
 		dirty: cached?.dirty ?? false,
-		snapshots: [],
+		// Restore the backup history too, so it survives a reload.
+		snapshots: cached?.snapshots ?? [],
 	});
+
+	// One place that writes the whole cache — overlay, dirty flag AND the
+	// snapshot history — so no state change can persist two of the three and
+	// silently drop the rest (the dropped-snapshots bug).
+	const persistCache = (): void => writeCache(overlay, meta.dirty, meta.snapshots);
 
 	const apply = (mutate: (draft: ConfigOverlay) => void): void => {
 		const next = structuredClone(overlay);
@@ -103,7 +109,7 @@ export function createConfigStore(): ConfigStore {
 		// Cache on EVERY mutation, marked unsaved. This is the one path every
 		// edit — import, delete, card authoring, a role change — flows through,
 		// so caching here is what makes any of them survive a reload.
-		writeCache(overlay, true);
+		persistCache();
 	};
 
 	const store: ConfigStore = {
@@ -238,6 +244,9 @@ export function createConfigStore(): ConfigStore {
 				const next = [...snapshots, { takenAt: Date.now(), label, overlay: structuredClone(overlay) }];
 				return next.slice(-MAX_SNAPSHOTS);
 			});
+			// Persist the new backup immediately — the whole point is that it
+			// outlives the session that took it.
+			persistCache();
 		},
 		revert(index) {
 			const snap = meta.snapshots[index];
@@ -249,14 +258,15 @@ export function createConfigStore(): ConfigStore {
 			overlay = structuredClone(unwrap(snap.overlay));
 			setConfig(reconcile(effective(overlay)));
 			setMeta("dirty", true);
+			persistCache();
 		},
 
 		async saveToMachine(connector) {
 			store.snapshot("saved");
 			const payload = JSON.stringify({ version: CONFIG_VERSION, overlay }, null, "\t");
 			await connector.upload(CONFIG_FILE, payload);
-			writeCache(overlay, false);
 			setMeta("dirty", false);
+			persistCache();
 		},
 
 		async loadFromMachine(connector) {
@@ -276,8 +286,8 @@ export function createConfigStore(): ConfigStore {
 			// Keep the current (cache-seeded) overlay when the SD has none.
 			overlay = loaded ?? overlay;
 			setConfig(reconcile(effective(overlay)));
-			writeCache(overlay, false);
 			setMeta("dirty", false);
+			persistCache();
 		},
 	};
 
@@ -341,7 +351,20 @@ function prune(value: ConfigOverlay): ConfigOverlay | undefined {
  * the SD card, and the work vanished with no warning (the "import doesn't work
  * after reload" report).
  */
-function loadCache(): { overlay: ConfigOverlay; dirty: boolean } | null {
+/** Snapshots (the Save-to-machine backup history) rebuilt from untrusted cache
+ *  JSON: each entry needs a time, a label, and an overlay that re-passes the
+ *  same parse boundary as the live one. Anything malformed drops. */
+function parseSnapshots(raw: unknown): ConfigSnapshot[] {
+	if (!Array.isArray(raw)) return [];
+	const out: ConfigSnapshot[] = [];
+	for (const entry of raw) {
+		if (!isPlainObject(entry) || typeof entry.takenAt !== "number" || typeof entry.label !== "string") continue;
+		out.push({ takenAt: entry.takenAt, label: entry.label, overlay: parseOverlay(isPlainObject(entry.overlay) ? entry.overlay : {}) });
+	}
+	return out.slice(-MAX_SNAPSHOTS);
+}
+
+function loadCache(): { overlay: ConfigOverlay; dirty: boolean; snapshots: ConfigSnapshot[] } | null {
 	if (typeof localStorage === "undefined") return null;
 	const raw = localStorage.getItem(CONFIG_CACHE_KEY);
 	if (raw === null) return null;
@@ -351,15 +374,20 @@ function loadCache(): { overlay: ConfigOverlay; dirty: boolean } | null {
 	// dirty is a hint, not safety-critical — a garbled flag defaults to clean,
 	// which at worst lets SD win, never destroys unsaved work silently.
 	let dirty = false;
+	let snapshots: ConfigSnapshot[] = [];
 	try {
-		dirty = (JSON.parse(raw) as { dirty?: unknown }).dirty === true;
+		const parsed = JSON.parse(raw) as { dirty?: unknown; snapshots?: unknown };
+		dirty = parsed.dirty === true;
+		// The backup history persists here (not on the SD card) — that is what
+		// stops a reload from clearing it.
+		snapshots = parseSnapshots(parsed.snapshots);
 	} catch {
-		// keep dirty false
+		// keep defaults
 	}
-	return { overlay, dirty };
+	return { overlay, dirty, snapshots };
 }
 
-function writeCache(overlay: ConfigOverlay, dirty: boolean): void {
+function writeCache(overlay: ConfigOverlay, dirty: boolean, snapshots: readonly ConfigSnapshot[]): void {
 	if (typeof localStorage === "undefined") return;
-	localStorage.setItem(CONFIG_CACHE_KEY, JSON.stringify({ version: CONFIG_VERSION, overlay, dirty }));
+	localStorage.setItem(CONFIG_CACHE_KEY, JSON.stringify({ version: CONFIG_VERSION, overlay, dirty, snapshots }));
 }
