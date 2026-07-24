@@ -22,10 +22,14 @@ import { ArcRotateCamera } from "@babylonjs/core/Cameras/arcRotateCamera.js";
 import { HemisphericLight } from "@babylonjs/core/Lights/hemisphericLight.js";
 import { Mesh } from "@babylonjs/core/Meshes/mesh.js";
 import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData.js";
+import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder.js";
+import "@babylonjs/core/Meshes/Builders/sphereBuilder.js"; // registers MeshBuilder.CreateSphere (probe-point markers)
+import "@babylonjs/core/Meshes/thinInstanceMesh.js"; // one draw call for all 256 markers
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial.js";
-import { Vector3 } from "@babylonjs/core/Maths/math.vector.js";
+import { Matrix, Vector3 } from "@babylonjs/core/Maths/math.vector.js";
 import { Color3, Color4 } from "@babylonjs/core/Maths/math.color.js";
-import { sampleGrid, terrainColor } from "./surface.ts";
+import { PointerEventTypes } from "@babylonjs/core/Events/pointerEvents.js";
+import { sampleGridCubic, terrainColor } from "./surface.ts";
 import type { HeightMapMeta } from "./parse.ts";
 
 /** The largest deviation is drawn as this fraction of the bed's longer side. */
@@ -48,13 +52,19 @@ const MESH_RESOLUTION = 96;
 export interface Surface3D {
 	/** Rebuild the mesh from a grid. Cheap enough to call on every edit. */
 	setGrid(rows: number[][], meta: HeightMapMeta, extent: number): void;
+	/** Mark a point as selected, or null to clear it. */
+	setSelected(cell: { row: number; col: number } | null): void;
 	resize(): void;
 	dispose(): void;
 	/** Vertical scale factor currently applied, for the UI to disclose. */
 	exaggeration(): number;
 }
 
-export function createSurface3D(canvas: HTMLCanvasElement): Surface3D {
+export function createSurface3D(
+	canvas: HTMLCanvasElement,
+	/** A probe point was clicked — same act as clicking a dot on the 2D grid. */
+	onPick: (row: number, col: number) => void,
+): Surface3D {
 	const engine = new Engine(canvas, true, { preserveDrawingBuffer: false, stencil: false });
 	const scene = new Scene(engine);
 	// Matches the card ground so the surface floats on the panel, not in a box.
@@ -64,7 +74,7 @@ export function createSurface3D(canvas: HTMLCanvasElement): Surface3D {
 	// so it adds flat grey and desaturates the ramp. Most of the fill therefore
 	// comes from the hemispheric light's groundColor below, which multiplies the
 	// vertex colour and keeps the hue intact.
-	scene.ambientColor = new Color3(0.18, 0.18, 0.18);
+	scene.ambientColor = new Color3(0.3, 0.3, 0.3);
 
 	const camera = new ArcRotateCamera("cam", -Math.PI / 2, Math.PI / 3.2, 400, Vector3.Zero(), scene);
 	camera.attachControl(canvas, true);
@@ -77,11 +87,14 @@ export function createSurface3D(canvas: HTMLCanvasElement): Surface3D {
 	camera.upperBetaLimit = Math.PI / 2 - 0.05;
 
 	const light = new HemisphericLight("light", new Vector3(0.3, 1, 0.2), scene);
-	light.intensity = 0.95;
-	// Fill from below so no facet falls to black. Shading conveys SHAPE, but the
-	// colour conveys the number, and an unlit slope was losing the second to the
-	// first — a deep red trough rendered nearly as dark as a blue one.
-	light.groundColor = new Color3(0.62, 0.62, 0.62);
+	light.intensity = 1;
+	// groundColor is the FLOOR of the hemispheric term, so it sets how dark an
+	// away-facing facet may get. Held high deliberately: the colour carries the
+	// number and shading must not be allowed to swallow it — at 0.62 a slope
+	// still read as muddy, and a dark red trough was hard to tell from a blue
+	// one. The silhouette already conveys the shape (relief is exaggerated
+	// ~260x), so shading only needs to hint at it, not model it.
+	light.groundColor = new Color3(0.86, 0.86, 0.86);
 
 	const material = new StandardMaterial("surface", scene);
 	// Vertex colours carry the meaning; specular highlights would invent
@@ -91,12 +104,103 @@ export function createSurface3D(canvas: HTMLCanvasElement): Surface3D {
 	// Opt this material into scene.ambientColor (Babylon multiplies the two).
 	material.ambientColor = new Color3(1, 1, 1);
 
+	// The probe-point markers, drawn as one thin-instanced sphere. They are the
+	// MEASUREMENTS; the surface between them is interpolation, and a smoothed
+	// surface with no markers cannot be told apart from densely sampled data.
+	// Emissive so they stay legible against every part of the ramp — a white
+	// lit sphere disappears into a yellow peak.
+	const dotMaterial = new StandardMaterial("probeDot", scene);
+	dotMaterial.emissiveColor = new Color3(1, 1, 1);
+	dotMaterial.diffuseColor = new Color3(1, 1, 1);
+	dotMaterial.specularColor = new Color3(0, 0, 0);
+	dotMaterial.disableLighting = true;
+
+	// The selected point, drawn as a slightly larger copper sphere — the same
+	// "this one" accent the rest of the UI uses.
+	const highlightMaterial = new StandardMaterial("probeSelected", scene);
+	highlightMaterial.emissiveColor = new Color3(0.85, 0.52, 0.23);
+	highlightMaterial.diffuseColor = new Color3(0.85, 0.52, 0.23);
+	highlightMaterial.specularColor = new Color3(0, 0, 0);
+	highlightMaterial.disableLighting = true;
+
 	let mesh: Mesh | null = null;
+	let dots: Mesh | null = null;
+	let highlight: Mesh | null = null;
 	let exaggerationFactor = 1;
+	/** Columns in the current grid — maps a thin-instance index back to row/col. */
+	let gridCols = 0;
+	let markerRadius = 1;
+	let selected: { row: number; col: number } | null = null;
+	let lastRows: number[][] = [];
+	let lastMeta: HeightMapMeta | null = null;
+
+	/** Put the highlight on the selected point, or hide it when there is none. */
+	const placeHighlight = (): void => {
+		highlight?.dispose();
+		highlight = null;
+		const meta = lastMeta;
+		const sel = selected;
+		if (sel === null || meta === null) return;
+		const numRows = lastRows.length;
+		const numCols = numRows === 0 ? 0 : lastRows[0]!.length;
+		const value = lastRows[sel.row]?.[sel.col];
+		if (numRows < 2 || numCols < 2 || value === undefined) return;
+		const spanX = meta.max0 - meta.min0;
+		const spanZ = meta.max1 - meta.min1;
+		highlight = MeshBuilder.CreateSphere("selected", { diameter: markerRadius * 3.2, segments: 10 }, scene);
+		highlight.material = highlightMaterial;
+		// Not pickable: it sits over the dot it marks, and picking it would
+		// return no thin-instance index and swallow the click.
+		highlight.isPickable = false;
+		highlight.position = new Vector3(
+			(sel.col / (numCols - 1)) * spanX - spanX / 2,
+			value * exaggerationFactor,
+			(sel.row / (numRows - 1)) * spanZ - spanZ / 2,
+		);
+	};
+
+	// POINTERPICK, not POINTERDOWN: it fires only on a tap that did not drag, so
+	// orbiting the camera across a marker cannot select it by accident.
+	scene.onPointerObservable.add(info => {
+		if (info.type !== PointerEventTypes.POINTERPICK) return;
+		const pick = info.pickInfo;
+		if (pick === null || !pick.hit) return;
+
+		// A marker was hit directly — exact, no rounding.
+		if (pick.pickedMesh === dots) {
+			const index = pick.thinInstanceIndex;
+			if (index === undefined || index < 0 || gridCols === 0) return;
+			onPick(Math.floor(index / gridCols), index % gridCols);
+			return;
+		}
+
+		// Otherwise fall back to the SURFACE and take the nearest probe point.
+		// The markers are ~2mm on a 330mm bed, so demanding a direct hit while
+		// the camera is orbiting makes selection a game of darts. Clicking
+		// anywhere near a point should choose it — the grid is what is
+		// selectable, the sphere is just where it is drawn.
+		const meta = lastMeta;
+		if (pick.pickedMesh !== mesh || meta === null || pick.pickedPoint === null) return;
+		const numRows = lastRows.length;
+		const numCols = numRows === 0 ? 0 : lastRows[0]!.length;
+		if (numRows < 2 || numCols < 2) return;
+		const spanX = meta.max0 - meta.min0;
+		const spanZ = meta.max1 - meta.min1;
+		const col = Math.round(((pick.pickedPoint.x + spanX / 2) / spanX) * (numCols - 1));
+		const row = Math.round(((pick.pickedPoint.z + spanZ / 2) / spanZ) * (numRows - 1));
+		onPick(
+			Math.max(0, Math.min(numRows - 1, row)),
+			Math.max(0, Math.min(numCols - 1, col)),
+		);
+	});
 
 	const setGrid = (rows: number[][], meta: HeightMapMeta, extent: number): void => {
 		mesh?.dispose();
 		mesh = null;
+		dots?.dispose();
+		dots = null;
+		lastRows = rows;
+		lastMeta = meta;
 		const numRows = rows.length;
 		const numCols = numRows === 0 ? 0 : rows[0]!.length;
 		if (numRows < 2 || numCols < 2) return;
@@ -118,7 +222,7 @@ export function createSurface3D(canvas: HTMLCanvasElement): Surface3D {
 			const fr = (r / (n - 1)) * (numRows - 1);
 			for (let c = 0; c < n; c++) {
 				const fc = (c / (n - 1)) * (numCols - 1);
-				const value = sampleGrid(rows, fc, fr);
+				const value = sampleGridCubic(rows, fc, fr);
 				// Centred on the origin so the camera orbits the bed's middle.
 				positions.push(
 					(c / (n - 1)) * spanX - spanX / 2,
@@ -152,6 +256,43 @@ export function createSurface3D(canvas: HTMLCanvasElement): Surface3D {
 		mesh = new Mesh("heightmap", scene);
 		data.applyToMesh(mesh);
 		mesh.material = material;
+
+		// One sphere, thin-instanced to every probe point: 256 markers in a
+		// single draw call. Sized from the bed so it stays proportionate on any
+		// machine, and lifted by its own radius so it rests ON the surface
+		// rather than being half-swallowed by it.
+		const radius = Math.max(spanX, spanZ) * 0.006;
+		dots = MeshBuilder.CreateSphere("probeDots", { diameter: radius * 2, segments: 8 }, scene);
+		dots.material = dotMaterial;
+		// Clickable: selecting a point to re-probe works here as well as on the
+		// 2D grid, so switching view does not cost you the ability to act.
+		dots.thinInstanceEnablePicking = true;
+		gridCols = numCols;
+		const matrices = new Float32Array(numRows * numCols * 16);
+		let m = 0;
+		for (let r = 0; r < numRows; r++) {
+			for (let c = 0; c < numCols; c++) {
+				// The MEASURED value at this point, not the interpolated surface:
+				// a marker that floated on the smoothed curve would hide exactly
+				// the overshoot the smoothing introduces.
+				//
+				// Centred ON the surface, not resting above it. Lifting by the
+				// radius made every marker sit a little proud, which reads as the
+				// measurement being above the surface rather than being the point
+				// the surface passes through.
+				const value = rows[r]![c]!;
+				Matrix.Translation(
+					(c / (numCols - 1)) * spanX - spanX / 2,
+					value * exaggerationFactor,
+					(r / (numRows - 1)) * spanZ - spanZ / 2,
+				).copyToArray(matrices, m);
+				m += 16;
+			}
+		}
+		dots.thinInstanceSetBuffer("matrix", matrices, 16);
+		markerRadius = radius;
+		placeHighlight();
+
 		camera.setTarget(Vector3.Zero());
 	};
 
@@ -159,10 +300,13 @@ export function createSurface3D(canvas: HTMLCanvasElement): Surface3D {
 
 	return {
 		setGrid,
+		setSelected: cell => { selected = cell; placeHighlight(); },
 		resize: () => engine.resize(),
 		dispose: () => {
 			engine.stopRenderLoop();
 			mesh?.dispose();
+			dots?.dispose();
+			highlight?.dispose();
 			scene.dispose();
 			engine.dispose();
 		},

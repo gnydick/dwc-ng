@@ -18,6 +18,8 @@ import type { Surface3D } from "./surface3d.ts";
 export function HeightMapSurface3D(props: {
 	map: HeightMap;
 	valueAt: (row: number, col: number) => number;
+	selected: { row: number; col: number } | null;
+	onSelect: (row: number, col: number) => void;
 }) {
 	let canvas!: HTMLCanvasElement;
 	let host!: HTMLDivElement;
@@ -41,7 +43,9 @@ export function HeightMapSurface3D(props: {
 			try {
 				const mod = await import("./surface3d.ts");
 				if (gen !== generation) return;
-				const created = mod.createSurface3D(canvas);
+				// Read props.onSelect at call time rather than capturing it, so the
+				// scene keeps working against the current handler.
+				const created = mod.createSurface3D(canvas, (row, col) => props.onSelect(row, col));
 				setSurface(created);
 			} catch (err) {
 				setFailed(err instanceof Error ? err.message : String(err));
@@ -56,6 +60,12 @@ export function HeightMapSurface3D(props: {
 		const rows = currentRows();
 		s.setGrid(rows, props.map.meta, gridExtent(rows));
 		setExaggeration(s.exaggeration());
+	});
+
+	// Selection is shared with the 2D grid through the service, so a point
+	// chosen in either view stays chosen when you switch.
+	createEffect(() => {
+		surface()?.setSelected(props.selected);
 	});
 
 	// Babylon sizes to the canvas's backing store, which does not follow CSS on

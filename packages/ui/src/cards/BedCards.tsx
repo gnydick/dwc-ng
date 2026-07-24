@@ -98,7 +98,15 @@ export function HeightmapBody(props: { ctx: CardCtx }) {
 							/>
 						}
 					>
-						<HeightMapSurface3D map={map()} valueAt={(r, c) => store.valueAt(r, c)} />
+						<HeightMapSurface3D
+							map={map()}
+							valueAt={(r, c) => store.valueAt(r, c)}
+							selected={svc.selected()}
+							onSelect={(row, col) => {
+								svc.setSelected({ row, col });
+								svc.setMessage("");
+							}}
+						/>
 					</Show>
 				)}
 			</Show>

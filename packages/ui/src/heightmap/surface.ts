@@ -36,6 +36,57 @@ export function sampleGrid(rows: number[][], col: number, row: number): number {
 	return top + (bottom - top) * fr;
 }
 
+/**
+ * Catmull-Rom through four samples; t runs 0..1 between p1 and p2.
+ *
+ * Interpolating (it passes exactly through every control point), so a probe
+ * point still reads its measured value, while the curve between points is
+ * smooth in its first derivative — which is what removes the creases bilinear
+ * leaves at every sample line.
+ */
+const catmullRom = (p0: number, p1: number, p2: number, p3: number, t: number): number => {
+	const t2 = t * t;
+	const t3 = t2 * t;
+	return 0.5 * (2 * p1 + (-p0 + p2) * t + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t2 + (-p0 + 3 * p1 - 3 * p2 + p3) * t3);
+};
+
+/**
+ * Bicubic sample of the grid at fractional (col, row), clamped at the edges.
+ *
+ * Bilinear is C0: the surface is continuous but its slope jumps at every probe
+ * line, which shows up as faint creases in a 16x16 grid blown up to a whole
+ * card. Catmull-Rom is C1, so the shading runs smoothly across sample lines.
+ *
+ * Caveat worth knowing: a cubic can OVERSHOOT — between two points it may go
+ * slightly beyond both, so a sharp ridge can render a hair taller than anything
+ * measured. That is a property of smoothing, not a bug, and it is why the
+ * probe points are drawn as markers on top: the measured values stay visible
+ * and clickable rather than being implied by the surface.
+ *
+ * Edges clamp by repeating the edge sample, which keeps the border flat instead
+ * of letting an extrapolated control point curl it up.
+ */
+export function sampleGridCubic(rows: number[][], col: number, row: number): number {
+	const numRows = rows.length;
+	if (numRows === 0) return 0;
+	const numCols = rows[0]!.length;
+	if (numCols === 0) return 0;
+
+	const c = Math.max(0, Math.min(numCols - 1, col));
+	const r = Math.max(0, Math.min(numRows - 1, row));
+	const c1 = Math.floor(c);
+	const r1 = Math.floor(r);
+	const fc = c - c1;
+	const fr = r - r1;
+	const ci = (i: number): number => Math.max(0, Math.min(numCols - 1, i));
+	const ri = (i: number): number => Math.max(0, Math.min(numRows - 1, i));
+
+	const alongRow = (rr: number): number =>
+		catmullRom(rows[rr]![ci(c1 - 1)]!, rows[rr]![ci(c1)]!, rows[rr]![ci(c1 + 1)]!, rows[rr]![ci(c1 + 2)]!, fc);
+
+	return catmullRom(alongRow(ri(r1 - 1)), alongRow(ri(r1)), alongRow(ri(r1 + 1)), alongRow(ri(r1 + 2)), fr);
+}
+
 export interface Rgb { r: number; g: number; b: number }
 
 /**
@@ -130,7 +181,7 @@ export function renderSurface(
 		const gridRow = (numRows - 1) * (1 - (height === 1 ? 0 : y / (height - 1)));
 		for (let x = 0; x < width; x++) {
 			const gridCol = (numCols - 1) * (width === 1 ? 0 : x / (width - 1));
-			const { r, g, b } = terrainColor(sampleGrid(rows, gridCol, gridRow), extent);
+			const { r, g, b } = terrainColor(sampleGridCubic(rows, gridCol, gridRow), extent);
 			const i = (y * width + x) * 4;
 			out[i] = r;
 			out[i + 1] = g;

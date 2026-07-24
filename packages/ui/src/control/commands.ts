@@ -156,11 +156,14 @@ export const cmd = {
 	/** Disable mesh compensation AND clear the height map (G29 S2). */
 	clearMesh: (): string => "G29 S2",
 
-	// NOTE: no M561 builder. It cancels a bed PLANE fit, and this machine never
-	// has one — bed.g probes three points with S0 while M671 and three Z motors
-	// are configured, so RRF drives the leadscrews instead of skewing
-	// coordinates. bed.g runs M561 itself as its first line, which is the only
-	// place it does anything. A control for it would send a no-op.
+	// NOTE: no M561 builder — because Gabe does not want the control, NOT because
+	// the code is inert. An earlier comment here claimed it was a no-op on this
+	// machine; that was wrong. M561 clears the bed transform, and observed on
+	// 2026-07-23 mesh compensation goes from active to "none" across a tram,
+	// because bed.g runs M561 as its first line. What it does NOT remove here is
+	// a plane fit — bed.g drives the leadscrews rather than skewing coordinates
+	// — but the mesh it does drop. Deliberately clearing a mesh is G29 S2's job
+	// (cmd.clearMesh), which is on the Mesh card and says what it does.
 
 	/**
 	 * Update a board's main firmware (M997, module S0 = default). Params per
