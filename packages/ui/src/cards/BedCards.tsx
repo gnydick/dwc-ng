@@ -310,20 +310,33 @@ export function ProbePointBody(props: { ctx: CardCtx }) {
 	});
 
 	/**
-	 * Watch the model for a reading that is genuinely NEW.
+	 * Watch for a reading that is genuinely NEW, from two independent signals.
 	 *
-	 * Compared against the value from before the send, never against null: a
-	 * macro that aborts on one of its guards leaves lastStopHeight untouched, so
-	 * "changed" is the only honest evidence that a probe actually happened.
-	 * Failing closed here costs a re-probe; failing open would write a stale
-	 * number into the map.
+	 * They answer different questions, and conflating them was a bug: a new
+	 * "Stopped at height" line in the reply log proves a probe HAPPENED, while
+	 * sensors.probes[].lastStopHeight supplies the VALUE. Requiring the value to
+	 * change was doing both jobs at once, and on a machine repeatable to 1-2um
+	 * reporting 3 decimals, two probes of the same point returning an identical
+	 * height is the EXPECTED outcome — so a good probe was being discarded as
+	 * "no reading" whenever the bed had not moved.
+	 *
+	 * A macro that aborts on one of its guards is still refused: it emits no
+	 * reply line and leaves lastStopHeight untouched, so neither signal fires.
 	 */
-	const waitForNewStopHeight = async (before: number | null): Promise<number | null> => {
+	const waitForNewStopHeight = async (before: number | null, fromLine: number): Promise<number | null> => {
 		const deadline = Date.now() + PROBE_WAIT_MS;
 		while (Date.now() < deadline) {
 			await new Promise(resolve => setTimeout(resolve, 400));
 			const now = app.om.om.sensors.probes[0]?.lastStopHeight ?? null;
-			if (now !== null && now !== before) return now;
+			if (now === null) continue;
+			// The value moved — unambiguous.
+			if (now !== before) return now;
+			// Or it did not, but the machine reported a fresh probe anyway: the
+			// point simply measured the same twice, which is a GOOD result.
+			const lines = app.om.console;
+			for (let i = lines.length - 1; i >= fromLine; i--) {
+				if (parseProbeReply(lines[i]!.text) !== null) return now;
+			}
 		}
 		return null;
 	};
@@ -341,6 +354,9 @@ export function ProbePointBody(props: { ctx: CardCtx }) {
 		// accept a stale number as a fresh measurement. Requiring it to change is
 		// what makes "a probe happened" observable rather than assumed.
 		const before = app.om.om.sensors.probes[0]?.lastStopHeight ?? null;
+		// Where the reply log stands BEFORE sending, so an older "Stopped at
+		// height" can never be read as evidence that THIS probe ran.
+		const fromLine = app.om.console.length;
 		let stopHeight: number | null = null;
 		let sendError = "";
 		try {
@@ -360,7 +376,7 @@ export function ProbePointBody(props: { ctx: CardCtx }) {
 		// to parse and nothing to lose if the reply never arrives.
 		if (stopHeight === null) {
 			svc.setMessage(sendError === "" ? "Waiting for the reading…" : `${sendError} — waiting for the reading…`);
-			stopHeight = await waitForNewStopHeight(before);
+			stopHeight = await waitForNewStopHeight(before, fromLine);
 			if (stopHeight !== null) setReply(`Stopped at height ${stopHeight} mm (from the object model)`);
 		}
 		const probe = app.om.om.sensors.probes[0];
