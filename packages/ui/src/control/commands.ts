@@ -28,6 +28,17 @@ export const gcodeQuote = (value: string): string =>
 /** Run a macro file (M98). The P filename is quoted through gcodeQuote. */
 const runMacro = (path: string): string => `M98 P${gcodeQuote(path)}`;
 
+/**
+ * A height-map file name for G29's P parameter.
+ *
+ * P names a file WITHIN /sys (S0's default is /sys/heightmap.csv and P replaces
+ * only the name), but callers hold full paths like "0:/sys/foo.csv". Reducing
+ * to the last segment keeps a path from reaching the board and being resolved
+ * somewhere unintended. Quoted like every other string parameter, because a
+ * name can come from an operator's typing.
+ */
+const meshFile = (file: string): string => gcodeQuote(file.split("/").pop() ?? file);
+
 export interface FilamentOpts {
 	/** Select this tool first. Undefined = act on whatever is already selected. */
 	selectTool?: number;
@@ -119,8 +130,40 @@ export const cmd = {
 	/** M0: runs cancel.g when paused-and-homed, stop.g otherwise. */
 	cancelPrint: (): string => "M0",
 
-	/** Load + activate the saved height map (G29 S1, reference/duet-gcode.md). */
-	loadHeightmap: (): string => "G29 S1",
+	// --- mesh bed compensation (G29) ---
+	//
+	// Forms per reference/duet-gcode.md G29. NOTE: DWC only ever sends bare
+	// G29 / G29 S1 / G29 S2 (MovementPanel.vue:51,59,63) — it has no named-file
+	// support at all, so the P forms below have no dwc precedent to defer to and
+	// follow the wiki's own examples (G29 S1 P"usual.csv").
+	//
+	// P is a BARE FILENAME, not a path — see meshFile above.
+
+	/** Load + activate a saved height map (G29 S1; equivalent to M375). */
+	loadHeightmap: (file?: string): string =>
+		file === undefined ? "G29 S1" : `G29 S1 P${meshFile(file)}`,
+
+	/**
+	 * Probe the bed. Bare G29 runs sys/mesh.g when it exists and behaves as
+	 * G29 S0 otherwise — so a machine with its own meshing macro keeps using it,
+	 * which sending S0 explicitly would silently bypass.
+	 */
+	probeMesh: (): string => "G29",
+
+	/** Save the CURRENT height map under a chosen name (G29 S3, RRF 2.04+). */
+	saveHeightmapAs: (file: string): string => `G29 S3 P${meshFile(file)}`,
+
+	/** Disable mesh compensation AND clear the height map (G29 S2). */
+	clearMesh: (): string => "G29 S2",
+
+	// NOTE: no M561 builder — because Gabe does not want the control, NOT because
+	// the code is inert. An earlier comment here claimed it was a no-op on this
+	// machine; that was wrong. M561 clears the bed transform, and observed on
+	// 2026-07-23 mesh compensation goes from active to "none" across a tram,
+	// because bed.g runs M561 as its first line. What it does NOT remove here is
+	// a plane fit — bed.g drives the leadscrews rather than skewing coordinates
+	// — but the mesh it does drop. Deliberately clearing a mesh is G29 S2's job
+	// (cmd.clearMesh), which is on the Mesh card and says what it does.
 
 	/**
 	 * Update a board's main firmware (M997, module S0 = default). Params per

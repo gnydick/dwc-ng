@@ -59,13 +59,13 @@ export const CARD_DEFS = {
 		orientationToggle: true,
 		size: { colSpan: 12, rowSpan: 95 },
 	}),
-	/** Tools & heaters table (bed has no standby cell). */
+	/** Tools & heaters table: state + setpoint entry and per-heater actions. */
 	"tools-heaters": defineCard({
 		title: "Tools & heaters",
 		ariaLabel: "Tools and heaters",
-		tip: "tools · heat.heaters",
+		tip: "tools · heat.heaters · M568 · M562",
 		orientationToggle: true,
-		size: { colSpan: 12, rowSpan: 89 },
+		size: { colSpan: 12, rowSpan: 110 },
 	}),
 	/** The print card — progress + pause/resume/cancel; Reprint when idle. */
 	"active-job": defineCard({
@@ -155,13 +155,6 @@ export const CARD_DEFS = {
 		size: { colSpan: 12, rowSpan: 32 },
 		visibleWhen: ctx => ctx.om.om.state.atxPower !== null,
 	}),
-	/** Tool select / deselect with the tool-change macro bitmask. */
-	tools: defineCard({
-		title: "Tools",
-		ariaLabel: "Tools",
-		tip: "T · state.currentTool",
-		size: { colSpan: 12, rowSpan: 33 },
-	}),
 	/** Filament load/unload — a tool with no extruder cannot hold filament. */
 	filament: defineCard({
 		title: "Filament",
@@ -170,11 +163,11 @@ export const CARD_DEFS = {
 		size: { colSpan: 12, rowSpan: 50 },
 		visibleWhen: ctx => ctx.om.om.tools.some(t => t !== null && t.filamentExtruder >= 0),
 	}),
-	/** Heater setpoints per tool + bed (M568/M140). */
+	/** Tools: select a tool by its label, plus its heater setpoints. */
 	heaters: defineCard({
-		title: "Heaters",
-		ariaLabel: "Heaters",
-		tip: "M568 · M140",
+		title: "Tools",
+		ariaLabel: "Tools",
+		tip: "T · M568 · M140",
 		size: { colSpan: 12, rowSpan: 62 },
 	}),
 	/** Jog pad, aux axes, coupler, extrude. */
@@ -266,7 +259,9 @@ export const CARD_DEFS = {
 	heightmap: defineCard({
 		title: "Height map",
 		ariaLabel: "Height map",
-		tip: "0:/sys/heightmap.csv",
+		// Not a fixed filename any more — the Mesh card chooses which map is
+		// loaded, and naming one here would be wrong for every other choice.
+		tip: "0:/sys/*.csv",
 		size: { colSpan: 16, rowSpan: 150 },
 	}),
 	/** Single-point re-probe + manual nudge for the selected cell. */
@@ -275,6 +270,20 @@ export const CARD_DEFS = {
 		ariaLabel: "Probe point",
 		tip: "config: bed.probePointCommand",
 		size: { colSpan: 8, rowSpan: 90 },
+	}),
+	/** Which height map is in use, and probe / load / save-as / clear. */
+	mesh: defineCard({
+		title: "Mesh",
+		ariaLabel: "Mesh bed compensation",
+		tip: "G29 · G29 S1 · G29 S2 · G29 S3",
+		size: { colSpan: 8, rowSpan: 60 },
+	}),
+	/** Bed tramming (bed.g), the re-home it requires, and the last result. */
+	"bed-tram": defineCard({
+		title: "Bed tram",
+		ariaLabel: "Bed tram",
+		tip: "G32 · G28 Z",
+		size: { colSpan: 8, rowSpan: 40 },
 	}),
 	/** Axis role labels (config overlay). */
 	"axis-roles": defineCard({
@@ -319,6 +328,15 @@ export const CARD_DEFS = {
 		ariaLabel: "Configuration save",
 		tip: "0:/sys/dwc-ng-config.json",
 		size: { colSpan: 24, rowSpan: 26 },
+	}),
+	/** Define the materials this machine knows about: the filament directories
+	 *  under 0:/filaments and their load/unload/config macros. Machine
+	 *  management, not a file browser. */
+	"filament-editor": defineCard({
+		title: "Filament editor",
+		ariaLabel: "Filament editor",
+		tip: "0:/filaments · M703",
+		size: { colSpan: 24, rowSpan: 130 },
 	}),
 } as const satisfies Record<string, CardMeta>;
 

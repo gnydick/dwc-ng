@@ -18,7 +18,7 @@
  * Factories may use signals/resources/effects: they run under the screen's
  * owner via runWithOwner.
  */
-import { createEffect, createResource, createSignal, getOwner, runWithOwner } from "solid-js";
+import { createEffect, createResource, createSignal, getOwner, onCleanup, runWithOwner } from "solid-js";
 import { createFileBrowser } from "../files/browser.ts";
 import { createHeightMapStore } from "../heightmap/store.ts";
 import { cellPosition } from "../heightmap/parse.ts";
@@ -108,6 +108,24 @@ function heightmapService(base: ServiceBaseCtx) {
 		if (loadedWhileConnected) return;
 		loadedWhileConnected = true;
 		void store.load();
+	});
+
+	// Accepted-but-unsaved map edits live only in the overlay, so a reload or a
+	// navigation drops them silently — Gabe lost two accepted probes exactly
+	// that way, each of which had cost a real probing cycle on the machine.
+	// The browser's own prompt is the only thing that can interrupt a reload,
+	// so it is hooked for as long as there is something to lose and removed the
+	// moment there is not. Guarded on `window` because this module is imported
+	// by node tests.
+	createEffect(() => {
+		if (!store.dirty() || typeof window === "undefined") return;
+		const warn = (event: BeforeUnloadEvent): void => {
+			// preventDefault() IS the modern opt-in to the browser's confirm
+			// dialog; the wording is the browser's own and cannot be set.
+			event.preventDefault();
+		};
+		window.addEventListener("beforeunload", warn);
+		onCleanup(() => window.removeEventListener("beforeunload", warn));
 	});
 
 	return { store, selected, setSelected, message, setMessage, cell };

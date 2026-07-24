@@ -27,12 +27,12 @@ export interface ScreenDef {
 /** Machine: live DRO, tools & heaters, current job, sensors, temps. */
 export const MACHINE_COMPOSITION: Composition = {
 	position: { col: 0, row: 0, colSpan: 12, rowSpan: 95 },
-	"tools-heaters": { col: 12, row: 0, colSpan: 12, rowSpan: 89 },
+	"tools-heaters": { col: 12, row: 0, colSpan: 12, rowSpan: 110 },
 	"active-job": { col: 0, row: 95, colSpan: 12, rowSpan: 40 },
-	sensors: { col: 12, row: 89, colSpan: 12, rowSpan: 42 },
-	temperatures: { col: 0, row: 135, colSpan: 24, rowSpan: 80 },
-	console: { col: 0, row: 215, colSpan: 24, rowSpan: 75 },
-	camera: { col: 0, row: 290, colSpan: 8, rowSpan: 75 },
+	sensors: { col: 12, row: 110, colSpan: 12, rowSpan: 42 },
+	temperatures: { col: 0, row: 152, colSpan: 24, rowSpan: 80 },
+	console: { col: 0, row: 232, colSpan: 24, rowSpan: 75 },
+	camera: { col: 0, row: 307, colSpan: 8, rowSpan: 75 },
 };
 
 /** Control: the interactive surface — every control 1:1 with G-code.
@@ -43,7 +43,6 @@ export const CONTROL_COMPOSITION: Composition = {
 	heaters: { col: 0, row: 83, colSpan: 12, rowSpan: 62 },
 	fans: { col: 0, row: 145, colSpan: 12, rowSpan: 62 },
 	tuning: { col: 0, row: 207, colSpan: 12, rowSpan: 33 },
-	tools: { col: 12, row: 32, colSpan: 12, rowSpan: 33 },
 	filament: { col: 12, row: 65, colSpan: 12, rowSpan: 50 },
 	movement: { col: 12, row: 115, colSpan: 12, rowSpan: 123 },
 	atx: { col: 12, row: 238, colSpan: 12, rowSpan: 32 },
@@ -90,12 +89,15 @@ export const SYSTEM_COMPOSITION: Composition = {
 	camera: { col: 0, row: 307, colSpan: 8, rowSpan: 75 },
 };
 
-/** Bed: the height map + single-point re-probe. */
+/** Bed maintenance: the height map, which map is in use, tramming, and
+ *  single-point re-probe. Grew from the height-map-only screen (audit item). */
 export const BED_COMPOSITION: Composition = {
 	heightmap: { col: 0, row: 0, colSpan: 16, rowSpan: 150 },
-	"probe-point": { col: 16, row: 0, colSpan: 8, rowSpan: 90 },
-	console: { col: 0, row: 150, colSpan: 24, rowSpan: 75 },
-	camera: { col: 0, row: 225, colSpan: 8, rowSpan: 75 },
+	mesh: { col: 16, row: 0, colSpan: 8, rowSpan: 60 },
+	"bed-tram": { col: 16, row: 60, colSpan: 8, rowSpan: 40 },
+	"probe-point": { col: 16, row: 100, colSpan: 8, rowSpan: 90 },
+	console: { col: 0, row: 190, colSpan: 24, rowSpan: 75 },
+	camera: { col: 0, row: 265, colSpan: 8, rowSpan: 75 },
 };
 
 /** Settings: config-overlay editors + the save card (the former save-bar). */
@@ -106,9 +108,10 @@ export const SETTINGS_COMPOSITION: Composition = {
 	"saved-versions": { col: 12, row: 76, colSpan: 12, rowSpan: 40 },
 	"bed-probe": { col: 12, row: 116, colSpan: 12, rowSpan: 45 },
 	"sensor-names": { col: 0, row: 161, colSpan: 24, rowSpan: 72 },
-	"config-save": { col: 0, row: 233, colSpan: 24, rowSpan: 26 },
-	console: { col: 0, row: 259, colSpan: 24, rowSpan: 75 },
-	camera: { col: 0, row: 334, colSpan: 8, rowSpan: 75 },
+	"filament-editor": { col: 0, row: 233, colSpan: 24, rowSpan: 130 },
+	"config-save": { col: 0, row: 363, colSpan: 24, rowSpan: 26 },
+	console: { col: 0, row: 389, colSpan: 24, rowSpan: 75 },
+	camera: { col: 0, row: 464, colSpan: 8, rowSpan: 75 },
 };
 
 /** The built-in screens, in nav order. Ids are stable identities. */
@@ -120,7 +123,10 @@ export const BUILTIN_SCREENS = {
 	system: { name: "System", composition: SYSTEM_COMPOSITION, class: "system" },
 	settings: { name: "Settings", composition: SETTINGS_COMPOSITION, class: "settings" },
 	activity: { name: "Activity", composition: ACTIVITY_COMPOSITION },
-	bed: { name: "Bed", composition: BED_COMPOSITION, class: "bed" },
+	// Renamed from "Bed": the screen is no longer just the height map. The ID
+	// stays `bed` — it is the layout storage key, so renaming it would orphan
+	// every saved layout.
+	bed: { name: "Bed maintenance", composition: BED_COMPOSITION, class: "bed" },
 } as const satisfies Record<string, ScreenDef>;
 
 export type BuiltinScreenId = keyof typeof BUILTIN_SCREENS;
