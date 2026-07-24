@@ -2129,6 +2129,23 @@
 .hm-actions { display: flex; gap: 8px; }
 
 /* Manual nudge: adjust a probe point by hand, no machine command. */
+/* Mesh card: which map is in use, then what you can do to it. Rows stack at a
+   fixed rhythm so nothing shifts when the file list or a message changes. */
+.mesh-card { display: flex; flex-direction: column; gap: 10px; }
+.mesh-pick { display: flex; align-items: center; gap: 8px; }
+.mesh-label {
+	font: 600 10.5px/1 var(--font-display);
+	letter-spacing: 0.14em;
+	text-transform: uppercase;
+	color: var(--silk-dim);
+	white-space: nowrap;
+}
+/* min-width: 0 so a long path ellipsises inside the select instead of forcing
+   the row wider than the card. */
+.mesh-pick .filament-pick { flex: 1 1 auto; min-width: 0; height: var(--ctl-h); }
+.mesh-actions { display: flex; flex-wrap: wrap; gap: var(--ctl-gap); }
+.mesh-saveas input { width: 140px; }
+
 .hm-nudge { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .hm-nudge .fb-act {
 	/* Reserved: the label carries the step, so "− 0.01" and "− 0.005" differ in

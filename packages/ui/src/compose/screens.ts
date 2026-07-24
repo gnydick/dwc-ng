@@ -89,12 +89,15 @@ export const SYSTEM_COMPOSITION: Composition = {
 	camera: { col: 0, row: 307, colSpan: 8, rowSpan: 75 },
 };
 
-/** Bed: the height map + single-point re-probe. */
+/** Bed maintenance: the height map, which map is in use, tramming, and
+ *  single-point re-probe. Grew from the height-map-only screen (audit item). */
 export const BED_COMPOSITION: Composition = {
 	heightmap: { col: 0, row: 0, colSpan: 16, rowSpan: 150 },
-	"probe-point": { col: 16, row: 0, colSpan: 8, rowSpan: 90 },
-	console: { col: 0, row: 150, colSpan: 24, rowSpan: 75 },
-	camera: { col: 0, row: 225, colSpan: 8, rowSpan: 75 },
+	mesh: { col: 16, row: 0, colSpan: 8, rowSpan: 60 },
+	"bed-tram": { col: 16, row: 60, colSpan: 8, rowSpan: 30 },
+	"probe-point": { col: 16, row: 90, colSpan: 8, rowSpan: 90 },
+	console: { col: 0, row: 180, colSpan: 24, rowSpan: 75 },
+	camera: { col: 0, row: 255, colSpan: 8, rowSpan: 75 },
 };
 
 /** Settings: config-overlay editors + the save card (the former save-bar). */
@@ -120,7 +123,10 @@ export const BUILTIN_SCREENS = {
 	system: { name: "System", composition: SYSTEM_COMPOSITION, class: "system" },
 	settings: { name: "Settings", composition: SETTINGS_COMPOSITION, class: "settings" },
 	activity: { name: "Activity", composition: ACTIVITY_COMPOSITION },
-	bed: { name: "Bed", composition: BED_COMPOSITION, class: "bed" },
+	// Renamed from "Bed": the screen is no longer just the height map. The ID
+	// stays `bed` — it is the layout storage key, so renaming it would orphan
+	// every saved layout.
+	bed: { name: "Bed maintenance", composition: BED_COMPOSITION, class: "bed" },
 } as const satisfies Record<string, ScreenDef>;
 
 export type BuiltinScreenId = keyof typeof BUILTIN_SCREENS;

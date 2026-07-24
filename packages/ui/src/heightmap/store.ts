@@ -31,12 +31,15 @@ const key = (row: number, col: number): string => `${row},${col}`;
 
 export interface HeightMapStore {
 	map: Accessor<HeightMap | null>;
+	/** The file the loaded map came from — what save() writes back to. */
+	path: Accessor<string>;
 	loading: Accessor<boolean>;
 	error: Accessor<string>;
 	pending: Accessor<Map<string, PendingEdit>>;
 	dirty: Accessor<boolean>;
 	valueAt(row: number, col: number): number;
-	load(): Promise<void>;
+	/** Load a map. Omit the path to reload whichever file is current. */
+	load(path?: string): Promise<void>;
 	edit(row: number, col: number, value: number): void;
 	discard(): void;
 	save(): Promise<OpResult>;
@@ -49,6 +52,10 @@ export function createHeightMapStore(connector: Connector): HeightMapStore {
 	const [loading, setLoading] = createSignal(false);
 	const [error, setError] = createSignal("");
 	const [pending, setPending] = createSignal<Map<string, PendingEdit>>(new Map());
+	// Which file the loaded map came from. save() writes back HERE and reloads
+	// THIS file, so picking a different map can never write one file and tell
+	// the machine to compensate from another.
+	const [path, setPath] = createSignal(HEIGHTMAP_FILE);
 
 	const dirty = createMemo(() => pending().size > 0);
 
@@ -58,21 +65,27 @@ export function createHeightMapStore(connector: Connector): HeightMapStore {
 		return map()?.rows[row]?.[col] ?? 0;
 	};
 
-	const load = async (): Promise<void> => {
+	const load = async (next?: string): Promise<void> => {
+		const target = next ?? path();
 		setLoading(true);
 		setError("");
 		try {
-			const parsed = parseHeightMap(await connector.download(HEIGHTMAP_FILE));
+			const parsed = parseHeightMap(await connector.download(target));
 			if (parsed === null) {
-				setError(`${HEIGHTMAP_FILE} is not a height map this build understands.`);
+				setError(`${target} is not a height map this build understands.`);
 				setMap(null);
 			} else {
 				setMap(parsed);
 				setPending(new Map());
 			}
+			// Adopt the path either way. A file that failed to parse is still the
+			// one being looked at, and leaving `path` pointing at the PREVIOUS file
+			// would aim a later save at a map the operator is no longer editing.
+			setPath(target);
 		} catch (err) {
 			setError(reasonOf(err));
 			setMap(null);
+			setPath(target);
 		} finally {
 			setLoading(false);
 		}
@@ -102,11 +115,19 @@ export function createHeightMapStore(connector: Connector): HeightMapStore {
 		// fails, the operator must be exactly where they were.
 		const rows = current.rows.map((r, row) => r.map((_, col) => valueAt(row, col)));
 		const edited: HeightMap = { ...current, rows };
+		const target = path();
 		try {
-			await connector.upload(HEIGHTMAP_FILE, serializeHeightMap(edited));
+			await connector.upload(target, serializeHeightMap(edited));
 			// Only now: the file on the card and the machine's live map must not be
-			// able to diverge.
-			await connector.sendCode(cmd.loadHeightmap());
+			// able to diverge. The reload names the SAME file that was just written
+			// — G29 S1 with no P would reload heightmap.csv, so editing any other
+			// map would leave the machine compensating from a file we did not touch.
+			// The default file still sends the BARE form: that is the exact command
+			// DWC issues and the one verified on the board, and the P form is only
+			// worth the risk where it changes the outcome.
+			await connector.sendCode(
+				cmd.loadHeightmap(target === HEIGHTMAP_FILE ? undefined : target),
+			);
 		} catch (err) {
 			return { ok: false, error: reasonOf(err) };
 		}
@@ -115,5 +136,5 @@ export function createHeightMapStore(connector: Connector): HeightMapStore {
 		return { ok: true };
 	};
 
-	return { map, loading, error, pending, dirty, valueAt, load, edit, discard, save };
+	return { map, path, loading, error, pending, dirty, valueAt, load, edit, discard, save };
 }

@@ -170,6 +170,37 @@ test("job control forms", () => {
 	assert.equal(cmd.loadHeightmap(), "G29 S1");
 });
 
+// Mesh bed compensation. DWC has no named-file support to copy, so these P
+// forms follow reference/duet-gcode.md G29 and the risk is entirely ours.
+test("mesh commands: bare forms match what DWC sends", () => {
+	assert.equal(cmd.probeMesh(), "G29");
+	assert.equal(cmd.clearMesh(), "G29 S2");
+	assert.equal(cmd.clearBedTransform(), "M561");
+	// No argument = no P at all, NOT P"heightmap.csv": the bare form is the one
+	// verified on the board, so the default path must keep sending it.
+	assert.equal(cmd.loadHeightmap(), "G29 S1");
+});
+
+test("mesh P parameter is a bare filename, never a path", () => {
+	// G29's P names a file WITHIN /sys. Sending the full path could resolve
+	// somewhere unintended, so callers' paths reduce to the last segment.
+	assert.equal(cmd.loadHeightmap("0:/sys/pei-heightmap.csv"), 'G29 S1 P"pei-heightmap.csv"');
+	assert.equal(cmd.saveHeightmapAs("0:/sys/backup.csv"), 'G29 S3 P"backup.csv"');
+	// Already-bare names pass through unchanged.
+	assert.equal(cmd.saveHeightmapAs("plain.csv"), 'G29 S3 P"plain.csv"');
+});
+
+test("mesh filenames are quoted — real height maps have spaces in them", () => {
+	// Gabe's machine carries "Textured pei heightmap.csv" and friends; unquoted
+	// these would split into extra G-code parameters.
+	assert.equal(
+		cmd.loadHeightmap("0:/sys/Textured pei heightmap.csv"),
+		'G29 S1 P"Textured pei heightmap.csv"',
+	);
+	// And the same doubling-escape as every other quoted parameter.
+	assert.equal(cmd.saveHeightmapAs('odd"name.csv'), 'G29 S3 P"odd""name.csv"');
+});
+
 test("runMacro quotes the path; embedded quotes escape by doubling", () => {
 	assert.equal(cmd.runMacro("/macros/park.g"), 'M98 P"/macros/park.g"');
 	// The bug class the quoting kills: a filename carrying a quote used to

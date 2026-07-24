@@ -25,7 +25,7 @@ import { HOMING_SPEC, MOVEMENT_SPEC } from "./controls/builtin.ts";
 import {
 	JobFilesBody, JobDetailsBody, MacrosBody, SystemFilesBody, OmInspectorBody, MacrosEditorBody, SystemEditorBody,
 } from "../cards/FileCards.tsx";
-import { HeightmapBody, ProbePointBody } from "../cards/BedCards.tsx";
+import { HeightmapBody, ProbePointBody, MeshBody, BedTramBody } from "../cards/BedCards.tsx";
 import {
 	AxisRolesBody, DockSensorsBody, BedProbeBody, CameraConfigBody, SensorNamesBody, SavedVersionsBody, ConfigSaveBody,
 } from "../cards/SettingsCards.tsx";
@@ -75,6 +75,8 @@ export const CARD_RENDER: Record<CardId, CardRender> = {
 	firmware: { body: () => <FirmwareBody /> },
 	heightmap: { body: ctx => <HeightmapBody ctx={ctx} /> },
 	"probe-point": { body: ctx => <ProbePointBody ctx={ctx} /> },
+	mesh: { body: ctx => <MeshBody ctx={ctx} /> },
+	"bed-tram": { body: () => <BedTramBody /> },
 	"axis-roles": { body: () => <AxisRolesBody />, actions: resetAction("axisRoles") },
 	"tool-dock-sensors": { body: () => <DockSensorsBody />, actions: resetAction("dockSensors") },
 	"bed-probe": { body: () => <BedProbeBody />, actions: resetAction("bed") },

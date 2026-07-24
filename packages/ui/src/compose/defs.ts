@@ -259,7 +259,9 @@ export const CARD_DEFS = {
 	heightmap: defineCard({
 		title: "Height map",
 		ariaLabel: "Height map",
-		tip: "0:/sys/heightmap.csv",
+		// Not a fixed filename any more — the Mesh card chooses which map is
+		// loaded, and naming one here would be wrong for every other choice.
+		tip: "0:/sys/*.csv",
 		size: { colSpan: 16, rowSpan: 150 },
 	}),
 	/** Single-point re-probe + manual nudge for the selected cell. */
@@ -268,6 +270,20 @@ export const CARD_DEFS = {
 		ariaLabel: "Probe point",
 		tip: "config: bed.probePointCommand",
 		size: { colSpan: 8, rowSpan: 90 },
+	}),
+	/** Which height map is in use, and probe / load / save-as / clear. */
+	mesh: defineCard({
+		title: "Mesh",
+		ariaLabel: "Mesh bed compensation",
+		tip: "G29 · G29 S1 · G29 S2 · G29 S3",
+		size: { colSpan: 8, rowSpan: 60 },
+	}),
+	/** Bed tramming (bed.g) and clearing the bed plane fit. */
+	"bed-tram": defineCard({
+		title: "Bed tram",
+		ariaLabel: "Bed tram",
+		tip: "G32 · M561",
+		size: { colSpan: 8, rowSpan: 30 },
 	}),
 	/** Axis role labels (config overlay). */
 	"axis-roles": defineCard({

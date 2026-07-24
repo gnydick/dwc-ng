@@ -11,12 +11,19 @@
  * with must not be able to diverge. Re-probing sends ONE operator-configured
  * command and reports what came back; accepting is a separate act.
  */
-import { Show, createEffect, createSignal } from "solid-js";
+import { For, Show, createEffect, createResource, createSignal } from "solid-js";
 import { useApp } from "../shell/context.ts";
 import { HeightMapGrid } from "../heightmap/HeightMapGrid.tsx";
 import { buildProbeCommand } from "../heightmap/probeCommand.ts";
 import { parseProbeReply, heightmapValue } from "../heightmap/probeReply.ts";
+import { HEIGHTMAP_FILE } from "../heightmap/store.ts";
+import { GcodeButton } from "../control/GcodeButton.tsx";
+import { cmd } from "../control/commands.ts";
+import { parseFileName } from "../files/path.ts";
 import type { CardCtx } from "../compose/ctx.ts";
+
+/** Height maps live beside the firmware's own default, in /sys. */
+const SYS_DIR = "0:/sys";
 
 export function HeightmapBody(props: { ctx: CardCtx }) {
 	const svc = props.ctx.service("heightmap");
@@ -60,6 +67,133 @@ export function HeightmapBody(props: { ctx: CardCtx }) {
 				)}
 			</Show>
 		</>
+	);
+}
+
+/**
+ * Mesh bed compensation: which height map the machine is using, and the four
+ * things you can do to it.
+ *
+ * The picker drives BOTH halves at once — it loads the file into the grid on
+ * this screen AND is what Load sends to the board — so the map you are looking
+ * at is always the map you are acting on. Probing, loading, clearing and
+ * save-as stay 1:1 with their G-codes (G29 / G29 S1 P / G29 S2 / G29 S3 P);
+ * nothing here decides whether a mesh is appropriate, only which file.
+ */
+export function MeshBody(props: { ctx: CardCtx }) {
+	const app = useApp();
+	const svc = props.ctx.service("heightmap");
+	const { store } = svc;
+
+	const connected = (): boolean => app.om.connection.status === "connected";
+
+	// Every .csv in /sys is a candidate map. Listed rather than typed: the whole
+	// point of the item is choosing among the ones that exist.
+	const [files, { refetch }] = createResource(
+		() => (connected() ? SYS_DIR : false),
+		async dir => {
+			const entries = await app.connector.list(dir as string);
+			return entries
+				.filter(e => e.type === "f" && e.name.toLowerCase().endsWith(".csv"))
+				.map(e => `${SYS_DIR}/${e.name}`)
+				.sort((a, b) => a.localeCompare(b));
+		},
+	);
+
+	/** The name Save-as will write. Blank until typed. */
+	const [saveAs, setSaveAs] = createSignal("");
+
+	// A .csv suffix is not optional: G29 reads height maps by name and a file
+	// saved without one is a map you cannot pick back up here.
+	const saveTarget = (): string | null => {
+		const raw = saveAs().trim();
+		if (raw === "") return null;
+		const name = parseFileName(raw.toLowerCase().endsWith(".csv") ? raw : `${raw}.csv`);
+		return name === null ? null : `${SYS_DIR}/${name}`;
+	};
+
+	/** Files the board knows about, plus whatever is loaded, so the select can
+	 *  never sit on a blank while showing a real map. */
+	const options = (): string[] => {
+		const list = [...(files() ?? [])];
+		if (!list.includes(store.path())) list.push(store.path());
+		if (!list.includes(HEIGHTMAP_FILE)) list.unshift(HEIGHTMAP_FILE);
+		return list;
+	};
+
+	const pick = (path: string): void => {
+		svc.setMessage("");
+		svc.setSelected(null);
+		void store.load(path);
+	};
+
+	return (
+		<div class="mesh-card">
+			<label class="mesh-pick">
+				<span class="mesh-label">Height map</span>
+				<select
+					class="filament-pick"
+					aria-label="Height map file"
+					value={store.path()}
+					onChange={e => pick(e.currentTarget.value)}
+				>
+					<For each={options()}>{path => <option value={path}>{path.replace(`${SYS_DIR}/`, "")}</option>}</For>
+				</select>
+				<button class="fb-tool" disabled={!connected()} onClick={() => void refetch()}>Rescan</button>
+			</label>
+
+			{/* Loading into the GRID is a download; telling the machine to compensate
+			    from it is a G-code. They are separate acts and separately labelled —
+			    picking a file to look at must not silently re-level the machine. */}
+			<div class="mesh-actions">
+				<GcodeButton
+					label="Probe bed"
+					variant="go"
+					stamp={false}
+					command={cmd.probeMesh()}
+					onSent={() => svc.setMessage("Probing — the grid reloads when it finishes.")}
+				/>
+				<GcodeButton
+					label="Use this map"
+					stamp={false}
+					command={cmd.loadHeightmap(store.path() === HEIGHTMAP_FILE ? undefined : store.path())}
+				/>
+				<GcodeButton
+					label="Save as"
+					stamp={false}
+					disabled={saveTarget() === null}
+					command={cmd.saveHeightmapAs(saveTarget() ?? "heightmap.csv")}
+					onSent={() => { setSaveAs(""); void refetch(); }}
+				/>
+				<GcodeButton label="Clear mesh" variant="danger" stamp={false} command={cmd.clearMesh()} />
+			</div>
+
+			<label class="feed-field mesh-saveas">
+				Save as
+				<input
+					type="text"
+					placeholder="name.csv"
+					value={saveAs()}
+					aria-label="Save the current height map as"
+					onInput={e => setSaveAs(e.currentTarget.value)}
+				/>
+			</label>
+		</div>
+	);
+}
+
+/**
+ * Bed tramming — G32 runs bed.g, which on this machine levels by driving the Z
+ * leadscrews (UVW) independently. M561 is its counterpart: it cancels the bed
+ * PLANE fit, where Clear mesh on the Mesh card drops the mesh. Two different
+ * compensations, so two different controls rather than one that guesses.
+ */
+export function BedTramBody() {
+	return (
+		<div class="mesh-actions">
+			<GcodeButton label="Tram bed" variant="go" stamp={false} command={cmd.bedTram()} />
+			<GcodeButton label="Clear transform" variant="danger" stamp={false} command={cmd.clearBedTransform()} />
+		</div>
 	);
 }
 
