@@ -441,6 +441,9 @@
 }
 .card-tip:hover { color: var(--silk); border-color: var(--copper); }
 .card-tip.copied { color: var(--ok); border-color: var(--ok); }
+/* A refused copy has to be visible, or a broken clipboard is indistinguishable
+   from a dead button — which is exactly how this went unnoticed. */
+.card-tip.failed { color: var(--fault); border-color: var(--fault); }
 
 /* ---------- DRO ---------- */
 
