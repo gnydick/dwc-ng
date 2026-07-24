@@ -518,6 +518,12 @@
 	font-size: 14px;
 	line-height: 1;
 	font-variant-numeric: tabular-nums;
+	/* RESERVED width so a moving axis (the value changes every poll, and its
+	   digit COUNT with it) can't resize the cell and reflow the whole
+	   flex-wrap row — the "position card moves around in landscape" jitter.
+	   Wide enough for a signed value like "-098.20mm"; the axis labels are
+	   static, so the cell width is now stable whatever the machine does. */
+	width: 66px;
 }
 .dro-h-cell.unhomed .dro-h-val { color: var(--silk-dim); }
 .dro-h-val small { font-size: 9px; color: var(--silk-dim); margin-left: 2px; }
