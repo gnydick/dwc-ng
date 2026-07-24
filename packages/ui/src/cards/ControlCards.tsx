@@ -277,15 +277,30 @@ function FanControl(props: { label: string; index: number; actual: number; reque
 				<span class="deg">%</span>
 			</label>
 			<div class="btn-cluster">
-				{/* Set applies now AND, when pinned, re-pins at the new value, so the
-				    override tracks what you just set. */}
+				{/* Modal exactly like the Tools & Heaters card's Active/Off pair:
+				    whichever mode the fan is currently IN lights up (fills) — Set
+				    (go → green) while the fan is running, Off (danger → copper) while
+				    it is stopped. Same heat-active/heat-off classes and engaged
+				    logic, so the lit colours match that card to the pixel. Set also
+				    re-pins at the new value when pinned, so the override tracks what
+				    you just set. */}
 				<GcodeButton
 					label="Set"
+					variant="go"
+					class="heat-active"
 					command={pinCommand()}
 					stamp={false}
+					engaged={props.requested > 0}
 					onSent={() => { if (pinned()) app.config.setKeyedPin(key, pinCommand(), true); }}
 				/>
-				<GcodeButton label="Off" variant="quiet" command={cmd.fan(props.index, 0)} stamp={false} />
+				<GcodeButton
+					label="Off"
+					variant="danger"
+					class="heat-off"
+					command={cmd.fan(props.index, 0)}
+					stamp={false}
+					engaged={props.requested === 0}
+				/>
 				{/* Pin holds this fan at the set speed against the job (M106 re-sent
 				    every 0.5s). Glows while pinned; a config write, not a G-code. */}
 				<button
