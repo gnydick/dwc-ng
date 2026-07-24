@@ -39,24 +39,62 @@ export function sampleGrid(rows: number[][], col: number, row: number): number {
 export interface Rgb { r: number; g: number; b: number }
 
 /**
- * Diverging ramp centred on zero: cool below the reference plane, warm above,
- * neutral at it. These are SIGNED errors — a sequential ramp would read -0.10
- * and +0.10 as unequally wrong rather than equally so, and would hide the sign
- * change that tells you where the bed crosses level.
+ * Diverging ramp centred on zero: BLUE below the plane, GREEN on it, RED above.
+ *
+ * These are SIGNED errors, so the ramp diverges — a sequential one would read
+ * -0.10 and +0.10 as unequally wrong rather than equally so, and would hide the
+ * sign change that tells you where the bed crosses level.
+ *
+ * The midpoint is the part that matters, and it used to be a dark navy barely
+ * distinguishable from the card behind it. That failed twice over: a perfectly
+ * flat bed rendered as nothing, and because luminance dipped toward the middle,
+ * the eye read neutral as a VALLEY — the ramp scanned as "low, lower, high"
+ * instead of "below, on, above".
+ *
+ * Green at zero also carries meaning rather than merely being conventional: on
+ * target reads as good, and deviation in either direction reads as departure
+ * from it. Blue-low/red-high is what every other printer UI does, so it needs
+ * no learning.
  */
+/**
+ * The ramp, as stops on -1..+1 (fraction of the grid's largest deviation).
+ *
+ * FULLY SATURATED, deliberately. The app's muted palette is right for chrome,
+ * but this is a data surface read at a glance: desaturated endpoints made a
+ * steep slope and a shallow one look alike, and washed the midpoint toward the
+ * card behind it. Pure channels keep every pixel unambiguous.
+ *
+ * Cyan and yellow sit at the half-way marks so each side resolves into two
+ * bands instead of one long fade, where a mild deviation and a severe one
+ * looked much the same. Placed symmetrically on purpose: these are SIGNED
+ * errors, so -0.10 and +0.10 must be equally legible as equally wrong, and a
+ * ramp with more discrimination on one side would quietly imply otherwise.
+ *
+ * Exported so the legend is generated from the same stops the surface is drawn
+ * from and cannot drift from it.
+ */
+export const RAMP_STOPS: ReadonlyArray<{ t: number; color: Rgb }> = [
+	{ t: -1, color: { r: 0, g: 0, b: 255 } },      // well below plane
+	{ t: -0.5, color: { r: 0, g: 255, b: 255 } },  // mildly below
+	{ t: 0, color: { r: 0, g: 255, b: 0 } },       // at plane
+	{ t: 0.5, color: { r: 255, g: 255, b: 0 } },   // mildly above
+	{ t: 1, color: { r: 255, g: 0, b: 0 } },       // well above
+];
+
 export function terrainColor(value: number, extent: number): Rgb {
 	const t = extent === 0 ? 0 : Math.max(-1, Math.min(1, value / extent));
-	// Endpoints chosen for separation on the dark ground, and distinct from the
-	// heater series palette so a map can never be mistaken for a chart.
-	const low: Rgb = { r: 62, g: 122, b: 178 };   // below plane
-	const mid: Rgb = { r: 26, g: 38, b: 54 };     // at plane
-	const high: Rgb = { r: 214, g: 138, b: 58 };  // above plane
-	const to = t < 0 ? low : high;
-	const k = Math.abs(t);
+	// Walk to the segment containing t. Clamped above, so the last stop is
+	// returned exactly at t = 1 rather than falling off the end.
+	let i = 0;
+	while (i < RAMP_STOPS.length - 2 && t > RAMP_STOPS[i + 1]!.t) i++;
+	const a = RAMP_STOPS[i]!;
+	const b = RAMP_STOPS[i + 1]!;
+	const span = b.t - a.t;
+	const k = span === 0 ? 0 : Math.max(0, Math.min(1, (t - a.t) / span));
 	return {
-		r: Math.round(mid.r + (to.r - mid.r) * k),
-		g: Math.round(mid.g + (to.g - mid.g) * k),
-		b: Math.round(mid.b + (to.b - mid.b) * k),
+		r: Math.round(a.color.r + (b.color.r - a.color.r) * k),
+		g: Math.round(a.color.g + (b.color.g - a.color.g) * k),
+		b: Math.round(a.color.b + (b.color.b - a.color.b) * k),
 	};
 }
 
