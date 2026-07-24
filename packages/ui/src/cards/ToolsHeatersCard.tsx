@@ -1,11 +1,13 @@
-import { For, Show, createMemo, createSignal } from "solid-js";
+import { For, Show, createMemo, createResource, createSignal } from "solid-js";
 import { useApp } from "../shell/context.ts";
 import { cmd } from "../control/commands.ts";
 import { GcodeButton } from "../control/GcodeButton.tsx";
-import type { Heater } from "../om/types.ts";
-import { HeaterState } from "./HeaterState.tsx";
+import type { Heater, Tool } from "../om/types.ts";
+import { HeaterState, isModalState } from "./HeaterState.tsx";
 import { describeToolP, parseToolP } from "../control/toolP.ts";
 import type { Orientation } from "../shell/panelOrientation.ts";
+
+const FILAMENTS_DIR = "0:/filaments";
 
 /**
  * Tools & heaters: one row per tool (current / active / standby / state) plus
@@ -27,6 +29,17 @@ export function ToolsHeatersBody(props: { orientation: () => Orientation }) {
 	// Blank means "send no P", which is not the same as P0 — see cmd.selectTool.
 	const [toolP, setToolP] = createSignal("");
 	const toolPValue = (): number | undefined => parseToolP(toolP());
+
+	// The filament list is a property of the machine, not of a row — fetched once
+	// for the card and handed to every picker.
+	const [filaments] = createResource(
+		() => (app.om.connection.status === "connected" ? FILAMENTS_DIR : false),
+		async dir => {
+			const entries = await app.connector.list(dir as string);
+			// Each filament is a DIRECTORY holding load.g/unload.g/config.g.
+			return entries.filter(e => e.type === "d").map(e => e.name).sort((a, b) => a.localeCompare(b));
+		},
+	);
 
 	const heaterAt = (index: number): Heater | null => app.om.om.heat.heaters[index] ?? null;
 	const bedHeaterIndex = createMemo(() => app.om.om.heat.bedHeaters.find(i => i >= 0) ?? -1);
@@ -122,6 +135,7 @@ export function ToolsHeatersBody(props: { orientation: () => Orientation }) {
 						<thead>
 							<tr>
 								<th scope="col">Heater</th>
+								<th scope="col">Filament</th>
 								<th scope="col">Active</th>
 								<th scope="col">Standby</th>
 								{/* Reading sits next to acting: Current is the last thing before
@@ -144,6 +158,13 @@ export function ToolsHeatersBody(props: { orientation: () => Orientation }) {
 														dock={dockState(t().number)}
 														tool={t().number}
 													/>
+												</td>
+												{/* Only a tool that feeds an extruder can hold filament;
+												    the rest keep an empty cell so the columns hold. */}
+												<td>
+													<Show when={t().filamentExtruder >= 0}>
+														<FilamentPick tool={t()} filaments={filaments() ?? []} />
+													</Show>
 												</td>
 												<Show
 													when={heaterAt(t().heaters[0] ?? -1)}
@@ -169,6 +190,8 @@ export function ToolsHeatersBody(props: { orientation: () => Orientation }) {
 										<td>
 											<ToolName name="Bed" des={`heater${bedHeaterIndex()}`} dock={null} tool={null} />
 										</td>
+										{/* The bed holds no filament — the column stays empty. */}
+										<td />
 										<HeaterCells heater={h()} index={bedHeaterIndex()} kind="bed" num={0} />
 									</tr>
 								)}
@@ -259,21 +282,33 @@ function HeaterCells(props: { heater: Heater; index: number; kind: "tool" | "bed
 					/>
 				</Show>
 			</td>
-			<td><HeaterCurrent heater={props.heater} /></td>
+			{/* Current doubles as the slot for states no button can show. On a fault
+			    the reading is the thing you cannot trust anyway (a detached
+			    thermistor reads wild), and the reset is what you actually need, so
+			    the badge takes the cell rather than costing a column of its own. */}
+			<td>
+				<Show
+					when={isModalState(props.heater.state)}
+					fallback={<HeaterState heater={props.heater} index={props.index} />}
+				>
+					<HeaterCurrent heater={props.heater} />
+				</Show>
+			</td>
 			<td>
 				{/* The three buttons are modal: the one matching the heater's reported
 				    state lights up, which is what the State column used to say in
-				    words. HeaterState leads the row only for states no button can
-				    show (fault/tuning/offline) — see its comment. */}
+				    words. */}
 				<div class="heat-actions">
-					<HeaterState heater={props.heater} index={props.index} />
 					<GcodeButton
 						label="Active"
 						variant="go"
+						class="heat-active"
 						stamp={false}
 						engaged={props.heater.state === "active"}
 						command={isBed() ? cmd.bedActive(props.num, active()) : cmd.toolActive(props.num, active())}
 					/>
+					{/* The bed has no standby mode, so its column stays EMPTY rather
+					    than closing up — Active and Off keep the tools' columns. */}
 					<Show when={!isBed()}>
 						<GcodeButton
 							label="Standby"
@@ -312,6 +347,7 @@ function HeaterActions(props: {
 			<GcodeButton
 				label="Active"
 				variant="go"
+				class="heat-active"
 				stamp={false}
 				engaged={props.state === "active"}
 				command={isBed() ? cmd.bedActive(props.num, props.active) : cmd.toolActive(props.num, props.active)}
@@ -334,6 +370,58 @@ function HeaterActions(props: {
 				command={isBed() ? cmd.bedOff(props.num) : cmd.toolOff(props.num)}
 			/>
 		</div>
+	);
+}
+
+/**
+ * The filament on a tool's extruder — the reading AND the control that changes
+ * it, in one cell (M701 to load, M702 for "none", both via the forms already
+ * verified in commands.ts).
+ *
+ * Deliberately a PURE MIRROR of move.extruders[].filament: what you see is what
+ * the firmware reports, never what was last picked. So while load.g is running
+ * the cell still reads as not-yet-loaded, and a load that fails simply never
+ * appears — the control cannot show a filament the machine does not have.
+ */
+function FilamentPick(props: { tool: Tool; filaments: string[] }) {
+	const app = useApp();
+
+	const loaded = (): string => app.om.om.move.extruders[props.tool.filamentExtruder]?.filament ?? "";
+
+	// A filament loaded on the machine but no longer on the SD card would leave
+	// the select with nothing to show — carry it as an option so the cell always
+	// reports the truth.
+	const options = createMemo(() => {
+		const list = [...props.filaments];
+		const current = loaded();
+		if (current !== "" && !list.includes(current)) list.push(current);
+		return list;
+	});
+
+	/** M701/M702 act on the SELECTED tool — prepend a T only when it isn't. */
+	const selectFirst = (): number | undefined =>
+		app.om.om.state.currentTool === props.tool.number ? undefined : props.tool.number;
+
+	const commandFor = (name: string): string =>
+		name === ""
+			? cmd.unloadFilament({ selectTool: selectFirst() })
+			: cmd.loadFilament(name, { selectTool: selectFirst() });
+
+	const label = (): string => props.tool.name || `Tool ${props.tool.number}`;
+
+	return (
+		<select
+			class="filament-pick heat-fil"
+			aria-label={`Filament for ${label()}`}
+			title={`${commandFor(loaded())} — picking sends the load for that filament`}
+			value={loaded()}
+			onChange={e => {
+				void app.connector.sendCode(commandFor(e.currentTarget.value)).catch(() => undefined);
+			}}
+		>
+			<option value="">—</option>
+			<For each={options()}>{name => <option value={name}>{name}</option>}</For>
+		</select>
 	);
 }
 

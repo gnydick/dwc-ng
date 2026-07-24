@@ -537,17 +537,15 @@
 /* Widths carry slack past the widest content: cells have no horizontal
    padding, so a column sized exactly to its text leaves adjacent right-aligned
    labels touching ("ACTIVESTANDBY"). */
-/* Columns: Heater | Active | Standby | Current | Set. Current sits last before
-   the buttons so the reading and the control are one glance apart. */
-.heat-table th:nth-child(2), .heat-table td:nth-child(2) { width: 58px; }
-.heat-table th:nth-child(3), .heat-table td:nth-child(3) { width: 58px; }
-.heat-table th:nth-child(4), .heat-table td:nth-child(4) { width: 66px; }
-/* Setpoint entry + the buttons that send it. Fixed widths so a three-digit
-   temperature or a fault badge can never re-flow the columns. The old State
-   column's 68px moved in HERE: the actions are flex-end aligned, so that slack
-   sits empty on a healthy row and is where a fault/tuning badge lands — the
-   buttons keep their x either way. */
-.heat-table th:nth-child(5), .heat-table td:nth-child(5) { width: 230px; }
+/* Columns: Heater | Filament | Active | Standby | Current | Set. Current sits
+   last before the buttons so the reading and the control are one glance apart.
+   Every width past the first is fixed, so a three-digit temperature, a long
+   filament name or a fault badge can never re-flow the table. */
+.heat-table th:nth-child(2), .heat-table td:nth-child(2) { width: 92px; }
+.heat-table th:nth-child(3), .heat-table td:nth-child(3) { width: 54px; }
+.heat-table th:nth-child(4), .heat-table td:nth-child(4) { width: 54px; }
+.heat-table th:nth-child(5), .heat-table td:nth-child(5) { width: 64px; }
+.heat-table th:nth-child(6), .heat-table td:nth-child(6) { width: 156px; }
 .heat-input {
 	width: 56px;
 	padding: 4px 6px;
@@ -560,13 +558,39 @@
 	text-align: right;
 }
 .heat-input:focus-visible { outline: none; border-color: var(--copper); }
-.heat-actions { display: flex; gap: 4px; justify-content: flex-end; align-items: center; }
-/* Never compress: the three buttons must land at the same x on every row, so a
-   fault badge appearing in the slack to their left may not squeeze them. */
-.heat-actions .gcode-btn { padding: 5px 8px; flex: 0 0 auto; }
-/* The residual-state slot (fault/tuning/offline). Narrower than the standalone
-   badge — it shares a column with the buttons now. */
-.heat-actions .heat-state { min-width: 56px; text-align: right; }
+/* The in-row filament picker. Fills its fixed column and ellipsises a long
+   material name rather than widening it — the columns are load-bearing. */
+.heat-fil {
+	width: 100%;
+	max-width: 100%;
+	min-width: 0;
+	height: var(--ctl-h);
+	box-sizing: border-box;
+	font-size: 12px;
+	/* The cells are baseline-aligned; a select's baseline is its bottom edge, so
+	   left alone it added 3px of descender space and made every tool row taller
+	   than the bed's. */
+	vertical-align: middle;
+}
+/* The fault/tuning badge now sits in the Current cell, which is already
+   right-aligned — it no longer needs a reserved width of its own. */
+.heat-table .heat-state { min-width: 0; }
+/* A GRID, not a flex row: every mode gets its own fixed column, so the bed —
+   which has no standby — still puts Active and Off under the tools' Active and
+   Off instead of sliding them along. Alignment is then true by construction
+   rather than by the three labels happening to measure the same. */
+.heat-actions {
+	display: grid;
+	grid-template-columns: 52px 60px 32px;
+	gap: 6px;
+	align-items: center;
+	justify-content: end;
+}
+.heat-actions .heat-active { grid-column: 1; }
+.heat-actions .heat-standby { grid-column: 2; }
+.heat-actions .heat-off { grid-column: 3; }
+/* Fill the column and centre the label, so equal columns look equal. */
+.heat-actions .gcode-btn { padding: 5px 2px; width: 100%; justify-content: center; }
 .heat-table th {
 	font-family: var(--font-display);
 	font-weight: 600;
@@ -595,7 +619,9 @@
 	font-weight: 600;
 	font-size: 15px;
 	display: grid;
-	grid-template-columns: 58px 12px 84px; /* designator | dock dot | name */
+	/* designator | dock dot | name — must SUM (with gaps) to no more than the
+	   Heater column, or the name button laps into the Filament picker. */
+	grid-template-columns: 56px 12px 76px;
 	align-items: center;
 	gap: 8px;
 }
@@ -1210,13 +1236,31 @@
 /* after .gcode-danger: the Off button is danger-styled, but a cold heater is
    not an alarm — engaged Off reads as "current mode", not "fault". */
 .heat-off { --btn-accent: var(--copper); }
+/* FILLED, not outlined. Across five rows an outline still reads as "a button";
+   only a ground change reads as "this one". This is the selected-chip language
+   the rest of the app already speaks (.chip-btn.active, .backend-opt.active,
+   .run-btn.armed): accent ground, mask-dark text. Still colour ONLY — no size,
+   border width or padding moves, so lighting up cannot shift a control.
+   Restated for :hover/:active, which would otherwise repaint the ground back. */
+.gcode-btn.is-engaged,
+.gcode-btn.is-engaged:hover:not(:disabled),
+.gcode-btn.is-engaged:active:not(:disabled) {
+	background: var(--btn-accent);
+	border-color: var(--btn-accent);
+}
 .gcode-btn.is-engaged {
 	box-shadow:
-		inset 0 0 0 1px var(--btn-accent),
-		inset 0 0 12px color-mix(in srgb, var(--btn-accent) 22%, transparent),
-		0 0 10px color-mix(in srgb, var(--btn-accent) 30%, transparent);
+		0 0 0 1px var(--btn-accent),
+		0 0 14px color-mix(in srgb, var(--btn-accent) 45%, transparent);
 }
-.gcode-btn.is-engaged .gcode-label { color: var(--btn-accent); }
+.gcode-btn.is-engaged .gcode-label,
+.gcode-btn.is-engaged .gcode-cmd { color: var(--mask-900); }
+/* The ack dot is sized to read against navy; on an accent ground it would sink,
+   so ring it — but only while it is actually showing, or every lit button would
+   wear a permanent speck. */
+.gcode-btn.is-engaged.is-sending .gcode-ack,
+.gcode-btn.is-engaged.is-sent .gcode-ack,
+.gcode-btn.is-engaged.is-failed .gcode-ack { outline: 1.5px solid var(--mask-900); }
 
 /* Send acknowledgement. Absolutely positioned at a fixed size so no state
    change can alter the button's box - only colour moves. */
@@ -1252,6 +1296,18 @@
 }
 .deg { color: var(--silk-dim); font-size: 12px; }
 .btn-cluster { display: flex; gap: 6px; margin-left: auto; }
+/* The Control card's mode cluster gets the table's pinned columns for the same
+   reason: the bed has no standby, and without a column to leave empty its
+   Active and Off would slide right and sit under the tools' Standby and Off. */
+.btn-cluster.heat-modes {
+	display: grid;
+	grid-template-columns: 64px 72px 44px;
+	justify-content: end;
+}
+.heat-modes .heat-active { grid-column: 1; }
+.heat-modes .heat-standby { grid-column: 2; }
+.heat-modes .heat-off { grid-column: 3; }
+.heat-modes .gcode-btn { width: 100%; justify-content: center; padding: 0 2px; }
 
 /* Horizontal Fans layout (orientationToggle) — same .heater-ctl rows, just
    reflowed into a row of compact vertical blocks instead of a stack. */

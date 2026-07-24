@@ -9,6 +9,11 @@ import type { Heater } from "../om/types.ts";
  */
 const MODAL_STATES = new Set(["off", "active", "standby"]);
 
+/** True when a mode button already shows this state, so no words are needed. */
+export function isModalState(state: string): boolean {
+	return MODAL_STATES.has(state);
+}
+
 /**
  * Everything the mode buttons CAN'T say about a heater.
  *
@@ -45,7 +50,7 @@ export function HeaterState(props: { heater: Heater; index: number }) {
 	};
 
 	return (
-		<Show when={!MODAL_STATES.has(props.heater.state)}>
+		<Show when={!isModalState(props.heater.state)}>
 			<Show
 				when={props.heater.state === "fault"}
 				fallback={<span class={`heat-state ${props.heater.state}`}>{props.heater.state}</span>}

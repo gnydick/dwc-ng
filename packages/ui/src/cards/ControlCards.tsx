@@ -50,7 +50,15 @@ export function HeatersBody() {
 			    tool, so they sit above the rows. P blank sends no P at all; P0
 			    suppresses tfree/tpre/tpost, decoded beside the field. */}
 			<div class="tool-p">
-				<GcodeButton label="Deselect" variant="quiet" stamp={false} command={cmd.deselectTool(toolPValue())} />
+				{/* Lit while no tool is current, so this and the row selectors always
+				    show exactly one lit state between them — same as the table. */}
+				<GcodeButton
+					label="Deselect"
+					variant="quiet"
+					stamp={false}
+					engaged={app.om.om.state.currentTool < 0}
+					command={cmd.deselectTool(toolPValue())}
+				/>
 				<label class="feed-field">
 					P
 					<input
@@ -187,14 +195,17 @@ function HeaterControl(props: {
 			    mode the machine reports lights up. Still 1:1 with its G-code and
 			    still clickable when lit — re-sending Active after editing the
 			    target is the normal way to use this. */}
-			<div class="btn-cluster">
+			<div class="btn-cluster heat-modes">
 				<GcodeButton
 					label="Active"
 					variant="go"
+					class="heat-active"
 					command={activeCmd()}
 					stamp={false}
 					engaged={props.state === "active"}
 				/>
+				{/* The bed has no standby mode; its column stays EMPTY so Active and
+				    Off stay under the tools' Active and Off. */}
 				<Show when={props.kind === "tool"}>
 					<GcodeButton
 						label="Standby"
