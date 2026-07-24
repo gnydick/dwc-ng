@@ -619,9 +619,11 @@
 	font-weight: 600;
 	font-size: 15px;
 	display: grid;
-	/* designator | dock dot | name — must SUM (with gaps) to no more than the
-	   Heater column, or the name button laps into the Filament picker. */
-	grid-template-columns: 56px 12px 76px;
+	/* designator | dock dot | name. Sized SHORTER than the Heater column on
+	   purpose: the leftover is the air between the tool button and the filament
+	   picker, so the picker reads as its own column rather than as a third
+	   control bolted to the tool button. */
+	grid-template-columns: 56px 12px 64px;
 	align-items: center;
 	gap: 8px;
 }
