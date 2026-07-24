@@ -12,9 +12,16 @@ with no rework above the connector abstraction.
 
 - RRF's embedded HTTP server is weak: very few concurrent connections,
   small output buffers, requests are expensive. Minimize request count and
-  total payload. Emit pre-gzipped assets (RRF serves .gz transparently).
-- Total bundle target: under ~300KB gzipped. No heavy component libraries.
-  Hand-rolled CSS.
+  total payload. **Standalone only:** emit pre-gzipped assets (RRF serves
+  .gz transparently). **Never gzip for DSF/SBC** — verified 2026-07-24 on
+  duet3.nydick.net: DuetWebServer (Kestrel) neither compresses on the fly
+  nor serves .gz transparently, so a .gz deploy 404s every asset. The
+  packager derives compression from the transport; see
+  docs/superpowers/specs/2026-07-24-deployment-packaging-design.md.
+- No heavy component libraries. Hand-rolled CSS. (The old "under ~300KB
+  gzipped" bundle target is **non-binding** — Gabe, 2026-07-24: "that size
+  is not a problem at all". Measured: eager 96.9 KB gz, total 665 KB gz,
+  Babylon 232 KB of it and lazy.)
 - The UI is a live mirror of RRF's object model, updated via polling:
   lightweight status polls, watch `seqs` counters, re-fetch changed
   subtrees via chunked `rr_model` queries (depth/frequency flags, array

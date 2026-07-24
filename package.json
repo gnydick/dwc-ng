@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "pnpm --filter @dwc-ng/ui dev",
     "build": "pnpm --filter @dwc-ng/ui build",
+    "deploy": "pnpm --filter @dwc-ng/deploy start",
     "preview": "pnpm --filter @dwc-ng/ui preview",
     "mock": "pnpm --filter @dwc-ng/mock-duet start",
     "test": "pnpm -r --if-present test",

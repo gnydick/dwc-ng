@@ -1,0 +1,93 @@
+// pnpm deploy --target http://duet3.nydick.net [--mode dsf|poll] [--name ng]
+//             [--dist ../ui/dist] [--dry-run] [--uninstall]
+
+import { fileURLToPath } from "node:url"
+import { dirname, join, resolve } from "node:path"
+import { deploy, uninstall } from "./deploy.ts"
+import { dsfTransport } from "./dsfTransport.ts"
+import { pollTransport } from "./pollTransport.ts"
+import type { Transport } from "./transport.ts"
+
+export type CliArgs = {
+	readonly target: string
+	readonly mode: "dsf" | "poll"
+	readonly name: string
+	readonly dist: string
+	readonly dryRun: boolean
+	readonly uninstall: boolean
+}
+
+const HERE = dirname(fileURLToPath(import.meta.url))
+const DEFAULT_DIST = resolve(HERE, "..", "..", "ui", "dist")
+
+export function parseArgs(argv: readonly string[]): CliArgs {
+	const flag = (name: string): string | undefined => {
+		const i = argv.indexOf(`--${name}`)
+		return i === -1 ? undefined : argv[i + 1]
+	}
+	const has = (name: string): boolean => argv.includes(`--${name}`)
+
+	const target = flag("target")
+	if (target === undefined || target === "") {
+		throw new Error("--target is required, e.g. --target http://duet3.nydick.net")
+	}
+
+	const mode = flag("mode") ?? "dsf"
+	if (mode !== "dsf" && mode !== "poll") {
+		throw new Error(`--mode must be "dsf" or "poll", got "${mode}"`)
+	}
+
+	return {
+		target,
+		mode,
+		name: flag("name") ?? "ng",
+		dist: flag("dist") ?? DEFAULT_DIST,
+		dryRun: has("dry-run"),
+		uninstall: has("uninstall"),
+	}
+}
+
+const kb = (n: number): string => `${(n / 1024).toFixed(1)} KB`
+
+async function main(): Promise<void> {
+	const args = parseArgs(process.argv.slice(2))
+	const transport: Transport =
+		args.mode === "dsf" ? dsfTransport(args.target) : pollTransport(args.target)
+
+	if (args.uninstall) {
+		await uninstall(transport, { name: args.name })
+		console.log(`removed ${args.name}.html and ${args.name}/ from ${args.target}`)
+		return
+	}
+
+	console.log(
+		`${args.dryRun ? "dry run" : "deploying"} ${args.dist}\n` +
+			`  -> ${args.target}  (${args.mode}, ` +
+			`${transport.compression.gzip ? "gzipped" : "plain"})`,
+	)
+
+	const result = await deploy(args.dist, transport, {
+		name: args.name,
+		dryRun: args.dryRun,
+		onProgress: (file, action) => {
+			if (action === "upload") console.log(`  + ${file.url} (${kb(file.bytes.length)})`)
+		},
+	})
+
+	console.log(
+		`\n${args.dryRun ? "would upload" : "uploaded"} ${result.uploaded.length} file(s), ` +
+			`${kb(result.bytes)}; skipped ${result.skipped.length} unchanged`,
+	)
+	if (!args.dryRun) {
+		console.log(`verified: ${args.target}/${args.name}.html serves the deployed bytes`)
+	}
+}
+
+if (process.argv[1] !== undefined && import.meta.url === `file://${process.argv[1].replace(/\\/g, "/")}`) {
+	main().catch((err: unknown) => {
+		console.error(`deploy failed: ${err instanceof Error ? err.message : String(err)}`)
+		process.exit(1)
+	})
+}
+
+export { main, join }

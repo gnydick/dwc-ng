@@ -1,0 +1,16 @@
+{
+  "name": "@dwc-ng/deploy",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Packages dist/ and deploys it to a Duet board, side-by-side with stock DWC (spec: docs/superpowers/specs/2026-07-24-deployment-packaging-design.md).",
+  "scripts": {
+    "start": "node src/cli.ts",
+    "test": "node --test",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.2",
+    "typescript": "~6.0.2"
+  }
+}

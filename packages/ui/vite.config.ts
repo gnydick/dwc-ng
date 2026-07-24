@@ -10,8 +10,15 @@ import solid from 'vite-plugin-solid'
 const target = process.env.DWC_TARGET ?? 'http://127.0.0.1:8970'
 const realTarget = process.env.DWC_REAL ?? 'http://duet3.nydick.net'
 
+// Asset paths are baked into index.html at BUILD time, so a deployment that
+// lives under a subdirectory cannot be produced by moving files afterwards —
+// it has to be built with the right base. Side-by-side deploys next to stock
+// DWC use `DWC_BASE=/ng/ pnpm build`; see packages/deploy.
+const base = process.env.DWC_BASE ?? '/'
+
 // https://vite.dev/config/
 export default defineConfig({
+  base,
   plugins: [solid()],
   server: {
     host: true, // listen on all interfaces, not just localhost — lets other devices on the LAN reach the dev server
