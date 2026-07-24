@@ -37,8 +37,22 @@ import { PointerEventTypes } from "@babylonjs/core/Events/pointerEvents.js";
 import { sampleGridCubic, terrainColor } from "./surface.ts";
 import type { HeightMapMeta } from "./parse.ts";
 
-/** The largest deviation is drawn as this fraction of the bed's longer side. */
+/** A bed out by REFERENCE_DEVIATION is drawn with this much relief, as a
+ *  fraction of its longer side. */
 const RELIEF_FRACTION = 0.12;
+
+/**
+ * The deviation that counts as "properly out" — the yardstick the vertical
+ * scale is pinned to.
+ *
+ * The scale is deliberately ABSOLUTE, not normalised to each map's own extent.
+ * Normalising made every bed fill the same vertical range, so a bed 0.05mm out
+ * looked exactly as alarming as one 0.5mm out, and a well-trammed machine
+ * rendered as a mountain range. Pinning the scale means relief tracks how bad
+ * the bed actually is: flat beds look flat, and two maps can be compared by eye
+ * because the exaggeration no longer changes between them.
+ */
+const REFERENCE_DEVIATION = 0.5;
 
 /**
  * Vertices per side of the rendered mesh, independent of the probe grid.
@@ -240,9 +254,11 @@ export function createSurface3D(
 
 		const spanX = meta.max0 - meta.min0;
 		const spanZ = meta.max1 - meta.min1;
-		// Scale the relief to the bed, not to a constant: a 120mm bed and a 330mm
-		// bed must both show their deviation at a readable height.
-		exaggerationFactor = extent === 0 ? 1 : (Math.max(spanX, spanZ) * RELIEF_FRACTION) / extent;
+		// Scaled to the BED's size (so a 120mm and a 330mm machine both read) but
+		// pinned to a fixed deviation, NOT to this map's extent — see
+		// REFERENCE_DEVIATION. The factor is therefore the same for every map on
+		// a given machine, which is what lets a flat bed look flat.
+		exaggerationFactor = (Math.max(spanX, spanZ) * RELIEF_FRACTION) / REFERENCE_DEVIATION;
 
 		// Sample a finer mesh out of the probe grid rather than using it directly:
 		// the map is 16x16 SAMPLES OF A SURFACE, not 256 independent readings, so
