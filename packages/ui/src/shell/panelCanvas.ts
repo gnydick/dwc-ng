@@ -206,6 +206,91 @@ export function resolveMove(state: CanvasState, id: string, targetCol: number, t
 
 
 /**
+ * How far past the content-fit minimum you must drag before a card will shrink
+ * below it, in rows (5 x 4px = 20px of travel).
+ */
+export const DETENT_BREAKAWAY_ROWS = 5;
+
+/** Carried across frames of a single resize drag. */
+export interface DetentState {
+	/** True once the operator has pulled past the minimum this drag. */
+	broken: boolean;
+}
+
+/**
+ * A sticky detent at the card's exact content fit.
+ *
+ * Resizing down, the bottom edge STOPS at the minimum and stays there while
+ * the pointer keeps moving — so the exact fit is something you feel, not
+ * something you have to see. Pull a further DETENT_BREAKAWAY_ROWS and it
+ * releases and keeps shrinking (the content then scrolls, which is allowed —
+ * this is a detent, not a wall). A separate HARD floor below it (header + foot
+ * + 50%, applied by the caller) is what finally stops the shrink so the
+ * grabbers and controls can never overlap.
+ *
+ * The release is CONTINUOUS: at the moment it breaks away the span is exactly
+ * the minimum, and from there it tracks the pointer again with the breakaway
+ * distance subtracted. Without that the card would jump by the breakaway
+ * amount the instant it let go.
+ *
+ * Growing back up it re-arms at the same point, so the detent is felt in both
+ * directions rather than only on the way down.
+ */
+export function applyDetent(
+	rawSpan: number,
+	minSpan: number,
+	state: DetentState,
+): { span: number; state: DetentState; held: boolean } {
+	if (state.broken) {
+		const span = rawSpan + DETENT_BREAKAWAY_ROWS;
+		// Re-arm on the way back up, at exactly the point it released.
+		if (span >= minSpan) return { span: minSpan, state: { broken: false }, held: false };
+		return { span, state, held: false };
+	}
+	if (rawSpan >= minSpan) return { span: rawSpan, state, held: false };
+	// Pushed below the content fit but not yet past breakaway: the edge is being
+	// HELD at the minimum against the pointer. `held` is true ONLY here — this is
+	// the one state that means "you are on the exact fit and it is resisting". It
+	// is false at rest (rawSpan >= minSpan) and during a width-only resize (the
+	// row span never dips below min then), which is precisely why the visible cue
+	// no longer flashes spuriously the way the old at-min border did.
+	if (minSpan - rawSpan < DETENT_BREAKAWAY_ROWS) return { span: minSpan, state, held: true };
+	return { span: rawSpan + DETENT_BREAKAWAY_ROWS, state: { broken: true }, held: false };
+}
+
+/**
+ * The smallest rowSpan that still contains a card's content, measured from the
+ * live DOM at resize start.
+ *
+ * NOT body.scrollHeight: scrollHeight is max(box, content), so on a card
+ * currently TALLER than its content it reports the BOX — the detent then
+ * caught wherever the card happened to be, far below the content, and the
+ * true fit was unreachable (live repro: an oversized card measured 80 rows
+ * for 34 rows of content). Instead, measure the content itself: the lowest
+ * child edge plus its bottom margin (a scroll container includes it),
+ * shifted back by scrollTop so a currently-scrolled card (the earlier bug
+ * this function was rewritten for) still measures full content — immune to
+ * both the box size and the scroll position.
+ */
+export function contentRowSpan(cardEl: HTMLElement, gutterPx: number): number {
+	const body = cardEl.querySelector<HTMLElement>(".panel-body");
+	if (!body) return 1;
+	const bodyRect = body.getBoundingClientRect();
+	let contentBottom = 0;
+	for (const child of Array.from(body.children)) {
+		const rect = child.getBoundingClientRect();
+		const marginBottom = parseFloat(getComputedStyle(child).marginBottom) || 0;
+		contentBottom = Math.max(contentBottom, rect.bottom + marginBottom - bodyRect.top + body.scrollTop);
+	}
+	contentBottom += parseFloat(getComputedStyle(body).paddingBottom) || 0;
+	// The card's chrome around the body's content box (borders, outer padding)
+	// — measured, not assumed, and size-invariant since card and body grow
+	// together. Card border-box height == ROW_UNIT_PX*rowSpan - gutter.
+	const chrome = cardEl.getBoundingClientRect().height - body.clientHeight;
+	return Math.max(1, Math.ceil((contentBottom + chrome + gutterPx) / ROW_UNIT_PX));
+}
+
+/**
  * Grows colSpan/rowSpan toward the desired size, one cell at a time,
  * stopping at the first collision or grid boundary in that direction —
  * independently per axis, each measured against the panel's ORIGINAL
@@ -621,18 +706,28 @@ export function createPanelCanvas(storageKey: string, defaults: PanelDefault[], 
 		const scroller = canvasEl.closest<HTMLElement>(".view-scroll");
 		const originScrollTop = scroller?.scrollTop ?? 0;
 
-		// Hard floor for the resize, measured once at the start of the drag: the
-		// header + the resize-grip foot, plus 50% of that (operator's spec). A
-		// card can shrink until only its chrome and a little body show — the body
-		// then scrolls — but no further. Deliberately NOT the content-fit height:
-		// cards ARE allowed smaller than their content, just not so small the
-		// chrome collapses onto itself.
+		// Two independent limits, both measured once at the start of the drag:
+		//
+		//  • detentMin — the CONTENT-FIT height. The bottom edge snaps here (the
+		//    gold cue) and holds against the pointer until you pull past the
+		//    breakaway, then releases and the body scrolls. A felt "exact fit",
+		//    not a wall.
+		//  • hardFloor — the header + resize-grip foot, plus 50% of that
+		//    (operator's spec). The absolute smallest the card may ever get, so
+		//    the grabbers and controls can never overlap. This is a WALL: no
+		//    breakaway. It sits BELOW the detent — you only meet it after the
+		//    detent has released and the content has scrolled away.
 		const cardEl = grip.closest<HTMLElement>(".card");
 		const gutterPx = cardEl ? parseFloat(getComputedStyle(cardEl).marginBottom || "0") : 0;
 		const headPx = cardEl?.querySelector<HTMLElement>(".card-head")?.getBoundingClientRect().height ?? 0;
 		const footPx = cardEl?.querySelector<HTMLElement>(".panel-resize-grip")?.getBoundingClientRect().height ?? 0;
 		const floorPx = (headPx + footPx) * 1.5;
-		const minRowSpan = Math.max(1, Math.ceil((floorPx + gutterPx) / ROW_UNIT_PX));
+		const hardFloor = Math.max(1, Math.ceil((floorPx + gutterPx) / ROW_UNIT_PX));
+		// The detent never sits below the wall — a snap point you can't reach is
+		// pointless, and it keeps the gold cue honest on tiny-content cards.
+		const contentMin = cardEl ? contentRowSpan(cardEl, gutterPx) : 1;
+		const detentMin = Math.max(contentMin, hardFloor);
+		let detent: DetentState = { broken: false };
 		let pointerX = event.clientX;
 		let pointerY = event.clientY;
 
@@ -655,11 +750,15 @@ export function createPanelCanvas(storageKey: string, defaults: PanelDefault[], 
 			const effectiveY = pointerY + scrolled;
 			const deltaColSpan = Math.round((pointerX - originX) / (COL_UNIT_PX + GAP_PX));
 			const deltaRowSpan = Math.round((effectiveY - originY) / (ROW_UNIT_PX + ROW_GAP_PX));
-			// Hard clamp at the floor — no breakaway. The cue lights while you're
-			// pushing the bottom edge against it and it won't go lower.
+			// Detent at the content fit (snaps, then breaks away), THEN the hard
+			// floor clamps whatever the detent produced so a released card still
+			// can't shrink past the wall. The gold cue lights only while the
+			// detent is actively holding — never for a width-only resize.
 			const rawRowSpan = start.rowSpan + deltaRowSpan;
-			const clampedRowSpan = Math.max(minRowSpan, rawRowSpan);
-			cardEl?.classList.toggle("at-detent", rawRowSpan < minRowSpan);
+			const detented = applyDetent(rawRowSpan, detentMin, detent);
+			detent = detented.state;
+			const clampedRowSpan = Math.max(hardFloor, detented.span);
+			cardEl?.classList.toggle("at-detent", detented.held);
 			const next = tryResize(collidableState(id), id, start.colSpan + deltaColSpan, clampedRowSpan);
 			setState({ ...state(), [id]: next }); // live preview, persisted only on drop
 			raf = requestAnimationFrame(tick);
