@@ -2144,6 +2144,19 @@
    the row wider than the card. */
 .mesh-pick .filament-pick { flex: 1 1 auto; min-width: 0; height: var(--ctl-h); }
 .mesh-actions { display: flex; flex-wrap: wrap; gap: var(--ctl-gap); }
+/* What the machine is compensating with NOW. Always present, so gaining or
+   losing a mesh cannot reflow the controls under it. */
+.mesh-status {
+	font: 600 11px/1.4 var(--font-display);
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	color: var(--silk-dim);
+	margin: 0;
+}
+.mesh-status.on { color: var(--ok); }
+/* Tram result: fixed, tabular figures — this is read by comparing runs, and
+   proportional digits make 0.001 and 0.007 hard to scan against each other. */
+.tram-result dd { font-variant-numeric: tabular-nums; }
 .mesh-saveas input { width: 140px; }
 
 .hm-nudge { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }

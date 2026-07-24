@@ -11,7 +11,7 @@
  * with must not be able to diverge. Re-probing sends ONE operator-configured
  * command and reports what came back; accepting is a separate act.
  */
-import { For, Show, createEffect, createResource, createSignal } from "solid-js";
+import { For, Show, createEffect, createMemo, createResource, createSignal } from "solid-js";
 import { useApp } from "../shell/context.ts";
 import { HeightMapGrid } from "../heightmap/HeightMapGrid.tsx";
 import { buildProbeCommand } from "../heightmap/probeCommand.ts";
@@ -20,6 +20,8 @@ import { HEIGHTMAP_FILE } from "../heightmap/store.ts";
 import { GcodeButton } from "../control/GcodeButton.tsx";
 import { cmd } from "../control/commands.ts";
 import { parseFileName } from "../files/path.ts";
+import { parseTramReply } from "../bed/tramReply.ts";
+import type { Compensation } from "../om/types.ts";
 import type { CardCtx } from "../compose/ctx.ts";
 
 /** Height maps live beside the firmware's own default, in /sys. */
@@ -127,8 +129,28 @@ export function MeshBody(props: { ctx: CardCtx }) {
 		void store.load(path);
 	};
 
+	/**
+	 * What the machine is compensating with RIGHT NOW — which is not the same
+	 * as what is selected above, or what is on the card. Worth its own line
+	 * because G32 runs M561 first, so every tram silently leaves the machine
+	 * with no mesh active, and nothing else on screen would say so.
+	 */
+	const comp = (): Compensation => app.om.om.move.compensation;
+	const meshActive = (): boolean => comp().type !== "none";
+
 	return (
 		<div class="mesh-card">
+			<p class="mesh-status" classList={{ on: meshActive() }}>
+				<Show
+					when={meshActive()}
+					fallback={<>No mesh compensation active</>}
+				>
+					Compensating: {comp().file ?? "unnamed map"}
+					<Show when={comp().meshDeviation}>
+						{d => <> · deviation {d().deviation.toFixed(3)} mm</>}
+					</Show>
+				</Show>
+			</p>
 			<label class="mesh-pick">
 				<span class="mesh-label">Height map</span>
 				<select
@@ -187,12 +209,59 @@ export function MeshBody(props: { ctx: CardCtx }) {
  * leadscrews (UVW) independently. M561 is its counterpart: it cancels the bed
  * PLANE fit, where Clear mesh on the Mesh card drops the mesh. Two different
  * compensations, so two different controls rather than one that guesses.
+ *
+ * The result is read from the REPLY LOG, not from the button's promise.
+ * Measured on the machine: sendCode resolves while bed.g is still probing, and
+ * the summary line lands ~25s later — so a card that waited on the send would
+ * show nothing, every time. The log is where the reply actually arrives.
+ *
+ * Home Z sits here because tramming MOVES the bed: the Z datum after a tram is
+ * not the one you started with, and re-homing is the last step of the job
+ * rather than a separate errand.
  */
 export function BedTramBody() {
+	const app = useApp();
+
+	/** The newest reply that parses as a leadscrew tram, or null. */
+	const lastTram = createMemo(() => {
+		const lines = app.om.console;
+		for (let i = lines.length - 1; i >= 0; i--) {
+			const parsed = parseTramReply(lines[i]!.text);
+			if (parsed !== null) return { at: lines[i]!.receivedAt, result: parsed };
+		}
+		return null;
+	});
+
+	const mm = (v: number): string => v.toFixed(3);
+
 	return (
-		<div class="mesh-actions">
-			<GcodeButton label="Tram bed" variant="go" stamp={false} command={cmd.bedTram()} />
-			<GcodeButton label="Clear transform" variant="danger" stamp={false} command={cmd.clearBedTransform()} />
+		<div class="mesh-card">
+			<div class="mesh-actions">
+				<GcodeButton label="Tram bed" variant="go" stamp={false} command={cmd.bedTram()} />
+				<GcodeButton label="Home Z" stamp={false} command={cmd.homeAxis("Z")} />
+				<GcodeButton label="Clear transform" variant="danger" stamp={false} command={cmd.clearBedTransform()} />
+			</div>
+			<Show
+				when={lastTram()}
+				fallback={<p class="job-empty">No tram result yet this session.</p>}
+			>
+				{tram => (
+					<dl class="meta-grid tram-result">
+						{/* Per-screw corrections, in the order M671 declares the pivots. */}
+						<dt>Adjusted</dt>
+						<dd>{tram().result.adjustments.map(mm).join("  ")}</dd>
+						{/* Deviation is the FLATNESS figure — how much the probed points
+						    disagreed. Mean is just how far the whole bed sat from Z=0, which
+						    re-homing resolves anyway, so deviation is the one to read. */}
+						<dt>Deviation</dt>
+						<dd>
+							{mm(tram().result.before.deviation)} → {mm(tram().result.after.deviation)} mm
+						</dd>
+						<dt>Points</dt>
+						<dd>{tram().result.pointsUsed}</dd>
+					</dl>
+				)}
+			</Show>
 		</div>
 	);
 }
