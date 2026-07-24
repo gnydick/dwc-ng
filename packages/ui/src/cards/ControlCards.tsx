@@ -19,11 +19,16 @@ import { describeToolP, parseToolP } from "../control/toolP.ts";
 import type { Orientation } from "../shell/panelOrientation.ts";
 
 export function AtxBody() {
+	const app = useApp();
+	// atxPower is null on a board with no PS_ON port. Say so rather than offer a
+	// DEAD switch — but keep the card visible, not vanished.
 	return (
-		<div class="ctl-wrap">
-			<GcodeButton label="PSU On" variant="go" command={cmd.atxPower(true)} />
-			<GcodeButton label="PSU Off" variant="danger" command={cmd.atxPower(false)} />
-		</div>
+		<Show when={app.om.om.state.atxPower !== null} fallback={<p class="job-empty">This machine has no ATX power control.</p>}>
+			<div class="ctl-wrap">
+				<GcodeButton label="PSU On" variant="go" command={cmd.atxPower(true)} />
+				<GcodeButton label="PSU Off" variant="danger" command={cmd.atxPower(false)} />
+			</div>
+		</Show>
 	);
 }
 
@@ -107,24 +112,27 @@ export function HeatersBody() {
 
 export function FansBody(props: { orientation: () => Orientation }) {
 	const app = useApp();
+	// The fan's own index goes to M106 P<n>, so it is carried alongside — a
+	// filtered list can't renumber the fans.
+	const manualFans = createMemo(() =>
+		app.om.om.fans.flatMap((fan, i) => (isManualFan(fan) ? [{ fan, i }] : [])),
+	);
 	return (
-		<div class="heater-list" classList={{ horizontal: props.orientation() === "horizontal" }}>
-			<For each={app.om.om.fans}>
-				{(fan, i) => (
-					<Show when={isManualFan(fan) ? fan : undefined}>
-						{f => (
-							<FanControl
-								label={f().name || `Fan ${i()}`}
-								index={i()}
-								actual={f().actualValue}
-								requested={f().requestedValue}
-								rpm={f().rpm}
-							/>
-						)}
-					</Show>
-				)}
-			</For>
-		</div>
+		<Show when={manualFans().length > 0} fallback={<p class="job-empty">This machine has no adjustable fans.</p>}>
+			<div class="heater-list" classList={{ horizontal: props.orientation() === "horizontal" }}>
+				<For each={manualFans()}>
+					{entry => (
+						<FanControl
+							label={entry.fan.name || `Fan ${entry.i}`}
+							index={entry.i}
+							actual={entry.fan.actualValue}
+							requested={entry.fan.requestedValue}
+							rpm={entry.fan.rpm}
+						/>
+					)}
+				</For>
+			</div>
+		</Show>
 	);
 }
 

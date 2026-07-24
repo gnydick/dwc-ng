@@ -1,4 +1,4 @@
-import { createMemo } from "solid-js";
+import { Show, createMemo } from "solid-js";
 import { useApp } from "../shell/context.ts";
 import { LayerChart } from "../charts/LayerChart.tsx";
 import { layerChartData, layerStats } from "../charts/layerData.ts";
@@ -17,7 +17,7 @@ export function LayersBody() {
 	const chartData = createMemo(() => layerChartData(app.om.om.job.layers));
 
 	return (
-		<>
+		<Show when={stats().count > 0} fallback={<p class="job-empty">No layer times yet.</p>}>
 			<div class="layer-summary">
 				<span><b>{stats().count}</b> layers</span>
 				<span>avg <b>{Math.round(stats().mean)}s</b></span>
@@ -25,6 +25,6 @@ export function LayersBody() {
 				<span>max <b>{Math.round(stats().max)}s</b></span>
 			</div>
 			<LayerChart data={chartData} />
-		</>
+		</Show>
 	);
 }

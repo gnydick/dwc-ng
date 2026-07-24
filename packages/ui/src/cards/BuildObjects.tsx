@@ -41,7 +41,7 @@ export function BuildObjects() {
 			when={objects().length > 0}
 			fallback={
 				<p class="job-empty">
-					No object information. The slicer must emit M486 markers for the job.
+					The job didn't specify any objects.
 				</p>
 			}
 		>

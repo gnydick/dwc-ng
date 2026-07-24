@@ -52,7 +52,10 @@ export function FilamentCard(props: { tools: (Tool | null)[] }) {
 		app.om.om.state.currentTool === tool.number ? undefined : tool.number;
 
 	return (
-		<>
+		<Show
+			when={feeders().length > 0}
+			fallback={<p class="job-empty">No tools on this machine feed filament.</p>}
+		>
 			<label class="filament-macros">
 				<input type="checkbox" checked={runMacros()} onChange={e => setRunMacros(e.currentTarget.checked)} />
 				<span>Run macros</span>
@@ -112,6 +115,6 @@ export function FilamentCard(props: { tools: (Tool | null)[] }) {
 					</For>
 				</div>
 			</Show>
-		</>
+		</Show>
 	);
 }
