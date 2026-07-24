@@ -533,18 +533,35 @@
    otherwise proportionally squeezes those fixed widths to fit a narrower
    container instead of overflowing it, and squeezed content overlaps
    rather than just needing a horizontal scroll. */
-.heat-table { width: 100%; min-width: 548px; border-collapse: collapse; font-variant-numeric: tabular-nums; table-layout: fixed; }
+/* min-width covers the fixed columns (152+54+54+76+156 = 492) plus enough for
+   the elastic Filament column to stay usable rather than collapsing to a sliver
+   when the panel is dragged narrow. */
+.heat-table { width: 100%; min-width: 592px; border-collapse: collapse; font-variant-numeric: tabular-nums; table-layout: fixed; }
 /* Widths carry slack past the widest content: cells have no horizontal
    padding, so a column sized exactly to its text leaves adjacent right-aligned
    labels touching ("ACTIVESTANDBY"). */
 /* Columns: Heater | Filament | Active | Standby | Current | Set. Current sits
    last before the buttons so the reading and the control are one glance apart.
-   Every width past the first is fixed, so a three-digit temperature, a long
-   filament name or a fault badge can never re-flow the table. */
-.heat-table th:nth-child(2), .heat-table td:nth-child(2) { width: 92px; }
+
+   EXACTLY ONE column is left elastic, and it is FILAMENT — every other width is
+   fixed. This card lives on a resizable panel, so whichever column has no width
+   absorbs the whole difference. That used to be Heater, which meant widening the
+   card just grew dead space between the tool button and the picker (120px of it
+   at a 721px card) and narrowing it made the name overflow into Filament. Slack
+   now lands on the material name, where extra width is worth something. */
+.heat-table th:nth-child(1), .heat-table td:nth-child(1) { width: 152px; }
+/* col 2 = Filament: deliberately no width. Left-aligned with a gutter on both
+   sides, so the picker is tied to neither neighbour. */
+.heat-table th:nth-child(2), .heat-table td:nth-child(2) {
+	text-align: left;
+	padding-left: 16px;
+	padding-right: 16px;
+}
 .heat-table th:nth-child(3), .heat-table td:nth-child(3) { width: 54px; }
 .heat-table th:nth-child(4), .heat-table td:nth-child(4) { width: 54px; }
-.heat-table th:nth-child(5), .heat-table td:nth-child(5) { width: 64px; }
+/* Current: the padding is what keeps the reading off the Active button — right
+   aligned in a bare cell, its right edge met the button's left edge exactly. */
+.heat-table th:nth-child(5), .heat-table td:nth-child(5) { width: 76px; padding-right: 14px; }
 .heat-table th:nth-child(6), .heat-table td:nth-child(6) { width: 156px; }
 .heat-input {
 	width: 56px;
@@ -560,15 +577,10 @@
 .heat-input:focus-visible { outline: none; border-color: var(--copper); }
 /* The in-row filament picker. Fills its fixed column and ellipsises a long
    material name rather than widening it — the columns are load-bearing. */
-/* This column is the one left-aligned column past the first: the picker hugs
-   its left edge and the header sits over it, instead of both being right-
-   aligned against the setpoints. */
-.heat-table th:nth-child(2), .heat-table td:nth-child(2) { text-align: left; }
 .heat-fil {
-	/* Short of the full column ON PURPOSE — stretched to 100% its right edge
-	   met the Active column exactly and it read as part of the setpoints. The
-	   shortfall is the air on its right, matching the air on its left. */
-	width: calc(100% - 16px);
+	/* Fills its cell — the air on both sides is the cell's 16px gutters, so it
+	   stays symmetric at any card width instead of being a fixed shortfall. */
+	width: 100%;
 	max-width: 100%;
 	min-width: 0;
 	height: var(--ctl-h);
@@ -626,11 +638,11 @@
 	font-weight: 600;
 	font-size: 15px;
 	display: grid;
-	/* designator | dock dot | name. Sized SHORTER than the Heater column on
-	   purpose: the leftover is the air between the tool button and the filament
-	   picker, so the picker reads as its own column rather than as a third
-	   control bolted to the tool button. */
-	grid-template-columns: 56px 12px 64px;
+	/* designator | dock dot | name. The name track is minmax(0,1fr), NOT a fixed
+	   width: it takes whatever the Heater column has left, so it can neither
+	   overflow into Filament on a narrow card nor leave a hole on a wide one.
+	   The air before the picker is the Filament column's own left gutter. */
+	grid-template-columns: 56px 12px minmax(0, 1fr);
 	align-items: center;
 	gap: 8px;
 }
