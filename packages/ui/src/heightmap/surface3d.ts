@@ -25,6 +25,11 @@ import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData.js";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder.js";
 import "@babylonjs/core/Meshes/Builders/sphereBuilder.js"; // registers MeshBuilder.CreateSphere (probe-point markers)
 import "@babylonjs/core/Meshes/thinInstanceMesh.js"; // one draw call for all 256 markers
+// REQUIRED for picking. Deep-importing Babylon leaves Scene.pick inert until
+// the ray module is pulled in — it is what installs createPickingRay. Without
+// it every pick silently misses, which looks exactly like "the meshes are not
+// clickable" rather than like a missing import.
+import "@babylonjs/core/Culling/ray.js";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial.js";
 import { Matrix, Vector3 } from "@babylonjs/core/Maths/math.vector.js";
 import { Color3, Color4 } from "@babylonjs/core/Maths/math.color.js";
@@ -161,9 +166,37 @@ export function createSurface3D(
 
 	// POINTERPICK, not POINTERDOWN: it fires only on a tap that did not drag, so
 	// orbiting the camera across a marker cannot select it by accident.
+	// Cursor feedback. Babylon only swaps the cursor for meshes carrying an
+	// ActionManager, and these do not — so without this the surface gives no
+	// hint that it can be clicked at all, which reads as "not a target".
 	scene.onPointerObservable.add(info => {
-		if (info.type !== PointerEventTypes.POINTERPICK) return;
-		const pick = info.pickInfo;
+		if (info.type !== PointerEventTypes.POINTERMOVE) return;
+		// Never while dragging: the cursor must keep saying "orbiting", not
+		// start advertising a click the drag will not perform.
+		if (info.event.buttons !== 0) return;
+		const over = scene.pick(scene.pointerX, scene.pointerY);
+		canvas.style.cursor = over !== null && over.hit ? "pointer" : "default";
+	});
+
+	// Down/up with our own drag threshold, rather than Babylon's POINTERPICK.
+	// POINTERPICK carries internal conditions about what was picked on the way
+	// down, and a tap that lands on the surface after the camera has moved a
+	// pixel or two can silently fail to qualify. Selecting a probe point should
+	// not be that delicate — so the rule is stated here: press and release
+	// within a few pixels is a click, anything further is an orbit.
+	let downAt: { x: number; y: number } | null = null;
+	scene.onPointerObservable.add(info => {
+		if (info.type === PointerEventTypes.POINTERDOWN) {
+			downAt = { x: scene.pointerX, y: scene.pointerY };
+			return;
+		}
+		if (info.type !== PointerEventTypes.POINTERUP) return;
+		const start = downAt;
+		downAt = null;
+		if (start === null) return;
+		if (Math.hypot(scene.pointerX - start.x, scene.pointerY - start.y) > 4) return;
+
+		const pick = scene.pick(scene.pointerX, scene.pointerY);
 		if (pick === null || !pick.hit) return;
 
 		// A marker was hit directly — exact, no rounding.
@@ -290,6 +323,12 @@ export function createSurface3D(
 			}
 		}
 		dots.thinInstanceSetBuffer("matrix", matrices, 16);
+		// Without this the mesh keeps the bounding box of the ORIGINAL sphere at
+		// the origin, so picking rejects every instance outside it on the cheap
+		// bounds test and never reaches the per-instance check. The markers draw
+		// correctly either way, which makes it look like a picking bug rather
+		// than a stale bounding volume.
+		dots.thinInstanceRefreshBoundingInfo(true);
 		markerRadius = radius;
 		placeHighlight();
 
