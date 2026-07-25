@@ -47,15 +47,24 @@ export interface Backend {
 export const BACKENDS: Backend[] = [
 	{ id: "mock", label: "Mock", baseUrl: "", password: "", transport: "rr", real: false },
 	{ id: "mock-dsf", label: "Mock·DSF", baseUrl: "", password: "", transport: "dsf", real: false },
-	// The real board's password (RRF default "reprap" on Gabe's machine) can be
-	// overridden with VITE_DWC_PASSWORD. Dev-only; never in a production bundle.
+	// The real board's password comes from VITE_DWC_PASSWORD (.env.local).
+	// Dev-only; never in a production bundle.
 	{ id: "real", label: "Real", baseUrl: "/real", password: realPassword(), transport: "rr", real: true },
 	{ id: "real-dsf", label: "Real·DSF", baseUrl: "/real", password: realPassword(), transport: "dsf", real: true },
 ];
 
+/**
+ * The dev board's password, from the environment only.
+ *
+ * This used to fall back to "reprap" — one developer's board password baked
+ * into project source. Empty is the honest default: a board with no password
+ * accepts it, and a board WITH one fails loudly as InvalidPasswordError rather
+ * than appearing to work because someone else's credential happened to match.
+ * Set VITE_DWC_PASSWORD in .env.local; see .env.example.
+ */
 function realPassword(): string {
 	const configured = viteEnv["VITE_DWC_PASSWORD"];
-	return typeof configured === "string" && configured !== "" ? configured : "reprap";
+	return typeof configured === "string" ? configured : "";
 }
 
 const STORAGE_KEY = "dwc-ng-dev-backend";
