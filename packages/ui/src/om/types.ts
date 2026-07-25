@@ -13,6 +13,10 @@
  * tolerate missing fields; some exist only in DSF/SBC mode.
  */
 
+// One implementation of the number gate, shared with the render derivation.
+// speeds.ts imports only TYPES from here, so this is not a runtime cycle.
+import { numberOrNull } from "./speeds.ts";
+
 /** reference/objectmodel/src/move/Axis.ts */
 export interface Axis {
 	letter: string;
@@ -46,9 +50,28 @@ export interface Compensation {
 	fadeHeight: number | null;
 }
 
+/**
+ * reference/objectmodel/src/move/index.ts:13-20 (CurrentMove).
+ *
+ * RRF declares all three as non-nullable numbers defaulting to 0, so a
+ * connected board serving this subtree always sends numbers. `null` here means
+ * the field was ABSENT — before the first sync, or on a partial patch — which
+ * must not render as "0.0", since that asserts the machine is stopped on no
+ * evidence. (DWC has exactly this bug: its isFinite() guard passes null
+ * through as 0, because isFinite(null) === true.)
+ */
+export interface CurrentMove {
+	/** "Requested speed of the current move (in mm/s)" — after M220. */
+	requestedSpeed: number | null;
+	/** "Top speed of the current move (in mm/s)" — the achieved speed. */
+	topSpeed: number | null;
+	/** "Current extrusion rate (in mm/s)" — filament, not nozzle travel. */
+	extrusionRate: number | null;
+}
+
 export interface Move {
 	axes: Axis[];
-	currentMove: { requestedSpeed: number; topSpeed: number };
+	currentMove: CurrentMove;
 	speedFactor: number;
 	extruders: Extruder[];
 	compensation: Compensation;
@@ -277,7 +300,7 @@ export function emptyModel(): ObjectModel {
 		job: { file: null, filePosition: null, duration: null, layer: null, layers: [], lastFileName: null, timesLeft: { filament: null, file: null, slicer: null }, build: null },
 		move: {
 			axes: [],
-			currentMove: { requestedSpeed: 0, topSpeed: 0 },
+			currentMove: { requestedSpeed: null, topSpeed: null, extrusionRate: null },
 			speedFactor: 1,
 			extruders: [],
 			compensation: { type: "none", file: null, meshDeviation: null, fadeHeight: null },
@@ -290,6 +313,23 @@ export function emptyModel(): ObjectModel {
 
 const arrayOr = (value: unknown, fallback: unknown[]): unknown[] =>
 	Array.isArray(value) ? value : fallback;
+
+/**
+ * Parse currentMove's numbers at the refetch gate so the store's shape matches
+ * its declared type. NOT the render guarantee: the live d99fn patch route
+ * (store.ts:89) never reaches conformModelKey, so om/speeds.ts parses again at
+ * the point of display. See I-A in the design doc.
+ */
+const conformCurrentMove = (value: unknown): CurrentMove => {
+	const v = typeof value === "object" && value !== null && !Array.isArray(value)
+		? value as Record<string, unknown>
+		: {};
+	return {
+		requestedSpeed: numberOrNull(v.requestedSpeed),
+		topSpeed: numberOrNull(v.topSpeed),
+		extrusionRate: numberOrNull(v.extrusionRate),
+	};
+};
 
 /**
  * The per-key shape gate at the OM's single entry (audit M8). The wire is a
@@ -343,7 +383,7 @@ export function conformModelKey(key: string, value: unknown): { ok: true; value:
 				...value,
 				axes: arrayOr(value.axes, []),
 				extruders: arrayOr(value.extruders, []),
-				currentMove: isObject(value.currentMove) ? value.currentMove : d.currentMove,
+				currentMove: conformCurrentMove(value.currentMove),
 				// A board that omits compensation (or sends it as a scalar) must not
 				// cost the whole move subtree — fill, don't refuse.
 				compensation: isObject(value.compensation) ? value.compensation : d.compensation,

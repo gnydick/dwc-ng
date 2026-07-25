@@ -71,3 +71,27 @@ test("good subtrees pass through with served values intact", () => {
 		assert.equal(v.speedFactor, 1.2);
 	}
 });
+
+test("currentMove's numbers are parsed, not waved through", () => {
+	const move = conformModelKey("move", {
+		axes: [],
+		extruders: [],
+		currentMove: { requestedSpeed: "fast", topSpeed: 87.4, extrusionRate: null },
+	});
+	assert.ok(move.ok);
+	if (move.ok) {
+		const cm = (move.value as Record<string, unknown>).currentMove as Record<string, unknown>;
+		assert.equal(cm.requestedSpeed, null, "a string becomes null, not a string reaching toFixed()");
+		assert.equal(cm.topSpeed, 87.4, "good neighbours survive");
+		assert.equal(cm.extrusionRate, null);
+	}
+});
+
+test("a move subtree with no currentMove still conforms to the promised shape", () => {
+	const move = conformModelKey("move", { axes: [], extruders: [] });
+	assert.ok(move.ok);
+	if (move.ok) {
+		const cm = (move.value as Record<string, unknown>).currentMove as Record<string, unknown>;
+		assert.deepEqual(cm, { requestedSpeed: null, topSpeed: null, extrusionRate: null });
+	}
+});
