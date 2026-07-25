@@ -12,6 +12,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { numberOrNull, speedRow } from "../src/om/speeds.ts";
 import { emptyModel, type ObjectModel } from "../src/om/types.ts";
+import { parseSpeedFlowMode, DEFAULT_SPEED_FLOW_MODE } from "../src/shell/speedFlowMode.ts";
 
 /** A model with one tool selected, feeding extruder 0 at 1.75 mm. */
 function modelWith(currentMove: unknown): ObjectModel {
@@ -90,6 +91,16 @@ test("volumetric with no usable filament diameter shows a dash, not the linear n
 	const zeroDiameter = modelWith({ requestedSpeed: 120, topSpeed: 87.4, extrusionRate: 3.2 });
 	zeroDiameter.move.extruders = [{ filamentDiameter: 0, filament: "" }];
 	assert.equal(speedRow(zeroDiameter, "volumetric")[2].value, "—");
+});
+
+test("the flow-mode parse is tolerant — bad storage never throws", () => {
+	assert.equal(parseSpeedFlowMode("volumetric"), "volumetric");
+	assert.equal(parseSpeedFlowMode("linear"), "linear");
+	assert.equal(parseSpeedFlowMode(null), DEFAULT_SPEED_FLOW_MODE);
+	assert.equal(parseSpeedFlowMode(""), DEFAULT_SPEED_FLOW_MODE);
+	assert.equal(parseSpeedFlowMode("{]"), DEFAULT_SPEED_FLOW_MODE);
+	assert.equal(parseSpeedFlowMode("imperial"), DEFAULT_SPEED_FLOW_MODE);
+	assert.equal(DEFAULT_SPEED_FLOW_MODE, "linear");
 });
 
 test("every cell names its OM source for the title attribute", () => {
