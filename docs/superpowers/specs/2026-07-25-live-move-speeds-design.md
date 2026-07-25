@@ -1,0 +1,236 @@
+# Live move speeds — requested, top, extrusion/flow
+
+**Date:** 2026-07-25
+**Status:** approved (design), not yet implemented
+**Parity gap:** `docs/dwc-parity.md` §4 — DWC's Status-panel "Speeds" block has no
+dwc-ng equivalent. Reported by Gabe as "the one critical missing piece."
+
+## Problem
+
+`move.currentMove` has been arriving in the store since the connector was
+written and nothing renders it. It is part of the `d99fn` live query
+(`PollConnector.ts:111`, 500 ms interval; confirmed present in the real-board
+capture `packages/mock-duet/captures/duet3-real-2026-07-15/model/live-d99fn.json`),
+and the live patch is deep-merged into the OM store on every poll. So the gap
+is entirely in the UI layer: no connector, poll, or seqs work is required.
+
+DWC shows this as a "Speeds" category directly beneath the axes/extruders block
+of `StatusPanel.vue` (`reference/dwc/src/components/panels/StatusPanel.vue:114-159`),
+with three cells: Requested Speed, Top Speed, and Extrusion Rate — the last
+click-toggling to volumetric flow in mm³/s.
+
+### What the values actually mean
+
+- `requestedSpeed` — the feedrate the current move asked for, after `M220`.
+- `topSpeed` — the **peak speed the planner reached on the segment being
+  executed**. It is not an instantaneous velocity. The gap between requested
+  and top is the useful signal: it shows when acceleration limits, cornering,
+  or short segments stop the machine hitting its commanded feedrate.
+- `extrusionRate` — filament consumption for the current move, in mm/s of
+  filament (not of nozzle travel).
+
+## Decisions
+
+| Question | Decision |
+|---|---|
+| Placement | A footer row on the **Position card**, mirroring DWC's own IA (speeds sit under the DRO). Not a separate registry card — no extra card to place on every screen, and it is the same "what is the machine doing right now" glance. |
+| Fields | All three, with the volumetric-flow toggle (full DWC parity). |
+| Card height | Bump the **default** `rowSpan` in `compose/defs.ts` so fresh installs and *Reset layout* are correct. No migration of saved overlays. |
+
+## Invariants
+
+Per `cant-break-by-design`, named in both directions.
+
+### Touched (existing, currently under-enforced)
+
+**I-A: every OM field the UI renders is validated at the single conform
+boundary.** `conform`'s `move` case currently waves the nested object through
+unchecked (`om/types.ts:346`):
+
+```ts
+currentMove: isObject(value.currentMove) ? value.currentMove : d.currentMove,
+```
+
+The fields are *typed* `number` but never *checked*, so a board sending a
+string or `null` reaches `.toFixed()` and throws. This sits at rung 0 today and
+rendering it is what would expose it. **Promotion:** parse each field
+individually at the boundary, producing a type that carries the proof.
+
+Note that DWC's `isFinite()` guard would not be a correct thing to copy:
+`isFinite(null) === true` in JS, because `null` coerces to `0`. A board
+reporting `null` renders as `0.0` in DWC, indistinguishable from "genuinely
+stopped."
+
+### Introduced (new, this feature's own output)
+
+**I-B: the speeds footer always occupies exactly three fixed slots.** A row
+that gains or loses cells as machine state changes would reflow the card —
+directly against the project's primary positional-stability rule. Enforced by
+the derivation returning a fixed 3-tuple, so "two cells" and "four cells" have
+no representation.
+
+**I-C: volumetric flow is derived, never stored.** One computation site, at use
+time, so it cannot drift from the `extrusionRate` it is derived from.
+
+**I-D: "not reported" and "zero" are different values.** `null` renders as an
+em-dash; `0` renders as `0.0`.
+
+## Components
+
+### 1. `packages/ui/src/om/types.ts` — parse boundary
+
+Widen the type to admit the honest absent case, and add the third field:
+
+```ts
+currentMove: {
+    requestedSpeed: number | null;
+    topSpeed: number | null;
+    extrusionRate: number | null;
+};
+```
+
+Defaults in `emptyModel()` become `null` (currently `0`, which asserts
+"stopped" before the first poll has landed).
+
+Add a `numberOrNull` helper beside the existing `arrayOr` (`om/types.ts:291`)
+and use it per field in the `move` conform arm:
+
+```ts
+currentMove: conformCurrentMove(value.currentMove, d.currentMove),
+```
+
+`conformCurrentMove` is a small local function in the same module — one place,
+next to the other conform arms, so it cannot be bypassed by a future call site
+that reaches into the wire object directly.
+
+No other code reads `currentMove` today, so the type widening is free.
+
+### 2. `packages/ui/src/om/speeds.ts` — the single derivation (new)
+
+The only place OM values become display text.
+
+```ts
+export type FlowMode = "linear" | "volumetric";
+
+export interface SpeedCell {
+    key: "requested" | "top" | "flow";
+    label: string;
+    value: string;   // already formatted, including the em-dash for null
+    unit: string;
+}
+
+/** Exactly three cells, always — see I-B. */
+export type SpeedRow = readonly [SpeedCell, SpeedCell, SpeedCell];
+
+export function speedRow(om: KnownModel, mode: FlowMode): SpeedRow;
+```
+
+Behaviour:
+
+- `null` → `"—"`; a number → one decimal place.
+- Cells 1 and 2 are `requestedSpeed` / `topSpeed`, unit `mm/s`.
+- Cell 3 depends on `mode`:
+  - `"linear"` → `extrusionRate`, unit `mm/s`, label `Extrusion`.
+  - `"volumetric"` → `area × extrusionRate`, unit `mm³/s`, label `Flow`,
+    where `area = π (d/2)²` and `d` is
+    `move.extruders[tool.filamentExtruder].filamentDiameter` for the tool at
+    `state.currentTool`.
+- Volumetric with no current tool, no filament extruder, or a missing/zero
+  diameter → `"—"`. We do not fall back to the linear value, which would
+  silently show a mm/s number under a mm³/s unit.
+
+Our `Tool` type carries a single `filamentExtruder` index rather than DWC's
+`extruders[]` + `mix[]` arrays, so the mix-ratio averaging in
+`StatusPanel.vue:286-311` has no analogue here — one tool, one extruder.
+
+### 3. `packages/ui/src/shell/speedFlowMode.ts` — the toggle's state (new)
+
+localStorage-backed, modelled on `shell/panelOrientation.ts`: a tolerant
+`parseSpeedFlowMode` that yields the default on anything unexpected and never
+throws.
+
+Deliberately **not** part of `UiConfig`. That overlay persists to
+`0:/sys/dwc-ng-config.json` and drives the dirty/save cycle
+(`config/types.ts:149-171`); a display-unit preference should not mark machine
+config unsaved, and it is per-browser rather than per-machine.
+
+### 4. `packages/ui/src/cards/PositionCard.tsx` — the footer
+
+One row below the DRO, rendered in both the vertical and horizontal
+orientations (the card supports `orientationToggle`). Structure follows the
+existing `.dro-row` idiom, whose CSS already documents the fixed-slot rule
+(`app.css:455-465`: *"a fixed slot keeps the value's right edge rock-steady"*).
+
+- `<For each={speedRow()}>` over the 3-tuple.
+- `font-variant-numeric: tabular-nums` and a fixed-width value slot, so digits
+  changing at 2 Hz cannot shift anything.
+- Cell 3's label is a real `<button>` toggling the mode — not DWC's
+  `<a href="javascript:void(0)">`.
+- Per `solid-patterns`: no destructuring, `<Show>`/`<For>` only.
+
+### 5. `packages/ui/src/compose/defs.ts` — card metadata
+
+- `tip`: `"move.axes"` → `"move.axes · move.currentMove"`.
+- `size.rowSpan`: currently `95` (= 380 px at `ROW_UNIT_PX = 4`,
+  `panelCanvas.ts:33`). The footer adds roughly one `.dro-row` band, ~9–10
+  units.
+
+  The value will be **measured, not guessed**: `panelCanvas.ts:264` provides
+  the smallest `rowSpan` that still contains a card's content, read from the
+  DOM. Build the footer, read the measured minimum in the browser, set the
+  default to it. This keeps the default derived from the rendered content
+  rather than a hand-maintained second copy of "how tall is this card" that
+  drifts whenever the DRO's type sizes change.
+
+  Saved layout overlays keep their stored `95` and will clip the footer until
+  the card is resized once by hand. Accepted: no migration code, and nothing
+  silently rewrites a user's saved layout. (A migration was considered and
+  rejected — `panelCanvas`'s collision rules can refuse the grow when a card
+  sits directly below, in which case it would clip anyway, silently.)
+
+### 6. `packages/ui/src/dev/cardScenarios.ts` — card-lab fixtures
+
+The lab's model stub (`cardScenarios.ts:73`) pins `currentMove` to zeroes, so
+the Card Lab would show a permanently dead footer. Give the printing scenarios
+live-looking values (requested above top, a non-zero extrusion rate) and leave
+the idle scenario at `null` so both the em-dash and the numeric rendering are
+reachable without a machine.
+
+## Testing
+
+`packages/ui/test/speeds.test.ts`:
+
+- `null` values render as `"—"`, not `"0.0"` (I-D).
+- Numbers render at one decimal place.
+- Volumetric derivation against a hand-computed value for 1.75 mm filament.
+- Volumetric with no current tool / no filament extruder / zero diameter →
+  `"—"`, and specifically *not* the linear number.
+- The returned row has length 3 in every case above (I-B).
+
+`packages/ui/test/om-conform.test.ts` (extend the existing `currentMove` case
+at line 64):
+
+- A board sending `{ requestedSpeed: "fast" }` conforms to `null`, not a
+  string — the red-check being that without the fix this value reaches the
+  formatter (I-A).
+- A board omitting `currentMove` entirely still yields a usable `move`.
+
+## Live verification
+
+Per the standing rule that "verified" requires a check that could have failed,
+the falsifying checks are:
+
+1. Run a real job (or the mock's mid-print scenario) and confirm requested and
+   top **diverge** during acceleration and cornering. If they track each other
+   exactly at all times, the values are not being read live and the check has
+   failed.
+2. Change `M220` and confirm `requestedSpeed` moves with it.
+3. Watch the footer at mobile width and during a live print for any horizontal
+   shift as digit counts change (e.g. `99.4` → `100.0`).
+
+## Out of scope
+
+- Imperial units. DWC's `displayMoveSpeed` converts to ipm under a global
+  units setting (`reference/dwc/src/utils/display.ts:110-115`); dwc-ng has no
+  such setting and this feature does not introduce one.
+- A speeds chart or history. This is a live readout only.
