@@ -53,7 +53,7 @@ export const CARD_DEFS = {
 	position: defineCard({
 		title: "Position",
 		ariaLabel: "Position",
-		tip: "move.axes",
+		tip: "move.axes · move.currentMove",
 		orientationToggle: true,
 		size: { colSpan: 12, rowSpan: 95 },
 	}),

@@ -1,5 +1,7 @@
 import { For, Show, createMemo } from "solid-js";
 import { useApp } from "../shell/context.ts";
+import { speedRow } from "../om/speeds.ts";
+import { speedFlowMode, toggleSpeedFlowMode } from "../shell/speedFlowMode.ts";
 import type { Orientation } from "../shell/panelOrientation.ts";
 
 /**
@@ -9,6 +11,7 @@ import type { Orientation } from "../shell/panelOrientation.ts";
 export function PositionBody(props: { orientation: () => Orientation }) {
 	const app = useApp();
 	const visibleAxes = createMemo(() => app.om.om.move.axes.filter(a => a.visible));
+	const speeds = createMemo(() => speedRow(app.om.om, speedFlowMode()));
 
 	return (
 		<Show when={visibleAxes().length} fallback={<p class="job-empty">Waiting for the machine…</p>}>
@@ -53,6 +56,33 @@ export function PositionBody(props: { orientation: () => Orientation }) {
 					</For>
 				</div>
 			</Show>
+			{/* Machine-wide, not per-axis, so it sits outside the orientation
+			    split and reads identically in both layouts. */}
+			<div class="speed-foot">
+				<span class="speed-foot-tag">Speed</span>
+				<For each={speeds()}>
+					{cell => (
+						<div class="speed-cell">
+							<Show
+								when={cell.key === "flow"}
+								fallback={<span class="speed-label">{cell.label}</span>}
+							>
+								<button
+									type="button"
+									class="speed-label speed-toggle"
+									onClick={toggleSpeedFlowMode}
+									title="Switch between extrusion rate (mm/s of filament) and volumetric flow (mm³/s)"
+								>
+									{cell.label}
+								</button>
+							</Show>
+							<span class="speed-val" title={cell.source}>
+								{cell.value}<small>{cell.unit}</small>
+							</span>
+						</div>
+					)}
+				</For>
+			</div>
 		</Show>
 	);
 }
