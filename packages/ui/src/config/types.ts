@@ -204,3 +204,13 @@ export const CONFIG_CACHE_KEY = "dwc-ng.config";
 /** Bump when the overlay schema changes incompatibly. */
 export const CONFIG_VERSION = 1;
 export const MAX_SNAPSHOTS = 10;
+/**
+ * Longest a backup label may be. Labels reach localStorage (persistCache) and
+ * render into a fixed-width list, so an unbounded one bloats the cache and
+ * breaks the card's layout. Enforced in snapshot(), the sole place a snapshot
+ * is created — no call site can introduce a label the list cannot render.
+ */
+export const MAX_LABEL_LEN = 60;
+/** What an unnamed backup is called. A blank name must never block a save, and
+ *  the row still carries its timestamp. */
+export const DEFAULT_SNAPSHOT_LABEL = "saved";

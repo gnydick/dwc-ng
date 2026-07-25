@@ -1110,6 +1110,13 @@
    changes" (different widths). Without a reserved width it would shove the
    Save button sideways on every edit — the one control you're aiming for. */
 .save-bar .hint { margin: 0; min-width: 132px; }
+/* The armed name field swaps in where the Save button was, so the bar is
+   wider while naming. Wrap rather than overflow — the card is only 24 columns
+   and the field must not push Cancel off the edge at mobile width. */
+.save-bar { flex-wrap: wrap; row-gap: 8px; }
+/* Shrinkable, with a floor: a field narrower than this can't show a name
+   worth reading, and one that grows unbounded shoves the buttons around. */
+.save-bar .save-label { flex: 1 1 160px; min-width: 120px; max-width: 320px; }
 
 /* ---------- responsive ---------- */
 
