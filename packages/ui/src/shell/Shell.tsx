@@ -68,9 +68,7 @@ export default function Shell() {
 							</a>
 						)}
 					</For>
-					<Show when={import.meta.env.DEV}>
-						<a href={`#/${LAB_ROUTE}`} aria-current={labActive() ? "page" : undefined}>Card Lab</a>
-					</Show>
+					<a href={`#/${LAB_ROUTE}`} aria-current={labActive() ? "page" : undefined}>Card Lab</a>
 				</nav>
 				<p class="machine-id">
 					<Show when={app.om.om.boards[0]}>
