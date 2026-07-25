@@ -42,9 +42,18 @@ reading behaves as a live achieved-speed trace during a print — it will be
 noisy on short segments, which is a faithful report of the machine genuinely
 slowing for them.
 
-The gap between requested and top is the useful signal: it shows when
+The gap between requested and achieved is the useful signal: it shows when
 acceleration limits, cornering, or short segments stop the machine hitting its
 commanded feedrate.
+
+**Label decision (Gabe, 2026-07-25): cell 2 is labelled `Actual`, not DWC's
+"Top Speed".** The value is re-sampled every poll and is the speed the machine
+is achieving right now, so "Top Speed" mis-describes it as a high-water mark —
+a reader would reasonably expect a number that only ever climbs. `Actual` says
+what it is. The underlying field is still `topSpeed`, and traceability is
+preserved two ways: the card tip lists `move.currentMove`, and the cell carries
+a `title` naming `move.currentMove.topSpeed`. This is a deliberate, recorded
+divergence from DWC's wording, not an oversight.
 
 ### Path and nullability, verified
 
@@ -167,7 +176,8 @@ export function speedRow(om: KnownModel, mode: FlowMode): SpeedRow;
 Behaviour:
 
 - `null` → `"—"`; a number → one decimal place.
-- Cells 1 and 2 are `requestedSpeed` / `topSpeed`, unit `mm/s`.
+- Cell 1 — `requestedSpeed`, label `Requested`, unit `mm/s`.
+- Cell 2 — `topSpeed`, label **`Actual`**, unit `mm/s`.
 - Cell 3 depends on `mode`:
   - `"linear"` → `extrusionRate`, unit `mm/s`, label `Extrusion`.
   - `"volumetric"` → `area × extrusionRate`, unit `mm³/s`, label `Flow`,
