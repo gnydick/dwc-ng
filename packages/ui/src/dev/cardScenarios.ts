@@ -70,7 +70,9 @@ function base(): ObjectModel {
 			axis("U", 12.4), axis("V", 12.4), axis("W", 12.4),
 			axis("C", 0),
 		],
-		currentMove: { requestedSpeed: 0, topSpeed: 0 },
+		// Absent, not zero: the idle scenario is what exercises the em-dash
+		// path, so both renderings are reachable in the lab without a machine.
+		currentMove: { requestedSpeed: null, topSpeed: null, extrusionRate: null },
 		speedFactor: 1,
 		extruders: [0, 1, 2, 3].map(() => ({ filamentDiameter: 1.75, filament: "" })),
 		// A mesh IS loaded here, so the Mesh card's status line has something to
@@ -119,6 +121,9 @@ function base(): ObjectModel {
 /** Layer a mid-print job (used by printing + paused) onto a warm base. */
 function withPrintingJob(model: ObjectModel): ObjectModel {
 	model.state.currentTool = 0;
+	// Requested above achieved — the normal printing case, where cornering and
+	// segment length keep the machine off its commanded feedrate.
+	model.move.currentMove = { requestedSpeed: 120, topSpeed: 87.4, extrusionRate: 3.2 };
 	model.heat.heaters[0] = heater(60.0, 60, 0, "active"); // bed
 	model.heat.heaters[1] = heater(209.4, 210, 0, "active"); // nozzle 1
 	model.tools[0] = tool(0, 1, 210, 0, "active");
