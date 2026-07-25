@@ -17,12 +17,12 @@
 import { For, Show, createEffect, createMemo, createSignal, untrack } from "solid-js";
 import { useApp } from "../shell/context.ts";
 import { PanelCanvas } from "../shell/PanelCanvas.tsx";
-import { createPanelCanvas } from "../shell/panelCanvas.ts";
+import { canvasStorageKey, createPanelCanvas, type PanelCanvasController } from "../shell/panelCanvas.ts";
 import { CARD_DEFS, allCardIds, parseCardId, type CardId } from "./defs.ts";
 import { RegistryCard, cardTitleOf } from "./RegistryCard.tsx";
 import { addCard, compositionRects, customCardIds, isCustomCardId, removeCard, slotsOf, type Composition, type CustomCardId, type SlotId } from "./composition.ts";
 import { createServicePool } from "./services.ts";
-import { planScreenImport, resolveScreen, screenList, type ScreenEntry } from "./screens.ts";
+import { planScreenImport, replaceScreenLayout, resolveScreen, screenList, type ScreenEntry } from "./screens.ts";
 import { CustomCard } from "./CustomCard.tsx";
 import { CardStudio } from "./CardStudio.tsx";
 import { ImportReview } from "./ImportReview.tsx";
@@ -80,7 +80,7 @@ export function ComposedScreen(props: { screenId: string }) {
 	// Initial defaults from the composition at mount; later membership edits
 	// flow through the sync effect below instead of a remount.
 	const canvas = createPanelCanvas(
-		`dwc-ng.canvas.${props.screenId}`,
+		canvasStorageKey(props.screenId),
 		untrack(() => slotsOf(composition()).map(([id, slot]) => ({ id, ...slot }))),
 		rawId => {
 			const id = parseCardId(rawId);
@@ -108,7 +108,7 @@ export function ComposedScreen(props: { screenId: string }) {
 	return (
 		<>
 			<div class="layout-toolbar">
-				<ComposeDrawer screenId={props.screenId} entry={entry()} composition={composition()} previewCtx={ctxFor("console")} />
+				<ComposeDrawer screenId={props.screenId} entry={entry()} composition={composition()} previewCtx={ctxFor("console")} canvas={canvas} />
 				<button class="layout-reset" onClick={() => canvas.reset()}>↺ Reset layout</button>
 			</div>
 			<PanelCanvas class={entry()?.def.class}>
@@ -145,7 +145,7 @@ export function ComposedScreen(props: { screenId: string }) {
  *  "atx-like" names naturally — "case doesn't matter". */
 const byName = (a: string, b: string): number => a.localeCompare(b, undefined, { sensitivity: "base" });
 
-function ComposeDrawer(props: { screenId: string; entry: ScreenEntry | null; composition: Composition; previewCtx: CardCtx }) {
+function ComposeDrawer(props: { screenId: string; entry: ScreenEntry | null; composition: Composition; previewCtx: CardCtx; canvas: PanelCanvasController }) {
 	const app = useApp();
 	// The card pickers, alphabetized. Spread before sort so the registry's own
 	// definition order is never mutated.
@@ -206,8 +206,17 @@ function ComposeDrawer(props: { screenId: string; entry: ScreenEntry | null; com
 			for (const card of parsed.customCards) {
 				idMap.set(card.fileId, app.config.addCustomCard(card.name, card.specText));
 			}
+			// An import REBUILDS the page: every card lands where the file says.
+			// replaceScreenLayout is the only writer that touches both the config
+			// overlay and this browser's canvas store, so the imported layout
+			// cannot arrive half-applied — see its comment for why writing one
+			// store alone shreds the layout card by card.
 			const screenId = plan.target?.id ?? app.config.addScreen(parsed.name);
-			app.config.updateScreenCards(screenId, remapScreenCards(parsed.cards, idMap));
+			const rects = remapScreenCards(parsed.cards, idMap);
+			replaceScreenLayout(app.config, screenId, rects);
+			// The screen being replaced may be the one on screen, which no route
+			// change would remount.
+			if (screenId === props.screenId) props.canvas.adoptLayout(rects);
 			window.location.hash = `#/${screenId}`;
 		}
 		setImporting(null);
