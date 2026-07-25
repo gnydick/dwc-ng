@@ -75,7 +75,10 @@ export const CARD_DEFS = {
 		ariaLabel: "Active job",
 		tip: "job · state",
 		class: "job-active",
-		size: { colSpan: 12, rowSpan: 40 },
+		// 40 -> 46, MEASURED via contentRowSpan(). 40 never fit: Pause/Cancel
+		// sat below the fold on every surface that placed this card. Moving them
+		// onto the facts row cut the need from ~58 to 46; this closes the rest.
+		size: { colSpan: 12, rowSpan: 46 },
 	}),
 	/**
 	 * Same card with the three-source estimate breakdown (monitoring surfaces).
@@ -94,7 +97,9 @@ export const CARD_DEFS = {
 		ariaLabel: "Active job, with estimates",
 		tip: "job · state · estimates",
 		class: "job-active",
-		size: { colSpan: 12, rowSpan: 40 },
+		// 52, not the compact card's 46: this variant carries the extra
+		// est-sources row. Measured the same way.
+		size: { colSpan: 12, rowSpan: 52 },
 	}),
 	/** Endstops, filament monitors, probes. */
 	sensors: defineCard({

@@ -1212,6 +1212,15 @@
 .progress-fill { height: 100%; background: linear-gradient(90deg, var(--copper), var(--copper-bright)); transition: width 0.4s ease; }
 .progress-label { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font: 600 12px/1 "Rajdhani", sans-serif; color: var(--silk); }
 .job-active-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+/* Facts and the two job actions share one row: Pause/Cancel belong beside the
+   numbers they act on, not stranded at the bottom of the card. The buttons are
+   anchored to the right edge by margin-left:auto rather than by the facts'
+   width, so a fact gaining a character cannot slide Cancel under the pointer.
+   Wraps on a narrow card, where the buttons drop below instead of squeezing. */
+.job-facts-row { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.job-facts-row .job-facts { flex: 1 1 auto; min-width: 0; }
+.job-actions { margin-top: 0; margin-left: auto; flex: none; }
+
 .job-facts { display: flex; gap: 22px; flex-wrap: wrap; }
 /* Live values gain and lose characters every tick ("59s" → "1m 0s", layer
    9 → 10). tabular-nums evens the digits but not the string length, so

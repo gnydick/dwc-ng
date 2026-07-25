@@ -31,7 +31,9 @@ export const MACHINE_COMPOSITION: Composition = {
 	// below it moves down by the same 8 so the column stays collision-free.
 	position: { col: 0, row: 0, colSpan: 12, rowSpan: 103 },
 	"tools-heaters": { col: 12, row: 0, colSpan: 12, rowSpan: 110 },
-	"active-job": { col: 0, row: 103, colSpan: 12, rowSpan: 40 },
+	// 40 -> 46 so Pause/Cancel are above the fold. Column 0 now ends at 149,
+	// still clear of temperatures at 152, so nothing below needs to move.
+	"active-job": { col: 0, row: 103, colSpan: 12, rowSpan: 46 },
 	sensors: { col: 12, row: 110, colSpan: 12, rowSpan: 42 },
 	temperatures: { col: 0, row: 152, colSpan: 24, rowSpan: 80 },
 	console: { col: 0, row: 232, colSpan: 24, rowSpan: 75 },
@@ -41,17 +43,20 @@ export const MACHINE_COMPOSITION: Composition = {
 /** Control: the interactive surface — every control 1:1 with G-code.
  *  atx/filament/fans are hidden-but-placed (their visibleWhen gates them). */
 export const CONTROL_COMPOSITION: Composition = {
-	"active-job": { col: 0, row: 0, colSpan: 24, rowSpan: 32 },
-	homing: { col: 0, row: 32, colSpan: 12, rowSpan: 51 },
-	heaters: { col: 0, row: 83, colSpan: 12, rowSpan: 62 },
-	fans: { col: 0, row: 145, colSpan: 12, rowSpan: 62 },
-	"pinned-commands": { col: 0, row: 207, colSpan: 12, rowSpan: 50 },
-	tuning: { col: 0, row: 257, colSpan: 12, rowSpan: 33 },
-	filament: { col: 12, row: 65, colSpan: 12, rowSpan: 50 },
-	movement: { col: 12, row: 115, colSpan: 12, rowSpan: 123 },
-	atx: { col: 12, row: 238, colSpan: 12, rowSpan: 32 },
-	console: { col: 0, row: 290, colSpan: 24, rowSpan: 75 },
-	camera: { col: 0, row: 365, colSpan: 8, rowSpan: 75 },
+	// active-job 32 -> 46 so Pause/Cancel are above the fold. It spans the full
+	// width at row 0, so EVERY card below shifts down by the same 14 — both
+	// columns and the console/camera strip.
+	"active-job": { col: 0, row: 0, colSpan: 24, rowSpan: 46 },
+	homing: { col: 0, row: 46, colSpan: 12, rowSpan: 51 },
+	heaters: { col: 0, row: 97, colSpan: 12, rowSpan: 62 },
+	fans: { col: 0, row: 159, colSpan: 12, rowSpan: 62 },
+	"pinned-commands": { col: 0, row: 221, colSpan: 12, rowSpan: 50 },
+	tuning: { col: 0, row: 271, colSpan: 12, rowSpan: 33 },
+	filament: { col: 12, row: 79, colSpan: 12, rowSpan: 50 },
+	movement: { col: 12, row: 129, colSpan: 12, rowSpan: 123 },
+	atx: { col: 12, row: 252, colSpan: 12, rowSpan: 32 },
+	console: { col: 0, row: 304, colSpan: 24, rowSpan: 75 },
+	camera: { col: 0, row: 379, colSpan: 8, rowSpan: 75 },
 };
 
 /** Activity: live position + detailed job progress + the 3D toolpath.
@@ -61,12 +66,15 @@ export const ACTIVITY_COMPOSITION: Composition = {
 	// 95 -> 103 for the speed footer. gcode-viewer spans the full width
 	// directly below, so it and everything under it shift down by the same 8.
 	position: { col: 0, row: 0, colSpan: 12, rowSpan: 103 },
-	"active-job-detailed": { col: 12, row: 0, colSpan: 12, rowSpan: 40 },
-	"build-objects": { col: 12, row: 40, colSpan: 12, rowSpan: 53 },
-	"gcode-viewer": { col: 0, row: 103, colSpan: 24, rowSpan: 180 },
-	layers: { col: 0, row: 283, colSpan: 24, rowSpan: 67 },
-	console: { col: 0, row: 350, colSpan: 24, rowSpan: 75 },
-	camera: { col: 0, row: 425, colSpan: 8, rowSpan: 75 },
+	// 40 -> 52 (this variant carries the est-sources row), so build-objects
+	// below it moves to 52 and now ends at 105 — past gcode-viewer's old 103,
+	// which therefore shifts to 105 along with everything under it.
+	"active-job-detailed": { col: 12, row: 0, colSpan: 12, rowSpan: 52 },
+	"build-objects": { col: 12, row: 52, colSpan: 12, rowSpan: 53 },
+	"gcode-viewer": { col: 0, row: 105, colSpan: 24, rowSpan: 180 },
+	layers: { col: 0, row: 285, colSpan: 24, rowSpan: 67 },
+	console: { col: 0, row: 352, colSpan: 24, rowSpan: 75 },
+	camera: { col: 0, row: 427, colSpan: 8, rowSpan: 75 },
 };
 
 /** Jobs: the gcodes listing + details for the selected file. */
