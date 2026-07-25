@@ -90,7 +90,13 @@ test("RED CHECK: writing only the config overlay reproduces the shredding", () =
 	const defaults = Object.entries(IMPORTED).map(([id, r]) => ({ id, ...r }));
 	const rendered = mergeCanvas(parseStoredCanvas(localStorage.getItem(canvasStorageKey("machine"))), defaults);
 
-	assert.deepEqual(rendered["position"], OLD["position"], "the old rect wins — this is the bug");
+	// POSITION is the invariant this pins: the browser's remembered col/row
+	// wins over the imported layout's, which is the shredding. Spans are no
+	// longer part of the claim — growToDefaults (USER_AUDIT line 19) adopts a
+	// composition span that grew, so position's rowSpan legitimately becomes
+	// the imported 60 while its col/row stay stubbornly at the old 0,0.
+	assert.equal(rendered["position"]!.col, OLD["position"]!.col, "the old column wins — this is the bug");
+	assert.equal(rendered["position"]!.row, OLD["position"]!.row, "the old row wins — this is the bug");
 	assert.notDeepEqual(rendered["position"], IMPORTED["position"]);
 });
 
