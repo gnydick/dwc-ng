@@ -514,6 +514,14 @@ export interface PanelCanvasController {
 	ensureSlot: (id: string, rect: PanelRect) => void;
 	/** Forget a slot removed after mount. Persists like a drop. */
 	removeSlot: (id: string) => void;
+	/**
+	 * Rebuild the layout wholesale from `rects` — the live half of an import.
+	 * Distinct from ensureSlot/removeSlot, which evolve the CURRENT layout one
+	 * card at a time: this one says "that layout is gone, here is a different
+	 * one", which is the operation an import performs and the one that was
+	 * missing.
+	 */
+	adoptLayout: (rects: CanvasState) => void;
 }
 
 /**
@@ -791,7 +799,17 @@ export function createPanelCanvas(storageKey: string, defaults: PanelDefault[], 
 		setParked({});
 	};
 
-	return { styleFor, startMove, startResize, reset, orientationFor, toggleOrientation, slotIds, ensureSlot, removeSlot };
+	// Storage is rewritten by replaceScreenLayout; this updates the state
+	// already in memory, because importing the screen you are LOOKING at does
+	// not change the route and so never remounts.
+	const adoptLayout = (rects: CanvasState): void => {
+		persist(sanitizeCanvas(rects));
+		persistParked({});
+		setOrientationState({});
+		removeStorage(orientationStorageKey);
+	};
+
+	return { styleFor, startMove, startResize, reset, orientationFor, toggleOrientation, slotIds, ensureSlot, removeSlot, adoptLayout };
 }
 
 /**
@@ -800,6 +818,26 @@ export function createPanelCanvas(storageKey: string, defaults: PanelDefault[], 
  * config overlay). Same parse + migrations the controller uses; null when
  * nothing (usable) is stored.
  */
+/**
+ * The canvas storage key for a screen. ONE definition — it was being built
+ * from the same template at two call sites, which is the duplication that
+ * lets the two copies of a layout drift apart in the first place.
+ */
+export const canvasStorageKey = (screenId: string): string => `dwc-ng.canvas.${screenId}`;
+
+/**
+ * Overwrite a screen's remembered geometry, mounted or not.
+ *
+ * NOT for general use — reach for replaceScreenLayout (compose/screens.ts),
+ * which writes this AND the config overlay together. A layout written to only
+ * one of the two stores is the bug this exists to prevent.
+ */
+export function writeCanvasState(storageKey: string, rects: CanvasState): void {
+	writeStorage(storageKey, serializeCanvas(sanitizeCanvas(rects)));
+	removeStorage(`${storageKey}.parked`);
+	removeStorage(`${storageKey}.orientation`);
+}
+
 export function readCanvasState(storageKey: string): CanvasState | null {
 	const parsed = parseStoredCanvas(readStorage(storageKey));
 	if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return null;

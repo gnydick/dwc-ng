@@ -12,7 +12,7 @@
  * stable ids) join this list in phase A7b.
  */
 import { parseComposition, slotsOf, toSlotRect, type Composition } from "./composition.ts";
-import { readCanvasState } from "../shell/panelCanvas.ts";
+import { canvasStorageKey, readCanvasState, writeCanvasState } from "../shell/panelCanvas.ts";
 import { LAB_ROUTE } from "../shell/router.ts";
 import type { SlotRect, UiConfig, UserScreenId } from "../config/types.ts";
 
@@ -241,12 +241,41 @@ export function planScreenImport(config: UiConfig, name: string): ScreenImportPl
  * the whole migration story for pre-conversion layouts: their historic keys
  * are read here and captured on the first save.
  */
-export function captureScreenGeometry(store: {
+/** What a layout writer needs from the config store. */
+export interface LayoutStore {
 	config: UiConfig;
 	updateScreenCards: (id: string, cards: Record<string, SlotRect>) => void;
-}): void {
+}
+
+/**
+ * Replace a screen's layout WHOLESALE — the sole route for "this layout is
+ * gone, here is a different one" (import today; presets or a restore
+ * tomorrow).
+ *
+ * A screen's geometry is stored twice: the config overlay (travels to the SD
+ * card, seeds a new browser) and the per-browser canvas store (the freshest
+ * local tier, and what actually renders). Writing one without the other is
+ * how they drift, and `mergeCanvas` then assembles a layout CARD BY CARD from
+ * whichever store happens to have each id — so a replaced layout arrives
+ * shredded: cards the browser already knew keep their old spots, only cards
+ * it had never seen land where the new layout says.
+ *
+ * That is exactly the reported bug. Importing Control appeared to work only
+ * because it carried cards this browser had never seen; importing Machine
+ * changed nothing visible because every card was already known, so every one
+ * of its positions lost. Same code, opposite outcome, decided by overlap.
+ *
+ * Both stores are therefore written here, together, or not at all. Callers
+ * do not get to write one.
+ */
+export function replaceScreenLayout(store: LayoutStore, screenId: string, rects: Record<string, SlotRect>): void {
+	store.updateScreenCards(screenId, rects);
+	writeCanvasState(canvasStorageKey(screenId), rects);
+}
+
+export function captureScreenGeometry(store: LayoutStore): void {
 	for (const entry of screenList(store.config)) {
-		const stored = readCanvasState(`dwc-ng.canvas.${entry.id}`);
+		const stored = readCanvasState(canvasStorageKey(entry.id));
 		if (stored === null) continue; // nothing local — the overlay copy stands
 		const cards: Record<string, SlotRect> = {};
 		for (const [id, slot] of slotsOf(entry.def.composition)) {
