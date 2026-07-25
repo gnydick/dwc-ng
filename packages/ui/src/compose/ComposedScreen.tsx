@@ -86,6 +86,11 @@ export function ComposedScreen(props: { screenId: string }) {
 			const id = parseCardId(rawId);
 			return id === null ? true : visibleFor(id);
 		},
+		// A moved or resized card is an unsaved change: Save to machine is
+		// gated on the dirty flag, and geometry only reaches the overlay at
+		// save time (captureScreenGeometry), so without this the button stays
+		// greyed out and the layout can never leave this browser.
+		() => app.config.markLayoutDirty(),
 	);
 
 	// Composition edits → canvas slots. Adding a card adopts its (auto-placed)
