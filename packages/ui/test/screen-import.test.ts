@@ -19,6 +19,24 @@ test("importing a screen named after a BUILT-IN overwrites that built-in", () =>
 	assert.equal(plan.target?.builtin, true);
 });
 
+test("EVERY built-in is an import target — the fix is not Control-specific", () => {
+	const expected = [
+		["Machine", "machine"],
+		["Control", "control"],
+		["Jobs", "jobs"],
+		["Macros", "macros"],
+		["System", "system"],
+		["Settings", "settings"],
+		["Activity", "activity"],
+		["Bed maintenance", "bed"],
+	] as const;
+	for (const [name, id] of expected) {
+		const plan = planScreenImport(DEFAULT_CONFIG, name);
+		assert.equal(plan.target?.id, id, `importing "${name}" should overwrite ${id}`);
+		assert.equal(plan.target?.builtin, true);
+	}
+});
+
 test("overwriting a built-in keeps its id, so everything keyed on it survives", () => {
 	const before = screenList(DEFAULT_CONFIG).find(s => s.def.name === "Control");
 	const plan = planScreenImport(DEFAULT_CONFIG, "Control");
