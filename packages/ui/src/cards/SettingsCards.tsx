@@ -13,6 +13,7 @@ import { useApp } from "../shell/context.ts";
 import { CONFIG_FILE, MAX_LABEL_LEN } from "../config/types.ts";
 import { sensorRows } from "../om/sensorRows.ts";
 import { captureScreenGeometry } from "../compose/screens.ts";
+import { formatTimestamp } from "../files/format.ts";
 
 export function AxisRolesBody() {
 	const app = useApp();
@@ -182,9 +183,10 @@ export function SavedVersionsBody() {
 				<For each={app.config.snapshots}>
 					{(snap, index) => (
 						<div class="field">
-							<span class="field-label">
-								{new Date(snap.takenAt).toLocaleTimeString(undefined, { hour12: false })}
-							</span>
+							{/* Date AND time: a list of times alone cannot tell yesterday's
+							    backup from this morning's. Same format as the file
+							    browser's modified column. */}
+							<span class="field-label stamp">{formatTimestamp(snap.takenAt)}</span>
 							<span class="hint">{snap.label}</span>
 							<button class="link-btn" onClick={() => app.config.revert(index())}>Restore</button>
 						</div>

@@ -1124,6 +1124,18 @@
    Reset everything keeps its pin. */
 .save-bar .save-cancel { margin-left: 0; }
 
+/* A full "YYYY-MM-DD HH:MM:SS" stamp in a 12-column card. nowrap because a
+   stamp that broke across two lines would change the row's height and shift
+   every Restore button below it; slightly smaller than a plain field-label so
+   the backup's name keeps room beside it.
+   The fixed min-width is NOT belt-and-braces over tabular-nums — it is the
+   only thing doing the job. .field-label sets font-variant-numeric:
+   tabular-nums, but the display font (Rajdhani) has no tnum feature, so the
+   digits render proportionally: measured live at 99/96/96px across three
+   stamps, shifting the name column 126/122/123. Reserving the column makes
+   the alignment independent of the font's feature support. */
+.field-label.stamp { flex: 0 0 auto; min-width: 106px; white-space: nowrap; font-size: 12px; }
+
 /* ---------- responsive ---------- */
 
 @media (max-width: 900px) {
