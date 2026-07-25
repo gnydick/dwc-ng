@@ -1,7 +1,7 @@
 // Proving a deploy actually landed.
 //
 // A status check alone is worthless here, and that is not a hypothetical:
-// verified 2026-07-24 on duet3.nydick.net, a GET of a path that does not
+// verified 2026-07-24 on a Duet 3 + SBC board, a GET of a path that does not
 // exist under the deployment returns stock DWC's index.html with HTTP 200,
 // because ASP.NET's SPA fallback catches it. So a deploy that uploaded
 // nothing at all would "pass" a 200 check while the machine still served the

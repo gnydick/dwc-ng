@@ -2,7 +2,7 @@
 
 **Date:** 2026-07-24
 **Status:** approved (design); implementation plan pending
-**Target board for verification:** `duet3.nydick.net` (Duet 3 + SBC, DSF/DuetWebServer)
+**Target board for verification:** a Duet 3 + SBC running DSF/DuetWebServer (referred to below as `$BOARD`)
 
 ## Goal
 
@@ -11,7 +11,7 @@ works, without putting the machine's only working UI at risk.
 
 ## Verified facts about the target
 
-Every claim below was tested against the real board over the DSF REST API on
+Every claim below was tested against a real board (`$BOARD`) over the DSF REST API on
 2026-07-24. Nothing here is inferred from documentation, and two earlier
 assumptions were falsified in the process — recorded so they are not
 re-derived.

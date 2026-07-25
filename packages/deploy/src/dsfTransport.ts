@@ -1,4 +1,4 @@
-// DSF / SBC transport. Verified against duet3.nydick.net 2026-07-24.
+// DSF / SBC transport. Verified against a Duet 3 + SBC board 2026-07-24.
 //
 // Note on compression: this transport mints `gzip: false` and there is no way
 // to talk it out of that. Kestrel returns 404 for a transparent .gz fetch.

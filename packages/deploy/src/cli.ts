@@ -1,4 +1,4 @@
-// pnpm deploy --target http://duet3.nydick.net [--mode dsf|poll] [--name ng]
+// pnpm ship --target http://duet3.local [--mode dsf|poll] [--name ng]
 //             [--dist ../ui/dist] [--dry-run] [--uninstall]
 
 import { fileURLToPath, pathToFileURL } from "node:url"
@@ -29,7 +29,7 @@ export function parseArgs(argv: readonly string[]): CliArgs {
 
 	const target = flag("target")
 	if (target === undefined || target === "") {
-		throw new Error("--target is required, e.g. --target http://duet3.nydick.net")
+		throw new Error("--target is required, e.g. --target http://duet3.local")
 	}
 
 	const mode = flag("mode") ?? "dsf"

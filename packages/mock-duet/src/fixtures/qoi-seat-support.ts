@@ -1,5 +1,5 @@
 /**
- * Real QOI thumbnail captured from Gabe's machine (duet3.nydick.net) via
+ * Real QOI thumbnail captured from a real machine via
  * rr_thumbnail for "seat support - PLA.gcode": a 160x160 RGBA PrusaSlicer
  * render, 17079 bytes. Base64 as served by rr_thumbnail's `data` field. Used
  * by the mock seed so the Jobs view can be verified against the real QOI

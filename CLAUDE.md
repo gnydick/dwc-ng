@@ -14,7 +14,7 @@ with no rework above the connector abstraction.
   small output buffers, requests are expensive. Minimize request count and
   total payload. **Standalone only:** emit pre-gzipped assets (RRF serves
   .gz transparently). **Never gzip for DSF/SBC** — verified 2026-07-24 on
-  duet3.nydick.net: DuetWebServer (Kestrel) neither compresses on the fly
+  a Duet 3 + SBC: DuetWebServer (Kestrel) neither compresses on the fly
   nor serves .gz transparently, so a .gz deploy 404s every asset. The
   packager derives compression from the transport; see
   docs/superpowers/specs/2026-07-24-deployment-packaging-design.md.

@@ -224,10 +224,10 @@ test("a reachable .map fails verification", async () => {
 
 **Files:** none (operational)
 
-- [ ] **Step 1:** `DWC_BASE=/ng/ pnpm build`
-- [ ] **Step 2:** `pnpm deploy --target http://duet3.nydick.net --mode dsf --dry-run` — review the manifest
-- [ ] **Step 3:** `pnpm deploy --target http://duet3.nydick.net --mode dsf`
-- [ ] **Step 4:** Confirm `http://duet3.nydick.net/ng.html` loads in a browser and connects to the board; confirm `http://duet3.nydick.net/` still serves stock DWC
+- [ ] **Step 1:** `DWC_BASE=/ng/ pnpm build` (set `$BOARD` to your board's URL first)
+- [ ] **Step 2:** `pnpm ship --target $BOARD --mode dsf --dry-run` — review the manifest
+- [ ] **Step 3:** `pnpm ship --target $BOARD --mode dsf`
+- [ ] **Step 4:** Confirm `$BOARD/ng.html` loads in a browser and connects to the board; confirm `$BOARD/` still serves stock DWC
 - [ ] **Step 5:** Commit any fixes; record the result
 
 ---
