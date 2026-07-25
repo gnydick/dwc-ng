@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { createMockServer, type MockServer, type MockServerOptions } from "../../mock-duet/src/server.ts";
 import { loadCaptureFile } from "../../mock-duet/src/capture.ts";
 import { PollConnector } from "../src/connector/PollConnector.ts";
+import { probeTransport } from "../src/connector/createConnector.ts";
 import type { ConnectionStatus } from "../src/connector/types.ts";
 
 const CAPTURE = new URL("../../mock-duet/captures/om-snapshot-2026-07-12.json", import.meta.url);
@@ -460,5 +461,53 @@ test("standalone mode never touches /machine/model", async () => {
 		assert.equal(h.connector.status, "connected");
 	} finally {
 		await h.close();
+	}
+});
+
+// --- production transport detection ---------------------------------------
+// Observed 2026-07-24 on the first real deploy: "there aren't as many object
+// model entries". Production hard-coded transport "rr" for every board, so a
+// DSF/SBC machine was driven through DSF's rr_ EMULATION instead of its native
+// /machine API, which reports a fuller model.
+
+test("a DSF board is detected from /machine/status", async () => {
+	const original = globalThis.fetch;
+	globalThis.fetch = (() => Promise.resolve(new Response("{}", { status: 200 }))) as typeof fetch;
+	try {
+		assert.equal(await probeTransport(""), "dsf");
+	} finally {
+		globalThis.fetch = original;
+	}
+});
+
+test("a password-protected DSF still counts as DSF — the ROUTE is the proof", async () => {
+	const original = globalThis.fetch;
+	for (const status of [401, 403]) {
+		globalThis.fetch = (() => Promise.resolve(new Response("no", { status }))) as typeof fetch;
+		try {
+			assert.equal(await probeTransport(""), "dsf", `HTTP ${status} should read as DSF`);
+		} finally {
+			globalThis.fetch = original;
+		}
+	}
+});
+
+test("standalone RRF has no /machine route, so it falls back to rr_", async () => {
+	const original = globalThis.fetch;
+	globalThis.fetch = (() => Promise.resolve(new Response("nope", { status: 404 }))) as typeof fetch;
+	try {
+		assert.equal(await probeTransport(""), "rr");
+	} finally {
+		globalThis.fetch = original;
+	}
+});
+
+test("an unreachable or slow board falls back to rr_ rather than hanging the boot", async () => {
+	const original = globalThis.fetch;
+	globalThis.fetch = (() => Promise.reject(new Error("network down"))) as unknown as typeof fetch;
+	try {
+		assert.equal(await probeTransport(""), "rr");
+	} finally {
+		globalThis.fetch = original;
 	}
 });
