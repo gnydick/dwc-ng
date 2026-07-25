@@ -528,6 +528,70 @@
 .dro-h-cell.unhomed .dro-h-val { color: var(--silk-dim); }
 .dro-h-val small { font-size: 9px; color: var(--silk-dim); margin-left: 2px; }
 
+/* Live move speeds (move.currentMove) — a fixed three-slot footer. Same
+   reserved-width discipline as .dro-h-val above: these values change every
+   poll AND change digit count as they do, so the slots are fixed and tabular.
+   The cell COUNT is fixed too, by construction — om/speeds.ts returns a
+   3-tuple, so machine state cannot add or remove a slot. */
+.speed-foot {
+	display: flex;
+	align-items: baseline;
+	gap: 14px;
+	margin-top: 8px;
+	padding-top: 8px;
+	border-top: 1px solid var(--hairline);
+}
+.speed-foot-tag {
+	font-family: var(--font-display);
+	font-weight: 700;
+	font-size: 10px;
+	letter-spacing: 0.1em;
+	text-transform: uppercase;
+	color: var(--silk-dim);
+	flex: none;
+}
+.speed-cell {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	/* Fixed, not auto: "Requested" and "Flow" differ in width, and the toggle
+	   swaps between "Extrusion" and "Flow" on click. An auto column would move
+	   the neighbouring cells on every toggle and on every digit-count change. */
+	flex: 0 0 88px;
+	min-width: 0;
+}
+.speed-label {
+	font-family: var(--font-display);
+	font-weight: 600;
+	font-size: 10px;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	color: var(--silk-dim);
+	white-space: nowrap;
+}
+.speed-toggle {
+	/* A real button, not DWC's javascript:void(0) anchor — keyboard reachable
+	   and announced as a control. */
+	appearance: none;
+	background: none;
+	border: none;
+	border-bottom: 1px dotted var(--copper);
+	padding: 0;
+	cursor: pointer;
+	text-align: left;
+	color: var(--copper);
+}
+.speed-toggle:hover { color: var(--silk); border-bottom-color: var(--silk); }
+.speed-val {
+	font-family: var(--font-display);
+	font-weight: 600;
+	font-size: 15px;
+	line-height: 1;
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+}
+.speed-val small { font-size: 10px; color: var(--silk-dim); margin-left: 3px; }
+
 .homed-tag {
 	justify-self: end;
 	font-family: var(--font-display);
