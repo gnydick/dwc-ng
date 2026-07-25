@@ -262,7 +262,7 @@ export function ConfigSaveBody() {
 					}}
 				/>
 				<button class="primary-btn" onClick={save}>Save</button>
-				<button class="link-btn" onClick={disarm}>Cancel</button>
+				<button class="link-btn save-cancel" onClick={disarm}>Cancel</button>
 			</Show>
 			<button
 				class="link-btn"
