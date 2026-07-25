@@ -38,21 +38,24 @@ export function formatModified(date: string | undefined): string {
 const pad = (n: number): string => String(n).padStart(2, "0");
 
 /**
- * An epoch milliseconds value to "2026-07-21 14:30:00" in the VIEWER's local
- * time — the same shape formatModified produces, so a timestamp reads
- * identically wherever it appears.
+ * An epoch milliseconds value to "2026-07-21 14:30" in the VIEWER's local time
+ * — byte-for-byte the shape formatModified produces, so a timestamp reads
+ * identically wherever it appears. No seconds: minute resolution is what a
+ * human-paced action needs, and the backup's name is what actually
+ * distinguishes two of them.
  *
  * Built from the local getters rather than toISOString(), which renders UTC:
  * that would show the wrong time for anyone off UTC, and near midnight the
  * wrong DATE — the exact thing this function exists to get right.
  *
- * Fixed width by construction (zero-padded throughout), so a list of these
- * never re-flows as values change; the element carries tabular-nums for the
- * same reason.
+ * Fixed width by construction (zero-padded throughout). Note that this alone
+ * does NOT keep a column aligned: the display font has no tabular-figures
+ * feature, so callers rendering a list must reserve the column's width. See
+ * .field-label.stamp in app.css.
  */
 export function formatTimestamp(ms: number): string {
 	const d = new Date(ms);
 	if (Number.isNaN(d.getTime())) return "";
 	return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
-		+ ` ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+		+ ` ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }

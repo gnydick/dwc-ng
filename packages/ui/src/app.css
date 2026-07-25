@@ -1124,17 +1124,21 @@
    Reset everything keeps its pin. */
 .save-bar .save-cancel { margin-left: 0; }
 
-/* A full "YYYY-MM-DD HH:MM:SS" stamp in a 12-column card. nowrap because a
-   stamp that broke across two lines would change the row's height and shift
-   every Restore button below it; slightly smaller than a plain field-label so
-   the backup's name keeps room beside it.
+/* A "YYYY-MM-DD HH:MM" stamp in a 12-column card. nowrap because a stamp that
+   broke across two lines would change the row's height and shift every Restore
+   button below it; slightly smaller than a plain field-label so the backup's
+   name keeps room beside it.
    The fixed min-width is NOT belt-and-braces over tabular-nums — it is the
    only thing doing the job. .field-label sets font-variant-numeric:
-   tabular-nums, but the display font (Rajdhani) has no tnum feature, so the
-   digits render proportionally: measured live at 99/96/96px across three
-   stamps, shifting the name column 126/122/123. Reserving the column makes
-   the alignment independent of the font's feature support. */
-.field-label.stamp { flex: 0 0 auto; min-width: 106px; white-space: nowrap; font-size: 12px; }
+   tabular-nums, but the display font (Rajdhani) ships no tnum feature, so
+   digits render proportionally, and its digit advances are wildly uneven:
+   measured at this size, "1" is 4.01px against "8" at 6.50px, a 62% spread.
+   Three real stamps varied 81.26-83.74px and walked the name column with them.
+   90.63px is the measured width of the widest representable stamp
+   ("8888-88-88 88:88"), so 92px cannot clip any real date. min-width rather
+   than a fixed width so a fallback font (Rajdhani failing to load) grows the
+   box instead of truncating the stamp. */
+.field-label.stamp { flex: 0 0 auto; min-width: 92px; white-space: nowrap; font-size: 12px; }
 
 /* ---------- responsive ---------- */
 
