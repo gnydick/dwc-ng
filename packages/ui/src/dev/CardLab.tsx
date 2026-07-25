@@ -72,6 +72,7 @@ export default function CardLab() {
 		config: outer.config, // real config so user axis-role/sensor labels render
 		connector: createStubConnector(echo),
 		temps: createTemperatureHistory(omStore),
+		backend: outer.backend,
 	};
 	const connected = (): boolean => true;
 	const service = createServicePool({ ...services, connected });

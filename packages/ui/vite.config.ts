@@ -23,26 +23,28 @@ const MOCK_TARGET = 'http://127.0.0.1:8970'
 // DWC use `DWC_BASE=/ng/ pnpm build`; see packages/deploy.
 const base = process.env.DWC_BASE ?? '/'
 
-// Which dialect the board this bundle is being built FOR speaks. Baked in at
-// build time, deliberately, because it is already known then: packages/deploy
-// targets a specific machine with an explicit --mode, so detecting it again in
-// the browser is machinery that should not exist.
+// OPTIONAL: pin the board dialect at build time.
 //
-// There is no default. Production used to hard-code "rr" for every board,
-// which drove a DSF/SBC machine through DSF's rr_ EMULATION instead of its
-// native /machine API and reported a thinner object model — observed
-// 2026-07-24 on the first real deploy. A default is what made that silent, so
-// an unset or bogus value FAILS THE BUILD instead: a production bundle that
-// never declared its transport cannot be produced.
+// A production bundle needs NO configuration. It is served by the printer, so
+// it is same-origin — there is no target to name, and no way to know what
+// someone will call their machine or which firmware it runs. The dialect is
+// therefore discovered at boot (see main.tsx): /machine/status existing IS the
+// DSF signature and its absence IS the standalone signature, which is a
+// discriminator, not a guess.
+//
+// Set DWC_TRANSPORT only to SKIP that probe when you already know the answer —
+// packages/deploy targets a specific machine with an explicit --mode, so a
+// self-deploy can pin it and save a request. Unset means "detect", which is
+// the correct behaviour for any bundle whose destination is not known in
+// advance. There is deliberately no default value: unset is a distinct state
+// meaning "ask the board", never a quiet stand-in for one of the two answers.
 const TRANSPORTS = ['rr', 'dsf']
 const transport = process.env.DWC_TRANSPORT
-const isProdBuild = process.argv.includes('build')
-if (isProdBuild && !TRANSPORTS.includes(transport ?? '')) {
+if (transport !== undefined && !TRANSPORTS.includes(transport)) {
   throw new Error(
-    `DWC_TRANSPORT must be one of ${TRANSPORTS.join(' | ')} for a production build, got ${transport === undefined ? '(unset)' : JSON.stringify(transport)}.\n` +
-    `  standalone RRF board:  DWC_TRANSPORT=rr\n` +
-    `  Duet 3 + SBC (DSF):    DWC_TRANSPORT=dsf\n` +
-    `It must match the board you deploy to — see packages/deploy.`,
+    `DWC_TRANSPORT must be one of ${TRANSPORTS.join(' | ')} when set, got ${JSON.stringify(transport)}.
+` +
+    `Leave it unset to detect the dialect at boot, which needs no configuration.`,
   )
 }
 
@@ -85,7 +87,9 @@ export default defineConfig(({ mode }) => {
     // literally, so the branch that does not apply is dead code the minifier
     // removes — a bundle built for one dialect does not carry the other's
     // decision at all.
-    define: { __DWC_TRANSPORT__: JSON.stringify(transport ?? 'rr') },
+    // null = "not pinned, detect at boot". NOT a dialect: the app branches on
+    // null explicitly rather than treating it as one of the two answers.
+    define: { __DWC_TRANSPORT__: JSON.stringify(transport ?? null) },
     plugins: [solid()],
     server: {
       host: true, // listen on all interfaces, not just localhost

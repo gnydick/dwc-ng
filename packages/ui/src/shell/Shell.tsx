@@ -5,7 +5,7 @@ import { createRouter, LAB_ROUTE } from "./router.ts";
 import { navHidden, setNavHidden } from "./navState.ts";
 import {
 	BACKENDS, type Backend, rememberBackend,
-	currentBackend, writesArmed, setWritesArmed,
+	writesArmed, setWritesArmed,
 } from "../dev/backend.ts";
 import { ComposedScreen } from "../compose/ComposedScreen.tsx";
 import { resolveScreen, screenList } from "../compose/screens.ts";
@@ -175,6 +175,7 @@ export default function Shell() {
 
 /** Dev-only Mock/Real backend switcher + write arming (see src/dev/writeGuard.ts). */
 function BackendToggle() {
+	const app = useApp();
 	const [busy, setBusy] = createSignal(false);
 
 	/**
@@ -185,7 +186,7 @@ function BackendToggle() {
 	 * writesArmed is in-memory only by design.
 	 */
 	const switchTo = (b: Backend): void => {
-		if (busy() || b.id === currentBackend().id) return;
+		if (busy() || b.id === app.backend.id) return;
 		setBusy(true);
 		setWritesArmed(false);
 		rememberBackend(b.id);
@@ -199,8 +200,8 @@ function BackendToggle() {
 					{b => (
 						<button
 							class="backend-opt"
-							classList={{ active: currentBackend().id === b.id, real: b.real }}
-							aria-pressed={currentBackend().id === b.id}
+							classList={{ active: app.backend.id === b.id, real: b.real }}
+							aria-pressed={app.backend.id === b.id}
 							disabled={busy()}
 							onClick={() => switchTo(b)}
 						>
@@ -209,7 +210,7 @@ function BackendToggle() {
 					)}
 				</For>
 			</div>
-			<Show when={currentBackend().real}>
+			<Show when={app.backend.real}>
 				<button
 					class="arm-btn"
 					classList={{ armed: writesArmed() }}
