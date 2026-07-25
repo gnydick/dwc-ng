@@ -140,6 +140,16 @@ export default function CardLab() {
 				<span class="lab-note">{SCENARIOS.find(s => s.id === scenario())?.note}</span>
 			</div>
 
+			{/* The bench card is draggable and resizable like any other, and it
+			    persists (dwc-ng.canvas.cardlab) — so without this there is no way
+			    back from a resize. Same markup as ComposedScreen's toolbar so it
+			    sits identically. There is deliberately no Compose button: compose
+			    adds and removes cards from a multi-card screen, and the bench
+			    features exactly one — the Card pills above ARE its equivalent. */}
+			<div class="layout-toolbar">
+				<button class="layout-reset" onClick={() => canvas.reset()}>↺ Reset layout</button>
+			</div>
+
 			<AppContext.Provider value={services}>
 				<PanelCanvas class="lab-canvas">
 					{/* Keyed remount on switch: a fresh card, no leaked internal state.

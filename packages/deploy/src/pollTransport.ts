@@ -32,6 +32,23 @@ export function pollTransport(baseUrl: string): Transport {
 			return new Uint8Array(await res.arrayBuffer())
 		},
 
+		async list(boardDir) {
+			// rr_filelist paginates via "next"; 0 means the listing is complete.
+			const names: string[] = []
+			let first = 0
+			for (;;) {
+				const res = await fetch(`${base}/rr_filelist?dir=${encodeURIComponent(boardDir)}&first=${first}`)
+				if (!res.ok) return names
+				const body = (await res.json()) as { files?: Array<{ type?: string; name?: string }>; next?: number }
+				for (const f of body.files ?? []) {
+					if (f.type === "f" && typeof f.name === "string") names.push(f.name)
+				}
+				const next = body.next ?? 0
+				if (next === 0) return names
+				first = next
+			}
+		},
+
 		async remove(boardPath) {
 			const res = await fetch(`${base}/rr_delete?name=${encodeURIComponent(boardPath)}`)
 			if (!res.ok && res.status !== 404) {

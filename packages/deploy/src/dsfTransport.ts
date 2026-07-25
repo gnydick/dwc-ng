@@ -30,6 +30,13 @@ export function dsfTransport(baseUrl: string): Transport {
 			return new Uint8Array(await res.arrayBuffer())
 		},
 
+		async list(boardDir) {
+			const res = await fetch(`${base}/machine/directory/${encodeURIComponent(boardDir)}`)
+			if (!res.ok) return []
+			const entries = (await res.json()) as Array<{ type?: string; name?: string }>
+			return entries.filter(e => e.type === "f" && typeof e.name === "string").map(e => e.name as string)
+		},
+
 		async remove(boardPath) {
 			const res = await fetch(filesEndpoint(base, boardPath), { method: "DELETE" })
 			// 404 means already gone, which is the state we wanted anyway.

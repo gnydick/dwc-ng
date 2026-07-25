@@ -40,6 +40,8 @@ export type Transport = {
 	put(boardPath: string, bytes: Uint8Array): Promise<void>
 	/** Read a file back, or null when it does not exist. */
 	read(boardPath: string): Promise<Uint8Array | null>
+	/** File names directly inside a board directory; empty when absent. */
+	list(boardDir: string): Promise<string[]>
 	remove(boardPath: string): Promise<void>
 	/** Fetch by URL the way a browser would — this is what proves a deploy. */
 	fetchUrl(urlPath: string): Promise<FetchedResource>

@@ -22,7 +22,7 @@ import { CARD_DEFS, allCardIds, parseCardId, type CardId } from "./defs.ts";
 import { RegistryCard, cardTitleOf } from "./RegistryCard.tsx";
 import { addCard, compositionRects, customCardIds, isCustomCardId, removeCard, slotsOf, type Composition, type CustomCardId, type SlotId } from "./composition.ts";
 import { createServicePool } from "./services.ts";
-import { planScreenImport, replaceScreenLayout, resolveScreen, screenList, type ScreenEntry } from "./screens.ts";
+import { orientationsOf, planScreenImport, replaceScreenLayout, resolveScreen, screenList, type ScreenEntry } from "./screens.ts";
 import { CustomCard } from "./CustomCard.tsx";
 import { CardStudio } from "./CardStudio.tsx";
 import { ImportReview } from "./ImportReview.tsx";
@@ -216,7 +216,7 @@ function ComposeDrawer(props: { screenId: string; entry: ScreenEntry | null; com
 			replaceScreenLayout(app.config, screenId, rects);
 			// The screen being replaced may be the one on screen, which no route
 			// change would remount.
-			if (screenId === props.screenId) props.canvas.adoptLayout(rects);
+			if (screenId === props.screenId) props.canvas.adoptLayout(rects, orientationsOf(rects));
 			window.location.hash = `#/${screenId}`;
 		}
 		setImporting(null);
