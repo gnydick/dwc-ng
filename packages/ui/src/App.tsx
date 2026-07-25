@@ -3,14 +3,14 @@ import { createOmStore } from "./om/store.ts";
 import { createConfigStore } from "./config/store.ts";
 import { createTemperatureHistory } from "./om/temperature.ts";
 import { createConnector } from "./connector/index.ts";
-import { currentBackend, isRealBackend, writesArmed } from "./dev/backend.ts";
+import { writesArmed, type Backend } from "./dev/backend.ts";
 import { guardWrites } from "./dev/writeGuard.ts";
 import { startPinSender } from "./control/pinSender.ts";
 import { AppContext } from "./shell/context.ts";
 import Shell from "./shell/Shell.tsx";
 import "./app.css";
 
-export default function App() {
+export default function App(props: { backend: Backend }) {
 	const om = createOmStore();
 	const config = createConfigStore();
 	const temps = createTemperatureHistory(om);
@@ -26,13 +26,12 @@ export default function App() {
 	// built the connector from one derivation and guarded it by another could
 	// disagree (skill §2.8; and the 2026-07-16 real-hardware incident is why
 	// this is the wrong place for a duplicated derivation).
-	const backend = currentBackend();
-	const transport = createConnector(backend, om.events);
+	const transport = createConnector(props.backend, om.events);
 	// Dev-only: mutations fail closed while a REAL backend is selected unless
 	// writes are armed (see writeGuard.ts). Reads are untouched. In production
 	// there is one same-origin backend and this whole branch tree-shakes away.
 	const connector = import.meta.env.DEV
-		? guardWrites(transport, { isReal: isRealBackend, isArmed: () => writesArmed() })
+		? guardWrites(transport, { isReal: () => props.backend.real, isArmed: () => writesArmed() })
 		: transport;
 
 	onMount(() => {
@@ -53,7 +52,7 @@ export default function App() {
 	onCleanup(stopPins);
 
 	return (
-		<AppContext.Provider value={{ om, config, connector, temps }}>
+		<AppContext.Provider value={{ om, config, connector, temps, backend: props.backend }}>
 			<Shell />
 		</AppContext.Provider>
 	);

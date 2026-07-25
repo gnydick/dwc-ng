@@ -70,26 +70,26 @@ function realPassword(): string {
 const STORAGE_KEY = "dwc-ng-dev-backend";
 
 /**
- * The transport this bundle was BUILT for. Injected by vite (define), which
- * refuses to produce a production build without it — so there is no "we did
- * not decide" state to represent here, and no default to be silently wrong.
+ * A dialect PINNED at build time, or null to detect it at boot.
+ *
+ * A production bundle requires no configuration: it is served by the printer,
+ * so it is same-origin, and there is no way to know in advance what someone
+ * will name their machine or which firmware it runs. Pinning is an
+ * optimisation for a deploy that already knows (packages/deploy --mode), never
+ * a requirement.
+ *
+ * null is a THIRD state meaning "ask the board" — deliberately not a stand-in
+ * for either dialect, which is what made the old hard-coded "rr" silent.
  */
-declare const __DWC_TRANSPORT__: Transport | undefined;
+declare const __DWC_TRANSPORT__: Transport | null | undefined;
 
 /**
- * Read it the same defensive way as `import.meta.env` above: a `define` is
- * absent under plain Node, and a module that throws on import outside Vite is
- * a fragility, not a feature.
- *
- * The fallback is NOT a production default — vite.config.ts fails the build
- * outright when DWC_TRANSPORT is unset, so a deployed bundle always carries a
- * literal here and this branch is dead code the minifier drops. It is reached
- * only where there is no machine to talk to at all (node tests importing this
- * module for the BACKENDS contract), which is why it cannot be silently wrong
- * the way the old hard-coded production value was.
+ * The pinned dialect, or null when the build did not pin one (and under plain
+ * Node, where a `define` simply does not exist — a module that throws on
+ * import outside Vite is a fragility, not a feature).
  */
-const builtTransport = (): Transport =>
-	typeof __DWC_TRANSPORT__ === "undefined" ? "rr" : __DWC_TRANSPORT__;
+export const pinnedTransport = (): Transport | null =>
+	typeof __DWC_TRANSPORT__ === "undefined" || __DWC_TRANSPORT__ === null ? null : __DWC_TRANSPORT__;
 
 /**
  * The machine serving this page: same origin, no password. Only the dialect
@@ -102,12 +102,17 @@ const builtTransport = (): Transport =>
  * /machine API, which reports a thinner object model — observed 2026-07-24 on
  * the first real deploy as "there aren't as many object model entries".
  */
-function machineBackend(): Backend {
-	return { id: "real", label: "Machine", baseUrl: "", password: "", transport: builtTransport(), real: true };
+export function machineBackend(transport: Transport): Backend {
+	return { id: "real", label: "Machine", baseUrl: "", password: "", transport, real: true };
 }
 
-export function initialBackend(): Backend {
-	if (!isDev) return machineBackend();
+/**
+ * DEV boots from the persisted toggle. PRODUCTION does not call this — it
+ * builds its backend from a transport that main.tsx has already resolved, so
+ * there is no path here that has to invent one.
+ */
+export function initialBackend(transport: Transport): Backend {
+	if (!isDev) return machineBackend(transport);
 	try {
 		const id = localStorage.getItem(STORAGE_KEY);
 		return BACKENDS.find(b => b.id === id) ?? BACKENDS[0]!;
@@ -125,22 +130,16 @@ export function rememberBackend(id: Backend["id"]): void {
 }
 
 /**
- * Which backend the connector is pointed at right now. Set once at boot (a
- * switch reloads), and read by the write guard. Separate from the persisted
- * value because what matters for safety is where we are, not what we once
- * chose.
+ * There is deliberately NO module-level "current backend" here any more.
+ *
+ * It used to be `createSignal(initialBackend())`, evaluated at module load —
+ * the module deciding the session's backend for itself, which is why
+ * production could only ever get a hard-coded one and why "we have not asked
+ * the board yet" was indistinguishable from an answer. The backend is now
+ * resolved once in main.tsx, handed to App as a required prop, and read from
+ * AppContext. C14 still holds: the value is created once and never
+ * re-pointed; switching persists a choice and reloads.
  */
-// Read-only on purpose: no setter is exported, so nothing can re-point the
-// session's backend at runtime — which is what makes "the connector and the
-// selected backend disagree" unrepresentable rather than merely avoided
-// (C14). Switching happens by persisting the choice and reloading.
-const [currentBackend] = createSignal<Backend>(initialBackend());
-export { currentBackend };
-
-/** The write guard's question, answered by the backend's own declaration. */
-export function isRealBackend(): boolean {
-	return currentBackend().real;
-}
 
 /**
  * Whether writes to the REAL board are armed. Deliberately in-memory only —

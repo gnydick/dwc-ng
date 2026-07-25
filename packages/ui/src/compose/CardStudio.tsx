@@ -45,6 +45,7 @@ export function CardStudio(props: {
 		config: props.ctx.config,
 		temps: props.ctx.temps,
 		connector: createStubConnector(() => undefined),
+		backend: app.backend,
 	};
 
 	const initialForm = ((): { form: FormState; json: string; mode: "form" | "json" } => {
