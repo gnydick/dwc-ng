@@ -147,7 +147,10 @@ export default function CardLab() {
 			    adds and removes cards from a multi-card screen, and the bench
 			    features exactly one — the Card pills above ARE its equivalent. */}
 			<div class="layout-toolbar">
-				<button class="layout-reset" onClick={() => canvas.reset()}>↺ Reset layout</button>
+				{/* Scoped to the card on the bench. reset() would restore all 36
+				    at once, which is never what "reset" means on a surface that
+				    shows one card at a time. */}
+				<button class="layout-reset" onClick={() => canvas.resetSlot(featured())}>↺ Reset card</button>
 			</div>
 
 			<AppContext.Provider value={services}>

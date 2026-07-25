@@ -524,6 +524,14 @@ export interface PanelCanvasController {
 	 * missing.
 	 */
 	adoptLayout: (rects: CanvasState, orientations?: OrientationState) => void;
+	/**
+	 * Restore ONE slot to its coded default, leaving every other slot alone.
+	 *
+	 * reset() is the whole-canvas hammer, which is wrong for a surface showing
+	 * a single card at a time: there, "reset the layout" can only sanely mean
+	 * the card in front of you, not all 36 the lab tracks.
+	 */
+	resetSlot: (id: string) => void;
 }
 
 /**
@@ -826,7 +834,22 @@ export function createPanelCanvas(storageKey: string, defaults: PanelDefault[], 
 		else writeStorage(orientationStorageKey, serializeOrientationState(next));
 	};
 
-	return { styleFor, startMove, startResize, reset, orientationFor, toggleOrientation, slotIds, ensureSlot, removeSlot, adoptLayout };
+	const resetSlot = (id: string): void => {
+		const coded = defaults.find(d => d.id === id);
+		if (coded === undefined) return;
+		persist({ ...state(), [id]: clampRect({ col: coded.col, row: coded.row, colSpan: coded.colSpan, rowSpan: coded.rowSpan }) });
+		// A slot's remembered hidden spot and its content direction are part of
+		// the deviation being undone, same as in reset() — but only this one's.
+		const nextParked = { ...parked() };
+		delete nextParked[id];
+		persistParked(nextParked);
+		const nextOrientation = { ...orientationState() };
+		delete nextOrientation[id];
+		setOrientationState(nextOrientation);
+		writeStorage(orientationStorageKey, serializeOrientationState(nextOrientation));
+	};
+
+	return { styleFor, startMove, startResize, reset, orientationFor, toggleOrientation, slotIds, ensureSlot, removeSlot, adoptLayout, resetSlot };
 }
 
 /**
