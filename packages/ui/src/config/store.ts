@@ -37,8 +37,30 @@ export interface ConfigStore {
 	removeScreen(id: string): void;
 	/** Hide/show a built-in from the nav. */
 	setScreenHidden(id: string, hidden: boolean): void;
-	/** Replace a screen's card slots (membership + geometry) — custom screens
-	 *  in place, built-ins via the layouts overlay. */
+	/**
+	 * Replace a screen's card slots (membership + geometry) — custom screens
+	 * in place, built-ins via the layouts overlay.
+	 *
+	 * ⚠ INCREMENTAL EDITS ONLY (adding, removing, or retitling ONE card).
+	 *
+	 * This writes the config overlay and NOTHING ELSE. A screen's geometry
+	 * lives in two deliberate tiers (see compose/screens.ts), and mergeCanvas
+	 * assembles what renders CARD BY CARD from whichever tier holds each id.
+	 * For an incremental edit that is correct — the canvas syncs the one
+	 * changed slot via ensureSlot/removeSlot. For a WHOLESALE replacement it
+	 * is not: every card the browser already knows keeps its old position and
+	 * the incoming layout is silently shredded.
+	 *
+	 * Replacing a whole layout (import, preset, restore) MUST go through
+	 * `replaceScreenLayout` in compose/screens.ts, which writes both tiers.
+	 *
+	 * LEDGER — invariant at rung 5 (see docs/invariant-ledger.md): this method
+	 * being public is the bypass. Promotion is to split it into
+	 * `updateScreenMembership` and `replaceScreenLayout` so that "write screen
+	 * geometry without declaring which kind of change this is" has no
+	 * encoding. Until then this comment is the only thing standing between a
+	 * new caller and the bug — which is precisely why it is debt.
+	 */
 	updateScreenCards(id: string, cards: Record<string, SlotRect>): void;
 
 	/** Create a user-authored card; returns its minted stable id ("c-…"). */
