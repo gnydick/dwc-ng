@@ -1117,6 +1117,12 @@
 /* Shrinkable, with a floor: a field narrower than this can't show a name
    worth reading, and one that grows unbounded shoves the buttons around. */
 .save-bar .save-label { flex: 1 1 160px; min-width: 120px; max-width: 320px; }
+/* .link-btn carries margin-left:auto, which is how "Reset everything" pins to
+   the right edge. Cancel is a link-btn too, so it inherited that and the free
+   space split BETWEEN them — measured live at a 260px gap, leaving Cancel
+   stranded mid-bar away from the Save it belongs to. Only this one opts out;
+   Reset everything keeps its pin. */
+.save-bar .save-cancel { margin-left: 0; }
 
 /* ---------- responsive ---------- */
 
