@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { formatModified } from "../src/files/format.ts";
+import { formatModified, formatTimestamp } from "../src/files/format.ts";
 
 test("formatModified shows date AND time from RRF's ISO stamp", () => {
 	assert.equal(formatModified("2026-07-20T23:10:00"), "2026-07-20 23:10");
@@ -18,4 +18,39 @@ test("formatModified tolerates a date-only value and missing dates", () => {
 	assert.equal(formatModified("2026-07-20"), "2026-07-20");
 	assert.equal(formatModified(undefined), "");
 	assert.equal(formatModified(""), "");
+});
+
+// --- formatTimestamp: backups need the DATE, not just the time -------------
+
+test("formatTimestamp shows date AND time, zero-padded throughout", () => {
+	// Built from LOCAL components on both sides, so the expectation holds in
+	// any timezone the suite runs in. Single-digit month/day/hour/minute/second
+	// all exercise the padding.
+	assert.equal(formatTimestamp(new Date(2026, 0, 5, 9, 7, 3).getTime()), "2026-01-05 09:07:03");
+	assert.equal(formatTimestamp(new Date(2026, 11, 31, 23, 59, 59).getTime()), "2026-12-31 23:59:59");
+});
+
+test("formatTimestamp renders the viewer's LOCAL time, not UTC", () => {
+	// The failure this pins: toISOString() would render UTC, showing the wrong
+	// hour off UTC and — near midnight — the wrong DAY, which defeats the whole
+	// point of adding the date. Asserting against the Date's own local getters
+	// is the contract; a UTC-based implementation fails this wherever the
+	// offset is non-zero.
+	const d = new Date(2026, 6, 25, 0, 30, 0);
+	const expected = `2026-07-25 00:30:00`;
+	assert.equal(formatTimestamp(d.getTime()), expected);
+	assert.equal(formatTimestamp(d.getTime()).slice(0, 10), `${d.getFullYear()}-07-${String(d.getDate()).padStart(2, "0")}`);
+});
+
+test("formatTimestamp is fixed width so a list of them never reflows", () => {
+	const widths = new Set([
+		new Date(2026, 0, 1, 0, 0, 0),
+		new Date(2026, 11, 31, 23, 59, 59),
+		new Date(2026, 6, 9, 5, 5, 5),
+	].map(d => formatTimestamp(d.getTime()).length));
+	assert.deepEqual([...widths], [19], "every stamp is exactly 19 characters");
+});
+
+test("formatTimestamp yields empty string for an unusable value", () => {
+	assert.equal(formatTimestamp(Number.NaN), "");
 });
