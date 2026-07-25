@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {
 	GRID_COLS, clampRect, rectsOverlap, collidesWithAny, hasCollisions, inBounds,
 	tryMove, tryResize, defaultCanvas, parseStoredCanvas, serializeCanvas, mergeCanvas,
-	applyDetent, DETENT_BREAKAWAY_ROWS,
+	applyDetent, DETENT_BREAKAWAY_ROWS, growToDefaults, reflow,
 } from "../src/shell/panelCanvas.ts";
 
 const rect = (col: number, row: number, colSpan: number, rowSpan: number) => ({ col, row, colSpan, rowSpan });
@@ -142,8 +142,11 @@ test("mergeCanvas keeps a valid stored rect for a known id, clamped", () => {
 	// "col+colSpan exceeds GRID_COLS" repositioning path (clampRect always clamps
 	// colSpan to GRID_COLS first, then pulls col back to fit — with col already
 	// at 0 there's nothing left to reposition, so this purely exercises the span clamp).
-	const stored = { a: rect(0, 3, GRID_COLS + 6, 2) };
-	assert.deepEqual(mergeCanvas(stored, defaults).a, rect(0, 3, GRID_COLS, 2), "row/col kept, oversized colSpan clamped to GRID_COLS");
+	// rowSpan stays at or above the coded default (4) so this stays a pure
+	// clamp test: a smaller stored rowSpan would additionally trip
+	// growToDefaults and confuse which rule produced the result.
+	const stored = { a: rect(0, 3, GRID_COLS + 6, 4) };
+	assert.deepEqual(mergeCanvas(stored, defaults).a, rect(0, 3, GRID_COLS, 4), "row/col kept, oversized colSpan clamped to GRID_COLS");
 });
 
 test("mergeCanvas drops a stored id no longer in defaults and defaults a new id missing from storage", () => {
@@ -163,6 +166,123 @@ test("mergeCanvas KEEPS a stored layout whose rects overlap (audit residual clos
 	const defaults = [{ id: "a", col: 0, row: 0, colSpan: 4, rowSpan: 4 }, { id: "b", col: 10, row: 0, colSpan: 4, rowSpan: 4 }];
 	const stored = { a: rect(0, 0, 4, 4), b: rect(1, 1, 4, 4) }; // b overlaps a (b may be hidden)
 	assert.deepEqual(mergeCanvas(stored, defaults), { a: rect(0, 0, 4, 4), b: rect(1, 1, 4, 4) });
+});
+
+// --- growToDefaults: adopt a span the composition grew (USER_AUDIT line 19) ---
+
+test("growToDefaults adopts the larger span per axis and never moves a card", () => {
+	const defaults = [{ id: "a", col: 0, row: 0, colSpan: 12, rowSpan: 103 }];
+	const { state, grew } = growToDefaults({ a: rect(3, 95, 12, 95) }, defaults);
+	assert.deepEqual(state.a, rect(3, 95, 12, 103), "rowSpan grown, col/row untouched");
+	assert.equal(grew, true);
+});
+
+test("growToDefaults keeps a user-enlarged span and reports no growth", () => {
+	const defaults = [{ id: "a", col: 0, row: 0, colSpan: 12, rowSpan: 40 }];
+	const { state, grew } = growToDefaults({ a: rect(0, 0, 24, 90) }, defaults);
+	assert.deepEqual(state.a, rect(0, 0, 24, 90), "bigger stored spans win");
+	assert.equal(grew, false, "nothing grew, so no reflow may be triggered");
+});
+
+test("growToDefaults grows axes independently", () => {
+	const defaults = [{ id: "a", col: 0, row: 0, colSpan: 20, rowSpan: 10 }];
+	const { state } = growToDefaults({ a: rect(0, 0, 8, 50) }, defaults);
+	assert.deepEqual(state.a, rect(0, 0, 20, 50), "colSpan from the default, rowSpan from storage");
+});
+
+test("growToDefaults defaults unknown/invalid stored entries and drops stale ids", () => {
+	const defaults = [
+		{ id: "a", col: 1, row: 2, colSpan: 4, rowSpan: 4 },
+		{ id: "b", col: 9, row: 0, colSpan: 4, rowSpan: 4 },
+	];
+	const { state, grew } = growToDefaults({ a: "junk", ghost: rect(0, 0, 1, 1) }, defaults);
+	assert.deepEqual(Object.keys(state).sort(), ["a", "b"]);
+	assert.deepEqual(state.a, rect(1, 2, 4, 4));
+	// A card placed at its coded default was never sized by this browser at
+	// all. Counting that as growth would make ADDING a card to a screen reflow
+	// every card already on it.
+	assert.equal(grew, false, "falling back to a default is placement, not growth");
+});
+
+test("growToDefaults clamps a span grown past the grid", () => {
+	const defaults = [{ id: "a", col: 0, row: 0, colSpan: GRID_COLS, rowSpan: 4 }];
+	const { state } = growToDefaults({ a: rect(40, 0, 4, 4) }, defaults);
+	assert.equal(state.a!.col + state.a!.colSpan <= GRID_COLS, true, "clampRect pulls col back into bounds");
+});
+
+// --- reflow: push right or down, whichever is fewer grid cells ---
+
+test("reflow pushes a flush neighbour DOWN when down is fewer cells (the 2026-07-24 case)", () => {
+	// position grew 95 -> 103 with the card below sitting flush at row 190:
+	// down = (95+103)-190 = 8 cells, right = (0+24)-0 = 24 cells. Down wins.
+	const out = reflow({ pos: rect(0, 95, 24, 103), below: rect(0, 190, 24, 40) });
+	assert.deepEqual(out.pos, rect(0, 95, 24, 103), "the grown card never moves");
+	assert.deepEqual(out.below, rect(0, 198, 24, 40), "pushed down by exactly the penetration");
+});
+
+test("reflow pushes a side neighbour RIGHT when right is fewer cells", () => {
+	// a grew 8 -> 12 wide: right = (0+12)-8 = 4 cells, down = (0+40)-0 = 40.
+	const out = reflow({ a: rect(0, 0, 12, 40), b: rect(8, 0, 6, 40) });
+	assert.deepEqual(out.a, rect(0, 0, 12, 40));
+	assert.deepEqual(out.b, rect(12, 0, 6, 40), "slid right to a's edge");
+});
+
+test("reflow falls back to DOWN when the push right would leave the grid", () => {
+	const out = reflow({ a: rect(0, 0, GRID_COLS, 20), b: rect(0, 10, GRID_COLS, 20) });
+	assert.deepEqual(out.b, rect(0, 20, GRID_COLS, 20), "no room to the right of a full-width card");
+	assert.equal(hasCollisions(out), false);
+});
+
+test("reflow cascades into a third card", () => {
+	const out = reflow({ a: rect(0, 0, 24, 60), b: rect(0, 40, 24, 40), c: rect(0, 80, 24, 40) });
+	assert.equal(hasCollisions(out), false, "every displacement resolved, not just the first");
+	assert.equal(out.b!.row >= 60 || out.b!.col >= 24, true, "b cleared a");
+});
+
+test("reflow leaves an already-clean layout exactly as it found it", () => {
+	const clean = { a: rect(0, 0, 24, 40), b: rect(24, 0, 24, 40), c: rect(0, 40, 48, 20) };
+	assert.deepEqual(reflow(clean), clean);
+});
+
+test("reflow is idempotent and always terminates collision-free", () => {
+	const messy = {
+		a: rect(0, 0, 20, 50), b: rect(5, 10, 20, 50),
+		c: rect(10, 20, 20, 50), d: rect(2, 5, 30, 30),
+	};
+	const once = reflow(messy);
+	// The red check: this line fails outright if reflow is ever stubbed to a
+	// no-op or the push loop stops early.
+	assert.equal(hasCollisions(once), false, "four mutually overlapping cards all resolved");
+	assert.deepEqual(reflow(once), once, "running it on its own output changes nothing");
+});
+
+test("reflow is deterministic regardless of key insertion order", () => {
+	const a = rect(0, 0, 20, 50), b = rect(5, 10, 20, 50), c = rect(10, 20, 20, 50);
+	assert.deepEqual(reflow({ a, b, c }), reflow({ c, b, a }));
+});
+
+// --- the gate: reflow runs only when a span actually grew ---
+
+test("mergeCanvas reflows ONLY when a span actually grew", () => {
+	const defaults = [
+		{ id: "a", col: 0, row: 0, colSpan: 24, rowSpan: 103 },
+		{ id: "b", col: 0, row: 95, colSpan: 24, rowSpan: 40 },
+	];
+	const grown = mergeCanvas({ a: rect(0, 0, 24, 95), b: rect(0, 95, 24, 40) }, defaults);
+	assert.deepEqual(grown.a, rect(0, 0, 24, 103), "coded growth adopted");
+	assert.deepEqual(grown.b, rect(0, 103, 24, 40), "displaced neighbour pushed down");
+	assert.equal(hasCollisions(grown), false);
+});
+
+test("mergeCanvas still KEEPS a legal overlap when nothing grew (hidden-card guard)", () => {
+	// Same fixture as the audit-residual test above: every stored span equals
+	// its default, so grew is false and the hidden-card overlap must survive.
+	const defaults = [
+		{ id: "a", col: 0, row: 0, colSpan: 4, rowSpan: 4 },
+		{ id: "b", col: 10, row: 0, colSpan: 4, rowSpan: 4 },
+	];
+	const stored = { a: rect(0, 0, 4, 4), b: rect(1, 1, 4, 4) };
+	assert.deepEqual(mergeCanvas(stored, defaults), stored);
 });
 
 test("serializeCanvas round-trips through parseStoredCanvas and mergeCanvas", () => {

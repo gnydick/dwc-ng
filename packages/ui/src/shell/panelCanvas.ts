@@ -437,6 +437,15 @@ export function serializeCanvas(state: CanvasState): string {
  * the highest known order" step, because position is absolute, not
  * relative. A stored id no longer in defaults is dropped.
  *
+ * A stored rect whose SPAN the composition has since grown adopts the larger
+ * span (growToDefaults) and the cards it now overlaps are pushed clear
+ * (reflow) — otherwise a card redesigned to be taller stays at its old height
+ * on every browser that has ever laid the screen out, and its new content
+ * renders below the fold with no way out but Reset Layout. Observed
+ * 2026-07-24: position 95 -> 103 and active-job 40 -> 46 changed nothing on a
+ * machine with a stored canvas.
+ *
+
  * Stored rects are NEVER discarded for overlapping each other (the old
  * "collision = corruption, reset everything" verdict): a hidden card
  * (visibleWhen false) releases its grid cells precisely so visible cards
@@ -461,16 +470,110 @@ export function sanitizeCanvas(stored: unknown): CanvasState {
 	return out;
 }
 
-export function mergeCanvas(stored: unknown, defaults: PanelDefault[]): CanvasState {
+/**
+ * Adopt any span the composition has GROWN since this browser last stored a
+ * layout, per axis, without moving anything.
+ *
+ * Grow-only by decision (spec D1): position is never touched, and a span the
+ * user enlarged past the coded default is kept, so an ordinary load changes
+ * nothing. The accepted cost is that a card deliberately shrunk below its
+ * default (via the detent breakaway) is grown back the next time that default
+ * moves — stored spans carry no record of who set them, so the two cases are
+ * indistinguishable here.
+ *
+ * `grew` reports whether any span actually increased. It is the gate that
+ * decides whether a reflow may run at all, and it is deliberately FALSE for a
+ * card falling back to its coded default (never stored, or stored corrupt):
+ * that is placement, not growth, and adding a card to a screen must not
+ * rearrange the cards already on it.
+ */
+export function growToDefaults(
+	stored: unknown,
+	defaults: PanelDefault[],
+): { state: CanvasState; grew: boolean } {
 	const fallback = defaultCanvas(defaults);
-	if (typeof stored !== "object" || stored === null) return fallback;
-	const storedRecord = stored as Record<string, unknown>;
-	const result: CanvasState = {};
+	const record = typeof stored === "object" && stored !== null
+		? stored as Record<string, unknown>
+		: {};
+	const state: CanvasState = {};
+	let grew = false;
 	for (const d of defaults) {
-		const entry = storedRecord[d.id];
-		result[d.id] = isPanelRect(entry) ? clampRect(entry) : fallback[d.id]!;
+		const entry = record[d.id];
+		if (!isPanelRect(entry)) {
+			state[d.id] = fallback[d.id]!;
+			continue;
+		}
+		const coded = fallback[d.id]!;
+		const before = clampRect(entry);
+		const next = clampRect({
+			col: entry.col,
+			row: entry.row,
+			colSpan: Math.max(entry.colSpan, coded.colSpan),
+			rowSpan: Math.max(entry.rowSpan, coded.rowSpan),
+		});
+		if (next.colSpan > before.colSpan || next.rowSpan > before.rowSpan) grew = true;
+		state[d.id] = next;
 	}
-	return result;
+	return { state, grew };
+}
+
+/**
+ * Resolve every overlap by pushing cards RIGHT or DOWN — never up or left.
+ *
+ * Cards are placed in reading order (row, then col, then id purely for
+ * determinism), so the topmost-leftmost card can never be displaced and a card
+ * whose span just grew keeps its spot while its neighbours yield. That falls
+ * out of the ordering rather than needing a "the grown one wins" special case:
+ * a grown card is already placed by the time anything below or right of it is
+ * considered.
+ *
+ * The axis is whichever penetration is fewer GRID CELLS (spec D2 — cells, not
+ * pixels, which is the operator's call; the grid is anisotropic at 46px per
+ * column against 4px per row, so equal cell counts are an 11.5x difference on
+ * screen). Ties go right, the bounded axis, keeping the layout compact while
+ * the unbounded one stays available.
+ *
+ * Terminates: every push strictly increases col or row; col is bounded by
+ * GRID_COLS and forces the down branch once a rightward push no longer fits,
+ * and a row below every placed rect is always free — the same argument
+ * slideDownToFree rests on. Idempotent: the output is collision-free, so a
+ * second pass never enters the push loop.
+ */
+export function reflow(state: CanvasState): CanvasState {
+	const order = Object.keys(state).sort((x, y) => {
+		const a = state[x]!;
+		const b = state[y]!;
+		return a.row - b.row || a.col - b.col || (x < y ? -1 : x > y ? 1 : 0);
+	});
+	const out: CanvasState = {};
+	const placed: PanelRect[] = [];
+	for (const id of order) {
+		let candidate: PanelRect = { ...state[id]! };
+		for (;;) {
+			const hit = placed.find(p => rectsOverlap(candidate, p));
+			if (hit === undefined) break;
+			const rightCells = hit.col + hit.colSpan - candidate.col;
+			const downCells = hit.row + hit.rowSpan - candidate.row;
+			const fitsRight = candidate.col + rightCells + candidate.colSpan <= GRID_COLS;
+			candidate = fitsRight && rightCells <= downCells
+				? { ...candidate, col: candidate.col + rightCells }
+				: { ...candidate, row: candidate.row + downCells };
+		}
+		out[id] = candidate;
+		placed.push(candidate);
+	}
+	return out;
+}
+
+export function mergeCanvas(stored: unknown, defaults: PanelDefault[]): CanvasState {
+	const { state, grew } = growToDefaults(stored, defaults);
+	// Gated on an ACTUAL growth, which is a correctness requirement and not an
+	// optimisation: see the paragraph above about hidden cards storing a legal
+	// overlap. Reflowing unconditionally would shove cards around to "fix"
+	// overlaps that are intentional and invisible — a variant of the very bug
+	// the discard-on-collision removal fixed. Only a redesign disturbs the
+	// arrangement, which is exactly what was asked for.
+	return grew ? reflow(state) : state;
 }
 
 function readStorage(key: string): string | null {
@@ -560,6 +663,14 @@ export function createPanelCanvas(
 	onLayoutChange?: () => void,
 ): PanelCanvasController {
 	const [state, setState] = createSignal(mergeCanvas(parseStoredCanvas(readStorage(storageKey)), defaults));
+	// Settle a redesign repair once rather than recomputing it on every load.
+	// Deliberately NOT persist(): that fires onLayoutChange -> markLayoutDirty,
+	// and a repair is not a user edit — nor is mutating the config store during
+	// signal initialisation safe. Correctness never depends on this landing:
+	// growToDefaults + reflow are deterministic and idempotent, so a browser
+	// where writeStorage no-ops (private mode, quota) rebuilds the identical
+	// layout every time.
+	writeStorage(storageKey, serializeCanvas(state()));
 
 	const orientationStorageKey = `${storageKey}.orientation`;
 	// Stored wins (this browser's own toggles); otherwise seed from the
