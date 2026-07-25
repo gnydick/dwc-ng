@@ -252,13 +252,17 @@ export interface LayoutStore {
  * gone, here is a different one" (import today; presets or a restore
  * tomorrow).
  *
- * A screen's geometry is stored twice: the config overlay (travels to the SD
- * card, seeds a new browser) and the per-browser canvas store (the freshest
- * local tier, and what actually renders). Writing one without the other is
- * how they drift, and `mergeCanvas` then assembles a layout CARD BY CARD from
- * whichever store happens to have each id — so a replaced layout arrives
- * shredded: cards the browser already knew keep their old spots, only cards
- * it had never seen land where the new layout says.
+ * A screen's geometry lives in TWO TIERS BY DESIGN (ratified 2026-07-22,
+ * f426706): the per-browser canvas store is the freshest local tier and wins
+ * locally, while the config overlay rides to the SD card so layouts travel
+ * with the machine and seed a new browser. That is a feature — do not
+ * "simplify" it to one store.
+ *
+ * What the tiers do NOT license is a wholesale replacement that writes only
+ * one of them. `mergeCanvas` assembles a layout CARD BY CARD from whichever
+ * store happens to have each id, so a half-written replacement arrives
+ * shredded: cards the browser already knew keep their old spots, and only
+ * cards it had never seen land where the new layout says.
  *
  * That is exactly the reported bug. Importing Control appeared to work only
  * because it carried cards this browser had never seen; importing Machine
