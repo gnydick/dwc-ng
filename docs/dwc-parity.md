@@ -84,6 +84,7 @@ nobody closes them by accident.
 | Bed temps (`M140`) | ✅ | ✅ | |
 | Extrude / retract (`M83`+`G1 E`) | ✅ (`ExtrudePanel`) | ✅ | |
 | Speed factor (`M220`) | ✅ | ✅ | |
+| **Live move speeds** (requested vs achieved) | ✅ (`StatusPanel.vue`) | ✅ | `om/speeds.ts` — footer on the Position card: requested, achieved, and extrusion rate toggling to volumetric flow (`move.currentMove`). Labelled **"Actual"**, not DWC's "Top Speed": RRF exposes no instantaneous-velocity field, and the achieved figure is re-sampled every poll, so "Top Speed" would read as a high-water mark. Absent ≠ zero — an unreported value shows `—` rather than DWC's `0.0` (its `isFinite()` guard passes `null` through, since `isFinite(null) === true`). |
 | Extrusion factor (`M221`) | ✅ | ✅ | |
 | Fans (`M106`) | ✅ | ✅ | incl. a live tacho RPM readout when the fan reports one (`fans[].rpm`) |
 | **Reset heater fault** (`M562`) | ✅ (`ResetHeaterFaultDialog`) | ✅ | `cards/HeaterState.tsx`, two-step confirm |
