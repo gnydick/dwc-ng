@@ -82,18 +82,49 @@ Per `cant-break-by-design`, named in both directions.
 
 ### Touched (existing, currently under-enforced)
 
-**I-A: every OM field the UI renders is validated at the single conform
-boundary.** `conform`'s `move` case currently waves the nested object through
-unchecked (`om/types.ts:346`):
+**I-A: no unvalidated number reaches a rendered speed string.**
+
+`conform`'s `move` case currently waves the nested object through unchecked
+(`om/types.ts:346`):
 
 ```ts
 currentMove: isObject(value.currentMove) ? value.currentMove : d.currentMove,
 ```
 
 The fields are *typed* `number` but never *checked*, so a board sending a
-string or `null` reaches `.toFixed()` and throws. This sits at rung 0 today and
-rendering it is what would expose it. **Promotion:** parse each field
-individually at the boundary, producing a type that carries the proof.
+string reaches `.toFixed()` and throws.
+
+**Correction, found while planning (2026-07-25): `conform` is NOT the OM's
+single entry.** Its own doc comment describes it as "the per-key shape gate at
+the OM's single entry," which holds for authoritative subtree replacement but
+not for live patches. `store.ts:89-91` routes the `d99fn` live patch straight
+into `deepMergeInto` without ever calling `conformModelKey`:
+
+```ts
+onModelPatch(patch) {
+    setOm(produce(draft => deepMergeInto(draft as Record<string, unknown>, patch)));
+},
+```
+
+`currentMove` is updated *predominantly* by that live path — it is why the
+value ticks at 2 Hz at all. So hardening conform alone would leave the hot
+path unguarded. Two ingress routes, one gate.
+
+Gating the second route is the wrong fix: `conformModelKey` is per-top-level-
+key, and a sparse nested patch has no such shape. **Enforcement belongs where
+the two routes reconverge — the render derivation.** `speedRow()` (component
+2) is the sole producer of rendered speed text, so it accepts its inputs as
+`unknown` and parses them. Both ingress routes are then covered by one choke
+point, whatever shape the data arrived in.
+
+Concretely:
+
+- `numberOrNull` is exported from `om/speeds.ts` — one implementation.
+- `speedRow()` parses every value through it. This is the enforcing gate: a
+  card cannot obtain a speed string except from `speedRow`.
+- `conform`'s `move` arm uses the same helper for the refetch path, so the
+  store's own shape matches its declared type. This is defence in depth and a
+  correctness fix for the store, not the render guarantee.
 
 Note that DWC's `isFinite()` guard would not be a correct thing to copy:
 `isFinite(null) === true` in JS, because `null` coerces to `0`. A board
@@ -140,16 +171,20 @@ currentMove: {
 Defaults in `emptyModel()` become `null` (currently `0`, which asserts
 "stopped" before the first poll has landed).
 
-Add a `numberOrNull` helper beside the existing `arrayOr` (`om/types.ts:291`)
-and use it per field in the `move` conform arm:
+Import `numberOrNull` from `om/speeds.ts` (one implementation — see I-A) and
+use it per field in the `move` conform arm, replacing the pass-through:
 
 ```ts
-currentMove: conformCurrentMove(value.currentMove, d.currentMove),
+currentMove: {
+    requestedSpeed: numberOrNull(rawCurrentMove.requestedSpeed),
+    topSpeed: numberOrNull(rawCurrentMove.topSpeed),
+    extrusionRate: numberOrNull(rawCurrentMove.extrusionRate),
+},
 ```
 
-`conformCurrentMove` is a small local function in the same module — one place,
-next to the other conform arms, so it cannot be bypassed by a future call site
-that reaches into the wire object directly.
+This fixes the store's shape on the refetch route. It is **not** the render
+guarantee — that lives in `speedRow` (I-A), because the live-patch route never
+reaches this function.
 
 No other code reads `currentMove` today, so the type widening is free.
 
@@ -161,17 +196,27 @@ The only place OM values become display text.
 export type FlowMode = "linear" | "volumetric";
 
 export interface SpeedCell {
-    key: "requested" | "top" | "flow";
+    key: "requested" | "actual" | "flow";
     label: string;
-    value: string;   // already formatted, including the em-dash for null
+    value: string;   // already formatted, including the em-dash for absent
     unit: string;
+    /** OM path, for the cell's title attribute. */
+    source: string;
 }
 
 /** Exactly three cells, always — see I-B. */
 export type SpeedRow = readonly [SpeedCell, SpeedCell, SpeedCell];
 
-export function speedRow(om: KnownModel, mode: FlowMode): SpeedRow;
+/** The enforcing gate for I-A — parses, never trusts. */
+export function numberOrNull(value: unknown): number | null;
+
+export function speedRow(om: ObjectModel, mode: FlowMode): SpeedRow;
 ```
+
+`speedRow` takes `ObjectModel` (the open `KnownModel & Record<string, unknown>`)
+and reads `currentMove`'s fields as `unknown`, parsing each through
+`numberOrNull`. It does not rely on the declared `number | null` type being
+true, because the live-patch route can violate it (I-A).
 
 Behaviour:
 
@@ -249,6 +294,12 @@ reachable without a machine.
 
 `packages/ui/test/speeds.test.ts`:
 
+- **The I-A red-check:** a value that arrived via the live-patch route as a
+  string (`requestedSpeed: "fast"`) renders as `"—"` and does not throw. Drive
+  this through `createOmStore().events.onModelPatch(...)` specifically, not
+  `onModelKey` — `onModelPatch` is the route that bypasses conform, so a test
+  written against `onModelKey` would pass while the real hot path stayed
+  broken.
 - `null` values render as `"—"`, not `"0.0"` (I-D).
 - Numbers render at one decimal place.
 - Volumetric derivation against a hand-computed value for 1.75 mm filament.
