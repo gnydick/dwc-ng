@@ -21,13 +21,43 @@ click-toggling to volumetric flow in mm³/s.
 
 ### What the values actually mean
 
-- `requestedSpeed` — the feedrate the current move asked for, after `M220`.
-- `topSpeed` — the **peak speed the planner reached on the segment being
-  executed**. It is not an instantaneous velocity. The gap between requested
-  and top is the useful signal: it shows when acceleration limits, cornering,
-  or short segments stop the machine hitting its commanded feedrate.
-- `extrusionRate` — filament consumption for the current move, in mm/s of
-  filament (not of nozzle travel).
+Verified 2026-07-25 against the RRF Object Model Documentation wiki (the 3.6
+revision, matching our pinned line). Neither the vendored class
+(`reference/objectmodel/src/move/index.ts:13-20`) nor
+`reference/rrf-m409-object-model.md` carries field descriptions, so the wiki is
+the authority here. Documented verbatim:
+
+- `requestedSpeed` — "Requested speed of the current move (in mm/s)". This is
+  the feedrate the move asked for, after `M220`.
+- `topSpeed` — "Top speed of the current move (in mm/s)". The speed actually
+  achieved on the move being executed.
+- `extrusionRate` — "Current extrusion rate (in mm/s)". Filament consumption,
+  not nozzle travel.
+
+**There is no instantaneous-velocity field.** RRF exposes requested and
+achieved, and nothing else; `topSpeed` is the closest thing to "actual" that
+the firmware reports, and is what DWC labels "Top Speed". Because the poll
+re-samples at 500 ms while the machine retires many moves per second, the
+reading behaves as a live achieved-speed trace during a print — it will be
+noisy on short segments, which is a faithful report of the machine genuinely
+slowing for them.
+
+The gap between requested and top is the useful signal: it shows when
+acceleration limits, cornering, or short segments stop the machine hitting its
+commanded feedrate.
+
+### Path and nullability, verified
+
+- `currentMove` sits at **`move.currentMove`** on our pinned 3.6 line, not
+  `move.motionSystems[].currentMove` (a newer-OM arrangement that some search
+  results describe). Confirmed twice: the vendored class
+  (`reference/objectmodel/src/move/index.ts:43`) and the real board capture,
+  whose `move` object has no `motionSystems` key.
+- The shape authority declares `acceleration`, `deceleration`,
+  `extrusionRate`, `requestedSpeed` and `topSpeed` as non-nullable `number`
+  defaulting to `0`; only `laserPwm` is `number | null`. So the firmware's own
+  contract is that these are always numbers when the subtree is present —
+  see the note under I-D on what that means for the em-dash case.
 
 ## Decisions
 
@@ -74,6 +104,15 @@ time, so it cannot drift from the `extrusionRate` it is derived from.
 
 **I-D: "not reported" and "zero" are different values.** `null` renders as an
 em-dash; `0` renders as `0.0`.
+
+Scope note: the firmware declares these fields non-nullable with a `0` default
+(see "Path and nullability, verified"), so a connected board reporting the
+subtree always sends numbers. The `null` case therefore covers only the states
+where the field genuinely is not there — before the first full sync, on a
+partial patch that omits it, or from a board older than our pinned line. It is
+kept because rendering `0.0` in those states asserts "the machine is stopped"
+on no evidence, which is the same class of error as DWC's `isFinite(null)`
+hole. It is not expected to be visible during normal operation.
 
 ## Components
 
