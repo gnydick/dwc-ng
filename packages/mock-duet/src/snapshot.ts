@@ -195,7 +195,7 @@ export function createBaseModel(): Om {
 			],
 			calibration: { final: { deviation: 0, mean: 0 }, initial: { deviation: 0, mean: 0 }, numFactors: 0 },
 			compensation: { fadeHeight: null, file: null, meshDeviation: null, probeGrid: { axes: ["X", "Y"], maxs: [180, 160], mins: [20, 20], radius: -1, spacings: [20, 20] }, skew: { compensateXY: true, tanXY: 0, tanXZ: 0, tanYZ: 0 }, type: "none" },
-			currentMove: { acceleration: 0, deceleration: 0, laserPwm: null, requestedSpeed: 0, topSpeed: 0 },
+			currentMove: { acceleration: 0, deceleration: 0, extrusionRate: 0, laserPwm: null, requestedSpeed: 0, topSpeed: 0 },
 			extruders: [
 				{
 					acceleration: 3000,
