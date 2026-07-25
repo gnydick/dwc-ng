@@ -6,7 +6,7 @@ import { decodeQoi } from "../src/thumbnails/qoi.ts";
 
 /**
  * Golden test for the QOI decoder. The fixture is a REAL thumbnail pulled from
- * Gabe's machine (duet3.nydick.net) via rr_thumbnail for
+ * a real machine via rr_thumbnail for
  * "seat support - PLA.gcode" — a 160x160 RGBA PrusaSlicer render. The expected
  * values were produced by an independent reference decoder (see the capture
  * session); they pin the decode exactly.

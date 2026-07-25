@@ -207,7 +207,7 @@ P6. Live verification against the Pi: read-only first (connect, model,
     patches, layers, console replies), then supervised writes per the
     verify-before-hardware rule (config save, macro run) with Gabe.
 
-## P6 live results (2026-07-23, duet3.nydick.net, READ-ONLY)
+## P6 live results (2026-07-23, a Duet 3 + SBC board, READ-ONLY)
 
 Driven twice: the real `DsfConnector` from node, and the whole app in
 Chrome through the dev proxy. Everything below is observed, not inferred.

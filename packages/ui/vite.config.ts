@@ -7,10 +7,10 @@ import solid from 'vite-plugin-solid'
 //
 // NOTHING HERE DEFAULTS TO SOMEONE'S MACHINE. A board address, a dev-host
 // name and a password are per-developer environment, not project source: this
-// file used to carry `?? 'http://duet3.nydick.net'`, `allowedHosts:
-// ['bighoss']` and a `'reprap'` password fallback, which silently worked for
-// exactly one person and pointed everyone else's "Real" backend at a stranger's
-// printer. Set them in .env.local (untracked) — see .env.example.
+// file used to carry a specific board's address, a specific dev host name
+// and a password fallback, which silently worked for exactly one person and
+// pointed everyone else's "Real" backend at a stranger's printer. Set them in
+// .env.local (untracked) — see .env.example.
 //
 // The local mock IS a project default: it ships in this repo, so pointing at
 // it when nothing is configured is a fact about the project, not about a

@@ -27,7 +27,7 @@ dist-ssr
 .claude/settings.local.json
 *.iml
 
-# Local reference: full dump of Gabe's real machine config (duet3.nydick.net).
+# Local reference: full dump of a real machine's config.
 # Curated secret-free subset lives in packages/mock-duet/captures/ instead.
 duet_config_files/
 packages/mock-duet/tsconfig.tsbuildinfo

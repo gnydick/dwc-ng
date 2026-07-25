@@ -347,7 +347,7 @@ M104 S${temps[1]}
 		thumbnails: [],
 	});
 
-	// A real job captured from Gabe's machine (duet3.nydick.net): faithful
+	// A real job captured from a real machine: faithful
 	// fileinfo + a real 160x160 QOI thumbnail, so the Jobs view exercises the
 	// actual QOI decode + chunked rr_thumbnail path offline. The gcode body is
 	// synthetic (size is what fileinfo reports); the thumbnail/metadata are real.

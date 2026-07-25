@@ -3,7 +3,7 @@
 //
 // The load-bearing rule here is that COMPRESSION IS A PROPERTY OF THE
 // TRANSPORT, not an argument travelling alongside it. Verified 2026-07-24 on
-// duet3.nydick.net: DSF's Kestrel neither compresses on the fly nor serves
+// a Duet 3 + SBC: DSF's Kestrel neither compresses on the fly nor serves
 // .gz transparently, so a gzipped DSF deploy 404s every single asset. RRF
 // standalone is the opposite — it wants .gz. Pairing the wrong two is a
 // totally broken machine UI, so the pairing must not be expressible.
