@@ -105,17 +105,22 @@ Clicking **Save to machine** does not save. It arms the bar:
 `captureScreenGeometry(app.config)` must still run at the moment of the actual
 save, not at arm time, so geometry changed while the field is open is included.
 
-### Card height
+### Card height — no change (corrected)
 
-`config-save` is `rowSpan: 26` in `compose/defs.ts`; the armed state adds a row.
-The default is measured and bumped, and the compositions in `compose/screens.ts`
-that restate it are updated in step — geometry lives in up to three tiers and
-the most specific wins.
+The first draft of this spec assumed the armed state adds a row and that
+`config-save`'s `rowSpan: 26` would need bumping. That is wrong. Cards do not
+scale with the viewport (`COL_UNIT_PX` is fixed at 46 and the page scrolls
+horizontally), so this card is always 24 columns = 1242px wide, while the armed
+children — hint 132 + field ≤320 + Save + Cancel + Reset everything, plus gaps —
+total roughly 800px. They stay on one line and the height is unchanged.
 
-Stale saved layouts are no longer a problem: the reflow shipped earlier today
-(`docs/superpowers/specs/2026-07-25-card-overlap-reflow-design.md`) adopts a
-grown span on load and pushes displaced neighbours clear. This is its first real
-exercise.
+`flex-wrap: wrap` is still set, for the case where the operator resizes the card
+narrower by hand. There the existing detent/`contentRowSpan` machinery measures
+the wrapped height live, which is the intended behaviour and needs no coded
+default.
+
+Verified live rather than assumed: the card's rendered height must be identical
+armed and unarmed at the default width.
 
 ## Tests
 

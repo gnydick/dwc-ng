@@ -5,6 +5,7 @@ import { isPlainObject, safeEntries } from "../util/safeObject.ts";
 import { parseOverlay, parseOverlayPayload } from "./parse.ts";
 import {
 	CONFIG_CACHE_KEY, CONFIG_FILE, CONFIG_VERSION, DEFAULT_CONFIG, MAX_SNAPSHOTS,
+	MAX_LABEL_LEN, DEFAULT_SNAPSHOT_LABEL,
 	isUserScreenId,
 	type CameraConfig, type ConfigOverlay, type ConfigSnapshot, type CustomCardId,
 	type DockSensorRef, type BedConfig, type MacrosConfig, type SlotRect, type UiConfig,
@@ -106,12 +107,21 @@ export interface ConfigStore {
 	 */
 	resetAll(): void;
 
+	/** Take a backup of the current overlay. The label is trimmed, capped at
+	 *  MAX_LABEL_LEN and defaulted when blank — here, so every caller is
+	 *  covered. */
 	snapshot(label: string): void;
 	/** Restore the overlay from a snapshot (the snapshot itself is kept). */
 	revert(index: number): void;
 
-	/** Persist the overlay to the machine's SD card (and the local cache). */
-	saveToMachine(connector: Connector): Promise<void>;
+	/**
+	 * Persist the overlay to the machine's SD card (and the local cache).
+	 *
+	 * `label` names the backup this save takes, so the Saved versions list can
+	 * say what a revert would restore rather than ten rows of "saved". It is
+	 * local-only: the uploaded payload is byte-identical with or without it.
+	 */
+	saveToMachine(connector: Connector, label?: string): Promise<void>;
 	/** Load the overlay: SD card first, local cache as fallback. */
 	loadFromMachine(connector: Connector): Promise<void>;
 }
@@ -284,8 +294,13 @@ export function createConfigStore(): ConfigStore {
 		},
 
 		snapshot(label) {
+			// The sole place a snapshot is created, so the label rule lives here
+			// and nowhere else: trim, fall back when blank, cap the length. A
+			// future caller inherits the guarantee without having to know it
+			// exists — see MAX_LABEL_LEN.
+			const clean = label.trim().slice(0, MAX_LABEL_LEN) || DEFAULT_SNAPSHOT_LABEL;
 			setMeta("snapshots", snapshots => {
-				const next = [...snapshots, { takenAt: Date.now(), label, overlay: structuredClone(overlay) }];
+				const next = [...snapshots, { takenAt: Date.now(), label: clean, overlay: structuredClone(overlay) }];
 				return next.slice(-MAX_SNAPSHOTS);
 			});
 			// Persist the new backup immediately — the whole point is that it
@@ -305,8 +320,12 @@ export function createConfigStore(): ConfigStore {
 			persistCache();
 		},
 
-		async saveToMachine(connector) {
-			store.snapshot("saved");
+		async saveToMachine(connector, label) {
+			// The snapshot is taken from the overlay BEING saved, so the name
+			// describes exactly the state that went to the card. The label is
+			// local-only — it never reaches the payload below, so a named save
+			// and an unnamed one upload identical bytes.
+			store.snapshot(label ?? "");
 			const payload = JSON.stringify({ version: CONFIG_VERSION, overlay }, null, "\t");
 			await connector.upload(CONFIG_FILE, payload);
 			setMeta("dirty", false);

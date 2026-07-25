@@ -10,7 +10,7 @@
  */
 import { For, Show, createMemo, createSignal } from "solid-js";
 import { useApp } from "../shell/context.ts";
-import { CONFIG_FILE } from "../config/types.ts";
+import { CONFIG_FILE, MAX_LABEL_LEN } from "../config/types.ts";
 import { sensorRows } from "../om/sensorRows.ts";
 import { captureScreenGeometry } from "../compose/screens.ts";
 
@@ -200,15 +200,32 @@ export function SavedVersionsBody() {
 export function ConfigSaveBody() {
 	const app = useApp();
 	const [saveError, setSaveError] = createSignal<string | null>(null);
+	// Armed = the name field is open and nothing has been saved yet. Clicking
+	// "Save to machine" arms; the second click (or Enter) is what actually
+	// writes. Same two-step shape as the file browser's rename and armed
+	// delete, which is this app's convention for a single text field — there
+	// is no modal for one input anywhere in the UI.
+	const [armed, setArmed] = createSignal(false);
+	const [label, setLabel] = createSignal("");
+
+	const disarm = (): void => {
+		setArmed(false);
+		setLabel("");
+	};
 
 	const save = (): void => {
 		setSaveError(null);
 		// Fold every screen's current local geometry into the overlay first, so
 		// the SD copy carries screens AND layouts (they seed any new browser).
+		// Deliberately at SAVE time, not at arm time: geometry changed while the
+		// name field was open still belongs in this save.
 		captureScreenGeometry(app.config);
-		void app.config.saveToMachine(app.connector).catch((err: unknown) => {
+		// A blank name is not an error — snapshot() falls back to "saved", so
+		// the prompt can never block a save.
+		void app.config.saveToMachine(app.connector, label()).catch((err: unknown) => {
 			setSaveError(err instanceof Error ? err.message : String(err));
 		});
+		disarm();
 	};
 
 	return (
@@ -223,9 +240,30 @@ export function ConfigSaveBody() {
 			>
 				{msg => <span class="hint unsaved">Save failed: {msg()}</span>}
 			</Show>
-			<button class="primary-btn" disabled={!app.config.dirty} onClick={save}>
-				Save to machine
-			</button>
+			<Show
+				when={armed()}
+				fallback={
+					<button class="primary-btn" disabled={!app.config.dirty} onClick={() => setArmed(true)}>
+						Save to machine
+					</button>
+				}
+			>
+				<input
+					class="fb-input save-label"
+					placeholder="Name this backup"
+					aria-label="Name this backup"
+					maxLength={MAX_LABEL_LEN}
+					value={label()}
+					ref={el => queueMicrotask(() => el.focus())}
+					onInput={e => setLabel(e.currentTarget.value)}
+					onKeyDown={e => {
+						if (e.key === "Enter") save();
+						if (e.key === "Escape") disarm();
+					}}
+				/>
+				<button class="primary-btn" onClick={save}>Save</button>
+				<button class="link-btn" onClick={disarm}>Cancel</button>
+			</Show>
 			<button
 				class="link-btn"
 				title="Return every setting and built-in screen to defaults. Your custom cards and screens are kept — delete those individually."

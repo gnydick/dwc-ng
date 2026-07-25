@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createConfigStore } from "../src/config/store.ts";
-import { DEFAULT_CONFIG } from "../src/config/types.ts";
+import { CONFIG_FILE, DEFAULT_CONFIG, MAX_LABEL_LEN } from "../src/config/types.ts";
 import { createMockServer } from "../../mock-duet/src/server.ts";
 import { PollConnector } from "../src/connector/PollConnector.ts";
 
@@ -84,6 +84,71 @@ test("snapshot history is capped", () => {
 	}
 	assert.equal(store.snapshots.length, 10);
 	assert.equal(store.snapshots[0]!.label, "snap 4", "oldest snapshots dropped");
+});
+
+// --- named backups (USER_AUDIT line 20) -------------------------------------
+
+test("snapshot trims, defaults a blank label, and caps an over-long one", () => {
+	const store = createConfigStore();
+	store.snapshot("  pre-CNC experiment  ");
+	assert.equal(store.snapshots.at(-1)!.label, "pre-CNC experiment", "surrounding whitespace trimmed");
+
+	store.snapshot("");
+	assert.equal(store.snapshots.at(-1)!.label, "saved", "blank falls back");
+
+	store.snapshot("   \t  ");
+	assert.equal(store.snapshots.at(-1)!.label, "saved", "whitespace-only is blank");
+
+	// Enforced in snapshot() itself, not at the UI: the input's maxLength is a
+	// convenience, and a caller reaching the store directly must still be
+	// covered.
+	store.snapshot("x".repeat(MAX_LABEL_LEN + 40));
+	assert.equal(store.snapshots.at(-1)!.label.length, MAX_LABEL_LEN, "capped at MAX_LABEL_LEN");
+});
+
+test("a named save labels the backup and still clears dirty", async () => {
+	const mock = createMockServer({ tickMs: 0 });
+	const port = await mock.listen(0);
+	const connector = new PollConnector({ baseUrl: `http://127.0.0.1:${port}`, autoPoll: false, retryDelayMs: 10 });
+	try {
+		await connector.connect();
+		const store = createConfigStore();
+		store.setAxisRole("U", "Z motor 1");
+		await store.saveToMachine(connector, "toolchanger baseline");
+		assert.equal(store.snapshots.at(-1)!.label, "toolchanger baseline");
+		assert.equal(store.dirty, false, "a named save still completes");
+	} finally {
+		await connector.disconnect().catch(() => undefined);
+		await mock.close();
+	}
+});
+
+test("the backup name never reaches the SD payload", async () => {
+	// The label is a local aid for choosing what to restore. A named save and
+	// an unnamed one must put identical bytes on the card, or the name becomes
+	// config that travels between machines.
+	const mock = createMockServer({ tickMs: 0 });
+	const port = await mock.listen(0);
+	const connector = new PollConnector({ baseUrl: `http://127.0.0.1:${port}`, autoPoll: false, retryDelayMs: 10 });
+	try {
+		await connector.connect();
+
+		const plain = createConfigStore();
+		plain.setAxisRole("U", "Z motor 1");
+		await plain.saveToMachine(connector);
+		const unnamedBytes = await connector.download(CONFIG_FILE);
+
+		const named = createConfigStore();
+		named.setAxisRole("U", "Z motor 1");
+		await named.saveToMachine(connector, "pre-CNC experiment");
+		const namedBytes = await connector.download(CONFIG_FILE);
+
+		assert.equal(namedBytes, unnamedBytes, "same overlay, same bytes, label or not");
+		assert.equal(namedBytes.includes("pre-CNC experiment"), false, "label absent from the file");
+	} finally {
+		await connector.disconnect().catch(() => undefined);
+		await mock.close();
+	}
 });
 
 test("save/load round-trip through the machine's SD card", async () => {
