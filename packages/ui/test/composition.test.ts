@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseCardId, allCardIds, CARD_DEFS } from "../src/compose/defs.ts";
+import { parseCardId, allCardIds, cardTitleOf, CARD_DEFS, type CardId } from "../src/compose/defs.ts";
 import {
 	parseComposition, findFreePosition, addCard, removeCard, slotsOf,
 	type Composition,
@@ -119,4 +119,46 @@ test("every card def has a positive natural size within the grid", () => {
 		// the editors) — either way the card can always name itself.
 		assert.ok(typeof title === "function" || title.length > 0, `${id} title`);
 	}
+});
+
+/**
+ * Two cards may not present the same name.
+ *
+ * `active-job` and `active-job-detailed` were both "Printing", identical in
+ * title, aria-label, tip, class and size — but they are different cards with
+ * separately remembered geometry. In the compose picker, the Card Lab's pills
+ * and the import review they appeared as two entries nobody could tell apart;
+ * resizing one and later picking the other reads exactly like a layout that
+ * reverted. Alphabetising the picker sat them next to each other, so choosing
+ * became a coin flip.
+ *
+ * This is rung 3 — a test, not a construction. TypeScript cannot express
+ * "these string VALUES must be distinct" across an object literal, so nothing
+ * stops a future card from taking an existing name; this fails the build when
+ * one does.
+ */
+test("no two registry cards share a display title", () => {
+	const byTitle = new Map<string, CardId[]>();
+	for (const id of allCardIds()) {
+		const title = cardTitleOf(id);
+		byTitle.set(title, [...(byTitle.get(title) ?? []), id]);
+	}
+	const clashes = [...byTitle.entries()].filter(([, ids]) => ids.length > 1);
+	assert.deepEqual(
+		clashes, [],
+		`cards sharing a title are indistinguishable in the picker: ${clashes.map(([t, ids]) => `"${t}" ← ${ids.join(", ")}`).join("; ")}`,
+	);
+});
+
+test("no two registry cards share an aria-label", () => {
+	// Same defect, for anyone navigating by screen reader — where the title is
+	// not even visible and the label is all there is.
+	const byLabel = new Map<string, CardId[]>();
+	for (const id of allCardIds()) {
+		const label = CARD_DEFS[id].ariaLabel;
+		if (typeof label !== "string") continue; // dynamic labels are per-instance
+		byLabel.set(label, [...(byLabel.get(label) ?? []), id]);
+	}
+	const clashes = [...byLabel.entries()].filter(([, ids]) => ids.length > 1);
+	assert.deepEqual(clashes, [], `cards sharing an aria-label: ${JSON.stringify(clashes)}`);
 });

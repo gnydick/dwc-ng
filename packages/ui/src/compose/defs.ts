@@ -73,11 +73,22 @@ export const CARD_DEFS = {
 		class: "job-active",
 		size: { colSpan: 12, rowSpan: 40 },
 	}),
-	/** Same card with the three-source estimate breakdown (monitoring surfaces). */
+	/**
+	 * Same card with the three-source estimate breakdown (monitoring surfaces).
+	 *
+	 * The name must differ from "active-job" above. They were BOTH called
+	 * "Printing", identical in every visible field — title, aria-label, tip,
+	 * class, size — so the card picker, the lab's pills and the import review
+	 * all showed two entries a person could not tell apart, while they are
+	 * separate cards with separately remembered geometry. Resize one, later
+	 * pick the other, and it reads exactly like a size that reverted (reported
+	 * 2026-07-24). Alphabetising the picker put the two side by side, which
+	 * made choosing between them a coin flip.
+	 */
 	"active-job-detailed": defineCard({
-		title: "Printing",
-		ariaLabel: "Active job",
-		tip: "job · state",
+		title: "Printing · estimates",
+		ariaLabel: "Active job, with estimates",
+		tip: "job · state · estimates",
 		class: "job-active",
 		size: { colSpan: 12, rowSpan: 40 },
 	}),
@@ -222,7 +233,10 @@ export const CARD_DEFS = {
 	/** Macro editor — placeholder until a file is opened. */
 	"macros-editor": defineCard({
 		title: ctx => ctx.service("macrosBrowser").selected() ?? "Editor",
-		ariaLabel: "Editor",
+		// Distinct from system-editor's: the visible title is dynamic (the open
+		// file's name), so for anyone navigating by screen reader this label is
+		// the ONLY way to tell the two editors apart.
+		ariaLabel: "Macro editor",
 		class: "editor-card",
 		size: { colSpan: 14, rowSpan: 150 },
 	}),
@@ -237,7 +251,7 @@ export const CARD_DEFS = {
 	/** System file editor. */
 	"system-editor": defineCard({
 		title: ctx => ctx.service("sysBrowser").selected() ?? "Editor",
-		ariaLabel: "Editor",
+		ariaLabel: "System file editor",
 		class: "editor-card",
 		size: { colSpan: 16, rowSpan: 120 },
 	}),
