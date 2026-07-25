@@ -31,3 +31,7 @@ dist-ssr
 # Curated secret-free subset lives in packages/mock-duet/captures/ instead.
 duet_config_files/
 packages/mock-duet/tsconfig.tsbuildinfo
+
+# Per-developer settings (see .env.example)
+.env.local
+.env.*.local
