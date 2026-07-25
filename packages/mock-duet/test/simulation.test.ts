@@ -42,6 +42,42 @@ test("mid-print scenario: processing status and advancing progress", () => {
 	assert.ok(machine.om.job.timesLeft.file > 0);
 });
 
+test("mid-print: currentMove reports a requested speed the achieved speed falls short of", () => {
+	const machine = new Machine(scenarios["mid-print"]);
+	const seen: Array<{ requested: number; top: number }> = [];
+	// Sample the way the UI does — repeatedly, across the simulated toolpath.
+	for (let i = 0; i < 40; i++) {
+		machine.advance(500);
+		const cm = machine.om.move.currentMove;
+		seen.push({ requested: cm.requestedSpeed, top: cm.topSpeed });
+	}
+
+	assert.ok(seen.every(s => s.requested > 0), "a running job always has a requested speed");
+	assert.ok(seen.every(s => s.top <= s.requested), "the planner never exceeds what was asked for");
+	// The point of the pair: they must not be the same number every sample, or
+	// a UI showing them stacked would look correct while reading nothing live.
+	assert.ok(seen.some(s => s.top < s.requested), "achieved falls below requested where the path turns");
+	assert.ok(new Set(seen.map(s => s.top)).size > 1, "the achieved speed varies across the path");
+});
+
+test("M220 moves the requested speed, and a finished job zeroes the pair", () => {
+	const machine = new Machine(scenarios["mid-print"]);
+	machine.advance(500);
+	const before = machine.om.move.currentMove.requestedSpeed;
+
+	machine.execute("M220 S50");
+	machine.advance(500);
+	assert.ok(
+		machine.om.move.currentMove.requestedSpeed < before,
+		`halving the speed factor must lower requested (${before} -> ${machine.om.move.currentMove.requestedSpeed})`,
+	);
+
+	machine.finishJob(true);
+	assert.equal(machine.om.move.currentMove.requestedSpeed, 0);
+	assert.equal(machine.om.move.currentMove.topSpeed, 0);
+	assert.equal(machine.om.move.currentMove.extrusionRate, 0);
+});
+
 test("a print runs to completion and returns to idle", () => {
 	const machine = new Machine(scenarios["mid-print"]);
 	const jobSeq = machine.seqs.job!;

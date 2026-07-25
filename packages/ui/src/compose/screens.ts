@@ -27,9 +27,11 @@ export interface ScreenDef {
 
 /** Machine: live DRO, tools & heaters, current job, sensors, temps. */
 export const MACHINE_COMPOSITION: Composition = {
-	position: { col: 0, row: 0, colSpan: 12, rowSpan: 95 },
+	// 95 -> 103 for the speed footer (CARD_DEFS.position.size agrees); the card
+	// below it moves down by the same 8 so the column stays collision-free.
+	position: { col: 0, row: 0, colSpan: 12, rowSpan: 103 },
 	"tools-heaters": { col: 12, row: 0, colSpan: 12, rowSpan: 110 },
-	"active-job": { col: 0, row: 95, colSpan: 12, rowSpan: 40 },
+	"active-job": { col: 0, row: 103, colSpan: 12, rowSpan: 40 },
 	sensors: { col: 12, row: 110, colSpan: 12, rowSpan: 42 },
 	temperatures: { col: 0, row: 152, colSpan: 24, rowSpan: 80 },
 	console: { col: 0, row: 232, colSpan: 24, rowSpan: 75 },
@@ -56,13 +58,15 @@ export const CONTROL_COMPOSITION: Composition = {
  *  build-objects/layers are hidden-but-placed (their visibleWhen gates them)
  *  so they have somewhere to appear on a job that carries them. */
 export const ACTIVITY_COMPOSITION: Composition = {
-	position: { col: 0, row: 0, colSpan: 12, rowSpan: 95 },
+	// 95 -> 103 for the speed footer. gcode-viewer spans the full width
+	// directly below, so it and everything under it shift down by the same 8.
+	position: { col: 0, row: 0, colSpan: 12, rowSpan: 103 },
 	"active-job-detailed": { col: 12, row: 0, colSpan: 12, rowSpan: 40 },
 	"build-objects": { col: 12, row: 40, colSpan: 12, rowSpan: 53 },
-	"gcode-viewer": { col: 0, row: 95, colSpan: 24, rowSpan: 180 },
-	layers: { col: 0, row: 275, colSpan: 24, rowSpan: 67 },
-	console: { col: 0, row: 342, colSpan: 24, rowSpan: 75 },
-	camera: { col: 0, row: 417, colSpan: 8, rowSpan: 75 },
+	"gcode-viewer": { col: 0, row: 103, colSpan: 24, rowSpan: 180 },
+	layers: { col: 0, row: 283, colSpan: 24, rowSpan: 67 },
+	console: { col: 0, row: 350, colSpan: 24, rowSpan: 75 },
+	camera: { col: 0, row: 425, colSpan: 8, rowSpan: 75 },
 };
 
 /** Jobs: the gcodes listing + details for the selected file. */

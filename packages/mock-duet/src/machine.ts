@@ -225,11 +225,49 @@ export class Machine {
 		extruder.position = job.rawExtrusion;
 		const [x, y, z] = this.om.move.axes;
 		const t = this.now / 1000;
+		const prevX = x.machinePosition ?? 0;
+		const prevY = y.machinePosition ?? 0;
 		x.userPosition = x.machinePosition = Math.round((110 + 80 * Math.sin(t / 3)) * 1000) / 1000;
 		y.userPosition = y.machinePosition = Math.round((95 + 70 * Math.cos(t / 4)) * 1000) / 1000;
 		z.userPosition = z.machinePosition = Math.round(job.layer * job.file.layerHeight * 1000) / 1000;
 
+		this.advanceCurrentMove(ms, x.machinePosition - prevX, y.machinePosition - prevY);
+
 		if (job.filePosition >= job.file.size) this.finishJob(false);
+	}
+
+	/**
+	 * move.currentMove while a job runs.
+	 *
+	 * requestedSpeed is the commanded feedrate scaled by M220 (so changing the
+	 * speed factor visibly moves it). topSpeed is the speed the simulated
+	 * nozzle ACTUALLY covered this tick, derived from the XY delta of the
+	 * sin/cos path — it therefore falls below requested wherever the path
+	 * turns, the way a real planner's does, rather than tracking it exactly.
+	 * A UI that renders the two on top of each other is not reading them live.
+	 */
+	private advanceCurrentMove(ms: number, dx: number, dy: number): void {
+		const current: Om = this.om.move.currentMove;
+		if (ms <= 0) return;
+		const nominalFeedrate = 120; // mm/s, the commanded speed before M220
+		const requested = nominalFeedrate * (this.om.move.speedFactor ?? 1);
+		const achieved = (Math.hypot(dx, dy) * 1000) / ms;
+		current.requestedSpeed = Math.round(requested * 10) / 10;
+		// The planner never exceeds what was asked for.
+		current.topSpeed = Math.round(Math.min(requested, achieved) * 10) / 10;
+		const extruder = this.om.move.extruders[0];
+		const area = Math.PI * Math.pow((extruder?.filamentDiameter ?? 1.75) / 2, 2);
+		// mm/s of filament for roughly a 0.4x0.2 bead at the achieved speed.
+		current.extrusionRate = area > 0
+			? Math.round((current.topSpeed * 0.4 * 0.2 / area) * 100) / 100
+			: 0;
+	}
+
+	private clearCurrentMove(): void {
+		const current: Om = this.om.move.currentMove;
+		current.requestedSpeed = 0;
+		current.topSpeed = 0;
+		current.extrusionRate = 0;
 	}
 
 	startJob(path: string): boolean {
@@ -289,6 +327,8 @@ export class Machine {
 		job.layerTime = null;
 		job.timesLeft = { filament: null, file: null, slicer: null };
 		this.om.state.status = "idle";
+		// A stopped machine reports zeros, not the last move's speeds.
+		this.clearCurrentMove();
 		this.om.heat.heaters[0].active = 0;
 		this.om.heat.heaters[0].state = "off";
 		this.om.heat.heaters[1].active = 0;

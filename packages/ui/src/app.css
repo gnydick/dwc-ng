@@ -536,6 +536,12 @@
 .speed-foot {
 	display: flex;
 	align-items: baseline;
+	/* Wrap rather than overflow: the three fixed cells plus the tag need
+	   ~346px, which a narrow card does not have, and a horizontally
+	   scrolling card is worse than a two-line footer. Safe only because the
+	   cells are fixed-width — the wrap point moves with the CARD width, not
+	   with the values, so a changing digit count cannot reflow it. */
+	flex-wrap: wrap;
 	gap: 14px;
 	margin-top: 8px;
 	padding-top: 8px;
@@ -580,6 +586,10 @@
 	cursor: pointer;
 	text-align: left;
 	color: var(--copper);
+	/* Hug the label: the cell is a stretch-aligned flex column, so without
+	   this the dotted underline runs the full 88px slot and reads as a rule
+	   rather than as an affordance on the word. */
+	align-self: flex-start;
 }
 .speed-toggle:hover { color: var(--silk); border-bottom-color: var(--silk); }
 .speed-val {

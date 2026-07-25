@@ -55,7 +55,11 @@ export const CARD_DEFS = {
 		ariaLabel: "Position",
 		tip: "move.axes · move.currentMove",
 		orientationToggle: true,
-		size: { colSpan: 12, rowSpan: 95 },
+		// 95 -> 103 for the speed footer. MEASURED, not chosen: run through
+		// contentRowSpan() (shell/panelCanvas.ts:277) against the rendered card
+		// on the Machine screen, so the default tracks what the content
+		// actually needs rather than a second hand-maintained guess at it.
+		size: { colSpan: 12, rowSpan: 103 },
 	}),
 	/** Tools & heaters table: state + setpoint entry and per-heater actions. */
 	"tools-heaters": defineCard({
