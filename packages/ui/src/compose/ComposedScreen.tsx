@@ -22,7 +22,7 @@ import { CARD_DEFS, allCardIds, parseCardId, type CardId } from "./defs.ts";
 import { RegistryCard, cardTitleOf } from "./RegistryCard.tsx";
 import { addCard, compositionRects, customCardIds, isCustomCardId, removeCard, slotsOf, type Composition, type CustomCardId, type SlotId } from "./composition.ts";
 import { createServicePool } from "./services.ts";
-import { resolveScreen, screenList, type ScreenEntry } from "./screens.ts";
+import { planScreenImport, resolveScreen, screenList, type ScreenEntry } from "./screens.ts";
 import { CustomCard } from "./CustomCard.tsx";
 import { CardStudio } from "./CardStudio.tsx";
 import { ImportReview } from "./ImportReview.tsx";
@@ -181,21 +181,32 @@ function ComposeDrawer(props: { screenId: string; entry: ScreenEntry | null; com
 		} else {
 			// Re-importing a screen with the same name REPLACES it rather than
 			// stacking a duplicate: "import my Control again" means update, not
-			// make a third. Only user screens are removed — a built-in that
-			// happens to share the name is a different thing and stays. Its
-			// embedded custom cards go too, so a replace does not leak them.
-			for (const existing of screenList(app.config.config)) {
-				if (existing.builtin || existing.def.name !== parsed.name) continue;
-				for (const slotId of Object.keys(existing.def.composition)) {
+			// make a third. A built-in wins the match — importing "Control"
+			// means THIS Control, and built-ins take compositions through the
+			// layouts overlay, so it is overwritten in place and keeps the
+			// stable id everything else is keyed on. See planScreenImport.
+			const plan = planScreenImport(app.config.config, parsed.name);
+
+			// Cards embedded in whatever we displace go too, or a replace leaks
+			// them into the card list with nothing referencing them.
+			const dropEmbeddedCards = (screenId: string): void => {
+				const entry = resolveScreen(app.config.config, screenId);
+				if (entry === null) return;
+				for (const slotId of Object.keys(entry.def.composition)) {
 					if (isCustomCardId(slotId)) app.config.removeCustomCard(slotId as CustomCardId);
 				}
-				app.config.removeScreen(existing.id);
+			};
+			for (const staleId of plan.purge) {
+				dropEmbeddedCards(staleId);
+				app.config.removeScreen(staleId);
 			}
+			if (plan.target !== null) dropEmbeddedCards(plan.target.id);
+
 			const idMap = new Map<string, string>();
 			for (const card of parsed.customCards) {
 				idMap.set(card.fileId, app.config.addCustomCard(card.name, card.specText));
 			}
-			const screenId = app.config.addScreen(parsed.name);
+			const screenId = plan.target?.id ?? app.config.addScreen(parsed.name);
 			app.config.updateScreenCards(screenId, remapScreenCards(parsed.cards, idMap));
 			window.location.hash = `#/${screenId}`;
 		}

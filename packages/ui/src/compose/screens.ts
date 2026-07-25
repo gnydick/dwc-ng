@@ -200,6 +200,38 @@ export function resolveScreen(config: UiConfig, id: string): ScreenEntry | null 
 	return screenList(config).find(s => s.id === id) ?? null;
 }
 
+/** Where an imported screen should land, and what it displaces. */
+export interface ScreenImportPlan {
+	/** Screen to write the composition into; null means mint a new one. */
+	target: ScreenEntry | null;
+	/** Same-named user screens to delete — stale duplicates, not the target. */
+	purge: string[];
+}
+
+/**
+ * Decide what importing a screen called `name` should overwrite.
+ *
+ * Share files carry NO ids by design (share.ts: "minted ids never travel", so
+ * a foreign file cannot overwrite a local screen by guessing an id) — the
+ * display name is the only identity available, and it is matched against
+ * `screenList`, which already resolves renamed built-ins.
+ *
+ * A built-in wins the match. Exporting your Control screen from one host and
+ * importing it on another means *this* Control: the earlier rule skipped
+ * built-ins entirely, so such an import could only ever mint a SECOND screen
+ * called "Control" and the nav grew a duplicate. Built-ins take compositions
+ * through the layouts overlay, so overwriting one in place is both possible
+ * and correct — and it keeps the stable id everything else is keyed on.
+ */
+export function planScreenImport(config: UiConfig, name: string): ScreenImportPlan {
+	const sameName = screenList(config).filter(s => s.def.name === name);
+	const builtin = sameName.find(s => s.builtin);
+	const users = sameName.filter(s => !s.builtin);
+	if (builtin !== undefined) return { target: builtin, purge: users.map(s => s.id) };
+	const [first, ...rest] = users;
+	return { target: first ?? null, purge: rest.map(s => s.id) };
+}
+
 /**
  * Snapshot every screen's CURRENT geometry — the fast local tier (per-drop
  * localStorage) joined with its composition — into the config overlay, so
