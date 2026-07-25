@@ -546,7 +546,19 @@ export interface PanelCanvasController {
  * once shown again, but an invisible panel can't block a visible one from
  * moving into the space it would otherwise occupy.
  */
-export function createPanelCanvas(storageKey: string, defaults: PanelDefault[], isActive?: (id: string) => boolean): PanelCanvasController {
+export function createPanelCanvas(
+	storageKey: string,
+	defaults: PanelDefault[],
+	isActive?: (id: string) => boolean,
+	/**
+	 * Called whenever this canvas's geometry changes. A screen passes the
+	 * config store's markLayoutDirty, because a moved card is an unsaved
+	 * change and Save to machine is gated on the dirty flag — without this a
+	 * rearranged screen could never be pushed to the SD card at all. Surfaces
+	 * whose geometry is device-only (the Card Lab) pass nothing.
+	 */
+	onLayoutChange?: () => void,
+): PanelCanvasController {
 	const [state, setState] = createSignal(mergeCanvas(parseStoredCanvas(readStorage(storageKey)), defaults));
 
 	const orientationStorageKey = `${storageKey}.orientation`;
@@ -577,6 +589,7 @@ export function createPanelCanvas(storageKey: string, defaults: PanelDefault[], 
 	const persist = (next: CanvasState): void => {
 		setState(next);
 		writeStorage(storageKey, serializeCanvas(next));
+		onLayoutChange?.();
 	};
 
 	const orientationFor = (id: string): Orientation => orientationState()[id] ?? "vertical";

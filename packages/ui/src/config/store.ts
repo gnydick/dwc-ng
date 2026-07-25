@@ -16,6 +16,18 @@ export interface ConfigStore {
 	config: UiConfig;
 	/** True when the overlay changed since the last save/load. */
 	readonly dirty: boolean;
+	/**
+	 * Report that a screen's LAYOUT changed (a card dragged or resized).
+	 *
+	 * Geometry lives in the per-browser canvas store and only reaches the
+	 * config overlay at Save time, via captureScreenGeometry. Nothing about
+	 * that path went through apply(), so rearranging a screen never marked the
+	 * config dirty — and Save to machine is gated on dirty, so it sat greyed
+	 * out and the new layout could never be pushed to the SD card at all
+	 * (reported 2026-07-24: "save to machine is ghosted out"). The layout IS an
+	 * unsaved change; this says so.
+	 */
+	markLayoutDirty(): void;
 	readonly snapshots: readonly ConfigSnapshot[];
 
 	setAxisRole(letter: string, role: string): void;
@@ -137,6 +149,16 @@ export function createConfigStore(): ConfigStore {
 	const store: ConfigStore = {
 		config,
 		get dirty() { return meta.dirty; },
+
+		markLayoutDirty() {
+			// Deliberately not apply(): the overlay does not change here. The
+			// geometry is read out of the canvas store when Save runs; all that
+			// is needed now is for Save to be reachable, and for a reload to
+			// know the work is unsaved.
+			if (meta.dirty) return;
+			setMeta("dirty", true);
+			persistCache();
+		},
 		get snapshots() { return meta.snapshots; },
 
 		setAxisRole(letter, role) {
