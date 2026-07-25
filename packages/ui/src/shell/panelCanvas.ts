@@ -51,6 +51,8 @@ export type CanvasState = Record<string, PanelRect>;
 
 export interface PanelDefault extends PanelRect {
 	id: string;
+	/** From the composition. Seeds a browser that has none stored yet. */
+	orientation?: Orientation;
 }
 
 function safeNum(n: number, fallback: number): number {
@@ -521,7 +523,7 @@ export interface PanelCanvasController {
 	 * one", which is the operation an import performs and the one that was
 	 * missing.
 	 */
-	adoptLayout: (rects: CanvasState) => void;
+	adoptLayout: (rects: CanvasState, orientations?: OrientationState) => void;
 }
 
 /**
@@ -540,7 +542,18 @@ export function createPanelCanvas(storageKey: string, defaults: PanelDefault[], 
 	const [state, setState] = createSignal(mergeCanvas(parseStoredCanvas(readStorage(storageKey)), defaults));
 
 	const orientationStorageKey = `${storageKey}.orientation`;
-	const [orientationState, setOrientationState] = createSignal(parseOrientationState(readStorage(orientationStorageKey)));
+	// Stored wins (this browser's own toggles); otherwise seed from the
+	// composition, which is how orientation reaches a browser that has never
+	// seen this screen — the same tiering geometry uses.
+	const [orientationState, setOrientationState] = createSignal(((): OrientationState => {
+		const stored = parseOrientationState(readStorage(orientationStorageKey));
+		if (Object.keys(stored).length > 0) return stored;
+		const seeded: OrientationState = {};
+		for (const d of defaults) {
+			if (d.orientation !== undefined) seeded[d.id] = d.orientation;
+		}
+		return seeded;
+	})());
 
 	// Where hidden cards' rects go so a hide→show round-trip restores the spot.
 	// Persisted (same format as the canvas) so it survives a reload while the
@@ -802,11 +815,15 @@ export function createPanelCanvas(storageKey: string, defaults: PanelDefault[], 
 	// Storage is rewritten by replaceScreenLayout; this updates the state
 	// already in memory, because importing the screen you are LOOKING at does
 	// not change the route and so never remounts.
-	const adoptLayout = (rects: CanvasState): void => {
+	const adoptLayout = (rects: CanvasState, orientations?: OrientationState): void => {
 		persist(sanitizeCanvas(rects));
 		persistParked({});
-		setOrientationState({});
-		removeStorage(orientationStorageKey);
+		// The incoming layout brings its own directions; it does not inherit
+		// the replaced layout's, and it does not lose its own either.
+		const next = orientations ?? {};
+		setOrientationState(next);
+		if (Object.keys(next).length === 0) removeStorage(orientationStorageKey);
+		else writeStorage(orientationStorageKey, serializeOrientationState(next));
 	};
 
 	return { styleFor, startMove, startResize, reset, orientationFor, toggleOrientation, slotIds, ensureSlot, removeSlot, adoptLayout };
@@ -832,10 +849,23 @@ export const canvasStorageKey = (screenId: string): string => `dwc-ng.canvas.${s
  * which writes this AND the config overlay together. A layout written to only
  * one of the two stores is the bug this exists to prevent.
  */
-export function writeCanvasState(storageKey: string, rects: CanvasState): void {
+export function writeCanvasState(storageKey: string, rects: CanvasState, orientations?: OrientationState): void {
 	writeStorage(storageKey, serializeCanvas(sanitizeCanvas(rects)));
+	// Parked spots describe the layout being REPLACED — a hidden card's
+	// remembered position from the old layout would drop it somewhere
+	// arbitrary in the new one.
 	removeStorage(`${storageKey}.parked`);
-	removeStorage(`${storageKey}.orientation`);
+	// Orientation, by contrast, belongs to the incoming layout and arrives
+	// WITH it (it is part of the slot). Deleting it unconditionally is what
+	// made an import reset every card's direction.
+	const next = orientations ?? {};
+	if (Object.keys(next).length === 0) removeStorage(`${storageKey}.orientation`);
+	else writeStorage(`${storageKey}.orientation`, serializeOrientationState(next));
+}
+
+/** A screen's stored orientations, for capture into the config overlay. */
+export function readCanvasOrientation(storageKey: string): OrientationState {
+	return parseOrientationState(readStorage(`${storageKey}.orientation`));
 }
 
 export function readCanvasState(storageKey: string): CanvasState | null {

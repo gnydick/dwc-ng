@@ -22,7 +22,7 @@ export default function Shell() {
 	// (or just-hidden/deleted) route falls back to the first listed screen.
 	const screens = createMemo(() => screenList(app.config.config));
 	const currentScreenId = createMemo(() => resolveScreen(app.config.config, route())?.id ?? screens()[0]!.id);
-	const labActive = (): boolean => import.meta.env.DEV && route() === LAB_ROUTE;
+	const labActive = (): boolean => route() === LAB_ROUTE;
 
 	const visibleAxes = createMemo(() => app.om.om.move.axes.filter(a => a.visible));
 	const unhomedCount = createMemo(() => visibleAxes().filter(a => !a.homed).length);

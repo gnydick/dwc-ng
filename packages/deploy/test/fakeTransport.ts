@@ -50,6 +50,13 @@ export function fakeTransport(opts: FakeOptions = {}): FakeTransport {
 		read(boardPath) {
 			return Promise.resolve(files.get(boardPath) ?? null)
 		},
+		list(boardDir) {
+			const prefix = `${boardDir}/`
+			const names = [...files.keys()]
+				.filter(k => k.startsWith(prefix) && !k.slice(prefix.length).includes("/"))
+				.map(k => k.slice(prefix.length))
+			return Promise.resolve(names)
+		},
 		remove(boardPath) {
 			files.delete(boardPath)
 			for (const key of [...files.keys()]) {

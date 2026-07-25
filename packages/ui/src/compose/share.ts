@@ -137,7 +137,12 @@ export function exportScreen(entry: ScreenEntry, config: UiConfig): { fileName: 
 			if (!parsed.ok) continue;
 			customCards[id] = { name: def.name, spec: parsed.data };
 		}
-		cards[id] = { col: slot.col, row: slot.row, colSpan: slot.colSpan, rowSpan: slot.rowSpan };
+		cards[id] = {
+			col: slot.col, row: slot.row, colSpan: slot.colSpan, rowSpan: slot.rowSpan,
+			// Orientation is part of the slot: a shared screen that arrived with
+			// every card's direction reset is not the screen that was shared.
+			...(slot.orientation === undefined ? {} : { orientation: slot.orientation }),
+		};
 	}
 	return {
 		fileName: fileNameOf(entry.def.name, "screen"),

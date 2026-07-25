@@ -104,10 +104,12 @@ test("a card the incoming layout does not mention is not carried over from the o
 	assert.equal(stored?.["camera"], undefined, "a dropped card survived the replacement");
 });
 
-test("parked and orientation state do not survive a replacement", () => {
-	// They describe the layout being replaced, not the one arriving — a hidden
-	// card's remembered spot from the old layout would drop it somewhere
-	// arbitrary in the new one.
+test("parked spots do not survive a replacement, nor do unclaimed orientations", () => {
+	// Parked spots describe the layout being REPLACED — a hidden card's
+	// remembered position from the old layout would drop it somewhere
+	// arbitrary in the new one. Orientation is different: it belongs to the
+	// INCOMING layout and arrives with it, so it is cleared here only because
+	// this particular replacement carries none of its own.
 	const ls = useMemStore();
 	const key = canvasStorageKey("machine");
 	ls.setItem(`${key}.parked`, JSON.stringify({ camera: { col: 1, row: 1, colSpan: 2, rowSpan: 2 } }));
@@ -122,4 +124,72 @@ test("parked and orientation state do not survive a replacement", () => {
 test("the storage key has ONE definition, shared by every writer", () => {
 	assert.equal(canvasStorageKey("machine"), "dwc-ng.canvas.machine");
 	assert.equal(canvasStorageKey("u-abc"), "dwc-ng.canvas.u-abc");
+});
+
+// --- orientation travels with the slot -------------------------------------
+// Reported 2026-07-24: "card orientation is not stored on export or not
+// imported." Both, in fact — it lived ONLY in localStorage under
+// "<canvasKey>.orientation", so it was in no persistence tier at all: never
+// exported, never imported, never carried to SD, never seeding a new browser.
+
+test("orientation survives the composition parse boundary", async () => {
+	const { parseComposition } = await import("../src/compose/composition.ts");
+	const parsed = parseComposition({
+		position: { col: 0, row: 0, colSpan: 4, rowSpan: 4, orientation: "horizontal" },
+		sensors: { col: 4, row: 0, colSpan: 4, rowSpan: 4 },
+	});
+	assert.equal(parsed["position"]?.orientation, "horizontal");
+	assert.equal(parsed["sensors"]?.orientation, undefined);
+});
+
+test("a junk orientation drops rather than travelling", async () => {
+	const { parseComposition } = await import("../src/compose/composition.ts");
+	const parsed = parseComposition({
+		position: { col: 0, row: 0, colSpan: 4, rowSpan: 4, orientation: "sideways" },
+	});
+	assert.equal(parsed["position"]?.orientation, undefined);
+	assert.equal(parsed["position"]?.colSpan, 4, "the rest of the slot still parsed");
+});
+
+test("an export carries each card's orientation", async () => {
+	const { exportScreen } = await import("../src/compose/share.ts");
+	const entry = {
+		id: "machine",
+		builtin: true,
+		def: {
+			name: "Machine",
+			composition: {
+				position: { col: 0, row: 0, colSpan: 4, rowSpan: 4, orientation: "horizontal" as const },
+				sensors: { col: 4, row: 0, colSpan: 4, rowSpan: 4 },
+			},
+		},
+	};
+	const file = exportScreen(entry as never, DEFAULT_CONFIG);
+	const parsed = JSON.parse(file.text) as { screen: { cards: Record<string, { orientation?: string }> } };
+	assert.equal(parsed.screen.cards["position"]?.orientation, "horizontal");
+	assert.equal(parsed.screen.cards["sensors"]?.orientation, undefined);
+});
+
+test("replacing a layout writes the incoming orientations, not the old ones", () => {
+	const ls = useMemStore();
+	const key = canvasStorageKey("machine");
+	// This browser had its own directions from the layout being replaced.
+	ls.setItem(`${key}.orientation`, JSON.stringify({ position: "vertical", sensors: "vertical" }));
+
+	replaceScreenLayout(stubStore(), "machine", {
+		position: { col: 0, row: 0, colSpan: 4, rowSpan: 4, orientation: "horizontal" },
+		sensors: { col: 4, row: 0, colSpan: 4, rowSpan: 4 },
+	});
+
+	const written = JSON.parse(ls.getItem(`${key}.orientation`) ?? "{}") as Record<string, string>;
+	assert.equal(written["position"], "horizontal", "the imported orientation did not land");
+	assert.equal(written["sensors"], undefined, "an old orientation survived the replacement");
+});
+
+test("a layout carrying no orientations clears rather than inheriting", () => {
+	const ls = useMemStore();
+	const key = canvasStorageKey("machine");
+	ls.setItem(`${key}.orientation`, JSON.stringify({ position: "horizontal" }));
+	replaceScreenLayout(stubStore(), "machine", IMPORTED);
+	assert.equal(ls.getItem(`${key}.orientation`), null);
 });

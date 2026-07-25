@@ -25,8 +25,10 @@ import { isCustomCardId, type CustomCardId, type SlotRect, type UiConfig } from 
  *  the compose layer's consumers. */
 export { findFreePosition };
 
-/** One card's placement on a screen. */
-export type Slot = PanelRect;
+/** One card's placement on a screen, plus its content direction. Geometry
+ *  stays pure PanelRect for the collision math; orientation rides alongside
+ *  so it persists and travels with the slot rather than in a parallel store. */
+export type Slot = PanelRect & { orientation?: "vertical" | "horizontal" };
 
 /** A user-authored card's id and its guard — defined once in
  *  config/types.ts (the layer that mints them); re-exported here for the
@@ -73,10 +75,16 @@ export function parseComposition(raw: unknown, customIds?: ReadonlySet<string>):
 		const id: SlotId | null =
 			parseCardId(key) ?? (isCustomCardId(key) && customIds?.has(key) ? key : null);
 		if (id === null || !isSlotShape(value)) continue;
-		result[id] = clampRect({
-			col: Number(value.col), row: Number(value.row),
-			colSpan: Number(value.colSpan), rowSpan: Number(value.rowSpan),
-		});
+		const orientation = (value as { orientation?: unknown }).orientation;
+		result[id] = {
+			...clampRect({
+				col: Number(value.col), row: Number(value.row),
+				colSpan: Number(value.colSpan), rowSpan: Number(value.rowSpan),
+			}),
+			// Anything that isn't one of the two literals simply drops, like
+			// every other field crossing this boundary.
+			...(orientation === "vertical" || orientation === "horizontal" ? { orientation } : {}),
+		};
 	}
 	return result;
 }
@@ -89,7 +97,10 @@ export function slotsOf(composition: Composition): Array<[SlotId, Slot]> {
 /** Project a slot to the plain rect the config overlay stores — the ONE
  *  Slot→SlotRect projection (it was inlined at two call sites before). */
 export function toSlotRect(slot: Readonly<Slot>): SlotRect {
-	return { col: slot.col, row: slot.row, colSpan: slot.colSpan, rowSpan: slot.rowSpan };
+	return {
+		col: slot.col, row: slot.row, colSpan: slot.colSpan, rowSpan: slot.rowSpan,
+		...(slot.orientation === undefined ? {} : { orientation: slot.orientation }),
+	};
 }
 
 /** A whole composition as the overlay's rect record. */

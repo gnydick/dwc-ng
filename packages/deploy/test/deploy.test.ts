@@ -142,3 +142,54 @@ test("cli rejects a bad mode and a missing target", () => {
 	assert.equal(args.name, "ng")
 	assert.equal(args.dryRun, true)
 })
+
+test("a redeploy PRUNES the previous build's orphaned chunks", async () => {
+	// Asset names are content-hashed, so a new build orphans the old names.
+	// Upload-and-skip alone is idempotent but never subtractive: measured on
+	// the real board, four deploys had left 34 orphans totalling 4 MB —
+	// including three copies of Babylon at 957 KB each.
+	const dist = await makeDist()
+	const t = fakeTransport()
+	await deploy(dist, t, { name: "ng" })
+
+	// Simulate what an earlier build left behind.
+	const stale = "0:/www/ng/assets/math.color-OLDHASH.js"
+	await t.put(stale, new TextEncoder().encode("old babylon"))
+	assert.ok(t.files.has(stale))
+
+	const result = await deploy(dist, t, { name: "ng" })
+	assert.deepEqual(result.pruned, [stale])
+	assert.equal(t.files.has(stale), false, "the orphan survived the redeploy")
+})
+
+test("pruning never touches a file the current build still needs", async () => {
+	const dist = await makeDist()
+	const t = fakeTransport()
+	await deploy(dist, t, { name: "ng" })
+	const before = [...t.files.keys()].sort()
+	const result = await deploy(dist, t, { name: "ng" })
+	assert.deepEqual(result.pruned, [])
+	assert.deepEqual([...t.files.keys()].sort(), before)
+})
+
+test("pruning stays inside the deployment — stock DWC is never at risk", async () => {
+	const dist = await makeDist()
+	const t = fakeTransport()
+	await t.put("0:/www/index.html", new TextEncoder().encode("DWC"))
+	await t.put("0:/www/js/app.js", new TextEncoder().encode("DWC js"))
+	await deploy(dist, t, { name: "ng" })
+	await deploy(dist, t, { name: "ng" })
+	assert.ok(t.files.has("0:/www/index.html"), "stock DWC index was deleted")
+	assert.ok(t.files.has("0:/www/js/app.js"), "stock DWC asset was deleted")
+})
+
+test("a dry run reports orphans without deleting them", async () => {
+	const dist = await makeDist()
+	const t = fakeTransport()
+	await deploy(dist, t, { name: "ng" })
+	const stale = "0:/www/ng/assets/index-GONE.js"
+	await t.put(stale, new TextEncoder().encode("x"))
+	const result = await deploy(dist, t, { name: "ng", dryRun: true })
+	assert.deepEqual(result.pruned, [stale])
+	assert.ok(t.files.has(stale), "dry run deleted a file")
+})

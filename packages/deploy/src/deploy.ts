@@ -21,6 +21,8 @@ export type DeployOptions = {
 export type DeployResult = {
 	readonly uploaded: string[]
 	readonly skipped: string[]
+	/** Orphans from earlier builds, deleted (or that would be, on a dry run). */
+	readonly pruned: string[]
 	readonly bytes: number
 }
 
@@ -59,11 +61,33 @@ export async function deploy(
 		opts.onProgress?.(file, "upload")
 	}
 
+	// Converge, don't just accumulate. Asset names are content-hashed, so every
+	// build produces NEW names and the previous build's files are orphaned the
+	// moment they stop being referenced. Uploading-and-skipping alone is
+	// idempotent but never subtractive: measured on the real board 2026-07-24,
+	// four deploys had left 34 orphans totalling 4 MB — including THREE copies
+	// of Babylon at 957 KB each — on an SD card that also has to hold G-code.
+	//
+	// Only the deployment's own asset directory is swept: a name not in this
+	// manifest is by definition from an older build of it. Nothing outside is
+	// touched, so stock DWC is never at risk.
+	const wwwRoot = opts.wwwRoot ?? "0:/www"
+	const assetDir = `${wwwRoot}/${opts.name}/assets`
+	const keep = new Set(
+		manifest.filter(f => f.board.startsWith(`${assetDir}/`)).map(f => f.board.slice(assetDir.length + 1)),
+	)
+	const pruned: string[] = []
+	for (const name of await transport.list(assetDir)) {
+		if (keep.has(name)) continue
+		pruned.push(`${assetDir}/${name}`)
+		if (!opts.dryRun) await transport.remove(`${assetDir}/${name}`)
+	}
+
 	if (!opts.dryRun && opts.skipVerify !== true) {
 		await verify(transport, manifest, { name: opts.name })
 	}
 
-	return { uploaded, skipped, bytes }
+	return { uploaded, skipped, pruned, bytes }
 }
 
 /** Remove a deployment: the entry document and everything under its directory. */

@@ -12,7 +12,8 @@
  * stable ids) join this list in phase A7b.
  */
 import { parseComposition, slotsOf, toSlotRect, type Composition } from "./composition.ts";
-import { canvasStorageKey, readCanvasState, writeCanvasState } from "../shell/panelCanvas.ts";
+import { canvasStorageKey, readCanvasOrientation, readCanvasState, writeCanvasState } from "../shell/panelCanvas.ts";
+import type { OrientationState } from "../shell/panelOrientation.ts";
 import { LAB_ROUTE } from "../shell/router.ts";
 import type { SlotRect, UiConfig, UserScreenId } from "../config/types.ts";
 
@@ -274,16 +275,37 @@ export interface LayoutStore {
  */
 export function replaceScreenLayout(store: LayoutStore, screenId: string, rects: Record<string, SlotRect>): void {
 	store.updateScreenCards(screenId, rects);
-	writeCanvasState(canvasStorageKey(screenId), rects);
+	// Orientation rides IN the slot but is stored beside the geometry, so it
+	// is split out here rather than at every call site.
+	const orientations: OrientationState = {};
+	for (const [id, rect] of Object.entries(rects)) {
+		if (rect.orientation !== undefined) orientations[id] = rect.orientation;
+	}
+	writeCanvasState(canvasStorageKey(screenId), rects, orientations);
+}
+
+/** The orientations an imported/replacement layout carries. */
+export function orientationsOf(rects: Record<string, SlotRect>): OrientationState {
+	const out: OrientationState = {};
+	for (const [id, rect] of Object.entries(rects)) {
+		if (rect.orientation !== undefined) out[id] = rect.orientation;
+	}
+	return out;
 }
 
 export function captureScreenGeometry(store: LayoutStore): void {
 	for (const entry of screenList(store.config)) {
-		const stored = readCanvasState(canvasStorageKey(entry.id));
+		const key = canvasStorageKey(entry.id);
+		const stored = readCanvasState(key);
 		if (stored === null) continue; // nothing local — the overlay copy stands
+		const orientations = readCanvasOrientation(key);
 		const cards: Record<string, SlotRect> = {};
 		for (const [id, slot] of slotsOf(entry.def.composition)) {
-			cards[id] = toSlotRect(stored[id] ?? slot);
+			const orientation = orientations[id] ?? slot.orientation;
+			cards[id] = toSlotRect({
+				...(stored[id] ?? slot),
+				...(orientation === undefined ? {} : { orientation }),
+			});
 		}
 		store.updateScreenCards(entry.id, cards);
 	}

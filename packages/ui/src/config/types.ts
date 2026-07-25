@@ -70,6 +70,15 @@ export interface SlotRect {
 	row: number;
 	colSpan: number;
 	rowSpan: number;
+	/**
+	 * Content layout direction for cards that offer the toggle. Part of the
+	 * SLOT, deliberately: it used to live only in localStorage under
+	 * "<canvasKey>.orientation", which meant it was in no persistence tier at
+	 * all — it never exported, never imported, never rode to SD, and never
+	 * seeded a new browser. Carrying it here puts it on the same single route
+	 * as geometry.
+	 */
+	orientation?: "vertical" | "horizontal";
 }
 
 /** A user-created screen: display name + its card slots. */
