@@ -140,12 +140,13 @@ test("the weld: every builtin gcode-button template resolves to its cmd.* form",
 	// Keyed by the button's RAW label text. Every builtin button MUST have an
 	// entry — an unwelded button is itself a failure.
 	const expected: Record<string, string> = {
-		// Homing
+		// Homing — the per-axis buttons are labelled by VERB now ("Home",
+		// "Release"); the axis is named once by the row they sit in.
 		"Home All": cmd.homeAll(),
-		"Home {axis.label}": cmd.homeAxis("U"),
 		"Bed Tram": cmd.bedTram(),
-		"All": cmd.releaseAllMotors(),
-		"{axis.letter}": cmd.releaseAxis("U"),
+		"Release All": cmd.releaseAllMotors(),
+		"Home": cmd.homeAxis("U"),
+		"Release": cmd.releaseAxis("U"),
 		// Movement
 		"Lock": cmd.couplerLock(),
 		"Unlock": cmd.couplerUnlock(),

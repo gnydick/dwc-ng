@@ -64,7 +64,10 @@ export type CompiledNode =
 	| { type: "gcode-button"; label: CompiledTemplate; template: CompiledTemplate; variant?: ButtonVariant; stamp?: boolean; class?: string }
 	| { type: "jog-pad"; step: string; feed: string }
 	| { type: "axis-jog"; axisVar: string; step: string; feed: string }
-	| { type: "row"; label?: string; sub?: string; class?: string; items: CompiledRowItem[] }
+	// label/sub are TEMPLATES here, not plain strings: a row emitted inside a
+	// forEach needs to name its own item ("{axis.letter}"), which a literal
+	// cannot do. Authored form stays a string; the compiler converts.
+	| { type: "row"; label?: CompiledTemplate; sub?: CompiledTemplate; class?: string; items: CompiledRowItem[] }
 	| { type: "grid"; items: CompiledNode[] }
 	| { type: "forEach"; from: OmSelector; as: string; except?: { prop: string; values: string[] }; enrich?: EnrichmentId; node: CompiledNode };
 
@@ -111,17 +114,22 @@ export function compileControlSpec(spec: ControlSpec): CompiledControlSpec {
 				needInput(node.step, `${where}.step`);
 				needInput(node.feed, `${where}.feed`);
 				return node;
-			case "row":
-				return {
-					...node,
-					items: node.items.map((item, i) => {
-						if ("input" in item) {
-							needInput(item.input, `${where}.items[${i}]`);
-							return item;
-						}
-						return compileNode(item, `${where}.items[${i}]`);
-					}),
-				};
+			case "row": {
+				const items = node.items.map((item, i) => {
+					if ("input" in item) {
+						needInput(item.input, `${where}.items[${i}]`);
+						return item;
+					}
+					return compileNode(item, `${where}.items[${i}]`);
+				});
+				// Built explicitly rather than spread: `...node` would carry the
+				// RAW string label through and the compiled node would hold two
+				// incompatible shapes for the same field.
+				const compiled: CompiledNode = { type: "row", items, class: node.class };
+				if (node.label !== undefined) compiled.label = tpl(node.label, `${where}.label`);
+				if (node.sub !== undefined) compiled.sub = tpl(node.sub, `${where}.sub`);
+				return compiled;
+			}
 			case "grid":
 				return { ...node, items: node.items.map((n, i) => compileNode(n, `${where}.items[${i}]`)) };
 			case "forEach": {
