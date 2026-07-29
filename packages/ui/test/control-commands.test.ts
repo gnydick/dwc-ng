@@ -18,10 +18,24 @@ test("tool selection", () => {
 	assert.equal(cmd.deselectTool(), "T-1");
 });
 
-test("tool heater: convenience compound sets temp AND state in one M568", () => {
-	assert.equal(cmd.toolActive(0, 210), "M568 P0 S210 A2");
-	assert.equal(cmd.toolStandby(1, 160), "M568 P1 R160 A1");
+test("tool setpoints: both in one M568, mode untouched", () => {
+	assert.equal(cmd.toolSetpoints(0, 205, 140), "M568 P0 S205 R140");
+	// Asymmetric setpoints are the whole point — the old pair of compounds
+	// took ONE temperature and both cards fed them the same input, so R could
+	// only ever be whatever the active field said.
+	assert.notEqual(cmd.toolSetpoints(1, 205, 140), cmd.toolSetpoints(1, 140, 205));
+	// Both are always sent: RRF keeps an unspecified parameter at its previous
+	// value, so omitting one would make the result depend on machine history.
+	assert.equal(cmd.toolSetpoints(2, 0, 0), "M568 P2 S0 R0");
+});
+
+test("tool mode: A-only, carries no temperature", () => {
+	assert.equal(cmd.toolActive(0), "M568 P0 A2");
+	assert.equal(cmd.toolStandby(1), "M568 P1 A1");
 	assert.equal(cmd.toolOff(3), "M568 P3 A0");
+	for (const form of [cmd.toolActive(0), cmd.toolStandby(0), cmd.toolOff(0)]) {
+		assert.equal(/[SR]-?\d/.test(form), false, `mode command must not carry a setpoint: ${form}`);
+	}
 });
 
 test("bed heater: on sets temp, off uses the sub-absolute-zero sentinel", () => {

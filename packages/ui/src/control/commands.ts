@@ -85,12 +85,37 @@ export const cmd = {
 		p === undefined ? `T${tool}` : `T${tool} P${p}`,
 	deselectTool: (p?: number): string => (p === undefined ? "T-1" : `T-1 P${p}`),
 
-	// --- tool heaters (M568): convenience compound sets setpoint AND state ---
-	toolActive: (tool: number, temp: number): string => `M568 P${tool} S${n(temp)} A2`,
-	toolStandby: (tool: number, temp: number): string => `M568 P${tool} R${n(temp)} A1`,
+	// --- tool heaters (M568) ---
+	/**
+	 * Both setpoints in one command, mode UNTOUCHED. M568 takes S (active) and
+	 * R (standby) independently of A (mode), so retargeting a tool need not
+	 * change which mode it is in.
+	 *
+	 * This replaced a pair of compounds that each sent one setpoint AND a mode
+	 * (`S… A2` / `R… A1`). Both cards fed them the SAME input, so pressing
+	 * Standby sent the ACTIVE field's number as R — you could not give a tool
+	 * different active and standby setpoints from the UI at all.
+	 *
+	 * Both values are always sent. RRF keeps "any parameter you don't specify"
+	 * at its previous value, so omitting one would make the command's effect
+	 * depend on machine history rather than on what the two fields say.
+	 */
+	toolSetpoints: (tool: number, active: number, standby: number): string =>
+		`M568 P${tool} S${n(active)} R${n(standby)}`,
+	/** Mode only — A2/A1/A0 carry no temperature (see toolSetpoints). */
+	toolActive: (tool: number): string => `M568 P${tool} A2`,
+	toolStandby: (tool: number): string => `M568 P${tool} A1`,
 	toolOff: (tool: number): string => `M568 P${tool} A0`,
 
-	// --- bed heater (M140): off is the sub-absolute-zero sentinel DWC uses ---
+	/**
+	 * --- bed heater (M140): off is the sub-absolute-zero sentinel DWC uses ---
+	 *
+	 * The bed keeps a setpoint-carrying "active" because M140 has NO mode
+	 * parameter — there is no A to send. Setting the bed's temperature IS
+	 * turning it on, so splitting it into SET + mode the way M568 allows would
+	 * invent a distinction the firmware does not have. The asymmetry with the
+	 * tools is the hardware's, not the UI's.
+	 */
 	bedActive: (index: number, temp: number): string => `M140 P${index} S${n(temp)}`,
 	bedOff: (index: number): string => `M140 P${index} S-273.15`,
 
