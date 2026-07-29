@@ -1809,7 +1809,11 @@
 	align-items: center;
 	justify-content: start;
 }
-:root { --jog-key-w: 92px; }
+/* Measured, not guessed: the widest label a jog key can ever carry is "− 100"
+   at 29.6px on this face, and the button spends 28px on padding either side.
+   62px fits that with a couple of px to spare at the loosest density and is
+   still a comfortable pointer target — 92px was a third of it empty ground. */
+:root { --jog-key-w: 62px; }
 .jog-table .jog-row { display: contents; }
 /* Fill the track rather than hug the label, so the two columns read as columns. */
 .jog-table .jog-row .gcode-btn { width: 100%; justify-content: center; }
