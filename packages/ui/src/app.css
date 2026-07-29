@@ -1443,8 +1443,10 @@
 .gcode-go { --btn-accent: var(--ok); }
 .heat-standby { --btn-accent: var(--gold); }
 /* after .gcode-danger: the Off button is danger-styled, but a cold heater is
-   not an alarm — engaged Off reads as "current mode", not "fault". */
-.heat-off { --btn-accent: var(--copper); }
+   not an alarm — engaged Off reads as "current mode", not "fault". Magenta
+   rather than copper so Off is its own state and not confusable with the
+   copper the pending dot and the armed step already use. */
+.heat-off { --btn-accent: var(--magenta); }
 /* FILLED, not outlined. Across five rows an outline still reads as "a button";
    only a ground change reads as "this one". This is the selected-chip language
    the rest of the app already speaks (.chip-btn.active, .backend-opt.active,
@@ -1489,9 +1491,10 @@
 
 .is-sending .gcode-ack { background: var(--silk-dim); animation: ack-pulse 700ms ease-in-out infinite; }
 .is-sent .gcode-ack { background: var(--ok); box-shadow: 0 0 0 3px rgba(111, 191, 143, 0.22); }
-/* A press that changed the machine's MODE rather than writing a value. Green
-   for "value stored", copper for "profile switched" — on a key that does both,
-   the flash has to say which one just happened. */
+/* A press that left the machine short of what the key stands for: the target
+   was stored, but the tool is still not in that mode. Copper says "landed, but
+   not there yet"; the green flash above is reserved for the press after which
+   nothing is left to do. */
 .is-sent.ack-mode .gcode-ack { background: var(--copper-bright); box-shadow: 0 0 0 3px rgba(214, 138, 76, 0.28); }
 .gcode-btn.is-sent.ack-mode { border-color: var(--copper); }
 .is-failed .gcode-ack { background: var(--fault); box-shadow: 0 0 0 3px rgba(224, 92, 74, 0.25); }
@@ -1559,10 +1562,18 @@
    sits after the shared engaged rule, so without the guard it would repaint an
    ARRIVED key's label back to green on its own green ground and hide the word.
    */
+/* Each key rests in a DIM version of its own colour, so the three read as one
+   family and a key's identity is legible before anything is pressed: green for
+   active, gold for standby, magenta for off. The alphas are shared, so no key
+   looks louder at rest than its neighbours. */
 .mode-key.heat-active:not(.is-engaged):not(.is-applied) { border-color: rgba(111, 191, 143, 0.35); }
 .mode-key.heat-active:not(.is-engaged):not(.is-applied) .gcode-label { color: rgba(111, 191, 143, 0.75); }
-.mode-key.heat-standby:not(.is-engaged):not(.is-applied) { border-color: rgba(233, 238, 244, 0.18); }
-.mode-key.heat-off:not(.is-engaged):not(.is-applied) { border-color: rgba(224, 92, 74, 0.35); }
+.mode-key.heat-standby:not(.is-engaged):not(.is-applied) { border-color: rgba(201, 162, 39, 0.35); }
+.mode-key.heat-standby:not(.is-engaged):not(.is-applied) .gcode-label { color: rgba(201, 162, 39, 0.8); }
+.mode-key.heat-off:not(.is-engaged):not(.is-applied) { border-color: rgba(196, 95, 160, 0.35); }
+/* Dark magenta at rest — NOT the copper it used to inherit from the danger
+   variant, which read as an alarm and collided with the pending dot. */
+.mode-key.heat-off:not(.is-engaged):not(.is-applied) .gcode-label { color: rgba(196, 95, 160, 0.7); }
 /* The bed has no S key. Its slot is held open so A and O stay in the tools'
    columns — the same empty-cell discipline the heater table uses.
    ONE definition, shared by the Control card's rows and the Tools table's

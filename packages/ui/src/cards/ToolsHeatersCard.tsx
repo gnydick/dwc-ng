@@ -358,7 +358,7 @@ function HeaterCells(props: { heater: Heater; index: number; kind: "tool" | "bed
 						command={activeCmd()}
 						pending={!isBed() && activePhase() === "pending"}
 						applied={armedActive()}
-						ackAccent={!clickSendsSetpoint(armedActive())}
+						ackAccent={clickSendsSetpoint(armedActive())}
 						onSent={() => setArmedActive(!isBed() && clickSendsSetpoint(armedActive()))}
 						ariaLabel={`${who()} active${!isBed() && activePhase() === "pending" ? " — set target" : ""}`}
 					/>
@@ -374,7 +374,7 @@ function HeaterCells(props: { heater: Heater; index: number; kind: "tool" | "bed
 							command={standbyCmd()}
 							pending={standbyPhase() === "pending"}
 							applied={armedStandby()}
-							ackAccent={!clickSendsSetpoint(armedStandby())}
+							ackAccent={clickSendsSetpoint(armedStandby())}
 							onSent={() => setArmedStandby(clickSendsSetpoint(armedStandby()))}
 							ariaLabel={`${who()} standby${standbyPhase() === "pending" ? " — set target" : ""}`}
 						/>

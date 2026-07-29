@@ -315,7 +315,7 @@ function HeaterControl(props: {
 					engaged={props.state === "active"}
 					pending={props.kind === "tool" && activePhase() === "pending"}
 					applied={armedActive()}
-					ackAccent={!clickSendsSetpoint(armedActive())}
+					ackAccent={clickSendsSetpoint(armedActive())}
 					onSent={() => setArmedActive(props.kind === "tool" && clickSendsSetpoint(armedActive()))}
 					ariaLabel={`${props.label} active${activePhase() === "pending" ? " — set target" : ""}`}
 				/>
@@ -331,7 +331,7 @@ function HeaterControl(props: {
 						engaged={props.state === "standby"}
 						pending={standbyPhase() === "pending"}
 						applied={armedStandby()}
-						ackAccent={!clickSendsSetpoint(armedStandby())}
+						ackAccent={clickSendsSetpoint(armedStandby())}
 						onSent={() => setArmedStandby(clickSendsSetpoint(armedStandby()))}
 						ariaLabel={`${props.label} standby${standbyPhase() === "pending" ? " — set target" : ""}`}
 					/>

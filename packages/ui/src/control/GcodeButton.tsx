@@ -82,13 +82,14 @@ export function GcodeButton(props: {
 	 */
 	applied?: boolean;
 	/**
-	 * This press will change the machine's MODE rather than write a value, so
-	 * its acknowledgement flashes copper instead of green.
+	 * This press leaves the machine SHORT of what the key stands for, so its
+	 * acknowledgement flashes copper instead of green.
 	 *
-	 * On a key that multiplexes the two (the heater modes), one green flash for
-	 * both jobs says only "something was sent" — and the interesting question
-	 * at that moment is *which*. Copper is the same colour the pending dot uses
-	 * for "this press will act", so the flash reads as the follow-through.
+	 * The flash reports the state you end up in, not which command went out. On
+	 * a heater's mode key the first press only stores the target — the tool is
+	 * still not in that mode — so copper, the same colour the pending dot uses
+	 * for "there is more to do here". The press that actually switches the mode
+	 * gets the green one, because after it there is nothing left.
 	 */
 	ackAccent?: boolean;
 }) {
