@@ -1788,10 +1788,18 @@
    equal fractions, so −/+ are the same width on every axis. */
 .jog-table {
 	display: grid;
-	grid-template-columns: max-content minmax(0, 1fr) minmax(0, 1fr);
+	/* Jog keys are TARGETS, not banners. They were 1fr each, so on a wide card a
+	   pair of "− 1" buttons grew to 300px apiece — a stretch of empty ground
+	   that reads as importance the control does not have, and that puts the two
+	   directions absurdly far apart for what is meant to be a quick nudge.
+	   Fixed and generous instead: wide enough for "− 100" at any density, and
+	   the leftover width now goes to the trailing track rather than into the
+	   buttons, so a wider card no longer means bigger keys. */
+	grid-template-columns: max-content var(--jog-key-w) var(--jog-key-w) minmax(0, 1fr);
 	gap: var(--ctl-gap);
 	align-items: center;
 }
+:root { --jog-key-w: 92px; }
 .jog-table .jog-row { display: contents; }
 /* Fill the track rather than hug the label, so the two columns read as columns. */
 .jog-table .jog-row .gcode-btn { width: 100%; justify-content: center; }
@@ -2478,6 +2486,17 @@
 /* An empty/loading message is prose, not a row: it spans the track list rather
    than being dealt into the first column. */
 .filament-note { grid-column: 1 / -1; }
+/* The tool a manual feed will move. A wash across the row plus a copper name,
+   because the Feed row below carries no tool of its own — this IS the answer
+   to "which extruder do those two buttons move".
+   A background and a text colour only: no border, no padding, so marking a row
+   cannot change its height and the rows stay on the Tools card's pitch. */
+.filament-row.is-current { background: rgba(240, 160, 80, 0.08); border-radius: 4px; }
+.filament-row.is-current .ctl-name { color: var(--copper-bright); }
+/* The manual-feed footer. Its two fields share the picker's track — the widest
+   one, and the only one that can hold a pair without adding a column. */
+.filament-feed-fields { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.filament-feed-fields .feed-field input { width: 52px; }
 /* Equal-width All/Load and All/Unload columns come free from the shared
    tracks; centre the shorter label so the pair reads as one column. */
 .filament-row .gcode-btn { width: 100%; justify-content: center; }

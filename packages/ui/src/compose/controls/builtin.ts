@@ -75,8 +75,6 @@ export const MOVEMENT_SPEC = compileControlSpec({
 	inputs: {
 		step: { kind: "chips", label: "Step", default: 1, options: [0.1, 1, 10, 100], unit: "mm" },
 		feed: { kind: "number", label: "Feed", default: 6000 },
-		extMm: { kind: "number", label: "mm", default: 5 },
-		extFeed: { kind: "number", label: "F", default: 300 },
 	},
 	nodes: [
 		{ type: "row", label: "Step", class: "step-row", items: [{ input: "step" }, { input: "feed" }] },
@@ -122,16 +120,9 @@ export const MOVEMENT_SPEC = compileControlSpec({
 				],
 			},
 		},
-		{
-			type: "row",
-			label: "Extruder",
-			class: "extrude-row extrude-stack",
-			items: [
-				{ input: "extMm" },
-				{ input: "extFeed" },
-				{ type: "gcode-button", label: "Retract", template: "M83\nG1 E-{input.extMm} F{input.extFeed}", stamp: false },
-				{ type: "gcode-button", label: "Extrude", template: "M83\nG1 E{input.extMm} F{input.extFeed}", stamp: false },
-			],
-		},
+		// The manual-feed row moved to the Extruders card (control/FilamentCard).
+		// It never belonged here: G1 E feeds the CURRENT tool's extruder, which
+		// is a property of the toolhead, not of the axes this card jogs — and
+		// beside the load/unload rows it can show which tool it will move.
 	],
 });

@@ -178,12 +178,16 @@ export const CARD_DEFS = {
 		tip: "M80 · M81",
 		size: { colSpan: 156, rowSpan: 32 },
 	}),
-	/** Filament load/unload — a tool with no extruder cannot hold filament. */
+	/** The extruders: what each one is loaded with, and manual feed for the
+	 *  current tool. A tool with no extruder appears in neither. Called
+	 *  Extruders rather than Filament because it now holds both — the load
+	 *  macros AND the G1 E that moves the selected one. */
 	filament: defineCard({
-		title: "Filament",
-		ariaLabel: "Filament",
-		tip: "M701 · M702 · M703",
-		size: { colSpan: 156, rowSpan: 50 },
+		title: "Extruders",
+		ariaLabel: "Extruders",
+		tip: "M701 · M702 · M703 · G1 E",
+		// +6 (one row) for the manual-feed footer.
+		size: { colSpan: 156, rowSpan: 56 },
 	}),
 	/** Tools: select a tool by its label, plus its heater setpoints. */
 	heaters: defineCard({

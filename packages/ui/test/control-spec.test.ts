@@ -136,7 +136,7 @@ function extractButtons(spec: CompiledControlSpec): Array<{ label: string; templ
 
 test("the weld: every builtin gcode-button template resolves to its cmd.* form", () => {
 	const axis = { letter: "U", label: "U · Z motor 1" };
-	const fixture = scope({ extMm: 5, extFeed: 300 }, {}, { axis });
+	const fixture = scope({}, {}, { axis });
 	// Keyed by the button's RAW TEMPLATE text, not its label. Labels are not
 	// unique any more — the homing table has two buttons reading "All", one in
 	// the Home column and one in Release, disambiguated by position. Templates
@@ -153,8 +153,9 @@ test("the weld: every builtin gcode-button template resolves to its cmd.* form",
 		// Movement
 		'M98 P"/macros/tool_lock"': cmd.couplerLock(),
 		'M98 P"/macros/tool_unlock"': cmd.couplerUnlock(),
-		"M83\nG1 E-{input.extMm} F{input.extFeed}": cmd.extrude(-5, 300),
-		"M83\nG1 E{input.extMm} F{input.extFeed}": cmd.extrude(5, 300),
+		// The manual-feed buttons left this spec for the Extruders card, where
+		// they can show which tool they will move. They are plain JSX there and
+		// call cmd.extrude directly, so there is no template left to weld.
 	};
 	const buttons = [...extractButtons(HOMING_SPEC), ...extractButtons(MOVEMENT_SPEC)];
 	assert.equal(buttons.length, Object.keys(expected).length, "weld table and builtin buttons must stay 1:1");
