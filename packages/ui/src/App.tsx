@@ -1,4 +1,4 @@
-import { onCleanup, onMount } from "solid-js";
+import { createEffect, onCleanup, onMount } from "solid-js";
 import { createOmStore } from "./om/store.ts";
 import { createConfigStore } from "./config/store.ts";
 import { createTemperatureHistory } from "./om/temperature.ts";
@@ -33,6 +33,20 @@ export default function App(props: { backend: Backend }) {
 	const connector = import.meta.env.DEV
 		? guardWrites(transport, { isReal: () => props.backend.real, isArmed: () => writesArmed() })
 		: transport;
+
+	// The thermal ramp is spent by ~30 CSS rules (.t-cold/.t-warm/.t-hot and
+	// everything keyed off them), so the overlay drives the three custom
+	// properties rather than any rule. One write per change, no component
+	// needs to know a colour is configurable, and dropping the overlay
+	// restores index.css's own values because the effect re-runs with
+	// DEFAULT_THERMAL_COLORS.
+	createEffect(() => {
+		const { cold, warm, hot } = config.config.thermalColors;
+		const root = document.documentElement.style;
+		root.setProperty("--t-cold", cold);
+		root.setProperty("--t-warm", warm);
+		root.setProperty("--t-hot", hot);
+	});
 
 	onMount(() => {
 		void connector.connect()

@@ -315,6 +315,19 @@ export const CARD_DEFS = {
 		ariaLabel: "Axis roles",
 		size: { colSpan: 12, rowSpan: 109 },
 	}),
+	/** Per-heater chart line colours (config overlay). */
+	"heater-colors": defineCard({
+		title: "Chart colours",
+		ariaLabel: "Chart colours",
+		tip: "heat.heaters",
+		size: { colSpan: 12, rowSpan: 76 },
+	}),
+	/** The cold/warm/hot ramp for temperature readings (config overlay). */
+	"thermal-colors": defineCard({
+		title: "Reading colours",
+		ariaLabel: "Reading colours",
+		size: { colSpan: 12, rowSpan: 60 },
+	}),
 	/** Tool dock presence sensors (config overlay). */
 	"tool-dock-sensors": defineCard({
 		title: "Tool dock sensors",

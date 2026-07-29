@@ -20,7 +20,7 @@ export function TemperaturesBody() {
 			bedHeaters: app.om.om.heat.bedHeaters,
 			chamberHeaters: app.om.om.heat.chamberHeaters,
 			tools: app.om.om.tools,
-		}),
+		}, app.config.config.heaterColors),
 	);
 
 	return (

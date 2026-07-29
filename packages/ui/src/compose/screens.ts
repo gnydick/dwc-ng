@@ -121,11 +121,13 @@ export const SETTINGS_COMPOSITION: Composition = {
 	"tool-dock-sensors": { col: 12, row: 0, colSpan: 12, rowSpan: 76 },
 	"saved-versions": { col: 12, row: 76, colSpan: 12, rowSpan: 40 },
 	"bed-probe": { col: 12, row: 116, colSpan: 12, rowSpan: 45 },
-	"sensor-names": { col: 0, row: 161, colSpan: 24, rowSpan: 72 },
-	"filament-editor": { col: 0, row: 233, colSpan: 24, rowSpan: 130 },
-	"config-save": { col: 0, row: 363, colSpan: 24, rowSpan: 26 },
-	console: { col: 0, row: 389, colSpan: 24, rowSpan: 75 },
-	camera: { col: 0, row: 464, colSpan: 8, rowSpan: 75 },
+	"heater-colors": { col: 0, row: 161, colSpan: 12, rowSpan: 76 },
+	"thermal-colors": { col: 12, row: 161, colSpan: 12, rowSpan: 60 },
+	"sensor-names": { col: 0, row: 237, colSpan: 24, rowSpan: 72 },
+	"filament-editor": { col: 0, row: 309, colSpan: 24, rowSpan: 130 },
+	"config-save": { col: 0, row: 439, colSpan: 24, rowSpan: 26 },
+	console: { col: 0, row: 465, colSpan: 24, rowSpan: 75 },
+	camera: { col: 0, row: 540, colSpan: 8, rowSpan: 75 },
 };
 
 /** The built-in screens, in nav order. Ids are stable identities. */

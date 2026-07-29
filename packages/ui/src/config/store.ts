@@ -8,8 +8,8 @@ import {
 	MAX_LABEL_LEN, DEFAULT_SNAPSHOT_LABEL,
 	isUserScreenId,
 	type CameraConfig, type ConfigOverlay, type ConfigSnapshot, type CustomCardId,
-	type DockSensorRef, type BedConfig, type MacrosConfig, type SlotRect, type UiConfig,
-	type UserScreenId,
+	type DockSensorRef, type BedConfig, type MacrosConfig, type SlotRect, type ThermalColors,
+	type UiConfig, type UserScreenId,
 } from "./types.ts";
 
 export interface ConfigStore {
@@ -33,6 +33,11 @@ export interface ConfigStore {
 
 	setAxisRole(letter: string, role: string): void;
 	clearAxisRole(letter: string): void;
+	/** Override one heater's chart line colour. Clearing returns it to the
+	 *  derived palette entry, which is never mutated. */
+	setHeaterColor(heaterIndex: number, hex: string): void;
+	clearHeaterColor(heaterIndex: number): void;
+	setThermalColors(patch: Partial<ThermalColors>): void;
 	setDockSensor(toolNumber: number, ref: DockSensorRef): void;
 	clearDockSensor(toolNumber: number): void;
 	setCamera(patch: Partial<CameraConfig>): void;
@@ -176,6 +181,15 @@ export function createConfigStore(): ConfigStore {
 		},
 		clearAxisRole(letter) {
 			apply(draft => { delete draft.axisRoles?.[letter]; });
+		},
+		setHeaterColor(heaterIndex, hex) {
+			apply(draft => { (draft.heaterColors ??= {})[String(heaterIndex)] = hex; });
+		},
+		clearHeaterColor(heaterIndex) {
+			apply(draft => { delete draft.heaterColors?.[String(heaterIndex)]; });
+		},
+		setThermalColors(patch) {
+			apply(draft => { draft.thermalColors = { ...draft.thermalColors, ...patch }; });
 		},
 		setDockSensor(toolNumber, ref) {
 			apply(draft => { (draft.dockSensors ??= {})[String(toolNumber)] = ref; });

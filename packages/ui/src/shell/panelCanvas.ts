@@ -497,10 +497,19 @@ export function growToDefaults(
 		: {};
 	const state: CanvasState = {};
 	let grew = false;
+	// Ids the composition has GAINED since this canvas was saved. Their coded
+	// position was chosen against the CODED layout, not against whatever this
+	// browser stored, so placing them blind lands them on top of a card already
+	// sitting there — invisible, with Reset Layout the only way out. Observed
+	// 2026-07-29 adding two colour cards to Settings: both landed under Sensor
+	// names. They are placed in a second pass, once every stored rect is known,
+	// via slideDownToFree — which keeps the coded COLUMN (so a pair designed to
+	// sit side by side still does) and finds the first free row below.
+	const added: string[] = [];
 	for (const d of defaults) {
 		const entry = record[d.id];
 		if (!isPanelRect(entry)) {
-			state[d.id] = fallback[d.id]!;
+			added.push(d.id);
 			continue;
 		}
 		const coded = fallback[d.id]!;
@@ -513,6 +522,15 @@ export function growToDefaults(
 		});
 		if (next.colSpan > before.colSpan || next.rowSpan > before.rowSpan) grew = true;
 		state[d.id] = next;
+	}
+	// Second pass, after every stored rect is placed: a new card can now be
+	// sited against the WHOLE canvas rather than against a partial one, so the
+	// order defaults happen to be listed in cannot change where it lands.
+	// Deliberately NOT counted as `grew`: reflow() would rearrange the user's
+	// existing cards to accommodate the newcomer, and a card appearing is not
+	// a reason to move the ones they placed themselves.
+	for (const id of added) {
+		state[id] = slideDownToFree(Object.values(state), fallback[id]!);
 	}
 	return { state, grew };
 }

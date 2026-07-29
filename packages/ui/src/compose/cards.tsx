@@ -29,6 +29,7 @@ import {
 import { HeightmapBody, ProbePointBody, MeshBody, BedTramBody } from "../cards/BedCards.tsx";
 import {
 	AxisRolesBody, DockSensorsBody, BedProbeBody, CameraConfigBody, SensorNamesBody, SavedVersionsBody, ConfigSaveBody,
+	HeaterColorsBody, ThermalColorsBody,
 } from "../cards/SettingsCards.tsx";
 import { FirmwareBody } from "../cards/FirmwareUpdateCard.tsx";
 import { LayersBody } from "../cards/LayersCard.tsx";
@@ -80,6 +81,8 @@ export const CARD_RENDER: Record<CardId, CardRender> = {
 	mesh: { body: ctx => <MeshBody ctx={ctx} /> },
 	"bed-tram": { body: () => <BedTramBody /> },
 	"axis-roles": { body: () => <AxisRolesBody />, actions: resetAction("axisRoles") },
+	"heater-colors": { body: () => <HeaterColorsBody />, actions: resetAction("heaterColors") },
+	"thermal-colors": { body: () => <ThermalColorsBody />, actions: resetAction("thermalColors") },
 	"tool-dock-sensors": { body: () => <DockSensorsBody />, actions: resetAction("dockSensors") },
 	"bed-probe": { body: () => <BedProbeBody />, actions: resetAction("bed") },
 	"camera-config": { body: () => <CameraConfigBody />, actions: resetAction("camera") },

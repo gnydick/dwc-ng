@@ -40,6 +40,19 @@ export interface HeaterSeriesModel {
 	tools: (Tool | null)[];
 }
 
+/**
+ * Per-heater colour overrides, keyed by heater index as a string (the config
+ * overlay's shape).
+ *
+ * Applied AFTER the derived colour, deliberately. The derivation still holds
+ * its no-two-lines-alike invariant for everything the user has not touched, so
+ * an override replaces exactly one line and cannot disturb the rest. An
+ * override is free to collide — the picker warns at ΔE < 25 and does not
+ * block, because the guarantee is about the palette we ship, not about
+ * forbidding an operator their own choice.
+ */
+export type HeaterColorOverrides = Readonly<Record<string, string>>;
+
 export interface HeaterSeries {
 	label: string;
 	stroke: string;
@@ -49,7 +62,10 @@ export interface HeaterSeries {
  * One series per heater, in heater order — the chart aligns series to column
  * index, so a null heater still occupies its slot.
  */
-export function heaterSeries(model: HeaterSeriesModel): HeaterSeries[] {
+export function heaterSeries(
+	model: HeaterSeriesModel,
+	overrides: HeaterColorOverrides = {},
+): HeaterSeries[] {
 	// RRF pads these arrays with -1 for "no heater"; a bare Set would then treat
 	// index -1 as meaningful, which is harmless, but filtering keeps the intent
 	// obvious and guards against a stray -1 ever being compared against a real index.
@@ -69,10 +85,15 @@ export function heaterSeries(model: HeaterSeriesModel): HeaterSeries[] {
 	let toolSlot = 0;
 
 	return model.heaters.map((_, i) => {
-		if (beds.has(i)) return { label: "Bed", stroke: BED_COLOR };
-		if (chambers.has(i)) return { label: "Chamber", stroke: CHAMBER_COLOR };
-		const stroke = TOOL_COLORS[toolSlot % TOOL_COLORS.length]!;
-		toolSlot++;
-		return { label: nameByHeater.get(i) ?? `Heater ${i}`, stroke };
+		// The tool slot advances for every non-bed, non-chamber heater whether
+		// or not it is overridden — otherwise clearing one override would
+		// renumber the palette and recolour every line after it.
+		const derived = beds.has(i)
+			? { label: "Bed", stroke: BED_COLOR }
+			: chambers.has(i)
+				? { label: "Chamber", stroke: CHAMBER_COLOR }
+				: { label: nameByHeater.get(i) ?? `Heater ${i}`, stroke: TOOL_COLORS[toolSlot++ % TOOL_COLORS.length]! };
+		const override = overrides[String(i)];
+		return override === undefined ? derived : { label: derived.label, stroke: override };
 	});
 }

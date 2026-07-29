@@ -12,9 +12,11 @@
  */
 import {
 	CONFIG_VERSION, isCustomCardId, isUserScreenId,
-	type ConfigOverlay, type CustomScreen, type PinnedCommand, type SlotRect, type UserScreenId,
+	type ConfigOverlay, type CustomScreen, type PinnedCommand, type SlotRect,
+	type ThermalColors, type UserScreenId,
 } from "./types.ts";
 import { isPlainObject, safeEntries } from "../util/safeObject.ts";
+import { isHexColor } from "../util/colorDistance.ts";
 
 /** A slot rect is exactly four finite numbers. */
 export function asSlotRect(value: unknown): SlotRect | null {
@@ -45,6 +47,30 @@ function rectRecord(raw: unknown): Record<string, SlotRect> | undefined {
 
 function parseAxisRoles(raw: unknown): ConfigOverlay["axisRoles"] {
 	return stringRecord(raw);
+}
+
+/**
+ * Heater index → colour. Values are gated on isHexColor rather than merely
+ * being strings: these land in a CSS colour slot and as a uPlot stroke, and
+ * an arbitrary string there is a silently invisible line, not an error.
+ */
+function parseHeaterColors(raw: unknown): ConfigOverlay["heaterColors"] {
+	if (!isPlainObject(raw)) return undefined;
+	const out: Record<string, string> = {};
+	for (const [key, value] of safeEntries(raw)) {
+		if (isHexColor(value)) out[key] = value;
+	}
+	return Object.keys(out).length > 0 ? out : undefined;
+}
+
+/** Field-by-field like parseCamera: one bad channel drops itself, not the set. */
+function parseThermalColors(raw: unknown): ConfigOverlay["thermalColors"] {
+	if (!isPlainObject(raw)) return undefined;
+	const out: Partial<ThermalColors> = {};
+	if (isHexColor(raw.cold)) out.cold = raw.cold;
+	if (isHexColor(raw.warm)) out.warm = raw.warm;
+	if (isHexColor(raw.hot)) out.hot = raw.hot;
+	return Object.keys(out).length > 0 ? out : undefined;
 }
 
 function parseDockSensors(raw: unknown): ConfigOverlay["dockSensors"] {
@@ -149,6 +175,8 @@ export function parseOverlay(raw: unknown): ConfigOverlay {
 	const out: ConfigOverlay = {};
 	const sections = {
 		axisRoles: parseAxisRoles(raw.axisRoles),
+		heaterColors: parseHeaterColors(raw.heaterColors),
+		thermalColors: parseThermalColors(raw.thermalColors),
 		dockSensors: parseDockSensors(raw.dockSensors),
 		camera: parseCamera(raw.camera),
 		sensorNames: stringRecord(raw.sensorNames),

@@ -27,6 +27,11 @@
 	--ok: #6fbf8f;
 	--fault: #e05c4a;
 	--gold: #c9a227;
+	/* The thermal ramp. These three are USER-CONFIGURABLE: App.tsx writes them
+	   onto documentElement from config.thermalColors on every change. The
+	   values here must stay identical to DEFAULT_THERMAL_COLORS in
+	   config/types.ts — a test asserts it, because a mismatch would make the
+	   first paint differ from the state after the overlay loads. */
 	--t-cold: #6e8ca8;
 	--t-warm: #e0a458;
 	--t-hot: #ef7b45;
