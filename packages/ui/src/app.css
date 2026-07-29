@@ -1534,23 +1534,39 @@
 /* The ack/pending dot rides the corner rather than the label's end, so a
    pending key is exactly as wide as a settled one. */
 .mode-key .gcode-ack { top: 3px; right: 3px; width: 5px; height: 5px; }
-/* Three levels, not two. is-engaged says the machine is IN this mode; the
-   filled ground (the app's selected-chip language) is reserved for having
-   ARRIVED at that mode's setpoint. In between — heating up, or cooling toward
-   standby — the key is outlined in its accent: lit enough to read as the
-   current mode, not so lit that it claims a temperature the heater has not
-   reached. Colour only: no size, border width or padding moves, so brightening
-   can never shift a control.
+/* The ladder, in four rungs:
+     rest          dim colour, dark ground        — nothing pressed
+     armed         accent border, dark ground     — press 1 landed (.is-applied)
+     confirmed     SOLID accent                   — press 2 landed (.is-engaged)
+     at temperature solid accent + halo           — the reading arrived
 
-   Off carries .at-target permanently (it has no setpoint to reach), so it
-   behaves exactly as before. */
-.mode-key.is-engaged:not(.at-target),
-.mode-key.is-engaged:not(.at-target):hover:not(:disabled),
-.mode-key.is-engaged:not(.at-target):active:not(:disabled) {
-	background: linear-gradient(180deg, #24405f 0%, #1b3350 100%);
-	border-color: var(--btn-accent);
+   The mode goes solid the instant it is CONFIRMED, not when the heater gets
+   there: the solid colour answers "which mode am I in", which is true the
+   moment the command lands, and making it wait for the temperature left a key
+   looking half-pressed while the machine was plainly doing what was asked.
+   Arrival is the halo on top — an addition to the solid state rather than a
+   replacement for it, so the two facts read independently.
+
+   Colour and shadow only: no size, border width or padding moves, so nothing
+   on this ladder can shift a control under the pointer. */
+.mode-key.is-engaged.at-target {
+	box-shadow:
+		inset 0 1px 0 rgba(233, 238, 244, 0.07),
+		0 0 0 1px var(--btn-accent),
+		0 0 10px -1px var(--btn-accent);
 }
-.mode-key.is-engaged:not(.at-target) .gcode-label { color: var(--btn-accent); }
+/* Running more than OVER_ABOVE_C hot. The glow turns red while the key keeps
+   its own solid ground, so it still reads as "the mode you are in" — this is
+   the temperature commenting on itself, not a different mode and not a fault.
+   A real over-temperature is a heater FAULT, which the firmware raises and the
+   Current cell shows as a badge. */
+.mode-key.is-engaged.over-target {
+	border-color: var(--fault);
+	box-shadow:
+		inset 0 1px 0 rgba(233, 238, 244, 0.07),
+		0 0 0 1px var(--fault),
+		0 0 12px -1px var(--fault);
+}
 /* Your value landed; the next press is the one that acts on it. Full-strength
    accent lettering on the resting ground — brighter than at rest, dimmer than
    engaged — so the middle of the two-click sequence is visible instead of

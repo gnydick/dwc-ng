@@ -75,23 +75,41 @@ export function staysArmed(phase: CommitPhase, isCurrentMode: boolean): boolean 
 	return !isCurrentMode && phase !== "pending";
 }
 
-/**
- * How close the reading has to be to the setpoint before the mode key lights
- * fully. Deliberately loose: a heater in steady state wanders by more than a
- * degree, and a threshold tight enough to flicker would make the brightening
- * read as noise rather than as arrival.
- */
-export const AT_TARGET_C = 2;
+/** Approaching: within this far BELOW the setpoint, the key's border glows. */
+export const NEAR_BELOW_C = 10;
+/** Overshoot: this far ABOVE the setpoint, the glow turns hot red. */
+export const OVER_ABOVE_C = 5;
 
 /**
- * Has the heater ARRIVED at the mode it is in? Purely a display: it changes
- * how the engaged key is painted and nothing else — no control is gated on it,
- * no command changes, and the firmware remains the only authority on whether a
- * temperature is good enough to print at. `target` is the setpoint for the
- * mode being drawn; Off has none, so it arrives the moment it is the mode.
+ * Where the reading sits relative to the setpoint of the mode being drawn.
+ *
+ * The window is deliberately asymmetric. Ten degrees of approach is generous
+ * because coming up to temperature is the expected, uninteresting case and a
+ * tight band would leave the glow flicking on and off as a heater settles.
+ * Five degrees of overshoot is tight because overshoot is the case worth
+ * looking at.
+ *
+ * Purely a display: it changes how an already-confirmed key is painted and
+ * nothing else. No control is gated on it, no command changes, and the
+ * firmware remains the only authority on whether a temperature is safe or good
+ * enough to print at — an over-temperature that matters is a heater FAULT, and
+ * the firmware raises that itself.
  */
-export function atTarget(current: number, target: number | null): boolean {
-	if (target === null) return true;
-	if (!Number.isFinite(current) || !Number.isFinite(target)) return false;
-	return Math.abs(current - target) <= AT_TARGET_C;
+export type ThermalMark =
+	/** Still climbing (or cooling) toward it — solid, no glow. */
+	| "far"
+	/** Within reach of the setpoint — accent glow. */
+	| "near"
+	/** More than OVER_ABOVE_C above it — hot red glow. */
+	| "over";
+
+export function thermalMark(current: number, target: number | null): ThermalMark {
+	// Off has no setpoint; a non-positive one asks for NO HEAT rather than for
+	// 0 °C. A heater cannot cool below the room, so neither is something to
+	// arrive at or to overshoot — the mode alone is the whole story.
+	if (target === null || (Number.isFinite(target) && target <= 0)) return "near";
+	if (!Number.isFinite(current) || !Number.isFinite(target)) return "far";
+	const delta = current - target;
+	if (delta > OVER_ABOVE_C) return "over";
+	return delta >= -NEAR_BELOW_C ? "near" : "far";
 }

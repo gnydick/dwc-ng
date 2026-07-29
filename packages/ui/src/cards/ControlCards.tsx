@@ -10,7 +10,7 @@
  */
 import { For, Show, createEffect, createMemo, createSignal } from "solid-js";
 import { useApp } from "../shell/context.ts";
-import { commitPhase, clickSendsSetpoint, atTarget, staysArmed, type CommitPhase } from "../control/setpointCommit.ts";
+import { commitPhase, clickSendsSetpoint, staysArmed, thermalMark, type CommitPhase } from "../control/setpointCommit.ts";
 import { cmd } from "../control/commands.ts";
 import { GcodeButton } from "../control/GcodeButton.tsx";
 import { SpeedSlider } from "../control/SpeedSlider.tsx";
@@ -242,8 +242,8 @@ function HeaterControl(props: {
 	// Arrival, per mode. Only the engaged key can be at its target, so these are
 	// read against the MACHINE's setpoint, not the field — a half-typed number
 	// must not brighten anything.
-	const activeArrived = (): boolean => atTarget(props.reading, props.active);
-	const standbyArrived = (): boolean => atTarget(props.reading, props.standby);
+	const activeMark = () => thermalMark(props.reading, props.active);
+	const standbyMark = () => thermalMark(props.reading, props.standby);
 	return (
 		<div class="heater-ctl">
 			{/* A tool's own label IS its selector (T<n>) - the thing you read is the
@@ -309,7 +309,8 @@ function HeaterControl(props: {
 					label="Act"
 					variant="go"
 					class="mode-key heat-active"
-						atTarget={activeArrived()}
+						atTarget={activeMark() === "near"}
+					overTarget={activeMark() === "over"}
 					command={activeCmd()}
 					stamp={false}
 					engaged={props.state === "active"}
@@ -325,7 +326,8 @@ function HeaterControl(props: {
 					<GcodeButton
 						label="Stand"
 						class="mode-key heat-standby"
-							atTarget={standbyArrived()}
+							atTarget={standbyMark() === "near"}
+						overTarget={standbyMark() === "over"}
 						command={standbyCmd()}
 						stamp={false}
 						engaged={props.state === "standby"}

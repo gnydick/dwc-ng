@@ -1,5 +1,5 @@
 import { For, Show, createEffect, createMemo, createResource, createSignal } from "solid-js";
-import { commitPhase, clickSendsSetpoint, atTarget, staysArmed, type CommitPhase } from "../control/setpointCommit.ts";
+import { commitPhase, clickSendsSetpoint, staysArmed, thermalMark, type CommitPhase } from "../control/setpointCommit.ts";
 import { useApp } from "../shell/context.ts";
 import { cmd } from "../control/commands.ts";
 import { GcodeButton } from "../control/GcodeButton.tsx";
@@ -352,7 +352,8 @@ function HeaterCells(props: { heater: Heater; index: number; kind: "tool" | "bed
 						label="Act"
 						variant="go"
 						class="mode-key heat-active"
-						atTarget={atTarget(props.heater.current, props.heater.active)}
+						atTarget={thermalMark(props.heater.current, props.heater.active) === "near"}
+						overTarget={thermalMark(props.heater.current, props.heater.active) === "over"}
 						stamp={false}
 						engaged={props.heater.state === "active"}
 						command={activeCmd()}
@@ -368,7 +369,8 @@ function HeaterCells(props: { heater: Heater; index: number; kind: "tool" | "bed
 						<GcodeButton
 							label="Stand"
 							class="mode-key heat-standby"
-							atTarget={atTarget(props.heater.current, props.heater.standby)}
+							atTarget={thermalMark(props.heater.current, props.heater.standby) === "near"}
+							overTarget={thermalMark(props.heater.current, props.heater.standby) === "over"}
 							stamp={false}
 							engaged={props.heater.state === "standby"}
 							command={standbyCmd()}
@@ -414,7 +416,8 @@ function HeaterActions(props: {
 				label="Act"
 				variant="go"
 				class="mode-key heat-active"
-				atTarget={atTarget(props.reading, props.active)}
+				atTarget={thermalMark(props.reading, props.active) === "near"}
+				overTarget={thermalMark(props.reading, props.active) === "over"}
 				stamp={false}
 				engaged={props.state === "active"}
 				command={isBed() ? cmd.bedActive(props.num, props.active) : cmd.toolActive(props.num)}
@@ -424,7 +427,8 @@ function HeaterActions(props: {
 				<GcodeButton
 					label="Stand"
 					class="mode-key heat-standby"
-					atTarget={atTarget(props.reading, props.standby)}
+					atTarget={thermalMark(props.reading, props.standby) === "near"}
+					overTarget={thermalMark(props.reading, props.standby) === "over"}
 					stamp={false}
 					engaged={props.state === "standby"}
 					command={cmd.toolStandby(props.num)}
