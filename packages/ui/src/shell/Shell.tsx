@@ -3,6 +3,7 @@ import { useApp } from "./context.ts";
 import { cmd } from "../control/commands.ts";
 import { createRouter, LAB_ROUTE } from "./router.ts";
 import { navHidden, setNavHidden } from "./navState.ts";
+import { PITCHES, pitch, setPitch } from "./density.ts";
 import {
 	BACKENDS, type Backend, rememberBackend,
 	writesArmed, setWritesArmed,
@@ -127,6 +128,7 @@ export default function Shell() {
 					</Show>
 
 					<div class="preflight-actions">
+						<DensityToggle />
 						<Show when={import.meta.env.DEV}><BackendToggle /></Show>
 						<button
 							class="ghost-btn"
@@ -169,6 +171,37 @@ export default function Shell() {
 					</Switch>
 				</div>
 			</div>
+		</div>
+	);
+}
+
+/**
+ * How much air the layout spends, as a component lead pitch (see
+ * shell/density.ts). A per-device display preference — it changes CSS custom
+ * properties on <html> and nothing else, so it sends no code, touches no
+ * config overlay, and cannot mark anything unsaved.
+ *
+ * Card ROW SPANS are not touched: a card keeps the height you gave it, so at a
+ * tighter pitch its content simply stops filling it. Resize or reset a card to
+ * take the space back.
+ */
+function DensityToggle() {
+	return (
+		<div class="pitch-toggle" role="group" aria-label="Spacing density" title="Spacing density — a display preference for this browser">
+			<For each={PITCHES}>
+				{p => (
+					<button
+						type="button"
+						class="pitch-opt"
+						classList={{ active: pitch() === p.id }}
+						aria-pressed={pitch() === p.id}
+						title={`${p.label} mm — ${p.note}`}
+						onClick={() => setPitch(p.id)}
+					>
+						{p.label}
+					</button>
+				)}
+			</For>
 		</div>
 	);
 }

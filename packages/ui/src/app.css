@@ -16,17 +16,17 @@
 .rail {
 	border-right: 1px solid var(--hairline);
 	/* Tight right gutter — the nav text no longer floats far off the divider. */
-	padding: 14px 6px 14px 12px;
+	padding: var(--sp-rail-py) 6px var(--sp-rail-py) 12px;
 	display: flex;
 	flex-direction: column;
-	gap: 18px;
+	gap: var(--sp-rail-gap);
 }
 
 .rail nav { display: flex; flex-direction: column; gap: 2px; }
 
 .rail nav a {
 	display: block;
-	padding: 8px 10px;
+	padding: var(--sp-nav-py) 10px;
 	border-radius: var(--radius);
 	font-family: var(--font-display);
 	font-weight: 600;
@@ -54,7 +54,7 @@
 .main {
 	/* Tight left/right gutter around the content; the header (a .main child)
 	   shares this left padding, so it stays aligned with the cards. */
-	padding: 0 12px 14px;
+	padding: 0 var(--sp-gutter) var(--sp-gutter-b);
 	display: flex;
 	flex-direction: column;
 	/* CAP the height (was min-height) so a tall view scrolls INSIDE .view-scroll
@@ -113,7 +113,7 @@
 	color: var(--silk-dim);
 	border: 1px solid var(--hairline);
 	border-radius: var(--radius);
-	padding: 7px 12px;
+	padding: var(--sp-input-py) 12px;
 }
 .ghost-btn:hover { color: var(--silk); background: var(--mask-700); }
 .ghost-btn[aria-pressed="true"] { color: var(--copper-bright); border-color: var(--copper); }
@@ -153,9 +153,9 @@
 	gap: 10px;
 	/* Slimmer header + smaller gap to the cards — the top gutter was eating a
 	   lot of vertical space above the first row. */
-	padding: 7px 0;
+	padding: var(--sp-pre-py) 0;
 	border-bottom: 1px solid var(--hairline);
-	margin-bottom: 8px;
+	margin-bottom: var(--sp-stack);
 	flex-wrap: wrap;
 }
 
@@ -170,7 +170,7 @@
 	text-transform: uppercase;
 	border: 1px solid var(--hairline);
 	border-radius: 999px;
-	padding: 4px 12px;
+	padding: var(--sp-chip-py) var(--sp-chip-px);
 	color: var(--silk-dim);
 }
 .chip .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
@@ -249,12 +249,15 @@
    margin, the body's padding) is a multiple of 4 for the same reason: with any
    one of them off-grid, content totals sit permanently between two achievable
    card heights and an exact fit becomes impossible at ANY increment. */
-.panel-canvas > * { margin-bottom: 8px; }
+.panel-canvas > * { margin-bottom: var(--sp-stack); }
 
 .card {
 	background: var(--mask-700);
 	border: 1px solid var(--hairline);
 	border-radius: var(--radius);
+	/* Deliberately NOT a density token: .card is only ever emitted with .panel
+	   (shell/Panel.tsx), and .card.panel below zeroes this. Tokenizing an
+	   unreachable declaration would suggest a density knob that does nothing. */
 	padding: 12px 16px;
 }
 
@@ -299,7 +302,7 @@
 	overflow: auto;
 	/* A little top padding so the header isn't flush with the card edge; the
 	   sticky header parks against this padding edge, so it persists on scroll. */
-	padding: 6px 16px 8px;
+	padding: var(--sp-card-t) var(--sp-card-x) var(--sp-card-b);
 	display: flex;
 	flex-direction: column;
 	scrollbar-width: none;
@@ -461,7 +464,7 @@
 	align-items: baseline;
 	gap: 12px;
 	border-bottom: 1px solid var(--hairline);
-	padding: 7px 0;
+	padding: var(--sp-row) 0;
 }
 .dro-row:last-child { border-bottom: none; }
 
@@ -543,8 +546,8 @@
 	   with the values, so a changing digit count cannot reflow it. */
 	flex-wrap: wrap;
 	gap: 14px;
-	margin-top: 8px;
-	padding-top: 8px;
+	margin-top: var(--sp-flow);
+	padding-top: var(--sp-flow);
 	border-top: 1px solid var(--hairline);
 }
 .speed-foot-tag {
@@ -656,7 +659,7 @@
 .heat-table th:nth-child(6), .heat-table td:nth-child(6) { width: 156px; }
 .heat-input {
 	width: 56px;
-	padding: 4px 6px;
+	padding: var(--sp-chip-py) 6px;
 	background: var(--mask-900);
 	border: 1px solid var(--hairline);
 	border-radius: 4px;
@@ -709,11 +712,11 @@
 	text-transform: uppercase;
 	color: var(--silk-dim);
 	text-align: right;
-	padding: 0 0 8px;
+	padding: 0 0 var(--sp-cell);
 }
 .heat-table th:first-child { text-align: left; }
 .heat-table td {
-	padding: 8px 0;
+	padding: var(--sp-cell) 0;
 	border-top: 1px solid var(--hairline);
 	text-align: right;
 	vertical-align: baseline;
@@ -758,7 +761,7 @@
 }
 .heat-name span.heat-tool { display: flex; align-items: center; min-height: var(--ctl-h); }
 /* Deselect + P: machine-wide, above the selector column they govern. */
-.heat-deselect { display: flex; align-items: center; gap: 10px; margin: 0 0 10px; }
+.heat-deselect { display: flex; align-items: center; gap: 10px; margin: 0 0 var(--sp-flow); }
 
 /* Same size as the tool label it sits in a row with — the reading is a peer of
    the name, not a headline. */
@@ -935,8 +938,8 @@
 	display: flex;
 	flex-direction: column;
 	gap: 5px;
-	padding-bottom: 10px;
-	margin-bottom: 10px;
+	padding-bottom: var(--sp-flow);
+	margin-bottom: var(--sp-flow);
 	border-bottom: 1px solid var(--hairline);
 	scrollbar-width: none;
 }
@@ -993,7 +996,7 @@
 	background: var(--mask-900);
 	border: 1px solid var(--hairline);
 	border-radius: var(--radius);
-	padding: 7px 10px;
+	padding: var(--sp-input-py) 10px;
 }
 .console-form input::placeholder { color: var(--silk-dim); }
 .console-form button {
@@ -1005,7 +1008,7 @@
 	color: var(--copper-bright);
 	border: 1px solid var(--copper);
 	border-radius: var(--radius);
-	padding: 6px 14px;
+	padding: var(--sp-input-py) 14px;
 }
 .console-form button:hover { background: rgba(217, 133, 59, 0.12); }
 
@@ -1037,7 +1040,7 @@
 	display: flex;
 	align-items: center;
 	gap: 10px;
-	padding: 6px 0;
+	padding: var(--sp-field) 0;
 }
 /* Rule BETWEEN rows. Keyed off adjacency, not :first-of-type — fields are
    <label> in one card and <div> in another, so :first-of-type gave the first
@@ -1062,7 +1065,7 @@
 	background: var(--mask-900);
 	border: 1px solid var(--hairline);
 	border-radius: var(--radius);
-	padding: 6px 10px;
+	padding: var(--sp-field) 10px;
 }
 .field input::placeholder { color: var(--silk-dim); }
 .field input[type="number"] { max-width: 90px; }
@@ -1207,7 +1210,7 @@
 .file-row {
 	width: 100%; display: flex; align-items: center; gap: 10px;
 	background: none; border: none; border-bottom: 1px solid var(--hairline);
-	padding: 9px 6px; cursor: pointer; text-align: left; color: var(--silk);
+	padding: var(--sp-list) 6px; cursor: pointer; text-align: left; color: var(--silk);
 	font: 400 14px/1.2 system-ui, sans-serif;
 }
 .file-row:hover { background: var(--mask-500); }
@@ -1293,6 +1296,25 @@
 @media (max-width: 900px) {
 	.detail-body { grid-template-columns: 1fr; }
 }
+
+/* ---------- density (lead pitch) toggle ----------
+   Its own classes rather than the backend toggle's: the two sit side by side
+   and mean completely different things, and one is a hazard control. Sharing
+   a class would let a change to either quietly restyle the other.
+
+   Carries NO density token itself, on purpose — the control you use to escape
+   a density you dislike must not shrink along with it. */
+.pitch-toggle { display: inline-flex; border: 1px solid var(--hairline); border-radius: var(--radius); overflow: hidden; }
+.pitch-opt {
+	font-family: var(--font-display); font-weight: 600; font-size: 11.5px;
+	letter-spacing: 0.06em;
+	color: var(--silk-dim); background: none; border: none;
+	padding: 6px 9px; cursor: pointer;
+	font-variant-numeric: tabular-nums;
+}
+.pitch-opt + .pitch-opt { border-left: 1px solid var(--hairline); }
+.pitch-opt:hover { color: var(--silk); background: var(--mask-700); }
+.pitch-opt.active { color: var(--mask-900); background: var(--copper); }
 
 /* ---------- dev Mock/Real backend toggle ---------- */
 .backend-toggle { display: inline-flex; border: 1px solid var(--hairline); border-radius: var(--radius); overflow: hidden; }
@@ -1519,6 +1541,30 @@
 .feed-field { color: var(--silk-dim); font-size: 12px; display: inline-flex; align-items: center; gap: 4px; }
 .jog-row .gcode-btn, .extrude-row .gcode-btn { padding: 7px 14px; }
 .jog-row .gcode-label { font-variant-numeric: tabular-nums; }
+
+/* ---------- the axis jog table ----------
+   One grid for ALL axes, not a stack of independently-laid-out rows. The
+   column tracks are declared once here; each .jog-row is display: contents,
+   so its three cells are direct children of THIS grid and land in the same
+   tracks as every other row's. Alignment is then true by construction — it
+   cannot depend on "U" and "W" happening to measure the same as "X", and a
+   machine with an extra axis cannot reflow the columns.
+
+   The name track is max-content so it fits the longest letter+role pair
+   ("U Z motor 1") exactly once, for every row; the two button tracks are
+   equal fractions, so −/+ are the same width on every axis. */
+.jog-table {
+	display: grid;
+	grid-template-columns: max-content minmax(0, 1fr) minmax(0, 1fr);
+	gap: var(--ctl-gap);
+	align-items: center;
+}
+.jog-table .jog-row { display: contents; }
+/* Fill the track rather than hug the label, so the two columns read as columns. */
+.jog-table .jog-row .gcode-btn { width: 100%; justify-content: center; }
+/* The name cell is a grid item now, so it no longer needs the min-width that
+   used to be the only thing aligning these rows. */
+.jog-table .jog-row .ctl-name { min-width: 0; white-space: nowrap; }
 
 
 
@@ -1980,7 +2026,7 @@
    the card is resized. */
 /* Room for the grab handle, title and header buttons; 36px stays on the 4px
    rhythm. */
-.card-head { padding-top: 0; margin-bottom: 8px; height: 36px; flex: 0 0 36px; }
+.card-head { padding-top: 0; margin-bottom: var(--sp-flow); height: var(--sp-head-h); flex: 0 0 var(--sp-head-h); }
 .card-title { font-size: 12px; }
 
 /* The height floor is ENGAGED: while you drag a card shorter, the frame has
