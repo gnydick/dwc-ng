@@ -263,27 +263,52 @@ function HeaterCells(props: { heater: Heater; index: number; kind: "tool" | "bed
 
 	return (
 		<>
+			{/* Each Set sits against the field it writes — left of active, right
+			    of standby — so a commit is never ambiguous about which number it
+			    sends, and nothing reaches the machine on a field losing focus.
+			    The bed gets no Set: M140 has no mode, so its Active IS its
+			    commit. */}
 			<td>
-				<input
-					class="heat-input"
-					type="number"
-					value={active()}
-					onInput={e => setActive(Number(e.currentTarget.value))}
-					aria-label={`${isBed() ? "Bed" : `Tool ${props.num}`} active setpoint`}
-				/>
+				<span class="heat-entry">
+					<Show when={!isBed()}>
+						<GcodeButton
+							label="Set"
+							class="heat-set-btn"
+							stamp={false}
+							command={cmd.toolActiveSetpoint(props.num, active())}
+							ariaLabel={`Set tool ${props.num} active target`}
+						/>
+					</Show>
+					<input
+						class="heat-input"
+						type="number"
+						value={active()}
+						onInput={e => setActive(Number(e.currentTarget.value))}
+						aria-label={`${isBed() ? "Bed" : `Tool ${props.num}`} active setpoint`}
+					/>
+				</span>
 			</td>
 			<td>
 				{/* The bed has no standby mode. The CELL stays (the column is what keeps
 				    every row's setpoints aligned) but it holds nothing — a placeholder
 				    dash just draws the eye to something that isn't there. */}
 				<Show when={!isBed()}>
-					<input
-						class="heat-input"
-						type="number"
-						value={standby()}
-						onInput={e => setStandby(Number(e.currentTarget.value))}
-						aria-label={`Tool ${props.num} standby setpoint`}
-					/>
+					<span class="heat-entry">
+						<input
+							class="heat-input"
+							type="number"
+							value={standby()}
+							onInput={e => setStandby(Number(e.currentTarget.value))}
+							aria-label={`Tool ${props.num} standby setpoint`}
+						/>
+						<GcodeButton
+							label="Set"
+							class="heat-set-btn"
+							stamp={false}
+							command={cmd.toolStandbySetpoint(props.num, standby())}
+							ariaLabel={`Set tool ${props.num} standby target`}
+						/>
+					</span>
 				</Show>
 			</td>
 			{/* Current doubles as the slot for states no button can show. On a fault
@@ -302,20 +327,7 @@ function HeaterCells(props: { heater: Heater; index: number; kind: "tool" | "bed
 				{/* The three buttons are modal: the one matching the heater's reported
 				    state lights up, which is what the State column used to say in
 				    words. */}
-				<div class="heat-actions" classList={{ "has-set": !isBed() }}>
-					{/* The explicit commit. The mode buttons no longer carry a
-					    setpoint, so without this the two entry fields would have
-					    no way to reach the machine. Nothing is sent by a field
-					    losing focus — you press Set. */}
-					<Show when={!isBed()}>
-						<GcodeButton
-							label="Set"
-							class="heat-set-btn"
-							stamp={false}
-							command={cmd.toolSetpoints(props.num, active(), standby())}
-							ariaLabel={`Set tool ${props.num} active and standby targets`}
-						/>
-					</Show>
+				<div class="heat-actions">
 					<GcodeButton
 						label="Active"
 						variant="go"

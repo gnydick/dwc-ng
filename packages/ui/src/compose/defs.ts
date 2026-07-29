@@ -190,7 +190,12 @@ export const CARD_DEFS = {
 		title: "Tools",
 		ariaLabel: "Tools",
 		tip: "T · M568 · M140",
-		size: { colSpan: 12, rowSpan: 62 },
+		// 62 -> 115 when each tool gained a second setpoint field and two Set
+		// buttons: the row no longer fits one line, so every tool is two lines
+		// (entry, then modes). Sized for the DEFAULT pitch — 444px of content
+		// at 1.27 — because a card sized for a tight pitch hides its last tool
+		// behind a scroll on a fresh install. Measured 2026-07-29.
+		size: { colSpan: 12, rowSpan: 115 },
 	}),
 	/** Jog pad, aux axes, coupler, extrude. */
 	movement: defineCard({

@@ -651,13 +651,14 @@
 	padding-left: 16px;
 	padding-right: 16px;
 }
-.heat-table th:nth-child(3), .heat-table td:nth-child(3) { width: 54px; }
-.heat-table th:nth-child(4), .heat-table td:nth-child(4) { width: 54px; }
+/* 54 -> 100: each setpoint cell now holds its own Set button beside the
+   field (34px + a 5px gap + a little slack). */
+.heat-table th:nth-child(3), .heat-table td:nth-child(3) { width: 100px; }
+.heat-table th:nth-child(4), .heat-table td:nth-child(4) { width: 100px; }
 /* Current: the padding is what keeps the reading off the Active button — right
    aligned in a bare cell, its right edge met the button's left edge exactly. */
 .heat-table th:nth-child(5), .heat-table td:nth-child(5) { width: 76px; padding-right: 14px; }
-/* 156 -> 202 for the Set button's own track (40px + its 6px gap). */
-.heat-table th:nth-child(6), .heat-table td:nth-child(6) { width: 202px; }
+.heat-table th:nth-child(6), .heat-table td:nth-child(6) { width: 156px; }
 .heat-input {
 	width: 56px;
 	padding: var(--sp-chip-py) 6px;
@@ -695,19 +696,20 @@
    rather than by the three labels happening to measure the same. */
 .heat-actions {
 	display: grid;
-	/* Four fixed columns: Set, then the three modes. The bed has no Set and no
-	   Standby, but it spends the SAME track list — its cells are simply empty,
-	   so Active and Off stay under the tools' Active and Off. Alignment is
-	   true by construction rather than by the labels measuring the same. */
-	grid-template-columns: 40px 52px 60px 32px;
+	grid-template-columns: 52px 60px 32px;
 	gap: 6px;
 	align-items: center;
 	justify-content: end;
 }
-.heat-actions .heat-set-btn { grid-column: 1; }
-.heat-actions .heat-active { grid-column: 2; }
-.heat-actions .heat-standby { grid-column: 3; }
-.heat-actions .heat-off { grid-column: 4; }
+.heat-actions .heat-active { grid-column: 1; }
+.heat-actions .heat-standby { grid-column: 2; }
+.heat-actions .heat-off { grid-column: 3; }
+
+/* Setpoint cell: the field plus the Set button that writes it. Right-aligned
+   so the two cells mirror around the column gutter — Set|input, input|Set. */
+.heat-entry { display: inline-flex; align-items: center; gap: 5px; justify-content: flex-end; }
+.heat-set-btn { padding: 0 7px; flex: none; }
+.heat-entry .heat-set-btn { height: var(--ctl-h); }
 /* Fill the column and centre the label, so equal columns look equal. */
 .heat-actions .gcode-btn { padding: 5px 2px; width: 100%; justify-content: center; }
 .heat-table th {
@@ -1509,7 +1511,42 @@
 
 /* heater / fan / factor rows */
 .heater-list { display: flex; flex-direction: column; gap: 10px; }
-.heater-ctl { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+/* A GRID, not a wrapping flex row. With two setpoint fields plus Set the row
+   no longer fits on one line at this card width, and flex-wrap resolved that
+   per-row: a tool whose contents happened to be a few px wider wrapped its
+   mode cluster while its neighbour did not, so the rows staggered and the
+   buttons sat at different heights down the card.
+
+   Two explicit rows instead, identical for every tool: entry on the first,
+   modes on the second. The track list is shared, so every field and every
+   button lines up down the whole card whatever the labels measure. The bed
+   spends the same tracks with its standby and Set cells empty. */
+.heater-ctl {
+	display: grid;
+	/* name | Set | active | standby | Set — each commit against the field it
+	   writes, the pair bracketing the two inputs.
+	   FIXED widths, not max-content: the bed row has no Set buttons and no
+	   standby field, and a max-content track with nothing in it collapses to
+	   zero — which slid the bed's input 106px right of the tools' and put it
+	   under the standby column instead. A fixed track holds its place empty. */
+	grid-template-columns: minmax(56px, 1fr) 40px 78px 78px 40px;
+	grid-template-areas:
+		"name setactive active standby setstandby"
+		"modes modes modes modes modes";
+	gap: 6px 8px;
+	align-items: center;
+}
+.heater-ctl > .ctl-name, .heater-ctl > .tool-select { grid-area: name; }
+.heater-ctl > .set-active { grid-area: setactive; }
+.heater-ctl > .temp-field:nth-of-type(1) { grid-area: active; }
+.heater-ctl > .temp-field:nth-of-type(2) { grid-area: standby; }
+.heater-ctl > .set-standby { grid-area: setstandby; }
+.heater-ctl > .btn-cluster { grid-area: modes; }
+/* The bed has no standby field and no Set buttons. It spends the SAME track
+   list with those cells empty, so its input sits under the tools' active
+   input rather than sliding left into the vacated space. */
+.heater-ctl .temp-field input { width: 54px; }
+.heater-ctl .heat-set-btn { padding: 0 8px; }
 .temp-field { display: inline-flex; align-items: center; gap: 3px; }
 .temp-field input, .feed-field input {
 	width: 66px; background: var(--mask-900); border: 1px solid var(--hairline); border-radius: 5px;

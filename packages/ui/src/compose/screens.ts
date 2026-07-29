@@ -52,16 +52,18 @@ export const CONTROL_COMPOSITION: Composition = {
 	// column below it shifts down by the same 50, and the full-width
 	// console/camera strip follows the taller of the two columns.
 	homing: { col: 0, row: 46, colSpan: 12, rowSpan: 101 },
-	heaters: { col: 0, row: 147, colSpan: 12, rowSpan: 62 },
-	fans: { col: 0, row: 209, colSpan: 12, rowSpan: 62 },
-	"pinned-commands": { col: 0, row: 271, colSpan: 12, rowSpan: 50 },
-	tuning: { col: 0, row: 321, colSpan: 12, rowSpan: 33 },
+	// heaters 62 -> 115: two setpoint fields and two Set buttons per tool make
+	// every tool row two lines. The rest of the left column follows.
+	heaters: { col: 0, row: 147, colSpan: 12, rowSpan: 115 },
+	fans: { col: 0, row: 262, colSpan: 12, rowSpan: 62 },
+	"pinned-commands": { col: 0, row: 324, colSpan: 12, rowSpan: 50 },
+	tuning: { col: 0, row: 374, colSpan: 12, rowSpan: 33 },
 	filament: { col: 12, row: 79, colSpan: 12, rowSpan: 50 },
 	movement: { col: 12, row: 129, colSpan: 12, rowSpan: 123 },
 	atx: { col: 12, row: 252, colSpan: 12, rowSpan: 32 },
-	// Left column now ends at 354, right at 284 — the strip clears both.
-	console: { col: 0, row: 354, colSpan: 24, rowSpan: 75 },
-	camera: { col: 0, row: 429, colSpan: 8, rowSpan: 75 },
+	// Left column now ends at 407, right at 284 — the strip clears both.
+	console: { col: 0, row: 407, colSpan: 24, rowSpan: 75 },
+	camera: { col: 0, row: 482, colSpan: 8, rowSpan: 75 },
 };
 
 /** Activity: live position + detailed job progress + the 3D toolpath.
