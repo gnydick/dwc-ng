@@ -86,6 +86,7 @@ export function ControlList(props: { spec: CompiledControlSpec; ctx: CardCtx }) 
 						variant={node.variant}
 						stamp={node.stamp}
 						class={node.class}
+						ariaLabel={node.aria === undefined ? undefined : resolveTemplate(node.aria, scopeWith(p.vars))}
 					/>
 				);
 			case "jog-pad": {

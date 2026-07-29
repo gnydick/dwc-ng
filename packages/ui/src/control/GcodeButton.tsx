@@ -41,6 +41,13 @@ export function GcodeButton(props: {
 	engaged?: boolean;
 	/** Extra class(es) for layout variants (e.g. the jog pad's square keys). */
 	class?: string;
+	/**
+	 * Accessible name, when the visible label is only unambiguous because of
+	 * where the button SITS. The homing table has two buttons reading "All" —
+	 * one in the Home column, one in Release — and column position is a purely
+	 * visual cue that a screen reader does not convey.
+	 */
+	ariaLabel?: string;
 }) {
 	const app = useApp();
 	const [state, setState] = createSignal<SendState>("idle");
@@ -84,6 +91,7 @@ export function GcodeButton(props: {
 				"is-failed": state() === "failed",
 			}}
 			disabled={props.disabled}
+			aria-label={props.ariaLabel}
 			aria-pressed={props.engaged}
 			title={props.command}
 			onClick={() => void send()}

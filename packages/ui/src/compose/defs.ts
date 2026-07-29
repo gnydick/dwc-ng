@@ -156,12 +156,18 @@ export const CARD_DEFS = {
 		tip: "job.layers",
 		size: { colSpan: 24, rowSpan: 67 },
 	}),
-	/** Home all / per-axis + release (M84). */
+	/** Per-axis Home/Release table, plus the machine-wide row (G28/G32/M84). */
 	homing: defineCard({
 		title: "Homing",
 		ariaLabel: "Homing",
-		tip: "G28 · M84",
-		size: { colSpan: 12, rowSpan: 51 },
+		tip: "G28 · G32 · M84",
+		// Sized for the DEFAULT pitch (1.27) with 7 axes plus the machine-wide
+		// row — 338px of content + 36px head + 22px of frame, rounded onto the
+		// 4px quantum. A tighter pitch leaves slack, which the operator can
+		// resize away; the reverse (sized for tight, overflowing at default)
+		// would hide the last axis behind a scroll on a fresh install.
+		// Measured 2026-07-29, was 51 when the card was a 2-column grid.
+		size: { colSpan: 12, rowSpan: 101 },
 	}),
 	/** ATX PSU. state.atxPower is null on a board with no PS_ON port — the body
 	 *  shows a message there rather than a DEAD switch (which is worse than

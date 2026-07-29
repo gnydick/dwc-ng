@@ -79,6 +79,7 @@ function validateNode(raw: unknown, where: string): ControlNode {
 				node.stamp = o.stamp;
 			}
 			node.class = asOptString(o.class, `${where}.class`);
+			node.aria = asOptString(o.aria, `${where}.aria`);
 			return node;
 		}
 		case "jog-pad":

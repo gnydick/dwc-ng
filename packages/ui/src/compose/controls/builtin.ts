@@ -17,19 +17,6 @@ export const HOMING_SPEC = compileControlSpec({
 	inputs: {},
 	nodes: [
 		{
-			// Machine-wide actions first: they act on everything, so they sit
-			// above the per-axis table rather than inside it. Bed tram belongs
-			// here because bed.g wants the machine homed — it reads as the step
-			// after "Home All", not as a peer of one axis.
-			type: "row",
-			class: "ctl-wrap",
-			items: [
-				{ type: "gcode-button", label: "Home All", template: "G28", variant: "go" },
-				{ type: "gcode-button", label: "Bed Tram", template: "G32", variant: "go" },
-				{ type: "gcode-button", label: "Release All", template: "M84", variant: "danger" },
-			],
-		},
-		{
 			// One row per axis, Home and Release as COLUMNS. Previously these
 			// were two separate blocks — a 184px-tracked grid of "Home U · Z
 			// motor 1" buttons, then a wrapping bank of single-letter release
@@ -43,6 +30,23 @@ export const HOMING_SPEC = compileControlSpec({
 			type: "row",
 			class: "home-table",
 			items: [
+				{
+					// The machine-wide row, IN the table's own columns rather
+					// than above it. "All" appears twice on purpose: the column
+					// it sits in supplies the verb, exactly as it does for every
+					// axis row below. That is a visual cue only, so each carries
+					// an explicit accessible name — a screen reader would
+					// otherwise announce two identical "All" buttons.
+					// Tram takes the axis-name slot: G32 acts on the machine,
+					// not on one axis, and bed.g wants it homed first.
+					type: "row",
+					class: "home-row",
+					items: [
+						{ type: "gcode-button", label: "Tram", template: "G32", variant: "go", stamp: false, aria: "Tram the bed" },
+						{ type: "gcode-button", label: "All", template: "G28", variant: "go", stamp: false, aria: "Home all axes" },
+						{ type: "gcode-button", label: "All", template: "M84", variant: "danger", stamp: false, aria: "Release all motors" },
+					],
+				},
 				{
 					type: "forEach",
 					from: "move.axes[visible]",
