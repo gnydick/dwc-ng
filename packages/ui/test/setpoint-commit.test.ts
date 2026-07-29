@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-	commitPhase, clickSendsSetpoint, staysArmed, atTarget, AT_TARGET_C,
+	commitPhase, clickSendsSetpoint, staysArmed, thermalMark, NEAR_BELOW_C, OVER_ABOVE_C,
 } from "../src/control/setpointCommit.ts";
 import { cmd } from "../src/control/commands.ts";
 import { readFileSync } from "node:fs";
@@ -96,26 +96,42 @@ test("the machine moving AWAY from the field re-arms pending", () => {
 	assert.equal(commitPhase(205, 240, false), "pending", "a macro changed it — there is something to write again");
 });
 
-// --- arrival -----------------------------------------------------------------
+// --- where the reading sits -------------------------------------------------
 
-test("arrival is symmetric and inclusive at the threshold", () => {
-	assert.equal(atTarget(205, 205), true);
-	assert.equal(atTarget(205 - AT_TARGET_C, 205), true, "cooling side");
-	assert.equal(atTarget(205 + AT_TARGET_C, 205), true, "overshoot side");
-	assert.equal(atTarget(205 - AT_TARGET_C - 0.1, 205), false);
-	assert.equal(atTarget(205 + AT_TARGET_C + 0.1, 205), false);
+test("a heater still climbing is far — solid, but no glow yet", () => {
+	assert.equal(thermalMark(24, 205), "far");
+	assert.equal(thermalMark(205 - NEAR_BELOW_C - 0.1, 205), "far");
 });
 
-test("a heater climbing to its setpoint has NOT arrived", () => {
-	assert.equal(atTarget(24, 205), false);
-	assert.equal(atTarget(180, 205), false);
+test("the approach window is generous: NEAR_BELOW_C under counts as near", () => {
+	assert.equal(thermalMark(205 - NEAR_BELOW_C, 205), "near", "inclusive at the edge");
+	assert.equal(thermalMark(205, 205), "near");
 });
 
-/** Off has nothing to reach, so its key must not sit forever un-brightened. */
-test("a null target counts as arrived; an unknown reading does not", () => {
-	assert.equal(atTarget(24, null), true);
-	assert.equal(atTarget(Number.NaN, 205), false, "a heater the model lacks must not claim arrival");
-	assert.equal(atTarget(205, Number.NaN), false);
+/** Asymmetric on purpose: approaching is expected, overshooting is worth a look. */
+test("overshoot is tight, and only past OVER_ABOVE_C", () => {
+	assert.equal(thermalMark(205 + OVER_ABOVE_C, 205), "near", "exactly at the margin is not yet over");
+	assert.equal(thermalMark(205 + OVER_ABOVE_C + 0.1, 205), "over");
+	assert.ok(OVER_ABOVE_C < NEAR_BELOW_C, "running hot must be flagged sooner than running cool");
+});
+
+/**
+ * A standby of 0 means "no heat", not "0 °C". A heater cannot cool below the
+ * room, so comparing the reading against zero left a tool parked in standby
+ * stuck on the not-there-yet rung for as long as it was on — and would have
+ * called a cooling hot end an overshoot the whole way down.
+ */
+test("a non-positive setpoint asks for no heat: never far, never over", () => {
+	assert.equal(thermalMark(22.5, 0), "near", "at room temperature with a 0 standby IS arrived");
+	assert.equal(thermalMark(180, 0), "near", "still cooling, but nothing more is being asked of it");
+	assert.equal(thermalMark(22.5, -273.15), "near", "RRF unset sentinel is not a target either");
+});
+
+/** Off has nothing to reach, so its key must not sit forever un-glowed. */
+test("a null target is near; an unknown reading is far, never over", () => {
+	assert.equal(thermalMark(24, null), "near");
+	assert.equal(thermalMark(Number.NaN, 205), "far", "a heater the model lacks must not claim anything");
+	assert.equal(thermalMark(205, Number.NaN), "far");
 });
 
 // --- the display the multiplexing depends on ---------------------------------
@@ -135,8 +151,8 @@ test("at-target travels by classList and the stylesheet reads it", () => {
 		"at-target must be a classList entry, not part of the class string");
 
 	const css = read("../src/app.css");
-	assert.ok(css.includes(".mode-key.is-engaged:not(.at-target)"),
-		"the mid state (engaged, not yet arrived) must still have a rule");
+	assert.ok(css.includes(".mode-key.is-engaged.at-target"),
+		"arrival must add something on top of the confirmed (solid) state");
 });
 
 /**
@@ -148,8 +164,8 @@ test("every state of the mode key is drawn", () => {
 	for (const selector of [
 		".mode-key.is-applied:not(.is-engaged)",   // armed: next press activates
 		".gcode-btn.is-pending",                   // an unwritten edit
-		".mode-key.is-engaged:not(.at-target)",    // in this mode, still heating
-		".gcode-btn.is-engaged",                   // in this mode
+		".gcode-btn.is-engaged",                   // confirmed: solid
+		".mode-key.is-engaged.at-target",          // …and the reading arrived
 		".is-sent.ack-mode .gcode-ack",            // the press that switched mode
 	]) {
 		assert.ok(css.includes(selector), `${selector} has no rule — that rung is invisible`);
