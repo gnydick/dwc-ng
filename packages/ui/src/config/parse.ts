@@ -16,6 +16,7 @@ import {
 	type ThermalColors, type UserScreenId,
 } from "./types.ts";
 import { isPlainObject, safeEntries } from "../util/safeObject.ts";
+import { COL_GRANULARITY_FACTOR } from "../shell/panelCanvas.ts";
 import { isHexColor } from "../util/colorDistance.ts";
 
 /** A slot rect is exactly four finite numbers. */
@@ -193,9 +194,53 @@ export function parseOverlay(raw: unknown): ConfigOverlay {
 }
 
 /**
+ * v1 → v2: the canvas grid went from 46px columns with a 6px gutter to 4px
+ * columns with none, so every stored col/colSpan is in units 13× too coarse.
+ * The overlay holds rects in two places — a built-in screen's layout override
+ * and a custom screen's own cards — and BOTH have to move, or a user's saved
+ * layouts would land at a thirteenth of their width on the new grid.
+ *
+ * Deliberately a transform on the RAW json, ahead of parseOverlay: it must not
+ * assume the shape is already valid. Anything that isn't a number is passed
+ * through untouched and the parser drops it exactly as it always would, so a
+ * hand-mangled config still cannot make this throw.
+ */
+function scaleRectRecord(raw: unknown): unknown {
+	if (!isPlainObject(raw)) return raw;
+	const out: Record<string, unknown> = {};
+	for (const [id, rect] of safeEntries(raw)) {
+		if (!isPlainObject(rect)) { out[id] = rect; continue; }
+		const scale = (v: unknown): unknown =>
+			typeof v === "number" && Number.isFinite(v) ? v * COL_GRANULARITY_FACTOR : v;
+		out[id] = { ...rect, col: scale(rect.col), colSpan: scale(rect.colSpan) };
+	}
+	return out;
+}
+
+function migrateOverlayColumns(raw: unknown): unknown {
+	if (!isPlainObject(raw) || !isPlainObject(raw.screens)) return raw;
+	const screens = { ...raw.screens };
+
+	if (isPlainObject(screens.layouts)) {
+		const layouts: Record<string, unknown> = {};
+		for (const [id, cards] of safeEntries(screens.layouts)) layouts[id] = scaleRectRecord(cards);
+		screens.layouts = layouts;
+	}
+	if (isPlainObject(screens.custom)) {
+		const custom: Record<string, unknown> = {};
+		for (const [id, screen] of safeEntries(screens.custom)) {
+			custom[id] = isPlainObject(screen) ? { ...screen, cards: scaleRectRecord(screen.cards) } : screen;
+		}
+		screens.custom = custom;
+	}
+	return { ...raw, screens };
+}
+
+/**
  * Envelope text → overlay, or null (corrupt / foreign / future-versioned →
- * defaults, never a boot failure). Schema migrations hook in on `version`
- * before the gate when the schema next changes.
+ * defaults, never a boot failure). Older versions are migrated forward rather
+ * than discarded — a version bump that silently dropped the whole overlay
+ * would lose every saved layout, rename and pin on the next boot.
  */
 export function parseOverlayPayload(text: string): ConfigOverlay | null {
 	let parsed: unknown;
@@ -204,6 +249,9 @@ export function parseOverlayPayload(text: string): ConfigOverlay | null {
 	} catch {
 		return null;
 	}
-	if (!isPlainObject(parsed) || parsed.version !== CONFIG_VERSION || !isPlainObject(parsed.overlay)) return null;
-	return parseOverlay(parsed.overlay);
+	if (!isPlainObject(parsed) || !isPlainObject(parsed.overlay)) return null;
+	if (parsed.version === CONFIG_VERSION) return parseOverlay(parsed.overlay);
+	if (parsed.version === 1) return parseOverlay(migrateOverlayColumns(parsed.overlay));
+	// Foreign or from a future build: defaults, never a guess.
+	return null;
 }

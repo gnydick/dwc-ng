@@ -18,7 +18,24 @@ import {
 } from "./panelOrientation.ts";
 import { safeEntries } from "../util/safeObject.ts";
 
-export const GRID_COLS = 48;
+/**
+ * Horizontal granularity, and the same argument the rows already won.
+ *
+ * A column used to be 46px wide with a 6px gutter — a 52px quantum — so a card
+ * could carry up to 51px of dead width that no amount of careful measuring
+ * could remove: the next size down cut 52px, which was into the controls.
+ * Measured 2026-07-29 on the Tools card: 35px wasted, one snap narrower would
+ * have clipped the mode keys.
+ *
+ * Columns are now 4px with no gap, exactly like rows, and the gutter moved off
+ * the grid onto the card (see .panel-canvas > * in app.css). 624 = 48 × 13,
+ * and the old pitch was 13 × 4, so every previously stored layout maps onto
+ * the new grid by multiplying by 13 — an EXACT mapping, no rounding, so no
+ * pair of adjacent cards can round into each other.
+ */
+export const GRID_COLS = 624;
+/** Old-grid columns to new. Exact: the old 52px pitch is 13 new 4px cells. */
+export const COL_GRANULARITY_FACTOR = 13;
 /**
  * Vertical granularity. Set to the greatest common divisor of the control
  * heights the UI actually draws (every control is a multiple of 4px), so a
@@ -32,13 +49,13 @@ export const GRID_COLS = 48;
  */
 export const ROW_UNIT_PX = 4;
 export const ROW_GAP_PX = 0;
-/** Horizontal gap only (columns still carry a visible gutter). */
-export const GAP_PX = 6;
+/** Both gutters now live on the card, not on the grid — see GRID_COLS. */
+export const GAP_PX = 0;
 /** Fixed column width (matches app.css's .panel-canvas grid-template-columns)
  *  — columns don't scale with viewport width, so a card's pixel size only
  *  ever depends on its own colSpan. A narrower window scrolls horizontally
  *  instead of shrinking every card to fit. */
-export const COL_UNIT_PX = 46;
+export const COL_UNIT_PX = 4;
 
 export interface PanelRect {
 	col: number;
@@ -208,56 +225,28 @@ export function resolveMove(state: CanvasState, id: string, targetCol: number, t
 
 
 /**
- * How far past the content-fit minimum you must drag before a card will shrink
- * below it, in rows (5 x 4px = 20px of travel).
+ * The content fit is a WALL, not a detent (operator's call, 2026-07-29).
+ *
+ * It used to hold at the minimum and then release if you pulled a further five
+ * cells, on the reasoning that a card allowed to scroll its own content is
+ * harmless. In practice the release is the whole problem: the card you were
+ * sizing suddenly gave way and swallowed its own controls, and the only way to
+ * find the fit again was to overshoot and creep back. A stop that cannot be
+ * pulled through means the edge you are dragging always lands on a size that
+ * shows everything.
+ *
+ * Stateless by construction — there is no "have I broken away yet" to carry
+ * across frames, which is what made the old version need a state object and a
+ * continuity correction on release.
+ *
+ * `atLimit` is true exactly while the pointer is asking for less than the
+ * minimum: the edge is standing still under a moving finger, which is what the
+ * gold outline reports. False at rest, and false on an axis that isn't being
+ * pushed — so a width-only drag never lights it for the height.
  */
-export const DETENT_BREAKAWAY_ROWS = 5;
-
-/** Carried across frames of a single resize drag. */
-export interface DetentState {
-	/** True once the operator has pulled past the minimum this drag. */
-	broken: boolean;
-}
-
-/**
- * A sticky detent at the card's exact content fit.
- *
- * Resizing down, the bottom edge STOPS at the minimum and stays there while
- * the pointer keeps moving — so the exact fit is something you feel, not
- * something you have to see. Pull a further DETENT_BREAKAWAY_ROWS and it
- * releases and keeps shrinking (the content then scrolls, which is allowed —
- * this is a detent, not a wall). A separate HARD floor below it (header + foot
- * + 50%, applied by the caller) is what finally stops the shrink so the
- * grabbers and controls can never overlap.
- *
- * The release is CONTINUOUS: at the moment it breaks away the span is exactly
- * the minimum, and from there it tracks the pointer again with the breakaway
- * distance subtracted. Without that the card would jump by the breakaway
- * amount the instant it let go.
- *
- * Growing back up it re-arms at the same point, so the detent is felt in both
- * directions rather than only on the way down.
- */
-export function applyDetent(
-	rawSpan: number,
-	minSpan: number,
-	state: DetentState,
-): { span: number; state: DetentState; held: boolean } {
-	if (state.broken) {
-		const span = rawSpan + DETENT_BREAKAWAY_ROWS;
-		// Re-arm on the way back up, at exactly the point it released.
-		if (span >= minSpan) return { span: minSpan, state: { broken: false }, held: false };
-		return { span, state, held: false };
-	}
-	if (rawSpan >= minSpan) return { span: rawSpan, state, held: false };
-	// Pushed below the content fit but not yet past breakaway: the edge is being
-	// HELD at the minimum against the pointer. `held` is true ONLY here — this is
-	// the one state that means "you are on the exact fit and it is resisting". It
-	// is false at rest (rawSpan >= minSpan) and during a width-only resize (the
-	// row span never dips below min then), which is precisely why the visible cue
-	// no longer flashes spuriously the way the old at-min border did.
-	if (minSpan - rawSpan < DETENT_BREAKAWAY_ROWS) return { span: minSpan, state, held: true };
-	return { span: rawSpan + DETENT_BREAKAWAY_ROWS, state: { broken: true }, held: false };
+export function clampToStop(rawSpan: number, minSpan: number): { span: number; atLimit: boolean } {
+	if (rawSpan >= minSpan) return { span: rawSpan, atLimit: false };
+	return { span: minSpan, atLimit: true };
 }
 
 /**
@@ -290,6 +279,61 @@ export function contentRowSpan(cardEl: HTMLElement, gutterPx: number): number {
 	// together. Card border-box height == ROW_UNIT_PX*rowSpan - gutter.
 	const chrome = cardEl.getBoundingClientRect().height - body.clientHeight;
 	return Math.max(1, Math.ceil((contentBottom + chrome + gutterPx) / ROW_UNIT_PX));
+}
+
+/**
+ * An element's MAX-CONTENT width in px — the width at which nothing inside it
+ * has to shrink, wrap, or clip.
+ *
+ * Not clientWidth or scrollWidth. Both report the BOX on an element wider than
+ * its contents, which is the normal case for a card you are about to make
+ * narrower: the detent would then catch at whatever width the card already
+ * had, and the true fit would be unreachable. This asks the layout engine the
+ * question directly by sizing the element to max-content for one measurement.
+ *
+ * Synchronous — set, read, restore inside one call, with no yield in between,
+ * so the browser never paints the intermediate size. It does force a reflow,
+ * which is why it is called ONCE at the start of a drag and never per frame.
+ */
+function maxContentWidthPx(el: HTMLElement): number {
+	const previous = el.style.width;
+	el.style.width = "max-content";
+	const width = el.getBoundingClientRect().width;
+	el.style.width = previous;
+	return width;
+}
+
+/**
+ * The smallest colSpan that still contains a card's content — the horizontal
+ * twin of contentRowSpan, and the width the gold detent snaps to.
+ *
+ * Honest only insofar as the content is honest: a control with `min-width: 0`
+ * (a select, an ellipsising name) will happily report that it can be a few
+ * pixels wide, and the detent would then sit somewhere useless. Such controls
+ * carry an explicit min-width in app.css for exactly this reason — the number
+ * this returns is only ever as meaningful as the narrowest legible width the
+ * contents are willing to declare.
+ */
+export function contentColSpan(cardEl: HTMLElement, gutterPx: number): number {
+	const body = cardEl.querySelector<HTMLElement>(".panel-body");
+	if (!body) return 1;
+	// Chrome around the body's content box (borders, the card's own padding),
+	// measured rather than assumed — card and body widen together.
+	const chrome = cardEl.getBoundingClientRect().width - body.clientWidth;
+	return Math.max(1, Math.ceil((maxContentWidthPx(body) + chrome + gutterPx) / COL_UNIT_PX));
+}
+
+/**
+ * The narrowest a card may EVER be: its own header laid out without clipping.
+ * A wall, not a detent — below this the title and its tip start disappearing,
+ * which is chrome loss rather than content scrolling, and no amount of pulling
+ * should be able to do it.
+ */
+export function headerColSpan(cardEl: HTMLElement, gutterPx: number): number {
+	const head = cardEl.querySelector<HTMLElement>(".card-head");
+	if (!head) return 1;
+	const chrome = cardEl.getBoundingClientRect().width - head.clientWidth;
+	return Math.max(1, Math.ceil((maxContentWidthPx(head) + chrome + gutterPx) / COL_UNIT_PX));
 }
 
 /**
@@ -350,7 +394,7 @@ function isPanelRect(value: unknown): value is PanelRect {
 
 /** Bump whenever a stored canvas needs a one-time migration to stay valid
  *  under a new grid shape (see migrateLegacyDoubleWidth below). */
-const CANVAS_FORMAT_VERSION = 3;
+const CANVAS_FORMAT_VERSION = 4;
 
 interface StoredCanvasEnvelope {
 	v: number;
@@ -407,9 +451,32 @@ function migrateRowGranularity(value: unknown): unknown {
 	return out;
 }
 
-/** Tolerant parse: anything unexpected yields null, never a throw. Applies
- *  migrateLegacyDoubleWidth to anything not already carrying the current
- *  version envelope. */
+/**
+ * One-time migration for canvases saved against the old 46px column + 6px gap
+ * grid (a 52px pitch) now that columns are 4px with no gap.
+ *
+ * Unlike the row regranulation this needs no edge-wise care: 52 is exactly 13
+ * new cells, so col and colSpan can be scaled independently and adjacency
+ * survives by arithmetic — "B starts where A ends" stays true because
+ * 13(a + s) == 13a + 13s with no rounding anywhere.
+ */
+export function migrateColGranularity(value: unknown): unknown {
+	if (typeof value !== "object" || value === null) return value;
+	const out: Record<string, unknown> = {};
+	for (const [id, entry] of safeEntries(value as Record<string, unknown>)) {
+		out[id] = isPanelRect(entry)
+			? {
+				...entry,
+				col: entry.col * COL_GRANULARITY_FACTOR,
+				colSpan: entry.colSpan * COL_GRANULARITY_FACTOR,
+			}
+			: entry;
+	}
+	return out;
+}
+
+/** Tolerant parse: anything unexpected yields null, never a throw. Older
+ *  envelopes fall through the migrations they still owe, newest last. */
 export function parseStoredCanvas(raw: string | null): unknown {
 	if (raw === null || raw === "") return null;
 	let parsed: unknown;
@@ -419,10 +486,11 @@ export function parseStoredCanvas(raw: string | null): unknown {
 		return null;
 	}
 	if (isEnvelope(parsed) && parsed.v === CANVAS_FORMAT_VERSION) return parsed.state;
-	// Unversioned = pre-v2: needs the column doubling AND the row regranulation.
-	// A v2 envelope only needs the rows.
-	if (isEnvelope(parsed) && parsed.v === 2) return migrateRowGranularity(parsed.state);
-	return migrateRowGranularity(migrateLegacyDoubleWidth(parsed));
+	// Each older version owes every migration introduced after it, in order.
+	if (isEnvelope(parsed) && parsed.v === 3) return migrateColGranularity(parsed.state);
+	if (isEnvelope(parsed) && parsed.v === 2) return migrateColGranularity(migrateRowGranularity(parsed.state));
+	// Unversioned = pre-v2: owes the column doubling and both regranulations.
+	return migrateColGranularity(migrateRowGranularity(migrateLegacyDoubleWidth(parsed)));
 }
 
 export function serializeCanvas(state: CanvasState): string {
@@ -877,28 +945,31 @@ export function createPanelCanvas(
 		const scroller = canvasEl.closest<HTMLElement>(".view-scroll");
 		const originScrollTop = scroller?.scrollTop ?? 0;
 
-		// Two independent limits, both measured once at the start of the drag:
+		// One hard stop per axis, both measured once at the start of the drag.
+		// A card can be dragged down to the size that exactly contains what it
+		// draws, and no further — the edge simply stops, and the gold outline
+		// says why. Nothing here can be pulled through.
 		//
-		//  • detentMin — the CONTENT-FIT height. The bottom edge snaps here (the
-		//    gold cue) and holds against the pointer until you pull past the
-		//    breakaway, then releases and the body scrolls. A felt "exact fit",
-		//    not a wall.
-		//  • hardFloor — the header + resize-grip foot, plus 50% of that
-		//    (operator's spec). The absolute smallest the card may ever get, so
-		//    the grabbers and controls can never overlap. This is a WALL: no
-		//    breakaway. It sits BELOW the detent — you only meet it after the
-		//    detent has released and the content has scrolled away.
+		// Each stop is the LARGER of two floors, so it is honest for both a
+		// content-heavy card and an almost-empty one:
+		//   · the content fit itself;
+		//   · the chrome — vertically the header + resize-grip foot plus 50%
+		//     (operator's spec), horizontally the header laid out unclipped —
+		//     which is what a card with almost nothing in it bottoms out on.
 		const cardEl = grip.closest<HTMLElement>(".card");
 		const gutterPx = cardEl ? parseFloat(getComputedStyle(cardEl).marginBottom || "0") : 0;
 		const headPx = cardEl?.querySelector<HTMLElement>(".card-head")?.getBoundingClientRect().height ?? 0;
 		const footPx = cardEl?.querySelector<HTMLElement>(".panel-resize-grip")?.getBoundingClientRect().height ?? 0;
 		const floorPx = (headPx + footPx) * 1.5;
 		const hardFloor = Math.max(1, Math.ceil((floorPx + gutterPx) / ROW_UNIT_PX));
-		// The detent never sits below the wall — a snap point you can't reach is
-		// pointless, and it keeps the gold cue honest on tiny-content cards.
-		const contentMin = cardEl ? contentRowSpan(cardEl, gutterPx) : 1;
-		const detentMin = Math.max(contentMin, hardFloor);
-		let detent: DetentState = { broken: false };
+		const rowStop = Math.max(cardEl ? contentRowSpan(cardEl, gutterPx) : 1, hardFloor);
+
+		// The same on the horizontal axis, which had no limit at all: a card
+		// could be dragged narrower than its own controls, which then simply
+		// disappeared off the side with nothing shown and nothing felt.
+		const sideGutterPx = cardEl ? parseFloat(getComputedStyle(cardEl).marginRight || "0") : 0;
+		const hardWall = cardEl ? headerColSpan(cardEl, sideGutterPx) : 1;
+		const colStop = Math.max(cardEl ? contentColSpan(cardEl, sideGutterPx) : 1, hardWall);
 		let pointerX = event.clientX;
 		let pointerY = event.clientY;
 
@@ -925,12 +996,13 @@ export function createPanelCanvas(
 			// floor clamps whatever the detent produced so a released card still
 			// can't shrink past the wall. The gold cue lights only while the
 			// detent is actively holding — never for a width-only resize.
-			const rawRowSpan = start.rowSpan + deltaRowSpan;
-			const detented = applyDetent(rawRowSpan, detentMin, detent);
-			detent = detented.state;
-			const clampedRowSpan = Math.max(hardFloor, detented.span);
-			cardEl?.classList.toggle("at-detent", detented.held);
-			const next = tryResize(collidableState(id), id, start.colSpan + deltaColSpan, clampedRowSpan);
+			const rows = clampToStop(start.rowSpan + deltaRowSpan, rowStop);
+			const cols = clampToStop(start.colSpan + deltaColSpan, colStop);
+			// One cue for both axes: this edge has stopped. A diagonal drag pinned
+			// on both lights it once, which is the truth — "this is as small as it
+			// goes" — rather than two competing signals.
+			cardEl?.classList.toggle("at-limit", rows.atLimit || cols.atLimit);
+			const next = tryResize(collidableState(id), id, cols.span, rows.span);
 			setState({ ...state(), [id]: next }); // live preview, persisted only on drop
 			raf = requestAnimationFrame(tick);
 		};
@@ -942,7 +1014,7 @@ export function createPanelCanvas(
 		};
 		const onUp = (): void => {
 			cancelAnimationFrame(raf);
-			cardEl?.classList.remove("at-detent");
+			cardEl?.classList.remove("at-limit");
 			window.removeEventListener("pointermove", onMove);
 			window.removeEventListener("pointerup", onUp);
 			persist(state());

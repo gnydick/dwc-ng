@@ -1,42 +1,51 @@
 /**
- * What a tool's mode button does on its NEXT click, and how it looks right now.
+ * What a tool's mode key does on its NEXT press, and how it looks right now.
  *
- * The tool cards give each mode (Active / Standby) one button that carries two
- * jobs, decided by whether the field beside it still matches the machine:
+ * The rule is two presses, always (operator's spec, 2026-07-29):
  *
- *   field edited, not yet sent  -> the click SENDS THE SETPOINT (M568 S/R)
- *   field matches the machine   -> the click SETS THE MODE     (M568 A2/A1)
+ *   press 1 — writes the SETPOINT beside it (M568 S/R) and arms the key
+ *   press 2 — switches the tool to that profile (M568 A2/A1)
  *
- * That is a control whose emitted G-code depends on state, which is normally
- * exactly what this project refuses. It is admissible here only because the
- * state is not hidden: `phase` drives the button's own colour and its pulsing
- * dot, so the button always shows which of the two it will send before you
- * press it. If that display is ever dropped, this multiplexing has to go with
- * it.
+ * The first press is deliberately unconditional. An earlier version let a
+ * press go straight to the mode whenever the field already matched the
+ * machine, which meant a heater sitting at 200° could be switched on by one
+ * stray click on a key that looked idle. Writing a value the machine already
+ * holds is a no-op on the board; turning a hot end on by accident is not. So
+ * the harmless action is the one that can happen by accident, and the one that
+ * heats the machine takes a deliberate second press.
  *
- * The comparison is against the machine's REPORTED setpoint, never against a
- * local "have I typed since load" flag. A macro or another client changing the
- * setpoint underneath you must move the button to `applied` — a dirty flag
- * would keep insisting there was something to send when there no longer is.
+ * That makes the emitted G-code depend on state, which this project otherwise
+ * refuses. It is admissible only because the state is not hidden: `armed`
+ * drives the key's own colour, so the key always shows which of the two it
+ * will send before you press it. If that display is ever dropped, this
+ * multiplexing has to go with it.
+ *
+ * Arming is LOCAL, and deliberately so — it is a record of what you just did
+ * on this key, not a claim about the machine.
  */
 
 /** Off has no setpoint, so it never has anything but `applied`. */
 export type CommitPhase =
-	/** Field differs from the machine: the next click sends the setpoint. */
+	/** Field differs from the machine: there is an unwritten value here. */
 	| "pending"
-	/** Field matches the machine, and this is not the current mode: the next
-	 *  click sets the mode. */
+	/** Field matches the machine, and this is not the current mode. */
 	| "applied"
-	/** Field matches AND the machine is already in this mode: nothing to do. */
+	/** Field matches AND the machine is already in this mode. */
 	| "current";
 
 /**
  * `reported` is the machine's setpoint for this mode; `field` is what the
- * input beside the button holds. Both non-finite values compare equal-ish:
- * a NaN field (an emptied input) is treated as pending, because sending it
- * would put NaN in a G-code word.
+ * input beside the key holds. This drives the pending DOT only — it no longer
+ * decides what a press sends, because a matching field must not be a shortcut
+ * to switching the heater on.
+ *
+ * The comparison is against the machine's REPORTED setpoint, never a local
+ * "have I typed" flag, so another client or a macro moving the setpoint clears
+ * the dot by itself.
  */
 export function commitPhase(field: number, reported: number, isCurrentMode: boolean): CommitPhase {
+	// An emptied input is NaN, which would put NaN in a G-code word — it reads
+	// as unwritten, which it is.
 	if (!Number.isFinite(field)) return "pending";
 	// Compared as numbers, not strings: "60" and "60.0" are the same setpoint,
 	// and the machine reports whichever form it likes.
@@ -44,9 +53,26 @@ export function commitPhase(field: number, reported: number, isCurrentMode: bool
 	return isCurrentMode ? "current" : "applied";
 }
 
-/** True when this click should send the setpoint rather than the mode. */
-export function clickSendsSetpoint(phase: CommitPhase): boolean {
-	return phase === "pending";
+/**
+ * True when this press should write the setpoint rather than switch the mode.
+ *
+ * Depends ONLY on whether the key is armed. Not on the phase: that is exactly
+ * the shortcut that allowed an accidental activation.
+ */
+export function clickSendsSetpoint(armed: boolean): boolean {
+	return !armed;
+}
+
+/**
+ * Should the arming survive into the next press?
+ *
+ * Dropped when the machine reaches this mode (there is nothing left to switch
+ * to) and when the field is edited again (the new value has to be written
+ * before it can be run). Anything else leaves it standing, including a reload
+ * of the machine's own values underneath it.
+ */
+export function staysArmed(phase: CommitPhase, isCurrentMode: boolean): boolean {
+	return !isCurrentMode && phase !== "pending";
 }
 
 /**

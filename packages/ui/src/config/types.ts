@@ -230,7 +230,7 @@ export const CONFIG_FILE = "0:/sys/dwc-ng-config.json";
 /** localStorage cache key (fast boot before the SD read lands). */
 export const CONFIG_CACHE_KEY = "dwc-ng.config";
 /** Bump when the overlay schema changes incompatibly. */
-export const CONFIG_VERSION = 1;
+export const CONFIG_VERSION = 2;
 export const MAX_SNAPSHOTS = 10;
 /**
  * Longest a backup label may be. Labels reach localStorage (persistCache) and

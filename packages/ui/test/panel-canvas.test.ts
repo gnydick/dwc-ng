@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {
 	GRID_COLS, clampRect, rectsOverlap, collidesWithAny, hasCollisions, inBounds,
 	tryMove, tryResize, defaultCanvas, parseStoredCanvas, serializeCanvas, mergeCanvas,
-	applyDetent, DETENT_BREAKAWAY_ROWS, growToDefaults, reflow,
+	clampToStop, growToDefaults, reflow,
 } from "../src/shell/panelCanvas.ts";
 
 const rect = (col: number, row: number, colSpan: number, rowSpan: number) => ({ col, row, colSpan, rowSpan });
@@ -89,11 +89,12 @@ test("parseStoredCanvas tolerates missing or corrupt storage", () => {
 	assert.equal(parseStoredCanvas("{not json"), null);
 });
 
-test("parseStoredCanvas migrates a legacy unwrapped canvas: columns doubled AND rows regranulated", () => {
+test("parseStoredCanvas migrates a legacy unwrapped canvas through EVERY later migration", () => {
 	// Rows moved from a 30px pitch (24px row + 6px gap) to 4px, so an edge at
-	// row r lands at round(r * 30 / 4).
+	// row r lands at round(r * 30 / 4). Columns doubled (24 -> 48) and then went
+	// from a 52px pitch to 4px, another x13: col 2 -> 4 -> 52.
 	const legacy = JSON.stringify({ a: rect(2, 3, 4, 5), b: { not: "a rect" } });
-	assert.deepEqual(parseStoredCanvas(legacy), { a: rect(4, 23, 8, 37), b: { not: "a rect" } });
+	assert.deepEqual(parseStoredCanvas(legacy), { a: rect(52, 23, 104, 37), b: { not: "a rect" } });
 });
 
 /**
@@ -120,13 +121,24 @@ test("row migration never turns adjacent panels into overlapping ones", () => {
 });
 
 test("parseStoredCanvas does not re-migrate a canvas already carrying the current version envelope", () => {
-	const current = JSON.stringify({ v: 3, state: { a: rect(2, 3, 4, 5) } });
+	const current = JSON.stringify({ v: 4, state: { a: rect(2, 3, 4, 5) } });
 	assert.deepEqual(parseStoredCanvas(current), { a: rect(2, 3, 4, 5) });
 });
 
-test("a v2 envelope still gets the row regranulation, but not the column doubling", () => {
+/**
+ * 52 is exactly 13 new cells, so col and colSpan scale independently and
+ * adjacency survives by arithmetic — no rounding, so no pair of touching cards
+ * can round into each other the way the ROW migration had to guard against.
+ */
+test("a v3 envelope gets the column regranulation and nothing else", () => {
+	const v3 = JSON.stringify({ v: 3, state: { a: rect(2, 3, 4, 5), b: rect(6, 3, 4, 5) } });
+	// a ended at col 6, where b began. It still does: 26 + 52 === 78.
+	assert.deepEqual(parseStoredCanvas(v3), { a: rect(26, 3, 52, 5), b: rect(78, 3, 52, 5) });
+});
+
+test("a v2 envelope gets both regranulations, but not the column doubling", () => {
 	const v2 = JSON.stringify({ v: 2, state: { a: rect(2, 3, 4, 5) } });
-	assert.deepEqual(parseStoredCanvas(v2), { a: rect(2, 23, 4, 37) });
+	assert.deepEqual(parseStoredCanvas(v2), { a: rect(26, 23, 52, 37) });
 });
 
 test("mergeCanvas falls back to defaults when storage is corrupt, empty, or the wrong shape", () => {
@@ -487,70 +499,49 @@ test("a remembered position survives a reload (persisted, card off the screen)",
 	}
 });
 
-// --- content-fit detent (the gold snap) --------------------------------------
-// applyDetent is the pure half of the resize physics: a sticky snap at the
-// card's content fit that holds against the pointer, then breaks away. The
-// DOM-measuring contentRowSpan half needs a real element, so it's exercised
-// live in the browser, not here.
-const MIN = 20; // stand-in content-fit minimum, in rows
-const fresh = () => ({ broken: false });
+// --- content-fit hard stop (the gold limit) ----------------------------------
+// clampToStop is the pure half of the resize physics: the card's content fit is
+// a WALL — the edge stops there and cannot be pulled through, on either axis.
+// The DOM-measuring halves (contentRowSpan / contentColSpan) need a real
+// element, so they are exercised live in the browser, not here.
+const MIN = 20; // stand-in content-fit minimum, in cells
 
-test("applyDetent passes a card larger than its content straight through, no hold", () => {
-	const r = applyDetent(MIN + 5, MIN, fresh());
-	assert.deepEqual(r, { span: MIN + 5, state: { broken: false }, held: false });
+test("clampToStop passes a card larger than its content straight through", () => {
+	assert.deepEqual(clampToStop(MIN + 5, MIN), { span: MIN + 5, atLimit: false });
 });
 
-test("applyDetent at exactly the content fit does not engage (boundary is >=)", () => {
-	const r = applyDetent(MIN, MIN, fresh());
-	assert.equal(r.span, MIN);
-	assert.equal(r.held, false, "resting exactly on the fit is not 'being held against'");
+test("clampToStop at exactly the content fit is not yet at the limit (boundary is >=)", () => {
+	assert.deepEqual(clampToStop(MIN, MIN), { span: MIN, atLimit: false },
+		"resting exactly on the fit is not the same as being pushed against it");
 });
 
-test("applyDetent holds the edge AT the minimum while inside the breakaway zone", () => {
-	const r = applyDetent(MIN - 2, MIN, fresh()); // pulled 2 rows past the fit
-	assert.equal(r.span, MIN, "span pinned to the fit, not to the pointer");
-	assert.equal(r.held, true, "this is the one state that lights the gold cue");
-	assert.equal(r.state.broken, false, "not broken away yet");
-});
-
-test("applyDetent releases continuously: at the breakaway threshold span == min", () => {
-	// min - raw == DETENT_BREAKAWAY_ROWS is NOT < breakaway, so it releases here,
-	// and the released span (raw + breakaway) lands exactly on min — no jump.
-	const raw = MIN - DETENT_BREAKAWAY_ROWS;
-	const r = applyDetent(raw, MIN, fresh());
-	assert.equal(r.span, MIN, "no discontinuity the instant it lets go");
-	assert.equal(r.state.broken, true);
-	assert.equal(r.held, false);
-});
-
-test("applyDetent past breakaway tracks the pointer again, offset by the breakaway", () => {
-	const raw = MIN - DETENT_BREAKAWAY_ROWS - 3;
-	const r = applyDetent(raw, MIN, fresh());
-	assert.equal(r.span, raw + DETENT_BREAKAWAY_ROWS, "pointer tracked, minus the swallowed breakaway");
-	assert.equal(r.state.broken, true);
-});
-
-test("applyDetent stays broken while still below the fit on a later frame", () => {
-	const r = applyDetent(MIN - 8, MIN, { broken: true });
-	assert.equal(r.span, MIN - 8 + DETENT_BREAKAWAY_ROWS);
-	assert.equal(r.state.broken, true, "does not spuriously re-arm below the fit");
-	assert.equal(r.held, false);
-});
-
-test("applyDetent re-arms when dragged back up to the fit, exactly at the fit", () => {
-	// broken, now growing back: raw + breakaway crosses min → re-arm at min.
-	const r = applyDetent(MIN - DETENT_BREAKAWAY_ROWS + 1, MIN, { broken: true });
-	assert.equal(r.span, MIN, "snaps back to the fit on the way up");
-	assert.equal(r.state.broken, false, "detent felt in both directions");
-	assert.equal(r.held, false);
-});
-
-test("applyDetent never reports held while growing a card above its fit", () => {
-	for (const raw of [MIN, MIN + 1, MIN + 40]) {
-		assert.equal(applyDetent(raw, MIN, fresh()).held, false, `raw=${raw} is above the fit`);
+/**
+ * The whole point of the change from a detent: however hard you pull, the span
+ * never goes below the fit. The old version released after five cells.
+ */
+test("clampToStop never yields, at any distance past the fit", () => {
+	for (const past of [1, 2, 5, 6, 20, 500]) {
+		assert.deepEqual(clampToStop(MIN - past, MIN), { span: MIN, atLimit: true },
+			`pulled ${past} cells past the fit`);
 	}
 });
 
-test("DETENT_BREAKAWAY_ROWS is a small positive travel distance", () => {
-	assert.ok(DETENT_BREAKAWAY_ROWS > 0 && DETENT_BREAKAWAY_ROWS <= 10);
+test("clampToStop reports atLimit only while being pushed below the fit", () => {
+	for (const raw of [MIN, MIN + 1, MIN + 40]) {
+		assert.equal(clampToStop(raw, MIN).atLimit, false, `raw=${raw} is at or above the fit`);
+	}
+	assert.equal(clampToStop(MIN - 1, MIN).atLimit, true);
+});
+
+/** Stateless: the same input gives the same answer whatever came before it. */
+test("clampToStop has no memory across frames", () => {
+	const deep = clampToStop(MIN - 100, MIN);
+	assert.deepEqual(clampToStop(MIN + 3, MIN), { span: MIN + 3, atLimit: false },
+		"a card dragged hard against the stop still grows normally afterwards");
+	assert.deepEqual(deep, clampToStop(MIN - 100, MIN));
+});
+
+test("clampToStop is span-agnostic — the same wall serves rows and columns", () => {
+	assert.deepEqual(clampToStop(3, 40), { span: 40, atLimit: true });
+	assert.deepEqual(clampToStop(300, 40), { span: 300, atLimit: false });
 });

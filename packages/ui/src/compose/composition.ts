@@ -109,7 +109,7 @@ export function compositionRects(composition: Composition): Record<string, SlotR
 }
 
 /** A custom card's default footprint until its author resizes it. */
-const CUSTOM_CARD_SIZE = { colSpan: 12, rowSpan: 40 };
+const CUSTOM_CARD_SIZE = { colSpan: 156, rowSpan: 40 };
 
 /**
  * Add a card at its natural size (registry cards) or the custom default in

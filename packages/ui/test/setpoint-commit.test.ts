@@ -1,23 +1,70 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { commitPhase, clickSendsSetpoint, atTarget, AT_TARGET_C } from "../src/control/setpointCommit.ts";
-import { readFileSync } from "node:fs";
+import {
+	commitPhase, clickSendsSetpoint, staysArmed, atTarget, AT_TARGET_C,
+} from "../src/control/setpointCommit.ts";
 import { cmd } from "../src/control/commands.ts";
+import { readFileSync } from "node:fs";
 
-test("an edited field is pending — the click will write the setpoint", () => {
+// --- what a press sends ------------------------------------------------------
+//
+// The safety property: NO single press can switch a heater on. The first press
+// on a mode key always writes the setpoint, whatever the field says.
+
+test("an unarmed key writes the setpoint — always, even when nothing changed", () => {
+	assert.equal(clickSendsSetpoint(false), true);
+});
+
+test("an armed key switches the profile", () => {
+	assert.equal(clickSendsSetpoint(true), false);
+});
+
+/**
+ * The regression this whole model exists for: a heater sitting at 200° with a
+ * matching field used to activate on ONE press, because the field matching was
+ * treated as "nothing to write, so act". A stray click switched a hot end on.
+ */
+test("a field that already matches the machine does NOT shortcut to activation", () => {
+	const field = 205, reported = 205;
+	assert.equal(commitPhase(field, reported, false), "applied", "nothing to write…");
+	assert.equal(clickSendsSetpoint(false), true, "…but the press still writes, not activates");
+});
+
+test("two presses, end to end: setpoint then profile", () => {
+	let armed = false;
+	assert.equal(cmd.toolActiveSetpoint(0, 205), "M568 P0 S205");
+	assert.equal(clickSendsSetpoint(armed), true);
+
+	armed = true; // press 1 landed
+	assert.equal(clickSendsSetpoint(armed), false);
+	assert.equal(cmd.toolActive(0), "M568 P0 A2");
+});
+
+// --- how long the arming lasts ----------------------------------------------
+
+test("arming survives while the value stands and the mode is not current", () => {
+	assert.equal(staysArmed("applied", false), true);
+});
+
+test("arming drops once the machine is IN the mode — nothing left to switch to", () => {
+	assert.equal(staysArmed("current", true), false);
+	assert.equal(staysArmed("applied", true), false);
+});
+
+test("arming drops when the field is edited again — the new value must be written first", () => {
+	assert.equal(staysArmed("pending", false), false);
+});
+
+// --- the pending dot ---------------------------------------------------------
+
+test("an edited field is pending", () => {
 	assert.equal(commitPhase(205, 190, false), "pending");
 	assert.equal(commitPhase(205, 190, true), "pending", "pending outranks being the current mode");
-	assert.equal(clickSendsSetpoint(commitPhase(205, 190, false)), true);
 });
 
-test("a matching field is applied — the click will set the mode", () => {
+test("a matching field is applied, or current when it is already the mode", () => {
 	assert.equal(commitPhase(205, 205, false), "applied");
-	assert.equal(clickSendsSetpoint(commitPhase(205, 205, false)), false);
-});
-
-test("matching AND already the current mode is `current` — nothing to do", () => {
 	assert.equal(commitPhase(205, 205, true), "current");
-	assert.equal(clickSendsSetpoint(commitPhase(205, 205, true)), false);
 });
 
 test("zero is a real setpoint, not an empty field", () => {
@@ -41,39 +88,15 @@ test("an emptied field is pending, never sendable as NaN", () => {
 test("the machine catching up to the field clears pending without a keystroke", () => {
 	const typed = 205;
 	assert.equal(commitPhase(typed, 190, false), "pending");
-	// …poll arrives, machine now reports 205 …
 	assert.equal(commitPhase(typed, 205, false), "applied");
 });
 
 test("the machine moving AWAY from the field re-arms pending", () => {
 	assert.equal(commitPhase(205, 205, false), "applied");
-	assert.equal(commitPhase(205, 240, false), "pending", "a macro changed it — there is something to send again");
+	assert.equal(commitPhase(205, 240, false), "pending", "a macro changed it — there is something to write again");
 });
 
-/**
- * The two clicks, end to end. This is the contract the button multiplexes on,
- * so it is asserted against the real command builders rather than described.
- */
-test("two clicks: setpoint first, then mode", () => {
-	const tool = 0;
-	const field = 205;
-	let reported = 190;
-
-	const first = clickSendsSetpoint(commitPhase(field, reported, false));
-	assert.equal(first, true);
-	assert.equal(cmd.toolActiveSetpoint(tool, field), "M568 P0 S205");
-
-	// The machine acknowledges the setpoint.
-	reported = 205;
-	const second = clickSendsSetpoint(commitPhase(field, reported, false));
-	assert.equal(second, false);
-	assert.equal(cmd.toolActive(tool), "M568 P0 A2");
-});
-
-test("an unedited field goes straight to the mode on one click", () => {
-	assert.equal(clickSendsSetpoint(commitPhase(205, 205, false)), false);
-	assert.equal(cmd.toolActive(1), "M568 P1 A2");
-});
+// --- arrival -----------------------------------------------------------------
 
 test("arrival is symmetric and inclusive at the threshold", () => {
 	assert.equal(atTarget(205, 205), true);
@@ -95,6 +118,8 @@ test("a null target counts as arrived; an unknown reading does not", () => {
 	assert.equal(atTarget(205, Number.NaN), false);
 });
 
+// --- the display the multiplexing depends on ---------------------------------
+
 const read = (rel: string): string => readFileSync(new URL(rel, import.meta.url), "utf8");
 
 /**
@@ -102,8 +127,7 @@ const read = (rel: string): string => readFileSync(new URL(rel, import.meta.url)
  * prop. Both write the same attribute, and a reactive `class` re-assignment
  * overwrites the whole string — which silently unset is-engaged every time a
  * heater arrived, so the key went bright and stopped showing it was the
- * current mode at the same instant. This pins the prop→classList→stylesheet
- * chain that makes the three-level scheme work.
+ * current mode at the same instant.
  */
 test("at-target travels by classList and the stylesheet reads it", () => {
 	const btn = read("../src/control/GcodeButton.tsx");
@@ -115,14 +139,30 @@ test("at-target travels by classList and the stylesheet reads it", () => {
 		"the mid state (engaged, not yet arrived) must still have a rule");
 });
 
+/**
+ * Two presses are only safe while the key SHOWS which one it is on. Every rung
+ * of that ladder needs a rule, or the operator is guessing.
+ */
+test("every state of the mode key is drawn", () => {
+	const css = read("../src/app.css");
+	for (const selector of [
+		".mode-key.is-applied:not(.is-engaged)",   // armed: next press activates
+		".gcode-btn.is-pending",                   // an unwritten edit
+		".mode-key.is-engaged:not(.at-target)",    // in this mode, still heating
+		".gcode-btn.is-engaged",                   // in this mode
+		".is-sent.ack-mode .gcode-ack",            // the press that switched mode
+	]) {
+		assert.ok(css.includes(selector), `${selector} has no rule — that rung is invisible`);
+	}
+});
+
 /** A computed `class` on a GcodeButton is the exact shape of that bug. */
 test("no card hands GcodeButton a reactive class", () => {
 	for (const file of ["../src/cards/ControlCards.tsx", "../src/cards/ToolsHeatersCard.tsx"]) {
 		// Only GcodeButton usages: a computed class on a plain <span> is fine —
 		// nothing else is writing that element's class attribute.
 		for (const [usage] of read(file).matchAll(/<GcodeButton[\s\S]*?\/>/g)) {
-			const dynamic = /\sclass=\{/.exec(usage);
-			assert.equal(dynamic, null,
+			assert.equal(/\sclass=\{/.exec(usage), null,
 				`${file}: a GcodeButton takes a computed class — put the varying part in its own prop:\n${usage.slice(0, 200)}`);
 		}
 	}
