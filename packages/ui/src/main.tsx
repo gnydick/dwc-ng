@@ -3,8 +3,14 @@ import './index.css'
 import App from './App.tsx'
 import { probeTransport } from './connector/createConnector.ts'
 import { initialBackend, pinnedTransport } from './dev/backend.ts'
+import { applyStoredPitch } from './shell/density.ts'
 
 const root = document.getElementById('app')!
+
+// Before ANY render, and before the awaited transport probe below: the density
+// attribute drives CSS custom properties, so applying it after first paint
+// would show one frame at the default spacing and then reflow the whole page.
+applyStoredPitch()
 
 // The dialect has to be known BEFORE App runs: the connector is constructed in
 // App's body and a session may never re-point it (C14), so there is no "detect

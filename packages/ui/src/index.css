@@ -43,6 +43,83 @@
 	   The jog pad is the one deliberate exception, at exactly 2x. */
 	--ctl-h: 28px;
 	--ctl-gap: 8px;
+
+	/* ---------- density: the baseline ("1.27 mm" lead pitch) ----------
+	   Every spacing value the UI spends more than once. These are the values
+	   app.css used to write as literals, unchanged — so with no data-pitch
+	   attribute on <html> the UI renders exactly as it always has.
+
+	   There is deliberately NO [data-pitch="127"] block below. The default
+	   pitch IS the absence of an override, so the baseline is written down in
+	   exactly one place and cannot drift from the pitch that claims to be it.
+
+	   Vertical values stay on even multiples wherever the 4px canvas quantum
+	   (shell/panelCanvas.ts ROW_UNIT_PX) can see them: a card is only ever
+	   fittable to its content when the content totals land on that grid. */
+	--sp-card-x: 16px;   /* card body side padding */
+	--sp-card-t: 6px;    /* card body top padding (the sticky head parks here) */
+	--sp-card-b: 8px;    /* card body bottom padding */
+	--sp-head-h: 36px;   /* card header height — a hard number, not line-height */
+	--sp-flow: 8px;      /* vertical rhythm between blocks inside a card */
+	--sp-row: 7px;       /* data row padding (DRO) */
+	--sp-cell: 8px;      /* table cell padding (heaters) */
+	--sp-list: 9px;      /* file/list row padding */
+	--sp-field: 6px;     /* settings field row padding */
+	--sp-stack: 8px;     /* gutter between stacked cards on the canvas */
+	--sp-gutter: 12px;   /* page side gutter */
+	--sp-gutter-b: 14px; /* page bottom gutter */
+	--sp-rail-py: 14px;  /* nav rail vertical padding */
+	--sp-rail-gap: 18px; /* nav rail block gap */
+	--sp-nav-py: 8px;    /* nav item padding */
+	--sp-chip-py: 4px;
+	--sp-chip-px: 12px;
+	--sp-pre-py: 7px;    /* preflight strip padding */
+	--sp-input-py: 7px;  /* free-standing inputs and ghost buttons */
+}
+
+/* ---------- density overrides ----------
+   Air only. Type sizes are IDENTICAL at every pitch on purpose: the complaint
+   is padding, and you read this screen standing at the machine, so legibility
+   is not the thing to spend. Likewise the grab handles, the resize grips and
+   the e-stop carry no density token — density buys rows from air, never from
+   things you have to hit. --ctl-h is the one target that moves, and it stops
+   at 20px, which is still a comfortable pointer target. */
+
+/* 0.80 mm — snug. About a quarter of the air. */
+:root[data-pitch="080"] {
+	--ctl-h: 24px; --ctl-gap: 6px;
+	--sp-card-x: 12px; --sp-card-t: 4px; --sp-card-b: 6px;
+	--sp-head-h: 28px; --sp-flow: 6px;
+	--sp-row: 5px; --sp-cell: 6px; --sp-list: 6px; --sp-field: 4px;
+	--sp-stack: 8px; --sp-gutter: 10px; --sp-gutter-b: 10px;
+	--sp-rail-py: 10px; --sp-rail-gap: 12px; --sp-nav-py: 6px;
+	--sp-chip-py: 3px; --sp-chip-px: 10px; --sp-pre-py: 5px;
+	--sp-input-py: 5px;
+}
+
+/* 0.50 mm — dense. About half the air. */
+:root[data-pitch="050"] {
+	--ctl-h: 20px; --ctl-gap: 4px;
+	--sp-card-x: 10px; --sp-card-t: 2px; --sp-card-b: 4px;
+	--sp-head-h: 24px; --sp-flow: 4px;
+	--sp-row: 3px; --sp-cell: 4px; --sp-list: 4px; --sp-field: 3px;
+	--sp-stack: 4px; --sp-gutter: 8px; --sp-gutter-b: 8px;
+	--sp-rail-py: 8px; --sp-rail-gap: 10px; --sp-nav-py: 4px;
+	--sp-chip-py: 2px; --sp-chip-px: 8px; --sp-pre-py: 3px;
+	--sp-input-py: 4px;
+}
+
+/* 0.40 mm — fine. The practical floor: below this the hairlines start
+   touching the glyphs and the rows stop reading as rows. */
+:root[data-pitch="040"] {
+	--ctl-h: 20px; --ctl-gap: 4px;
+	--sp-card-x: 8px; --sp-card-t: 2px; --sp-card-b: 2px;
+	--sp-head-h: 20px; --sp-flow: 2px;
+	--sp-row: 2px; --sp-cell: 2px; --sp-list: 3px; --sp-field: 2px;
+	--sp-stack: 4px; --sp-gutter: 6px; --sp-gutter-b: 6px;
+	--sp-rail-py: 6px; --sp-rail-gap: 8px; --sp-nav-py: 3px;
+	--sp-chip-py: 1px; --sp-chip-px: 7px; --sp-pre-py: 2px;
+	--sp-input-py: 3px;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }

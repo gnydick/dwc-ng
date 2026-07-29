@@ -62,15 +62,30 @@ export const MOVEMENT_SPEC = compileControlSpec({
 	},
 	nodes: [
 		{ type: "row", label: "Step", class: "step-row", items: [{ input: "step" }, { input: "feed" }] },
-		{ type: "jog-pad", step: "step", feed: "feed" },
 		{
-			// The aux axes — everything the cardinal pad doesn't cover (UVW
-			// leadscrews on this machine), one row each.
-			type: "forEach",
-			from: "move.axes[visible]",
-			as: "axis",
-			except: { prop: "letter", values: ["X", "Y", "Z", "C"] },
-			node: { type: "axis-jog", axisVar: "axis", step: "step", feed: "feed" },
+			// EVERY visible axis, one row each, in one table — no cardinal pad.
+			// The pad only ever covered X/Y/Z, so a 7-axis machine read as two
+			// unrelated interfaces: a compass for three axes and a list for the
+			// rest, with the same jog meaning two different gestures.
+			//
+			// This is a `row` (not a `grid`) purely so it can carry a class: the
+			// column tracks live on THIS container and every axis row spends them
+			// via `display: contents`, so the −/+ columns align across rows by
+			// construction rather than by the axis letters happening to measure
+			// the same. Adding an axis cannot shift the buttons under a finger.
+			//
+			// The jog-pad primitive is untouched and still available to
+			// user-authored cards; the built-in card just stops using it.
+			type: "row",
+			class: "jog-table",
+			items: [
+				{
+					type: "forEach",
+					from: "move.axes[visible]",
+					as: "axis",
+					node: { type: "axis-jog", axisVar: "axis", step: "step", feed: "feed" },
+				},
+			],
 		},
 		{
 			// The coupler row exists exactly when a C axis does — a forEach over
