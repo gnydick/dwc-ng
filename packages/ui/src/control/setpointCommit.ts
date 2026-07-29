@@ -77,8 +77,10 @@ export function staysArmed(phase: CommitPhase, isCurrentMode: boolean): boolean 
 
 /** Approaching: within this far BELOW the setpoint, the key's border glows. */
 export const NEAR_BELOW_C = 10;
-/** Overshoot: this far ABOVE the setpoint, the glow turns hot red. */
-export const OVER_ABOVE_C = 5;
+/** Running warm: this far ABOVE the setpoint, the glow turns orange. */
+export const OVER_WARM_C = 5;
+/** Running hot: this far above, it turns red. */
+export const OVER_HOT_C = 10;
 
 /**
  * Where the reading sits relative to the setpoint of the mode being drawn.
@@ -100,8 +102,10 @@ export type ThermalMark =
 	| "far"
 	/** Within reach of the setpoint — accent glow. */
 	| "near"
-	/** More than OVER_ABOVE_C above it — hot red glow. */
-	| "over";
+	/** Over by more than OVER_WARM_C — orange glow. */
+	| "warm"
+	/** Over by more than OVER_HOT_C — red glow. */
+	| "hot";
 
 export function thermalMark(current: number, target: number | null): ThermalMark {
 	// Off has no setpoint; a non-positive one asks for NO HEAT rather than for
@@ -110,6 +114,8 @@ export function thermalMark(current: number, target: number | null): ThermalMark
 	if (target === null || (Number.isFinite(target) && target <= 0)) return "near";
 	if (!Number.isFinite(current) || !Number.isFinite(target)) return "far";
 	const delta = current - target;
-	if (delta > OVER_ABOVE_C) return "over";
+	// Ordered hottest-first: the bands are nested, so the widest test last.
+	if (delta > OVER_HOT_C) return "hot";
+	if (delta > OVER_WARM_C) return "warm";
 	return delta >= -NEAR_BELOW_C ? "near" : "far";
 }

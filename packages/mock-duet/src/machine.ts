@@ -167,6 +167,13 @@ export class Machine {
 			// A heater can't cool below ambient (e.g. captured beds sit at
 			// state "active" with target 0 — they idle at ambient, not 0°C)
 			target = Math.max(target, AMBIENT);
+			// A badly tuned heater settles ABOVE its setpoint. Opt-in per heater
+			// (scenarios/snapshots set `overshoot`), because the UI has states
+			// for running warm and running hot that an ideal first-order model
+			// can never reach — and an alarm state you cannot produce on the
+			// bench is one nobody has actually looked at.
+			const overshoot = typeof heater.overshoot === "number" ? heater.overshoot : 0;
+			if (overshoot !== 0 && target > AMBIENT) target += overshoot;
 			const heating = target > heater.current;
 			const tau = isBed ? (heating ? 60 : 180) : heating ? 20 : 45;
 			const k = 1 - Math.exp(-ms / 1000 / tau);

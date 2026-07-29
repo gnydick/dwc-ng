@@ -14,6 +14,10 @@ test("idle machine: clock advances, temperatures stay near ambient", () => {
 
 test("heater approaches its target after M104 without bumping seqs.heat", () => {
 	const machine = new Machine(scenarios["idle"]);
+	// The idle scenario deliberately mistunes the hotend so the UI's
+	// running-hot states are reachable on the bench. This test measures the
+	// approach law itself, so it takes the quirk back out.
+	machine.om.heat.heaters[1].overshoot = 0;
 	const heatSeq = machine.seqs.heat;
 
 	machine.execute("M104 S210");
@@ -49,6 +53,10 @@ test("M568 S sets the setpoint WITHOUT switching the heater on", () => {
 
 test("M568 A2 then heats to the setpoint already stored", () => {
 	const machine = new Machine(scenarios["idle"]);
+	// The idle scenario deliberately mistunes the hotend so the UI's
+	// running-hot states are reachable on the bench. This test measures the
+	// approach law itself, so it takes the quirk back out.
+	machine.om.heat.heaters[1].overshoot = 0;
 	const heater = machine.om.heat.heaters[1];
 
 	machine.execute("M568 P0 S210");
@@ -61,6 +69,10 @@ test("M568 A2 then heats to the setpoint already stored", () => {
 
 test("M568 A1 tracks the standby setpoint, A0 lets it fall back to ambient", () => {
 	const machine = new Machine(scenarios["idle"]);
+	// The idle scenario deliberately mistunes the hotend so the UI's
+	// running-hot states are reachable on the bench. This test measures the
+	// approach law itself, so it takes the quirk back out.
+	machine.om.heat.heaters[1].overshoot = 0;
 	const heater = machine.om.heat.heaters[1];
 
 	machine.execute("M568 P0 S210 R120");
