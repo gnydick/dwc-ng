@@ -18,15 +18,22 @@ test("tool selection", () => {
 	assert.equal(cmd.deselectTool(), "T-1");
 });
 
-test("tool setpoints: both in one M568, mode untouched", () => {
-	assert.equal(cmd.toolSetpoints(0, 205, 140), "M568 P0 S205 R140");
-	// Asymmetric setpoints are the whole point — the old pair of compounds
-	// took ONE temperature and both cards fed them the same input, so R could
-	// only ever be whatever the active field said.
-	assert.notEqual(cmd.toolSetpoints(1, 205, 140), cmd.toolSetpoints(1, 140, 205));
-	// Both are always sent: RRF keeps an unspecified parameter at its previous
-	// value, so omitting one would make the result depend on machine history.
-	assert.equal(cmd.toolSetpoints(2, 0, 0), "M568 P2 S0 R0");
+test("tool setpoints: one letter each, mode untouched", () => {
+	assert.equal(cmd.toolActiveSetpoint(0, 205), "M568 P0 S205");
+	assert.equal(cmd.toolStandbySetpoint(0, 140), "M568 P0 R140");
+	assert.equal(cmd.toolActiveSetpoint(2, 0), "M568 P2 S0");
+});
+
+test("a setpoint commit carries NO mode and NO other setpoint", () => {
+	// Each Set writes exactly the field it sits beside. RRF keeps an
+	// unspecified parameter at its previous value, so S alone cannot disturb R
+	// — which is what makes per-field commits safe rather than lossy.
+	const activeForm = cmd.toolActiveSetpoint(1, 205);
+	const standbyForm = cmd.toolStandbySetpoint(1, 140);
+	assert.equal(/A\d/.test(activeForm), false, `setpoint must not carry a mode: ${activeForm}`);
+	assert.equal(/A\d/.test(standbyForm), false, `setpoint must not carry a mode: ${standbyForm}`);
+	assert.equal(/R-?\d/.test(activeForm), false, "the active commit must not write standby");
+	assert.equal(/S-?\d/.test(standbyForm), false, "the standby commit must not write active");
 });
 
 test("tool mode: A-only, carries no temperature", () => {

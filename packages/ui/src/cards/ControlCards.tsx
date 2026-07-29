@@ -215,12 +215,25 @@ function HeaterControl(props: {
 					/>
 				)}
 			</Show>
+			{/* Each Set sits against the field it writes: left of active, right
+			    of standby, so the pair brackets the two inputs and neither
+			    commit is ambiguous about which number it sends. Nothing is
+			    committed by a field losing focus. */}
+			<Show when={props.kind === "tool"}>
+				<GcodeButton
+					label="Set"
+					class="heat-set-btn set-active"
+					stamp={false}
+					command={cmd.toolActiveSetpoint(props.num, temp())}
+					ariaLabel={`Set ${props.label} active target`}
+				/>
+			</Show>
 			<label class="temp-field">
 				<input type="number" value={temp()} onInput={e => setTemp(Number(e.currentTarget.value))} aria-label={`${props.label} active target`} />
 				<span class="deg">°C</span>
 			</label>
-			{/* Standby field + the commit. The bed gets neither: M140 has no
-			    standby and no mode, so its Active button already IS its commit. */}
+			{/* The bed has neither: M140 has no standby and no mode, so its
+			    Active button already IS its commit. */}
 			<Show when={props.kind === "tool"}>
 				<label class="temp-field">
 					<input
@@ -231,14 +244,12 @@ function HeaterControl(props: {
 					/>
 					<span class="deg">°C</span>
 				</label>
-				{/* Explicit commit — nothing is sent by a field losing focus.
-				    Sends BOTH setpoints and leaves the mode alone. */}
 				<GcodeButton
 					label="Set"
-					class="heat-set-btn"
+					class="heat-set-btn set-standby"
 					stamp={false}
-					command={cmd.toolSetpoints(props.num, temp(), standbyTemp())}
-					ariaLabel={`Set ${props.label} active and standby targets`}
+					command={cmd.toolStandbySetpoint(props.num, standbyTemp())}
+					ariaLabel={`Set ${props.label} standby target`}
 				/>
 			</Show>
 			{/* Modal, exactly as in the Tools & heaters card: the button for the

@@ -87,21 +87,22 @@ export const cmd = {
 
 	// --- tool heaters (M568) ---
 	/**
-	 * Both setpoints in one command, mode UNTOUCHED. M568 takes S (active) and
-	 * R (standby) independently of A (mode), so retargeting a tool need not
-	 * change which mode it is in.
+	 * One setpoint each, mode UNTOUCHED. M568 takes S (active) and R (standby)
+	 * independently of each other AND of A (mode), so each field commits on its
+	 * own and retargeting a tool never changes which mode it is in.
 	 *
-	 * This replaced a pair of compounds that each sent one setpoint AND a mode
+	 * These replaced a pair of compounds that each sent one setpoint AND a mode
 	 * (`S… A2` / `R… A1`). Both cards fed them the SAME input, so pressing
-	 * Standby sent the ACTIVE field's number as R — you could not give a tool
+	 * Standby sent the ACTIVE field's number as R — a tool could not be given
 	 * different active and standby setpoints from the UI at all.
 	 *
-	 * Both values are always sent. RRF keeps "any parameter you don't specify"
-	 * at its previous value, so omitting one would make the command's effect
-	 * depend on machine history rather than on what the two fields say.
+	 * Sending one letter is safe precisely because RRF keeps "any parameter you
+	 * don't specify" at its previous value: S alone cannot disturb R. That is
+	 * also why each has its own button rather than one button sending both —
+	 * a commit writes exactly the field it sits beside, and nothing else.
 	 */
-	toolSetpoints: (tool: number, active: number, standby: number): string =>
-		`M568 P${tool} S${n(active)} R${n(standby)}`,
+	toolActiveSetpoint: (tool: number, temp: number): string => `M568 P${tool} S${n(temp)}`,
+	toolStandbySetpoint: (tool: number, temp: number): string => `M568 P${tool} R${n(temp)}`,
 	/** Mode only — A2/A1/A0 carry no temperature (see toolSetpoints). */
 	toolActive: (tool: number): string => `M568 P${tool} A2`,
 	toolStandby: (tool: number): string => `M568 P${tool} A1`,
