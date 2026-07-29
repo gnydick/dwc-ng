@@ -1,4 +1,5 @@
-import { For, Show, createMemo, createResource, createSignal } from "solid-js";
+import { For, Show, createEffect, createMemo, createResource, createSignal } from "solid-js";
+import { commitPhase, clickSendsSetpoint, atTarget, modeClass, type CommitPhase } from "../control/setpointCommit.ts";
 import { useApp } from "../shell/context.ts";
 import { cmd } from "../control/commands.ts";
 import { GcodeButton } from "../control/GcodeButton.tsx";
@@ -220,7 +221,7 @@ export function ToolsHeatersBody(props: { orientation: () => Orientation }) {
 														<b>{h().active}</b>°&nbsp;/&nbsp;{h().standby}°
 														<HeaterState heater={h()} index={t().heaters[0] ?? -1} />
 													</span>
-													<HeaterActions kind="tool" num={t().number} active={h().active} standby={h().standby} state={h().state} />
+													<HeaterActions kind="tool" num={t().number} active={h().active} standby={h().standby} state={h().state} reading={h().current} />
 												</>
 											)}
 										</Show>
@@ -240,7 +241,7 @@ export function ToolsHeatersBody(props: { orientation: () => Orientation }) {
 									<b>{h().active}</b>°
 									<HeaterState heater={h()} index={bedHeaterIndex()} />
 								</span>
-								<HeaterActions kind="bed" num={0} active={h().active} standby={null} state={h().state} />
+								<HeaterActions kind="bed" num={0} active={h().active} standby={null} state={h().state} reading={h().current} />
 							</div>
 						)}
 					</Show>
@@ -260,31 +261,44 @@ function HeaterCells(props: { heater: Heater; index: number; kind: "tool" | "bed
 	const [active, setActive] = createSignal(props.heater.active);
 	const [standby, setStandby] = createSignal(props.heater.standby);
 	const isBed = (): boolean => props.kind === "bed";
+	/** Who these single-letter keys belong to — the row identity the face drops. */
+	const who = (): string => (isBed() ? "Bed" : `Tool ${props.num}`);
+
+	// Re-seed when the MACHINE's setpoint moves, so another client or a macro
+	// clears "pending" rather than leaving a button claiming work to do.
+	createEffect(() => setActive(props.heater.active));
+	createEffect(() => setStandby(props.heater.standby));
+
+	const activePhase = (): CommitPhase =>
+		commitPhase(active(), props.heater.active, props.heater.state === "active");
+	const standbyPhase = (): CommitPhase =>
+		commitPhase(standby(), props.heater.standby, props.heater.state === "standby");
+
+	// Same two-click model as the Tools card: an unsent field makes the click
+	// write the setpoint, a matching field makes it set the mode. The pulsing
+	// dot says which. The bed has no mode parameter, so its Active is always
+	// the single M140 that both sets and turns on.
+	const activeCmd = (): string =>
+		isBed()
+			? cmd.bedActive(props.num, active())
+			: clickSendsSetpoint(activePhase())
+				? cmd.toolActiveSetpoint(props.num, active())
+				: cmd.toolActive(props.num);
+	const standbyCmd = (): string =>
+		clickSendsSetpoint(standbyPhase())
+			? cmd.toolStandbySetpoint(props.num, standby())
+			: cmd.toolStandby(props.num);
 
 	return (
 		<>
-			{/* Each Set sits against the field it writes — left of active, right
-			    of standby — so a commit is never ambiguous about which number it
-			    sends, and nothing reaches the machine on a field losing focus.
-			    The bed gets no Set: M140 has no mode, so its Active IS its
-			    commit. */}
 			<td>
 				<span class="heat-entry">
-					<Show when={!isBed()}>
-						<GcodeButton
-							label="Set"
-							class="heat-set-btn"
-							stamp={false}
-							command={cmd.toolActiveSetpoint(props.num, active())}
-							ariaLabel={`Set tool ${props.num} active target`}
-						/>
-					</Show>
 					<input
 						class="heat-input"
 						type="number"
 						value={active()}
 						onInput={e => setActive(Number(e.currentTarget.value))}
-						aria-label={`${isBed() ? "Bed" : `Tool ${props.num}`} active setpoint`}
+						aria-label={`${who()} active setpoint`}
 					/>
 				</span>
 			</td>
@@ -300,13 +314,6 @@ function HeaterCells(props: { heater: Heater; index: number; kind: "tool" | "bed
 							value={standby()}
 							onInput={e => setStandby(Number(e.currentTarget.value))}
 							aria-label={`Tool ${props.num} standby setpoint`}
-						/>
-						<GcodeButton
-							label="Set"
-							class="heat-set-btn"
-							stamp={false}
-							command={cmd.toolStandbySetpoint(props.num, standby())}
-							ariaLabel={`Set tool ${props.num} standby target`}
 						/>
 					</span>
 				</Show>
@@ -324,36 +331,43 @@ function HeaterCells(props: { heater: Heater; index: number; kind: "tool" | "bed
 				</Show>
 			</td>
 			<td>
-				{/* The three buttons are modal: the one matching the heater's reported
+				{/* The three keys are modal: the one matching the heater's reported
 				    state lights up, which is what the State column used to say in
-				    words. */}
-				<div class="heat-actions">
+				    words. Single letters, because each one now sits at the end of a
+				    row that already spends its width on two setpoint fields — the
+				    aria-label carries the word the face no longer has room for. */}
+				<div class="heat-modes">
 					<GcodeButton
-						label="Active"
+						label="Act"
 						variant="go"
-						class="heat-active"
+						class={modeClass("active", atTarget(props.heater.current, props.heater.active))}
 						stamp={false}
 						engaged={props.heater.state === "active"}
-						command={isBed() ? cmd.bedActive(props.num, active()) : cmd.toolActive(props.num)}
+						command={activeCmd()}
+						pending={!isBed() && activePhase() === "pending"}
+						ariaLabel={`${who()} active${!isBed() && activePhase() === "pending" ? " — set target" : ""}`}
 					/>
 					{/* The bed has no standby mode, so its column stays EMPTY rather
 					    than closing up — Active and Off keep the tools' columns. */}
 					<Show when={!isBed()}>
 						<GcodeButton
-							label="Standby"
-							class="heat-standby"
+							label="Stand"
+							class={modeClass("standby", atTarget(props.heater.current, props.heater.standby))}
 							stamp={false}
 							engaged={props.heater.state === "standby"}
-							command={cmd.toolStandby(props.num)}
+							command={standbyCmd()}
+							pending={standbyPhase() === "pending"}
+							ariaLabel={`${who()} standby${standbyPhase() === "pending" ? " — set target" : ""}`}
 						/>
 					</Show>
 					<GcodeButton
 						label="Off"
 						variant="danger"
-						class="heat-off"
+						class={modeClass("off", true)}
 						stamp={false}
 						engaged={props.heater.state === "off"}
 						command={isBed() ? cmd.bedOff(props.num) : cmd.toolOff(props.num)}
+						ariaLabel={`${who()} off`}
 					/>
 				</div>
 			</td>
@@ -369,34 +383,40 @@ function HeaterActions(props: {
 	standby: number | null;
 	/** heater.state — lights the button for the mode the machine is in. */
 	state: string;
+	/** The reading, so the engaged key can brighten on arrival. */
+	reading: number;
 }) {
 	const isBed = (): boolean => props.kind === "bed";
+	const who = (): string => (isBed() ? "Bed" : `Tool ${props.num}`);
 	return (
-		<div class="heat-actions">
+		<div class="heat-modes">
 			<GcodeButton
-				label="Active"
+				label="Act"
 				variant="go"
-				class="heat-active"
+				class={modeClass("active", atTarget(props.reading, props.active))}
 				stamp={false}
 				engaged={props.state === "active"}
 				command={isBed() ? cmd.bedActive(props.num, props.active) : cmd.toolActive(props.num)}
+				ariaLabel={`${who()} active`}
 			/>
 			<Show when={!isBed() && props.standby !== null}>
 				<GcodeButton
-					label="Standby"
-					class="heat-standby"
+					label="Stand"
+					class={modeClass("standby", atTarget(props.reading, props.standby))}
 					stamp={false}
 					engaged={props.state === "standby"}
 					command={cmd.toolStandby(props.num)}
+					ariaLabel={`${who()} standby`}
 				/>
 			</Show>
 			<GcodeButton
 				label="Off"
 				variant="danger"
-				class="heat-off"
+				class={modeClass("off", true)}
 				stamp={false}
 				engaged={props.state === "off"}
 				command={isBed() ? cmd.bedOff(props.num) : cmd.toolOff(props.num)}
+				ariaLabel={`${who()} off`}
 			/>
 		</div>
 	);

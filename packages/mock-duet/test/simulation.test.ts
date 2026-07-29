@@ -28,6 +28,74 @@ test("heater approaches its target after M104 without bumping seqs.heat", () => 
 	assert.equal(machine.seqs.heat, heatSeq);
 });
 
+/**
+ * The two halves of M568 are independent, and the UI relies on that: its mode
+ * buttons send the setpoint on one click and the mode on the next. A mock that
+ * only reads S/R swallows the second click, and the heater sits at ambient
+ * forever while the UI shows a target — which is exactly what happened.
+ */
+test("M568 S sets the setpoint WITHOUT switching the heater on", () => {
+	const machine = new Machine(scenarios["idle"]);
+	const heater = machine.om.heat.heaters[1];
+	const before = heater.state;
+
+	machine.execute("M568 P0 S210");
+	assert.equal(heater.active, 210, "the setpoint is stored");
+	assert.equal(heater.state, before, "…but the mode is untouched — that is A's job");
+
+	for (let i = 0; i < 120; i++) machine.advance(1_000);
+	assert.ok(heater.current < 40, `an off heater must not heat; got ${heater.current}`);
+});
+
+test("M568 A2 then heats to the setpoint already stored", () => {
+	const machine = new Machine(scenarios["idle"]);
+	const heater = machine.om.heat.heaters[1];
+
+	machine.execute("M568 P0 S210");
+	machine.execute("M568 P0 A2");
+	assert.equal(heater.state, "active");
+
+	for (let i = 0; i < 120; i++) machine.advance(1_000);
+	assert.ok(Math.abs(heater.current - 210) < 5, `got ${heater.current}`);
+});
+
+test("M568 A1 tracks the standby setpoint, A0 lets it fall back to ambient", () => {
+	const machine = new Machine(scenarios["idle"]);
+	const heater = machine.om.heat.heaters[1];
+
+	machine.execute("M568 P0 S210 R120");
+	machine.execute("M568 P0 A1");
+	assert.equal(heater.state, "standby");
+	for (let i = 0; i < 200; i++) machine.advance(1_000);
+	assert.ok(Math.abs(heater.current - 120) < 5, `standby target; got ${heater.current}`);
+
+	machine.execute("M568 P0 A0");
+	assert.equal(heater.state, "off");
+	for (let i = 0; i < 600; i++) machine.advance(1_000);
+	assert.ok(heater.current < 40, `off must cool; got ${heater.current}`);
+});
+
+/**
+ * P is not decoration. The card sends M568 P<n> for the row you pressed, which
+ * is usually NOT the current tool — routing every one of them to tool 0 made
+ * the mock look like it worked while heating the wrong heater.
+ */
+test("M568 P addresses that tool, not the current one", () => {
+	const machine = new Machine(scenarios["idle"]);
+	const tools = machine.om.tools.filter((t: { heaters: number[] } | null) => t !== null);
+	if (tools.length < 2) return; // single-tool scenario has nothing to mis-route
+
+	const [first, second] = tools as { heaters: number[] }[];
+	const other = machine.om.heat.heaters[second!.heaters[0]!];
+	const mine = machine.om.heat.heaters[first!.heaters[0]!];
+	const untouched = mine.active;
+
+	machine.execute("M568 P1 S185 A2");
+	assert.equal(other.active, 185);
+	assert.equal(other.state, "active");
+	assert.equal(mine.active, untouched, "tool 0 must not move when P1 was addressed");
+});
+
 test("mid-print scenario: processing status and advancing progress", () => {
 	const machine = new Machine(scenarios["mid-print"]);
 	assert.equal(machine.om.state.status, "processing");
