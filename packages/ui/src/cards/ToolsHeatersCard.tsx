@@ -1,5 +1,5 @@
 import { For, Show, createEffect, createMemo, createResource, createSignal } from "solid-js";
-import { commitPhase, clickSendsSetpoint, atTarget, type CommitPhase } from "../control/setpointCommit.ts";
+import { commitPhase, clickSendsSetpoint, atTarget, staysArmed, type CommitPhase } from "../control/setpointCommit.ts";
 import { useApp } from "../shell/context.ts";
 import { cmd } from "../control/commands.ts";
 import { GcodeButton } from "../control/GcodeButton.tsx";
@@ -274,6 +274,17 @@ function HeaterCells(props: { heater: Heater; index: number; kind: "tool" | "bed
 	const standbyPhase = (): CommitPhase =>
 		commitPhase(standby(), props.heater.standby, props.heater.state === "standby");
 
+	// See ControlCards: press 1 writes the setpoint and arms, press 2 switches
+	// the profile. No press can activate a heater on its own.
+	const [armedActive, setArmedActive] = createSignal(false);
+	const [armedStandby, setArmedStandby] = createSignal(false);
+	createEffect(() => {
+		if (!staysArmed(activePhase(), props.heater.state === "active")) setArmedActive(false);
+	});
+	createEffect(() => {
+		if (!staysArmed(standbyPhase(), props.heater.state === "standby")) setArmedStandby(false);
+	});
+
 	// Same two-click model as the Tools card: an unsent field makes the click
 	// write the setpoint, a matching field makes it set the mode. The pulsing
 	// dot says which. The bed has no mode parameter, so its Active is always
@@ -281,11 +292,11 @@ function HeaterCells(props: { heater: Heater; index: number; kind: "tool" | "bed
 	const activeCmd = (): string =>
 		isBed()
 			? cmd.bedActive(props.num, active())
-			: clickSendsSetpoint(activePhase())
+			: clickSendsSetpoint(armedActive())
 				? cmd.toolActiveSetpoint(props.num, active())
 				: cmd.toolActive(props.num);
 	const standbyCmd = (): string =>
-		clickSendsSetpoint(standbyPhase())
+		clickSendsSetpoint(armedStandby())
 			? cmd.toolStandbySetpoint(props.num, standby())
 			: cmd.toolStandby(props.num);
 
@@ -346,6 +357,9 @@ function HeaterCells(props: { heater: Heater; index: number; kind: "tool" | "bed
 						engaged={props.heater.state === "active"}
 						command={activeCmd()}
 						pending={!isBed() && activePhase() === "pending"}
+						applied={armedActive()}
+						ackAccent={!clickSendsSetpoint(armedActive())}
+						onSent={() => setArmedActive(!isBed() && clickSendsSetpoint(armedActive()))}
 						ariaLabel={`${who()} active${!isBed() && activePhase() === "pending" ? " — set target" : ""}`}
 					/>
 					{/* The bed has no standby mode, so its column stays EMPTY rather
@@ -359,6 +373,9 @@ function HeaterCells(props: { heater: Heater; index: number; kind: "tool" | "bed
 							engaged={props.heater.state === "standby"}
 							command={standbyCmd()}
 							pending={standbyPhase() === "pending"}
+							applied={armedStandby()}
+							ackAccent={!clickSendsSetpoint(armedStandby())}
+							onSent={() => setArmedStandby(clickSendsSetpoint(armedStandby()))}
 							ariaLabel={`${who()} standby${standbyPhase() === "pending" ? " — set target" : ""}`}
 						/>
 					</Show>

@@ -27,8 +27,14 @@ export function GcodeButton(props: {
 	command: string;
 	variant?: "go" | "danger" | "quiet";
 	disabled?: boolean;
-	/** Called after the command is sent (e.g. to clear an input). */
-	onSent?: () => void;
+	/**
+	 * Called after the command is sent (e.g. to clear an input), with the exact
+	 * text that went out. The argument matters: `command` is reactive, and by
+	 * the time a send resolves the machine has often already been re-polled and
+	 * recomputed it into something else — a caller that re-read props.command
+	 * here would be asking what the button will do NEXT, not what it just did.
+	 */
+	onSent?: (sent: string) => void;
 	/** Hide the mono stamp (dense rows where the command is obvious/shown once). */
 	stamp?: boolean;
 	/**
@@ -67,9 +73,31 @@ export function GcodeButton(props: {
 	 * earns the filled ground. Engaged without it stays outlined.
 	 */
 	atTarget?: boolean;
+	/**
+	 * A setpoint was just written from this button's field and the machine has
+	 * acknowledged it, but the mode has not been set yet — so the NEXT click is
+	 * the one that acts on it. Without this the two-click sequence has an
+	 * invisible middle: the first click lands, nothing changes on screen, and
+	 * there is nothing to say a second press is what starts the heater.
+	 */
+	applied?: boolean;
+	/**
+	 * This press will change the machine's MODE rather than write a value, so
+	 * its acknowledgement flashes copper instead of green.
+	 *
+	 * On a key that multiplexes the two (the heater modes), one green flash for
+	 * both jobs says only "something was sent" — and the interesting question
+	 * at that moment is *which*. Copper is the same colour the pending dot uses
+	 * for "this press will act", so the flash reads as the follow-through.
+	 */
+	ackAccent?: boolean;
 }) {
 	const app = useApp();
 	const [state, setState] = createSignal<SendState>("idle");
+	// Snapshotted when the send starts: props.ackAccent is derived from the
+	// machine's own state, which the send itself changes — left reactive, the
+	// flash would switch colour halfway through as the poll lands.
+	const [ackAccent, setAckAccent] = createSignal(false);
 	let timer: ReturnType<typeof setTimeout> | undefined;
 
 	// A button unmounted mid-flight (panel hidden, view switched) must not have
@@ -85,10 +113,14 @@ export function GcodeButton(props: {
 	const send = async (): Promise<void> => {
 		clearTimeout(timer);
 		setState("sending");
+		// Read ONCE, up front: this is the command this press is committed to,
+		// whatever props.command becomes while it is in flight.
+		const sending = props.command;
+		setAckAccent(props.ackAccent === true);
 		try {
-			await app.connector.sendCode(props.command);
+			await app.connector.sendCode(sending);
 			settle("sent");
-			props.onSent?.();
+			props.onSent?.(sending);
 		} catch {
 			// Rejected by the board or blocked by the dev write guard. The reason
 			// is surfaced in the console drawer; the button only reports that it
@@ -106,6 +138,10 @@ export function GcodeButton(props: {
 				"gcode-quiet": props.variant === "quiet",
 				"is-engaged": props.engaged === true,
 				"at-target": props.atTarget === true,
+				"is-applied": props.applied === true,
+				// Snapshot, not props.ackAccent: the flash must keep the colour of
+				// the press that produced it.
+				"ack-mode": ackAccent(),
 				// Only while idle: a live send's own dot outranks it, or the
 				// button would claim "unapplied" during the very send applying it.
 				"is-pending": props.pending === true && state() === "idle",

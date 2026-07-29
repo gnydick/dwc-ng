@@ -59,7 +59,7 @@ export const CARD_DEFS = {
 		// contentRowSpan() (shell/panelCanvas.ts:277) against the rendered card
 		// on the Machine screen, so the default tracks what the content
 		// actually needs rather than a second hand-maintained guess at it.
-		size: { colSpan: 12, rowSpan: 103 },
+		size: { colSpan: 156, rowSpan: 103 },
 	}),
 	/** Tools & heaters table: state + setpoint entry and per-heater actions. */
 	"tools-heaters": defineCard({
@@ -67,7 +67,7 @@ export const CARD_DEFS = {
 		ariaLabel: "Tools and heaters",
 		tip: "tools · heat.heaters · M568 · M562",
 		orientationToggle: true,
-		size: { colSpan: 12, rowSpan: 110 },
+		size: { colSpan: 156, rowSpan: 110 },
 	}),
 	/** The print card — progress + pause/resume/cancel; Reprint when idle. */
 	"active-job": defineCard({
@@ -78,7 +78,7 @@ export const CARD_DEFS = {
 		// 40 -> 46, MEASURED via contentRowSpan(). 40 never fit: Pause/Cancel
 		// sat below the fold on every surface that placed this card. Moving them
 		// onto the facts row cut the need from ~58 to 46; this closes the rest.
-		size: { colSpan: 12, rowSpan: 46 },
+		size: { colSpan: 156, rowSpan: 46 },
 	}),
 	/**
 	 * Same card with the three-source estimate breakdown (monitoring surfaces).
@@ -99,7 +99,7 @@ export const CARD_DEFS = {
 		class: "job-active",
 		// 52, not the compact card's 46: this variant carries the extra
 		// est-sources row. Measured the same way.
-		size: { colSpan: 12, rowSpan: 52 },
+		size: { colSpan: 156, rowSpan: 52 },
 	}),
 	/** Endstops, filament monitors, probes. */
 	sensors: defineCard({
@@ -107,21 +107,21 @@ export const CARD_DEFS = {
 		ariaLabel: "Sensors",
 		tip: "sensors.endstops · filamentMonitors · probes",
 		orientationToggle: true,
-		size: { colSpan: 12, rowSpan: 42 },
+		size: { colSpan: 156, rowSpan: 42 },
 	}),
 	/** Live heater chart. */
 	temperatures: defineCard({
 		title: "Temperatures",
 		ariaLabel: "Temperatures",
 		tip: "heat.heaters · live",
-		size: { colSpan: 24, rowSpan: 80 },
+		size: { colSpan: 312, rowSpan: 80 },
 	}),
 	/** Console — reply log + G-code entry. */
 	console: defineCard({
 		title: "Console",
 		ariaLabel: "Console",
 		class: "console-panel",
-		size: { colSpan: 24, rowSpan: 75 },
+		size: { colSpan: 312, rowSpan: 75 },
 	}),
 	/** Camera stream. The ONE encoding of the pinned condition (I3) — it
 	 *  drives both the mount and the cell-release on composed screens. */
@@ -129,7 +129,7 @@ export const CARD_DEFS = {
 		title: "Camera",
 		ariaLabel: "Camera",
 		class: "cam-panel",
-		size: { colSpan: 8, rowSpan: 75 },
+		size: { colSpan: 104, rowSpan: 75 },
 		visibleWhen: ctx => ctx.config.config.camera.pinned,
 	}),
 	/** Per-object cancel (M486) — already content-only, zero props. Always
@@ -139,14 +139,14 @@ export const CARD_DEFS = {
 		title: "Cancel Objects",
 		ariaLabel: "Cancel Objects",
 		tip: "M486 · job.build",
-		size: { colSpan: 12, rowSpan: 53 },
+		size: { colSpan: 156, rowSpan: 53 },
 	}),
 	/** Live 3D toolpath of the active job. */
 	"gcode-viewer": defineCard({
 		title: "Toolpath",
 		ariaLabel: "G-code toolpath",
 		tip: "job.file · job.filePosition",
-		size: { colSpan: 24, rowSpan: 180 },
+		size: { colSpan: 312, rowSpan: 180 },
 	}),
 	/** Per-layer print times — no layers until a print completes one; the body
 	 *  says so rather than the card vanishing. */
@@ -154,7 +154,7 @@ export const CARD_DEFS = {
 		title: "Layer times",
 		ariaLabel: "Layer times",
 		tip: "job.layers",
-		size: { colSpan: 24, rowSpan: 67 },
+		size: { colSpan: 312, rowSpan: 67 },
 	}),
 	/** Per-axis Home/Release table, plus the machine-wide row (G28/G32/M84). */
 	homing: defineCard({
@@ -167,7 +167,7 @@ export const CARD_DEFS = {
 		// resize away; the reverse (sized for tight, overflowing at default)
 		// would hide the last axis behind a scroll on a fresh install.
 		// Measured 2026-07-29, was 51 when the card was a 2-column grid.
-		size: { colSpan: 12, rowSpan: 101 },
+		size: { colSpan: 156, rowSpan: 101 },
 	}),
 	/** ATX PSU. state.atxPower is null on a board with no PS_ON port — the body
 	 *  shows a message there rather than a DEAD switch (which is worse than
@@ -176,14 +176,14 @@ export const CARD_DEFS = {
 		title: "ATX power",
 		ariaLabel: "ATX power",
 		tip: "M80 · M81",
-		size: { colSpan: 12, rowSpan: 32 },
+		size: { colSpan: 156, rowSpan: 32 },
 	}),
 	/** Filament load/unload — a tool with no extruder cannot hold filament. */
 	filament: defineCard({
 		title: "Filament",
 		ariaLabel: "Filament",
 		tip: "M701 · M702 · M703",
-		size: { colSpan: 12, rowSpan: 50 },
+		size: { colSpan: 156, rowSpan: 50 },
 	}),
 	/** Tools: select a tool by its label, plus its heater setpoints. */
 	heaters: defineCard({
@@ -195,14 +195,14 @@ export const CARD_DEFS = {
 		// (entry, then modes). Sized for the DEFAULT pitch — 444px of content
 		// at 1.27 — because a card sized for a tight pitch hides its last tool
 		// behind a scroll on a fresh install. Measured 2026-07-29.
-		size: { colSpan: 12, rowSpan: 115 },
+		size: { colSpan: 156, rowSpan: 115 },
 	}),
 	/** Jog pad, aux axes, coupler, extrude. */
 	movement: defineCard({
 		title: "Movement",
 		ariaLabel: "Movement",
 		tip: "M120 · G91 · M121",
-		size: { colSpan: 12, rowSpan: 123 },
+		size: { colSpan: 156, rowSpan: 123 },
 	}),
 	/** Manual fans only — thermostatic ones belong to the firmware. The body
 	 *  says so when there are none rather than the card disappearing. */
@@ -211,21 +211,21 @@ export const CARD_DEFS = {
 		ariaLabel: "Fans",
 		tip: "M106",
 		orientationToggle: true,
-		size: { colSpan: 12, rowSpan: 62 },
+		size: { colSpan: 156, rowSpan: 62 },
 	}),
 	/** Arbitrary G-code re-sent on an interval to override a running job. */
 	"pinned-commands": defineCard({
 		title: "Pinned commands",
 		ariaLabel: "Pinned commands",
 		tip: "M-code · re-sent 0.5s",
-		size: { colSpan: 12, rowSpan: 50 },
+		size: { colSpan: 156, rowSpan: 50 },
 	}),
 	/** Speed factor + babystep. */
 	tuning: defineCard({
 		title: "Tuning",
 		ariaLabel: "Tuning",
 		tip: "M220 · M221 · M290",
-		size: { colSpan: 12, rowSpan: 33 },
+		size: { colSpan: 156, rowSpan: 33 },
 	}),
 	/** Job file listing (0:/gcodes) — click opens, never runs. */
 	"job-files": defineCard({
@@ -233,7 +233,7 @@ export const CARD_DEFS = {
 		ariaLabel: "Job files",
 		class: "jobs-browse",
 		tip: ctx => ctx.service("jobsBrowser").browser.dir(),
-		size: { colSpan: 12, rowSpan: 135 },
+		size: { colSpan: 156, rowSpan: 135 },
 	}),
 	/** Metadata + thumbnail + start/simulate for the selected job file. */
 	"job-details": defineCard({
@@ -241,14 +241,14 @@ export const CARD_DEFS = {
 		ariaLabel: "Job details",
 		class: "jobs-detail",
 		tip: "rr_fileinfo",
-		size: { colSpan: 12, rowSpan: 135 },
+		size: { colSpan: 156, rowSpan: 135 },
 	}),
 	/** Macro listing (0:/macros) with two-step Run. */
 	macros: defineCard({
 		title: "Macros",
 		ariaLabel: "Macros",
 		tip: ctx => ctx.service("macrosBrowser").browser.dir(),
-		size: { colSpan: 10, rowSpan: 150 },
+		size: { colSpan: 130, rowSpan: 150 },
 	}),
 	/** Macro editor — placeholder until a file is opened. */
 	"macros-editor": defineCard({
@@ -258,7 +258,7 @@ export const CARD_DEFS = {
 		// the ONLY way to tell the two editors apart.
 		ariaLabel: "Macro editor",
 		class: "editor-card",
-		size: { colSpan: 14, rowSpan: 150 },
+		size: { colSpan: 182, rowSpan: 150 },
 	}),
 	/** System file listing (0:/sys) — sys files are invoked by the firmware,
 	 *  so there is deliberately no Run here. */
@@ -266,14 +266,14 @@ export const CARD_DEFS = {
 		title: "System files",
 		ariaLabel: "System files",
 		tip: ctx => ctx.service("sysBrowser").browser.dir(),
-		size: { colSpan: 8, rowSpan: 120 },
+		size: { colSpan: 104, rowSpan: 120 },
 	}),
 	/** System file editor. */
 	"system-editor": defineCard({
 		title: ctx => ctx.service("sysBrowser").selected() ?? "Editor",
 		ariaLabel: "System file editor",
 		class: "editor-card",
-		size: { colSpan: 16, rowSpan: 120 },
+		size: { colSpan: 208, rowSpan: 120 },
 	}),
 	/** The live object model, browsable. */
 	"object-model": defineCard({
@@ -281,14 +281,14 @@ export const CARD_DEFS = {
 		ariaLabel: "Object model",
 		class: "om-card",
 		tip: "live · rr_model",
-		size: { colSpan: 12, rowSpan: 112 },
+		size: { colSpan: 156, rowSpan: 112 },
 	}),
 	/** Per-board firmware update (M997). */
 	firmware: defineCard({
 		title: "Firmware update",
 		ariaLabel: "Firmware update",
 		tip: "M997 · boards",
-		size: { colSpan: 12, rowSpan: 112 },
+		size: { colSpan: 156, rowSpan: 112 },
 	}),
 	/** The height map grid + save/reload. */
 	heightmap: defineCard({
@@ -297,77 +297,77 @@ export const CARD_DEFS = {
 		// Not a fixed filename any more — the Mesh card chooses which map is
 		// loaded, and naming one here would be wrong for every other choice.
 		tip: "0:/sys/*.csv",
-		size: { colSpan: 16, rowSpan: 150 },
+		size: { colSpan: 208, rowSpan: 150 },
 	}),
 	/** Single-point re-probe + manual nudge for the selected cell. */
 	"probe-point": defineCard({
 		title: "Probe point",
 		ariaLabel: "Probe point",
 		tip: "config: bed.probePointCommand",
-		size: { colSpan: 8, rowSpan: 90 },
+		size: { colSpan: 104, rowSpan: 90 },
 	}),
 	/** Which height map is in use, and probe / load / save-as / clear. */
 	mesh: defineCard({
 		title: "Mesh",
 		ariaLabel: "Mesh bed compensation",
 		tip: "G29 · G29 S1 · G29 S2 · G29 S3",
-		size: { colSpan: 8, rowSpan: 60 },
+		size: { colSpan: 104, rowSpan: 60 },
 	}),
 	/** Bed tramming (bed.g), the re-home it requires, and the last result. */
 	"bed-tram": defineCard({
 		title: "Bed tram",
 		ariaLabel: "Bed tram",
 		tip: "G32 · G28 Z",
-		size: { colSpan: 8, rowSpan: 40 },
+		size: { colSpan: 104, rowSpan: 40 },
 	}),
 	/** Axis role labels (config overlay). */
 	"axis-roles": defineCard({
 		title: "Axis roles",
 		ariaLabel: "Axis roles",
-		size: { colSpan: 12, rowSpan: 109 },
+		size: { colSpan: 156, rowSpan: 109 },
 	}),
 	/** Per-heater chart line colours (config overlay). */
 	"heater-colors": defineCard({
 		title: "Chart colours",
 		ariaLabel: "Chart colours",
 		tip: "heat.heaters",
-		size: { colSpan: 12, rowSpan: 76 },
+		size: { colSpan: 156, rowSpan: 76 },
 	}),
 	/** The cold/warm/hot ramp for temperature readings (config overlay). */
 	"thermal-colors": defineCard({
 		title: "Reading colours",
 		ariaLabel: "Reading colours",
-		size: { colSpan: 12, rowSpan: 60 },
+		size: { colSpan: 156, rowSpan: 60 },
 	}),
 	/** Tool dock presence sensors (config overlay). */
 	"tool-dock-sensors": defineCard({
 		title: "Tool dock sensors",
 		ariaLabel: "Tool dock sensors",
-		size: { colSpan: 12, rowSpan: 76 },
+		size: { colSpan: 156, rowSpan: 76 },
 	}),
 	/** The Bed view's probe-point command template (config overlay). */
 	"bed-probe": defineCard({
 		title: "Bed probing",
 		ariaLabel: "Bed probing",
-		size: { colSpan: 12, rowSpan: 45 },
+		size: { colSpan: 156, rowSpan: 45 },
 	}),
 	/** Camera stream URL (config overlay). */
 	"camera-config": defineCard({
 		title: "Camera URL",
 		ariaLabel: "Camera URL",
-		size: { colSpan: 12, rowSpan: 40 },
+		size: { colSpan: 156, rowSpan: 40 },
 	}),
 	/** Sensor display names (config overlay). */
 	"sensor-names": defineCard({
 		title: "Sensor names",
 		ariaLabel: "Sensor names",
-		size: { colSpan: 24, rowSpan: 72 },
+		size: { colSpan: 312, rowSpan: 72 },
 	}),
 	/** Config snapshot history + one-click revert. */
 	"saved-versions": defineCard({
 		title: "Saved versions",
 		ariaLabel: "Saved versions",
-		size: { colSpan: 12, rowSpan: 40 },
+		size: { colSpan: 156, rowSpan: 40 },
 	}),
 	/** Save the config overlay to the machine's SD / reset everything —
 	 *  the former Settings save-bar, now composable like everything else. */
@@ -375,7 +375,7 @@ export const CARD_DEFS = {
 		title: "Configuration",
 		ariaLabel: "Configuration save",
 		tip: "0:/sys/dwc-ng-config.json",
-		size: { colSpan: 24, rowSpan: 26 },
+		size: { colSpan: 312, rowSpan: 26 },
 	}),
 	/** Define the materials this machine knows about: the filament directories
 	 *  under 0:/filaments and their load/unload/config macros. Machine
@@ -384,7 +384,7 @@ export const CARD_DEFS = {
 		title: "Filament editor",
 		ariaLabel: "Filament editor",
 		tip: "0:/filaments · M703",
-		size: { colSpan: 24, rowSpan: 130 },
+		size: { colSpan: 312, rowSpan: 130 },
 	}),
 } as const satisfies Record<string, CardMeta>;
 

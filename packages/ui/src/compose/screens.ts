@@ -29,15 +29,15 @@ export interface ScreenDef {
 export const MACHINE_COMPOSITION: Composition = {
 	// 95 -> 103 for the speed footer (CARD_DEFS.position.size agrees); the card
 	// below it moves down by the same 8 so the column stays collision-free.
-	position: { col: 0, row: 0, colSpan: 12, rowSpan: 103 },
-	"tools-heaters": { col: 12, row: 0, colSpan: 12, rowSpan: 110 },
+	position: { col: 0, row: 0, colSpan: 156, rowSpan: 103 },
+	"tools-heaters": { col: 156, row: 0, colSpan: 156, rowSpan: 110 },
 	// 40 -> 46 so Pause/Cancel are above the fold. Column 0 now ends at 149,
 	// still clear of temperatures at 152, so nothing below needs to move.
-	"active-job": { col: 0, row: 103, colSpan: 12, rowSpan: 46 },
-	sensors: { col: 12, row: 110, colSpan: 12, rowSpan: 42 },
-	temperatures: { col: 0, row: 152, colSpan: 24, rowSpan: 80 },
-	console: { col: 0, row: 232, colSpan: 24, rowSpan: 75 },
-	camera: { col: 0, row: 307, colSpan: 8, rowSpan: 75 },
+	"active-job": { col: 0, row: 103, colSpan: 156, rowSpan: 46 },
+	sensors: { col: 156, row: 110, colSpan: 156, rowSpan: 42 },
+	temperatures: { col: 0, row: 152, colSpan: 312, rowSpan: 80 },
+	console: { col: 0, row: 232, colSpan: 312, rowSpan: 75 },
+	camera: { col: 0, row: 307, colSpan: 104, rowSpan: 75 },
 };
 
 /** Control: the interactive surface — every control 1:1 with G-code.
@@ -46,24 +46,24 @@ export const CONTROL_COMPOSITION: Composition = {
 	// active-job 32 -> 46 so Pause/Cancel are above the fold. It spans the full
 	// width at row 0, so EVERY card below shifts down by the same 14 — both
 	// columns and the console/camera strip.
-	"active-job": { col: 0, row: 0, colSpan: 24, rowSpan: 46 },
+	"active-job": { col: 0, row: 0, colSpan: 312, rowSpan: 46 },
 	// homing 51 -> 101 when it became a per-axis table (7 axes + the
 	// machine-wide row need 338px of content at the DEFAULT pitch). The left
 	// column below it shifts down by the same 50, and the full-width
 	// console/camera strip follows the taller of the two columns.
-	homing: { col: 0, row: 46, colSpan: 12, rowSpan: 101 },
+	homing: { col: 0, row: 46, colSpan: 156, rowSpan: 101 },
 	// heaters 62 -> 115: two setpoint fields and two Set buttons per tool make
 	// every tool row two lines. The rest of the left column follows.
-	heaters: { col: 0, row: 147, colSpan: 12, rowSpan: 115 },
-	fans: { col: 0, row: 262, colSpan: 12, rowSpan: 62 },
-	"pinned-commands": { col: 0, row: 324, colSpan: 12, rowSpan: 50 },
-	tuning: { col: 0, row: 374, colSpan: 12, rowSpan: 33 },
-	filament: { col: 12, row: 79, colSpan: 12, rowSpan: 50 },
-	movement: { col: 12, row: 129, colSpan: 12, rowSpan: 123 },
-	atx: { col: 12, row: 252, colSpan: 12, rowSpan: 32 },
+	heaters: { col: 0, row: 147, colSpan: 156, rowSpan: 115 },
+	fans: { col: 0, row: 262, colSpan: 156, rowSpan: 62 },
+	"pinned-commands": { col: 0, row: 324, colSpan: 156, rowSpan: 50 },
+	tuning: { col: 0, row: 374, colSpan: 156, rowSpan: 33 },
+	filament: { col: 156, row: 79, colSpan: 156, rowSpan: 50 },
+	movement: { col: 156, row: 129, colSpan: 156, rowSpan: 123 },
+	atx: { col: 156, row: 252, colSpan: 156, rowSpan: 32 },
 	// Left column now ends at 407, right at 284 — the strip clears both.
-	console: { col: 0, row: 407, colSpan: 24, rowSpan: 75 },
-	camera: { col: 0, row: 482, colSpan: 8, rowSpan: 75 },
+	console: { col: 0, row: 407, colSpan: 312, rowSpan: 75 },
+	camera: { col: 0, row: 482, colSpan: 104, rowSpan: 75 },
 };
 
 /** Activity: live position + detailed job progress + the 3D toolpath.
@@ -72,69 +72,69 @@ export const CONTROL_COMPOSITION: Composition = {
 export const ACTIVITY_COMPOSITION: Composition = {
 	// 95 -> 103 for the speed footer. gcode-viewer spans the full width
 	// directly below, so it and everything under it shift down by the same 8.
-	position: { col: 0, row: 0, colSpan: 12, rowSpan: 103 },
+	position: { col: 0, row: 0, colSpan: 156, rowSpan: 103 },
 	// 40 -> 52 (this variant carries the est-sources row), so build-objects
 	// below it moves to 52 and now ends at 105 — past gcode-viewer's old 103,
 	// which therefore shifts to 105 along with everything under it.
-	"active-job-detailed": { col: 12, row: 0, colSpan: 12, rowSpan: 52 },
-	"build-objects": { col: 12, row: 52, colSpan: 12, rowSpan: 53 },
-	"gcode-viewer": { col: 0, row: 105, colSpan: 24, rowSpan: 180 },
-	layers: { col: 0, row: 285, colSpan: 24, rowSpan: 67 },
-	console: { col: 0, row: 352, colSpan: 24, rowSpan: 75 },
-	camera: { col: 0, row: 427, colSpan: 8, rowSpan: 75 },
+	"active-job-detailed": { col: 156, row: 0, colSpan: 156, rowSpan: 52 },
+	"build-objects": { col: 156, row: 52, colSpan: 156, rowSpan: 53 },
+	"gcode-viewer": { col: 0, row: 105, colSpan: 312, rowSpan: 180 },
+	layers: { col: 0, row: 285, colSpan: 312, rowSpan: 67 },
+	console: { col: 0, row: 352, colSpan: 312, rowSpan: 75 },
+	camera: { col: 0, row: 427, colSpan: 104, rowSpan: 75 },
 };
 
 /** Jobs: the gcodes listing + details for the selected file. */
 export const JOBS_COMPOSITION: Composition = {
-	"job-files": { col: 0, row: 0, colSpan: 12, rowSpan: 135 },
-	"job-details": { col: 12, row: 0, colSpan: 12, rowSpan: 135 },
-	console: { col: 0, row: 135, colSpan: 24, rowSpan: 75 },
-	camera: { col: 0, row: 210, colSpan: 8, rowSpan: 75 },
+	"job-files": { col: 0, row: 0, colSpan: 156, rowSpan: 135 },
+	"job-details": { col: 156, row: 0, colSpan: 156, rowSpan: 135 },
+	console: { col: 0, row: 135, colSpan: 312, rowSpan: 75 },
+	camera: { col: 0, row: 210, colSpan: 104, rowSpan: 75 },
 };
 
 /** Macros: the listing (with Run) + editor. */
 export const MACROS_COMPOSITION: Composition = {
-	macros: { col: 0, row: 0, colSpan: 10, rowSpan: 150 },
-	"macros-editor": { col: 10, row: 0, colSpan: 14, rowSpan: 150 },
-	console: { col: 0, row: 150, colSpan: 24, rowSpan: 75 },
-	camera: { col: 0, row: 225, colSpan: 8, rowSpan: 75 },
+	macros: { col: 0, row: 0, colSpan: 130, rowSpan: 150 },
+	"macros-editor": { col: 130, row: 0, colSpan: 182, rowSpan: 150 },
+	console: { col: 0, row: 150, colSpan: 312, rowSpan: 75 },
+	camera: { col: 0, row: 225, colSpan: 104, rowSpan: 75 },
 };
 
 /** System: 0:/sys listing + editor, firmware update, the OM inspector. */
 export const SYSTEM_COMPOSITION: Composition = {
-	"system-files": { col: 0, row: 0, colSpan: 8, rowSpan: 120 },
-	"system-editor": { col: 8, row: 0, colSpan: 16, rowSpan: 120 },
-	firmware: { col: 0, row: 120, colSpan: 12, rowSpan: 112 },
-	"object-model": { col: 12, row: 120, colSpan: 12, rowSpan: 112 },
-	console: { col: 0, row: 232, colSpan: 24, rowSpan: 75 },
-	camera: { col: 0, row: 307, colSpan: 8, rowSpan: 75 },
+	"system-files": { col: 0, row: 0, colSpan: 104, rowSpan: 120 },
+	"system-editor": { col: 104, row: 0, colSpan: 208, rowSpan: 120 },
+	firmware: { col: 0, row: 120, colSpan: 156, rowSpan: 112 },
+	"object-model": { col: 156, row: 120, colSpan: 156, rowSpan: 112 },
+	console: { col: 0, row: 232, colSpan: 312, rowSpan: 75 },
+	camera: { col: 0, row: 307, colSpan: 104, rowSpan: 75 },
 };
 
 /** Bed maintenance: the height map, which map is in use, tramming, and
  *  single-point re-probe. Grew from the height-map-only screen (audit item). */
 export const BED_COMPOSITION: Composition = {
-	heightmap: { col: 0, row: 0, colSpan: 16, rowSpan: 150 },
-	mesh: { col: 16, row: 0, colSpan: 8, rowSpan: 60 },
-	"bed-tram": { col: 16, row: 60, colSpan: 8, rowSpan: 40 },
-	"probe-point": { col: 16, row: 100, colSpan: 8, rowSpan: 90 },
-	console: { col: 0, row: 190, colSpan: 24, rowSpan: 75 },
-	camera: { col: 0, row: 265, colSpan: 8, rowSpan: 75 },
+	heightmap: { col: 0, row: 0, colSpan: 208, rowSpan: 150 },
+	mesh: { col: 208, row: 0, colSpan: 104, rowSpan: 60 },
+	"bed-tram": { col: 208, row: 60, colSpan: 104, rowSpan: 40 },
+	"probe-point": { col: 208, row: 100, colSpan: 104, rowSpan: 90 },
+	console: { col: 0, row: 190, colSpan: 312, rowSpan: 75 },
+	camera: { col: 0, row: 265, colSpan: 104, rowSpan: 75 },
 };
 
 /** Settings: config-overlay editors + the save card (the former save-bar). */
 export const SETTINGS_COMPOSITION: Composition = {
-	"axis-roles": { col: 0, row: 0, colSpan: 12, rowSpan: 109 },
-	"camera-config": { col: 0, row: 109, colSpan: 12, rowSpan: 40 },
-	"tool-dock-sensors": { col: 12, row: 0, colSpan: 12, rowSpan: 76 },
-	"saved-versions": { col: 12, row: 76, colSpan: 12, rowSpan: 40 },
-	"bed-probe": { col: 12, row: 116, colSpan: 12, rowSpan: 45 },
-	"heater-colors": { col: 0, row: 161, colSpan: 12, rowSpan: 76 },
-	"thermal-colors": { col: 12, row: 161, colSpan: 12, rowSpan: 60 },
-	"sensor-names": { col: 0, row: 237, colSpan: 24, rowSpan: 72 },
-	"filament-editor": { col: 0, row: 309, colSpan: 24, rowSpan: 130 },
-	"config-save": { col: 0, row: 439, colSpan: 24, rowSpan: 26 },
-	console: { col: 0, row: 465, colSpan: 24, rowSpan: 75 },
-	camera: { col: 0, row: 540, colSpan: 8, rowSpan: 75 },
+	"axis-roles": { col: 0, row: 0, colSpan: 156, rowSpan: 109 },
+	"camera-config": { col: 0, row: 109, colSpan: 156, rowSpan: 40 },
+	"tool-dock-sensors": { col: 156, row: 0, colSpan: 156, rowSpan: 76 },
+	"saved-versions": { col: 156, row: 76, colSpan: 156, rowSpan: 40 },
+	"bed-probe": { col: 156, row: 116, colSpan: 156, rowSpan: 45 },
+	"heater-colors": { col: 0, row: 161, colSpan: 156, rowSpan: 76 },
+	"thermal-colors": { col: 156, row: 161, colSpan: 156, rowSpan: 60 },
+	"sensor-names": { col: 0, row: 237, colSpan: 312, rowSpan: 72 },
+	"filament-editor": { col: 0, row: 309, colSpan: 312, rowSpan: 130 },
+	"config-save": { col: 0, row: 439, colSpan: 312, rowSpan: 26 },
+	console: { col: 0, row: 465, colSpan: 312, rowSpan: 75 },
+	camera: { col: 0, row: 540, colSpan: 104, rowSpan: 75 },
 };
 
 /** The built-in screens, in nav order. Ids are stable identities. */

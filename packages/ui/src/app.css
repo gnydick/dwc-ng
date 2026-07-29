@@ -4,7 +4,7 @@
 .app {
 	display: grid;
 	/* minmax(0, …) so .main can't grow to match a wide child (the panel-canvas's
-	   fixed 2490px grid track) — without it, a flex sibling like the header
+	   fixed ~2500px grid track) — without it, a flex sibling like the header
 	   would stretch to that width too and its right-aligned content would
 	   render off-screen. */
 	grid-template-columns: 188px minmax(0, 1fr);
@@ -69,7 +69,7 @@
    the header (a .main sibling) along with it. Stays a flex column (like
    .main used to be directly) so .panel-canvas is still a flex ITEM: only
    flex/grid items get the "auto minimum size = min-content" behavior that
-   lets panel-canvas's fixed 46px tracks hold their width instead of being
+   lets panel-canvas's fixed 4px tracks hold their width instead of being
    squeezed to fit — an ordinary block child would just shrink to fill.
    Deliberately NOT flex:1 — setting overflow-x forces the browser to also
    compute overflow-y as auto (a CSS rule: if one axis is a scrolling value
@@ -83,7 +83,7 @@
 .view-scroll { min-width: 0; min-height: 0; flex: 1; overflow: auto; display: flex; flex-direction: column; }
 /* align-self: flex-start opts panel-canvas out of the column's default
    cross-axis stretch — stretch would clamp it to view-scroll's width
-   outright, bypassing the min-content floor that keeps its 46px tracks
+   outright, bypassing the min-content floor that keeps its 4px tracks
    from being squeezed and letting it hold its true (possibly wider than
    viewport) intrinsic size instead. */
 .view-scroll .panel-canvas { flex: 1; align-self: flex-start; align-content: start; }
@@ -96,7 +96,7 @@
    to drag/resize into, and it grows the scroll range rather than the content. */
 .view-scroll .panel-canvas { padding-bottom: 720px; }
 
-/* No scrollbar chrome. The canvas is a fixed 48×46px + gaps = 2490px wide and
+/* No scrollbar chrome. The canvas is a fixed 624×4px = 2496px wide and
    is meant to be panned/scrolled, but the bars themselves are visual noise on
    what should read as one continuous surface. Still fully scrollable. */
 .view-scroll { scrollbar-width: none; -ms-overflow-style: none; }
@@ -243,13 +243,17 @@
 .panel-canvas {
 	display: grid;
 }
-/* The vertical gutter, moved off the grid and onto the item. A card spanning
-   n rows renders (4n - 8)px tall — still a multiple of 4, so a card height can
-   land exactly on a content height. Every vertical value in a card (head, its
-   margin, the body's padding) is a multiple of 4 for the same reason: with any
-   one of them off-grid, content totals sit permanently between two achievable
-   card heights and an exact fit becomes impossible at ANY increment. */
-.panel-canvas > * { margin-bottom: var(--sp-stack); }
+/* BOTH gutters, moved off the grid and onto the item. A card spanning n cells
+   renders (4n - gutter)px — still a multiple of 4, so a card size can land
+   exactly on a content size. Every value inside a card (head, its margin, the
+   body's padding) is a multiple of 4 for the same reason: with any one of them
+   off-grid, content totals sit permanently between two achievable card sizes
+   and an exact fit becomes impossible at ANY increment.
+
+   The horizontal gutter used to be the grid's own column-gap, which forced a
+   52px column pitch and up to 51px of unremovable dead width per card. Same
+   treatment as the rows, same result: the quantum is now 4px on both axes. */
+.panel-canvas > * { margin-bottom: var(--sp-stack); margin-right: var(--sp-stack); }
 
 .card {
 	background: var(--mask-700);
@@ -676,7 +680,9 @@
 	   stays symmetric at any card width instead of being a fixed shortfall. */
 	width: 100%;
 	max-width: 100%;
-	min-width: 0;
+	/* Same reason as .filament-pick: a zero-width floor would let the card's
+	   width detent snap far below anything readable. */
+	min-width: 88px;
 	height: var(--ctl-h);
 	box-sizing: border-box;
 	font-size: 12px;
@@ -1483,6 +1489,11 @@
 
 .is-sending .gcode-ack { background: var(--silk-dim); animation: ack-pulse 700ms ease-in-out infinite; }
 .is-sent .gcode-ack { background: var(--ok); box-shadow: 0 0 0 3px rgba(111, 191, 143, 0.22); }
+/* A press that changed the machine's MODE rather than writing a value. Green
+   for "value stored", copper for "profile switched" — on a key that does both,
+   the flash has to say which one just happened. */
+.is-sent.ack-mode .gcode-ack { background: var(--copper-bright); box-shadow: 0 0 0 3px rgba(214, 138, 76, 0.28); }
+.gcode-btn.is-sent.ack-mode { border-color: var(--copper); }
 .is-failed .gcode-ack { background: var(--fault); box-shadow: 0 0 0 3px rgba(224, 92, 74, 0.25); }
 .gcode-btn.is-sent { border-color: var(--ok); }
 .gcode-btn.is-failed { border-color: var(--fault); background: linear-gradient(180deg, #3a2430 0%, #2b1b26 100%); }
@@ -1537,14 +1548,21 @@
 	border-color: var(--btn-accent);
 }
 .mode-key.is-engaged:not(.at-target) .gcode-label { color: var(--btn-accent); }
+/* Your value landed; the next press is the one that acts on it. Full-strength
+   accent lettering on the resting ground — brighter than at rest, dimmer than
+   engaged — so the middle of the two-click sequence is visible instead of
+   looking exactly like having done nothing. Colour only, like every other
+   state here: nothing about the box moves. */
+.mode-key.is-applied:not(.is-engaged) { border-color: var(--btn-accent); }
+.mode-key.is-applied:not(.is-engaged) .gcode-label { color: var(--btn-accent); }
 /* Resting: dark green, nothing to do. Scoped to :not(.is-engaged) — this rule
    sits after the shared engaged rule, so without the guard it would repaint an
    ARRIVED key's label back to green on its own green ground and hide the word.
    */
-.mode-key.heat-active:not(.is-engaged) { border-color: rgba(111, 191, 143, 0.35); }
-.mode-key.heat-active:not(.is-engaged) .gcode-label { color: rgba(111, 191, 143, 0.75); }
-.mode-key.heat-standby:not(.is-engaged) { border-color: rgba(233, 238, 244, 0.18); }
-.mode-key.heat-off:not(.is-engaged) { border-color: rgba(224, 92, 74, 0.35); }
+.mode-key.heat-active:not(.is-engaged):not(.is-applied) { border-color: rgba(111, 191, 143, 0.35); }
+.mode-key.heat-active:not(.is-engaged):not(.is-applied) .gcode-label { color: rgba(111, 191, 143, 0.75); }
+.mode-key.heat-standby:not(.is-engaged):not(.is-applied) { border-color: rgba(233, 238, 244, 0.18); }
+.mode-key.heat-off:not(.is-engaged):not(.is-applied) { border-color: rgba(224, 92, 74, 0.35); }
 /* The bed has no S key. Its slot is held open so A and O stay in the tools'
    columns — the same empty-cell discipline the heater table uses.
    ONE definition, shared by the Control card's rows and the Tools table's
@@ -2227,7 +2245,7 @@
    its top. The border is inside the element's box, so no ancestor clip can
    reach it, at any grid position; it also avoids the 1px bloom an outset ring
    added on snap (border-box unchanged → no reflow, no shift). */
-.card.at-detent { border-color: var(--copper); }
+.card.at-limit { border-color: var(--copper); }
 
 /* Equal-width control grid. Used where labels vary in length and a ragged
    flex-wrap would leave no two buttons sharing a width or an edge. */
@@ -2433,7 +2451,14 @@
 	background: var(--mask-900); color: var(--silk);
 	border: 1px solid var(--hairline); border-radius: 5px;
 	padding: 0 6px; font: 400 12.5px/1 var(--font-body); cursor: pointer;
-	min-width: 0; flex: 1;
+	/* NOT min-width: 0. A select that admits it can be zero wide tells the
+	   width detent (panelCanvas contentColSpan) that this card fits in almost
+	   nothing, so the snap lands somewhere useless and the card can be dragged
+	   until the material name is a sliver. This is the narrowest width at which
+	   a filament name is still readable; the card cannot be shrunk past it
+	   without breaking the detent away deliberately. */
+	min-width: 88px;
+	flex: 1;
 }
 .filament-pick:focus-visible { outline: none; border-color: var(--copper); }
 .filament-loaded {

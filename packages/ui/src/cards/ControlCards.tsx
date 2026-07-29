@@ -10,7 +10,7 @@
  */
 import { For, Show, createEffect, createMemo, createSignal } from "solid-js";
 import { useApp } from "../shell/context.ts";
-import { commitPhase, clickSendsSetpoint, atTarget, type CommitPhase } from "../control/setpointCommit.ts";
+import { commitPhase, clickSendsSetpoint, atTarget, staysArmed, type CommitPhase } from "../control/setpointCommit.ts";
 import { cmd } from "../control/commands.ts";
 import { GcodeButton } from "../control/GcodeButton.tsx";
 import { SpeedSlider } from "../control/SpeedSlider.tsx";
@@ -212,16 +212,29 @@ function HeaterControl(props: {
 	const activePhase = (): CommitPhase => commitPhase(temp(), props.active, props.state === "active");
 	const standbyPhase = (): CommitPhase => commitPhase(standbyTemp(), props.standby, props.state === "standby");
 
+	// Press 1 writes the setpoint and arms; press 2 switches the profile. Armed
+	// is dropped once the machine is IN that mode (nothing left to switch to) or
+	// the field is edited again (the new value has to be written first), so a
+	// key can never be left quietly loaded from minutes ago.
+	const [armedActive, setArmedActive] = createSignal(false);
+	const [armedStandby, setArmedStandby] = createSignal(false);
+	createEffect(() => {
+		if (!staysArmed(activePhase(), props.state === "active")) setArmedActive(false);
+	});
+	createEffect(() => {
+		if (!staysArmed(standbyPhase(), props.state === "standby")) setArmedStandby(false);
+	});
+
 	// The bed has no mode parameter (M140), so setting its temperature IS
-	// turning it on — one command, no two-click step.
+	// turning it on — one command, and no arming step to make sense of.
 	const activeCmd = (): string =>
 		props.kind === "bed"
 			? cmd.bedActive(props.num, temp())
-			: clickSendsSetpoint(activePhase())
+			: clickSendsSetpoint(armedActive())
 				? cmd.toolActiveSetpoint(props.num, temp())
 				: cmd.toolActive(props.num);
 	const standbyCmd = (): string =>
-		clickSendsSetpoint(standbyPhase())
+		clickSendsSetpoint(armedStandby())
 			? cmd.toolStandbySetpoint(props.num, standbyTemp())
 			: cmd.toolStandby(props.num);
 	const offCmd = () => (props.kind === "bed" ? cmd.bedOff(props.num) : cmd.toolOff(props.num));
@@ -301,6 +314,9 @@ function HeaterControl(props: {
 					stamp={false}
 					engaged={props.state === "active"}
 					pending={props.kind === "tool" && activePhase() === "pending"}
+					applied={armedActive()}
+					ackAccent={!clickSendsSetpoint(armedActive())}
+					onSent={() => setArmedActive(props.kind === "tool" && clickSendsSetpoint(armedActive()))}
 					ariaLabel={`${props.label} active${activePhase() === "pending" ? " — set target" : ""}`}
 				/>
 				{/* The bed's standby cell stays EMPTY rather than closing up, so
@@ -314,6 +330,9 @@ function HeaterControl(props: {
 						stamp={false}
 						engaged={props.state === "standby"}
 						pending={standbyPhase() === "pending"}
+						applied={armedStandby()}
+						ackAccent={!clickSendsSetpoint(armedStandby())}
+						onSent={() => setArmedStandby(clickSendsSetpoint(armedStandby()))}
 						ariaLabel={`${props.label} standby${standbyPhase() === "pending" ? " — set target" : ""}`}
 					/>
 				</Show>
