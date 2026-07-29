@@ -96,6 +96,56 @@ test("M568 P addresses that tool, not the current one", () => {
 	assert.equal(mine.active, untouched, "tool 0 must not move when P1 was addressed");
 });
 
+/**
+ * The Filament card reads move.extruders[].filament back to decide what is
+ * loaded and whether Unload is live at all. A mock that accepted M701 silently
+ * left every row reading "nothing loaded" and every Unload permanently dead.
+ */
+test("M701 loads onto the current tool's extruder, M702 clears it", () => {
+	const machine = new Machine(scenarios["idle"]);
+	const tool = machine.om.tools.find((t: { filamentExtruder: number } | null) => t !== null && t.filamentExtruder >= 0);
+	if (!tool) return;
+	const extruder = machine.om.move.extruders[tool.filamentExtruder];
+
+	machine.execute(`T${tool.number}\nM701 S"PETG"\nM703`);
+	assert.equal(extruder.filament, "PETG");
+
+	machine.execute("M702");
+	assert.equal(extruder.filament, "", "unload leaves the extruder empty, not holding the old name");
+});
+
+/**
+ * filament rides the rarely-changing projection, so a client sees it ONLY by
+ * refetching move — which it only does on a seqs.move bump. Loading without
+ * the bump is invisible to the UI, which looks exactly like a failed load.
+ */
+test("loading filament bumps seqs.move so the change is fetchable", () => {
+	const machine = new Machine(scenarios["idle"]);
+	const tool = machine.om.tools.find((t: { filamentExtruder: number } | null) => t !== null && t.filamentExtruder >= 0);
+	if (!tool) return;
+
+	const before = machine.seqs.move;
+	machine.execute('M701 S"PLA"');
+	assert.ok(machine.seqs.move > before, `seqs.move must advance; stayed at ${before}`);
+
+	const afterLoad = machine.seqs.move;
+	machine.execute("M702");
+	assert.ok(machine.seqs.move > afterLoad, "unloading is just as invisible without a bump");
+});
+
+test("the T-code ahead of M701 decides which extruder gets it", () => {
+	const machine = new Machine(scenarios["idle"]);
+	const feeders = machine.om.tools.filter(
+		(t: { filamentExtruder: number } | null) => t !== null && t.filamentExtruder >= 0,
+	) as { number: number; filamentExtruder: number }[];
+	if (feeders.length < 2) return; // one extruder in this scenario: nothing to mis-route
+
+	const [a, b] = feeders;
+	machine.execute(`T${b!.number}\nM701 S"ABS"\nM703`);
+	assert.equal(machine.om.move.extruders[b!.filamentExtruder].filament, "ABS");
+	assert.equal(machine.om.move.extruders[a!.filamentExtruder].filament, "", "the other extruder is untouched");
+});
+
 test("mid-print scenario: processing status and advancing progress", () => {
 	const machine = new Machine(scenarios["mid-print"]);
 	assert.equal(machine.om.state.status, "processing");

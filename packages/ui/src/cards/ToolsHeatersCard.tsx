@@ -1,5 +1,5 @@
 import { For, Show, createEffect, createMemo, createResource, createSignal } from "solid-js";
-import { commitPhase, clickSendsSetpoint, atTarget, modeClass, type CommitPhase } from "../control/setpointCommit.ts";
+import { commitPhase, clickSendsSetpoint, atTarget, type CommitPhase } from "../control/setpointCommit.ts";
 import { useApp } from "../shell/context.ts";
 import { cmd } from "../control/commands.ts";
 import { GcodeButton } from "../control/GcodeButton.tsx";
@@ -340,7 +340,8 @@ function HeaterCells(props: { heater: Heater; index: number; kind: "tool" | "bed
 					<GcodeButton
 						label="Act"
 						variant="go"
-						class={modeClass("active", atTarget(props.heater.current, props.heater.active))}
+						class="mode-key heat-active"
+						atTarget={atTarget(props.heater.current, props.heater.active)}
 						stamp={false}
 						engaged={props.heater.state === "active"}
 						command={activeCmd()}
@@ -352,7 +353,8 @@ function HeaterCells(props: { heater: Heater; index: number; kind: "tool" | "bed
 					<Show when={!isBed()}>
 						<GcodeButton
 							label="Stand"
-							class={modeClass("standby", atTarget(props.heater.current, props.heater.standby))}
+							class="mode-key heat-standby"
+							atTarget={atTarget(props.heater.current, props.heater.standby)}
 							stamp={false}
 							engaged={props.heater.state === "standby"}
 							command={standbyCmd()}
@@ -363,7 +365,8 @@ function HeaterCells(props: { heater: Heater; index: number; kind: "tool" | "bed
 					<GcodeButton
 						label="Off"
 						variant="danger"
-						class={modeClass("off", true)}
+						class="mode-key heat-off"
+						atTarget
 						stamp={false}
 						engaged={props.heater.state === "off"}
 						command={isBed() ? cmd.bedOff(props.num) : cmd.toolOff(props.num)}
@@ -393,7 +396,8 @@ function HeaterActions(props: {
 			<GcodeButton
 				label="Act"
 				variant="go"
-				class={modeClass("active", atTarget(props.reading, props.active))}
+				class="mode-key heat-active"
+				atTarget={atTarget(props.reading, props.active)}
 				stamp={false}
 				engaged={props.state === "active"}
 				command={isBed() ? cmd.bedActive(props.num, props.active) : cmd.toolActive(props.num)}
@@ -402,7 +406,8 @@ function HeaterActions(props: {
 			<Show when={!isBed() && props.standby !== null}>
 				<GcodeButton
 					label="Stand"
-					class={modeClass("standby", atTarget(props.reading, props.standby))}
+					class="mode-key heat-standby"
+					atTarget={atTarget(props.reading, props.standby)}
 					stamp={false}
 					engaged={props.state === "standby"}
 					command={cmd.toolStandby(props.num)}
@@ -412,7 +417,8 @@ function HeaterActions(props: {
 			<GcodeButton
 				label="Off"
 				variant="danger"
-				class={modeClass("off", true)}
+				class="mode-key heat-off"
+						atTarget
 				stamp={false}
 				engaged={props.state === "off"}
 				command={isBed() ? cmd.bedOff(props.num) : cmd.toolOff(props.num)}

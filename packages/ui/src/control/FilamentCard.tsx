@@ -51,28 +51,74 @@ export function FilamentCard(props: { tools: (Tool | null)[] }) {
 	const selectFirst = (tool: Tool): number | undefined =>
 		app.om.om.state.currentTool === tool.number ? undefined : tool.number;
 
+	// The two "All" buttons are convenience COMPOUNDS: the same per-tool command
+	// this card already sends, once per tool, newline-joined the way rr_gcode
+	// takes a bundle. No new G-code and no new logic — just the row you would
+	// have clicked, for every row.
+	//
+	// Every entry carries its OWN T-code, unconditionally, unlike the per-row
+	// buttons that skip it for the current tool. Inside a bundle "the current
+	// tool" moves as the bundle runs: the first entry selects T0, so a later
+	// entry that omitted its T because T1 was current when the button was drawn
+	// would load T0's filament twice. Naming each tool cannot go wrong.
+	const loadable = createMemo(() => feeders().filter(t => selected(t) !== ""));
+	const unloadable = createMemo(() => feeders().filter(t => loaded(t) !== ""));
+	const loadAll = (): string =>
+		loadable()
+			.map(t => cmd.loadFilament(selected(t), { selectTool: t.number, runMacros: runMacros() }))
+			.join("\n");
+	const unloadAll = (): string =>
+		unloadable()
+			.map(t => cmd.unloadFilament({ selectTool: t.number, runMacros: runMacros() }))
+			.join("\n");
+
 	return (
 		<Show
 			when={feeders().length > 0}
 			fallback={<p class="job-empty">No tools on this machine feed filament.</p>}
 		>
-			<label class="filament-macros">
-				<input type="checkbox" checked={runMacros()} onChange={e => setRunMacros(e.currentTarget.checked)} />
-				<span>Run macros</span>
-				<span class="filament-macros-hint">
-					{runMacros() ? "load.g / unload.g run" : "P0 — macros skipped"}
-				</span>
-			</label>
+			{/* One grid for the whole card, head row included, so the two All
+			    buttons sit in the SAME tracks as the Load and Unload beneath
+			    them — above their own column by construction, not by two
+			    layouts agreeing on a width. */}
+			<div class="filament-list">
+				<div class="filament-row filament-head">
+					<GcodeButton
+						label="All"
+						variant="go"
+						stamp={false}
+						disabled={loadable().length === 0}
+						command={loadAll()}
+						ariaLabel="Load filament on every tool"
+					/>
+					<GcodeButton
+						label="All"
+						variant="danger"
+						stamp={false}
+						disabled={unloadable().length === 0}
+						command={unloadAll()}
+						ariaLabel="Unload filament from every tool"
+					/>
+					{/* Right-hand end of the head row: this governs every button in
+					    the card, so it reads as the card's own switch rather than as
+					    the first row's label. */}
+					<label class="filament-macros">
+						<input type="checkbox" checked={runMacros()} onChange={e => setRunMacros(e.currentTarget.checked)} />
+						<span>Run macros</span>
+						<span class="filament-macros-hint">
+							{runMacros() ? "load.g / unload.g run" : "P0 — macros skipped"}
+						</span>
+					</label>
+				</div>
 
-			<Show
-				when={(filaments() ?? []).length > 0}
-				fallback={
-					<p class="job-empty">
-						{filaments.loading ? "Reading filaments…" : `No filaments in ${FILAMENTS_DIR}.`}
-					</p>
-				}
-			>
-				<div class="filament-list">
+				<Show
+					when={(filaments() ?? []).length > 0}
+					fallback={
+						<p class="job-empty filament-note">
+							{filaments.loading ? "Reading filaments…" : `No filaments in ${FILAMENTS_DIR}.`}
+						</p>
+					}
+				>
 					<For each={feeders()}>
 						{tool => (
 							<div class="filament-row">
@@ -113,8 +159,8 @@ export function FilamentCard(props: { tools: (Tool | null)[] }) {
 							</div>
 						)}
 					</For>
-				</div>
-			</Show>
+				</Show>
+			</div>
 		</Show>
 	);
 }

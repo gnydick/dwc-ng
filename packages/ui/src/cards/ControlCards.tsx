@@ -10,7 +10,7 @@
  */
 import { For, Show, createEffect, createMemo, createSignal } from "solid-js";
 import { useApp } from "../shell/context.ts";
-import { commitPhase, clickSendsSetpoint, atTarget, modeClass, type CommitPhase } from "../control/setpointCommit.ts";
+import { commitPhase, clickSendsSetpoint, atTarget, type CommitPhase } from "../control/setpointCommit.ts";
 import { cmd } from "../control/commands.ts";
 import { GcodeButton } from "../control/GcodeButton.tsx";
 import { SpeedSlider } from "../control/SpeedSlider.tsx";
@@ -250,6 +250,23 @@ function HeaterControl(props: {
 					/>
 				)}
 			</Show>
+			{/* The READING, ahead of the two setpoints it is being driven toward.
+			    Its own fixed-width cell with tabular figures, so a temperature
+			    sweeping 21.9 -> 205.0 cannot widen the column and shove the rest
+			    of the row sideways. Thermal-keyed like every other reading in the
+			    app (the colours are user-configurable in Settings). */}
+			<span
+				class="heat-read"
+				classList={{
+					"t-cold": props.reading < 45,
+					"t-warm": props.reading >= 45 && props.reading < 160,
+					"t-hot": props.reading >= 160,
+				}}
+				aria-label={`${props.label} current temperature`}
+			>
+				{Number.isFinite(props.reading) ? props.reading.toFixed(1) : ""}
+				<span class="deg">°C</span>
+			</span>
 			<label class="temp-field">
 				<input class="heat-input" type="number" value={temp()} onInput={e => setTemp(Number(e.currentTarget.value))} aria-label={`${props.label} active target`} />
 				<span class="deg">Â°C</span>
@@ -278,7 +295,8 @@ function HeaterControl(props: {
 				<GcodeButton
 					label="Act"
 					variant="go"
-					class={modeClass("active", activeArrived())}
+					class="mode-key heat-active"
+						atTarget={activeArrived()}
 					command={activeCmd()}
 					stamp={false}
 					engaged={props.state === "active"}
@@ -290,7 +308,8 @@ function HeaterControl(props: {
 				<Show when={props.kind === "tool"}>
 					<GcodeButton
 						label="Stand"
-						class={modeClass("standby", standbyArrived())}
+						class="mode-key heat-standby"
+							atTarget={standbyArrived()}
 						command={standbyCmd()}
 						stamp={false}
 						engaged={props.state === "standby"}
@@ -302,7 +321,8 @@ function HeaterControl(props: {
 				<GcodeButton
 					label="Off"
 					variant="danger"
-					class={modeClass("off", true)}
+					class="mode-key heat-off"
+						atTarget
 					command={offCmd()}
 					stamp={false}
 					engaged={props.state === "off"}
