@@ -158,6 +158,54 @@ test("mergeCanvas drops a stored id no longer in defaults and defaults a new id 
 	assert.deepEqual(merged.b, rect(10, 0, 4, 4), "b missing from storage, uses its own coded default");
 });
 
+test("a newly-added default card is placed clear of the stored layout, not on top of it", () => {
+	// The bug this pins (2026-07-29): two colour cards added to Settings took
+	// their coded row, which a saved canvas already had occupied, so they
+	// rendered UNDERNEATH an existing card — invisible, with Reset Layout the
+	// only way to reach them. Coded positions are chosen against the coded
+	// layout; a stored layout is a different world.
+	const defaults = [
+		{ id: "old", col: 0, row: 0, colSpan: 12, rowSpan: 40 },
+		{ id: "new", col: 0, row: 0, colSpan: 12, rowSpan: 20 }, // coded to the SAME spot
+	];
+	// The user dragged "old" down to row 10; "new" has never been seen here.
+	const merged = mergeCanvas({ old: rect(0, 10, 12, 40) }, defaults);
+	assert.deepEqual(merged.old, rect(0, 10, 12, 40), "an existing card must not be moved to make room");
+	assert.equal(rectsOverlap(merged.new!, merged.old!), false, "the new card must not land on an occupied cell");
+	assert.equal(merged.new!.col, 0, "slideDownToFree keeps the coded column");
+});
+
+test("two cards added at once are placed against each other, not just against storage", () => {
+	// Both are new and both are coded to col 0 row 0. Placing them
+	// independently would stack them on each other.
+	const defaults = [
+		{ id: "kept", col: 0, row: 0, colSpan: 24, rowSpan: 10 },
+		{ id: "newA", col: 0, row: 0, colSpan: 12, rowSpan: 20 },
+		{ id: "newB", col: 12, row: 0, colSpan: 12, rowSpan: 20 },
+	];
+	const merged = mergeCanvas({ kept: rect(0, 0, 24, 10) }, defaults);
+	assert.equal(rectsOverlap(merged.newA!, merged.newB!), false, "the two newcomers must not overlap each other");
+	assert.equal(rectsOverlap(merged.newA!, merged.kept!), false);
+	assert.equal(rectsOverlap(merged.newB!, merged.kept!), false);
+	assert.equal(merged.newA!.col, 0, "each keeps its coded column so a designed pair stays side by side");
+	assert.equal(merged.newB!.col, 12);
+});
+
+test("adding a card does not reflow the cards the user already placed", () => {
+	// A newcomer is not a redesign of the screen. reflow() is reserved for a
+	// card whose SPAN grew, which genuinely invalidates its neighbours.
+	const defaults = [
+		{ id: "a", col: 0, row: 0, colSpan: 12, rowSpan: 10 },
+		{ id: "b", col: 0, row: 0, colSpan: 12, rowSpan: 10 },
+		{ id: "fresh", col: 0, row: 0, colSpan: 12, rowSpan: 10 },
+	];
+	// a and b are stored overlapping (legal — one may be hidden).
+	const stored = { a: rect(0, 0, 12, 10), b: rect(1, 1, 12, 10) };
+	const merged = mergeCanvas(stored, defaults);
+	assert.deepEqual(merged.a, rect(0, 0, 12, 10), "stored overlap must survive a card being added");
+	assert.deepEqual(merged.b, rect(1, 1, 12, 10));
+});
+
 test("mergeCanvas KEEPS a stored layout whose rects overlap (audit residual closed)", () => {
 	// Hidden cards (visibleWhen false) release their cells, so a visible
 	// card resized into that space stores a legal overlap. The old verdict

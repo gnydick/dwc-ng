@@ -146,10 +146,36 @@ export interface ScreensConfig {
 	layouts: Record<string, Record<string, SlotRect>>;
 }
 
+/** The three colours a heater reading takes as it warms. */
+export interface ThermalColors {
+	cold: string;
+	warm: string;
+	hot: string;
+}
+
+/**
+ * Shipped thermal ramp — steel blue → amber → glowing orange. These are the
+ * same values index.css declares for --t-cold/--t-warm/--t-hot; the overlay
+ * overwrites those custom properties at runtime, so this object and the
+ * stylesheet must agree. index.css cites this constant for that reason.
+ */
+export const DEFAULT_THERMAL_COLORS: ThermalColors = {
+	cold: "#6e8ca8",
+	warm: "#e0a458",
+	hot: "#ef7b45",
+};
+
 export interface UiConfig {
 	/** Axis letter → human role label ("U" → "Z motor 1"). RRF has no
 	 * notion of axis roles; this is per-machine UI metadata. */
 	axisRoles: Record<string, string>;
+	/** Heater index (as string key) → chart line colour override. Absent =
+	 * the derived palette colour from om/heaterSeries.ts, which guarantees no
+	 * two SHIPPED lines are confusable. A user override is warned about at
+	 * ΔE < 25 but never blocked — see util/colorDistance.ts. */
+	heaterColors: Record<string, string>;
+	/** Colours for the cold/warm/hot temperature readings. */
+	thermalColors: ThermalColors;
 	/** Tool number (as string key) → dock presence sensor. The sensor knows
 	 * docked/away, never "mounted" — label accordingly. */
 	dockSensors: Record<string, DockSensorRef>;
@@ -186,6 +212,8 @@ export interface ConfigSnapshot {
 
 export const DEFAULT_CONFIG: UiConfig = {
 	axisRoles: {},
+	heaterColors: {},
+	thermalColors: DEFAULT_THERMAL_COLORS,
 	dockSensors: {},
 	camera: { streamUrl: "", pinned: false },
 	sensorNames: {},

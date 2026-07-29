@@ -8,9 +8,11 @@
  * save-bar becomes a card"): dirty state, save-to-SD, reset-everything.
  * Extracted from views/Settings.tsx in the A6 conversion.
  */
-import { For, Show, createMemo, createSignal } from "solid-js";
+import { For, Index, Show, createMemo, createSignal } from "solid-js";
 import { useApp } from "../shell/context.ts";
-import { CONFIG_FILE, MAX_LABEL_LEN } from "../config/types.ts";
+import { CONFIG_FILE, MAX_LABEL_LEN, DEFAULT_THERMAL_COLORS, type ThermalColors } from "../config/types.ts";
+import { heaterSeries } from "../om/heaterSeries.ts";
+import { nearestCollision, isHexColor, MIN_SEPARATION } from "../util/colorDistance.ts";
 import { sensorRows } from "../om/sensorRows.ts";
 import { captureScreenGeometry } from "../compose/screens.ts";
 import { formatTimestamp } from "../files/format.ts";
@@ -43,6 +45,134 @@ export function AxisRolesBody() {
 					)}
 				</For>
 			</Show>
+		</>
+	);
+}
+
+/**
+ * Chart line colours, one per heater.
+ *
+ * The shipped palette guarantees no two lines are perceptually confusable
+ * (om/heaterSeries.ts). A user pick is free to break that, so each row states
+ * the collision instead: same ΔE arithmetic the palette test enforces
+ * (util/colorDistance.ts), reported and not blocked. The operator is allowed
+ * two similar colours; they are not allowed to be surprised by them.
+ */
+export function HeaterColorsBody() {
+	const app = useApp();
+	const series = createMemo(() =>
+		heaterSeries({
+			heaters: app.om.om.heat.heaters,
+			bedHeaters: app.om.om.heat.bedHeaters,
+			chamberHeaters: app.om.om.heat.chamberHeaters,
+			tools: app.om.om.tools,
+		}, app.config.config.heaterColors),
+	);
+	/** Every OTHER line, so a row never reports colliding with itself. */
+	const others = (index: number): Array<readonly [string, string]> =>
+		series().flatMap((s, i) => (i === index ? [] : [[s.label, s.stroke] as const]));
+
+	return (
+		<>
+			<p class="hint">
+				Line colours on the temperature chart. The shipped palette keeps every
+				line distinguishable; your own picks are flagged when they get close,
+				never blocked. Reset restores the palette.
+			</p>
+			{/* Index, NOT For. heaterSeries() returns fresh objects on every
+			    config change, so For — which keys by reference — would rebuild
+			    each row's DOM on every keystroke of the picker. That destroys
+			    the live <input type="color"> and the OS colour dialog closes
+			    the instant you pick anything. Index keys by position and
+			    updates in place, so the input element survives. */}
+			<Show when={series().length} fallback={<p class="job-empty">Waiting for heaters…</p>}>
+				<Index each={series()}>
+					{(s, i) => {
+						const clash = createMemo(() => nearestCollision(s().stroke, others(i)));
+						const overridden = (): boolean => app.config.config.heaterColors[String(i)] !== undefined;
+						return (
+							<div class="field">
+								<span class="field-label">{s().label}</span>
+								<input
+									type="color"
+									class="color-swatch"
+									aria-label={`${s().label} chart colour`}
+									value={s().stroke}
+									onInput={e => app.config.setHeaterColor(i, e.currentTarget.value)}
+								/>
+								<span class="color-hex">{s().stroke}</span>
+								<Show when={clash()}>
+									{c => (
+										<span class="color-clash" role="status">
+											close to {c().label} (ΔE {c().separation.toFixed(1)})
+										</span>
+									)}
+								</Show>
+								<Show when={overridden()}>
+									<button type="button" class="lab-pill" onClick={() => app.config.clearHeaterColor(i)}>
+										Reset
+									</button>
+								</Show>
+							</div>
+						);
+					}}
+				</Index>
+			</Show>
+		</>
+	);
+}
+
+/** The cold → warm → hot ramp the temperature READINGS are keyed to. */
+export function ThermalColorsBody() {
+	const app = useApp();
+	const channels: Array<{ key: keyof ThermalColors; label: string; range: string }> = [
+		{ key: "cold", label: "Cold", range: "below 45 °C" },
+		{ key: "warm", label: "Warm", range: "45 – 160 °C" },
+		{ key: "hot", label: "Hot", range: "160 °C and above" },
+	];
+	const current = (): ThermalColors => app.config.config.thermalColors;
+	return (
+		<>
+			<p class="hint">
+				How a temperature reading is coloured as it warms. Applies everywhere a
+				reading is shown, not just the chart.
+			</p>
+			{/* Index for the same reason as the chart rows above: the picker
+			    element must outlive its own input events. */}
+			<Index each={channels}>
+				{chAccessor => {
+					const ch = chAccessor();
+					const value = (): string => current()[ch.key];
+					const clash = createMemo(() =>
+						nearestCollision(value(), channels
+							.filter(o => o.key !== ch.key)
+							.map(o => [o.label, current()[o.key]] as const)));
+					return (
+						<div class="field">
+							<span class="field-label">{ch.label}</span>
+							<input
+								type="color"
+								class="color-swatch"
+								aria-label={`${ch.label} reading colour`}
+								value={isHexColor(value()) ? value() : DEFAULT_THERMAL_COLORS[ch.key]}
+								onInput={e => app.config.setThermalColors({ [ch.key]: e.currentTarget.value })}
+							/>
+							<span class={`color-hex t-${ch.key}`}>{value()}</span>
+							<span class="color-range">{ch.range}</span>
+							<Show when={clash()}>
+								{c => (
+									<span class="color-clash" role="status">
+										close to {c().label} (ΔE {c().separation.toFixed(1)})
+									</span>
+								)}
+							</Show>
+						</div>
+					);
+				}}
+			</Index>
+			<p class="hint">
+				Readings below ΔE {MIN_SEPARATION} apart are hard to tell at a glance.
+			</p>
 		</>
 	);
 }
