@@ -82,12 +82,26 @@ function executeLine(machine: Machine, line: string): string {
 		case "M104":
 		case "M109": {
 			const s = param("S");
-			if (s !== null) setToolHeater(machine, s, null);
+			// M104/M109 have no mode parameter: setting a temperature IS turning
+			// the heater on. That legacy conflation is exactly what M568's A
+			// parameter separates, so only this pair sets the mode as a side
+			// effect — M568 S below does not.
+			if (s !== null) {
+				const tool = currentToolNumber(machine);
+				setToolHeater(machine, tool, s, null);
+				setToolMode(machine, tool, s > 0 ? 2 : 0);
+			}
 			return "";
 		}
 		case "M568": {
-			const s = param("S"), r = param("R");
-			if (s !== null || r !== null) setToolHeater(machine, s, r);
+			// P defaults to the current tool. S/R are the setpoints, A is the mode
+			// (0 off / 1 standby / 2 active) — and A is INDEPENDENT of S/R: the UI
+			// sends the setpoint and the mode as two separate commands, so an
+			// A-only M568 has to be honoured on its own.
+			const tool = param("P") ?? currentToolNumber(machine);
+			const s = param("S"), r = param("R"), a = param("A");
+			if (s !== null || r !== null) setToolHeater(machine, tool, s, r);
+			if (a !== null) setToolMode(machine, tool, a);
 			return "";
 		}
 		case "M140":
@@ -275,9 +289,22 @@ function selectTool(machine: Machine, n: number): string {
 	return "";
 }
 
-function setToolHeater(machine: Machine, active: number | null, standby: number | null): void {
+/** M568/M104 without P act on the current tool; with none selected, tool 0. */
+function currentToolNumber(machine: Machine): number {
+	return machine.om.state.currentTool >= 0 ? machine.om.state.currentTool : 0;
+}
+
+/**
+ * The setpoints only. Storing a temperature does NOT change the heater's mode:
+ * on a real board M568 S sets the active temperature and leaves the heater
+ * where it was, and a UI that sends the setpoint before the mode depends on
+ * that — the setpoint click must not switch the heater on by itself.
+ *
+ * The one exception is the tool that is CURRENT and already active: its heater
+ * is tracking its active setpoint, so a new setpoint moves it immediately.
+ */
+function setToolHeater(machine: Machine, toolNumber: number, active: number | null, standby: number | null): void {
 	const om = machine.om;
-	const toolNumber = om.state.currentTool >= 0 ? om.state.currentTool : 0;
 	const tool = om.tools[toolNumber];
 	if (!tool) return;
 	for (const h of tool.heaters as number[]) {
@@ -286,13 +313,26 @@ function setToolHeater(machine: Machine, active: number | null, standby: number 
 		if (active !== null) {
 			heater.active = active;
 			tool.active[0] = active;
-			if (tool.state === "active" || om.state.currentTool === toolNumber) {
-				heater.state = active > 0 ? "active" : "off";
-			}
 		}
 		if (standby !== null) {
 			heater.standby = standby;
 			tool.standby[0] = standby;
 		}
+	}
+}
+
+/** M568 An — 0 off, 1 standby, 2 active. */
+function setToolMode(machine: Machine, toolNumber: number, mode: number): void {
+	const om = machine.om;
+	const tool = om.tools[toolNumber];
+	if (!tool) return;
+	const state = mode === 2 ? "active" : mode === 1 ? "standby" : "off";
+	tool.state = state;
+	for (const h of tool.heaters as number[]) {
+		const heater = om.heat.heaters[h];
+		// A faulted heater does not leave its fault because someone pressed a
+		// mode button — only M562 clears it.
+		if (!heater || heater.state === "fault") continue;
+		heater.state = state;
 	}
 }

@@ -651,10 +651,8 @@
 	padding-left: 16px;
 	padding-right: 16px;
 }
-/* 54 -> 100: each setpoint cell now holds its own Set button beside the
-   field (34px + a 5px gap + a little slack). */
-.heat-table th:nth-child(3), .heat-table td:nth-child(3) { width: 100px; }
-.heat-table th:nth-child(4), .heat-table td:nth-child(4) { width: 100px; }
+.heat-table th:nth-child(3), .heat-table td:nth-child(3) { width: 54px; }
+.heat-table th:nth-child(4), .heat-table td:nth-child(4) { width: 54px; }
 /* Current: the padding is what keeps the reading off the Active button — right
    aligned in a bare cell, its right edge met the button's left edge exactly. */
 .heat-table th:nth-child(5), .heat-table td:nth-child(5) { width: 76px; padding-right: 14px; }
@@ -690,28 +688,10 @@
 /* The fault/tuning badge now sits in the Current cell, which is already
    right-aligned — it no longer needs a reserved width of its own. */
 .heat-table .heat-state { min-width: 0; }
-/* A GRID, not a flex row: every mode gets its own fixed column, so the bed —
-   which has no standby — still puts Active and Off under the tools' Active and
-   Off instead of sliding them along. Alignment is then true by construction
-   rather than by the three labels happening to measure the same. */
-.heat-actions {
-	display: grid;
-	grid-template-columns: 52px 60px 32px;
-	gap: 6px;
-	align-items: center;
-	justify-content: end;
-}
-.heat-actions .heat-active { grid-column: 1; }
-.heat-actions .heat-standby { grid-column: 2; }
-.heat-actions .heat-off { grid-column: 3; }
-
-/* Setpoint cell: the field plus the Set button that writes it. Right-aligned
-   so the two cells mirror around the column gutter — Set|input, input|Set. */
-.heat-entry { display: inline-flex; align-items: center; gap: 5px; justify-content: flex-end; }
-.heat-set-btn { padding: 0 7px; flex: none; }
-.heat-entry .heat-set-btn { height: var(--ctl-h); }
-/* Fill the column and centre the label, so equal columns look equal. */
-.heat-actions .gcode-btn { padding: 5px 2px; width: 100%; justify-content: center; }
+/* Setpoint cell. Holds only the field now — the commit moved onto the mode
+   button beside it (control/setpointCommit.ts), so there is no second control
+   competing for this cell's width. */
+.heat-entry { display: inline-flex; align-items: center; justify-content: flex-end; }
 .heat-table th {
 	font-family: var(--font-display);
 	font-weight: 600;
@@ -1493,6 +1473,14 @@
 	background: transparent;
 	transition: background 120ms ease, box-shadow 120ms ease;
 }
+/* Unsent edit sitting in this button's field. Reuses the ack dot's fixed box,
+   so "there is something to apply" costs no layout — only the dot's colour
+   and the label's move. Copper, not the send states' green/red: nothing has
+   been attempted yet. */
+.is-pending .gcode-ack { background: var(--copper-bright); animation: ack-pulse 900ms ease-in-out infinite; }
+.gcode-btn.is-pending { border-color: var(--copper); }
+.gcode-btn.is-pending .gcode-label { color: var(--copper-bright); }
+
 .is-sending .gcode-ack { background: var(--silk-dim); animation: ack-pulse 700ms ease-in-out infinite; }
 .is-sent .gcode-ack { background: var(--ok); box-shadow: 0 0 0 3px rgba(111, 191, 143, 0.22); }
 .is-failed .gcode-ack { background: var(--fault); box-shadow: 0 0 0 3px rgba(224, 92, 74, 0.25); }
@@ -1503,7 +1491,78 @@
 @media (prefers-reduced-motion: reduce) {
 	.gcode-btn { transition: none; }
 	.is-sending .gcode-ack { animation: none; opacity: 1; }
+	/* Still fully visible, just not pulsing — the dot IS the signal that a
+	   click will write a setpoint, so it must never be animated away. */
+	.is-pending .gcode-ack { animation: none; opacity: 1; }
 }
+
+/* ---------- compact mode keys (Act. / Stand. / Off) ----------
+   One key per mode at the end of a heater row, in three EQUAL columns. The
+   width is the longest of the three faces and no more: the bank is as narrow
+   as its own labels allow, which is what leaves the row's width to the two
+   setpoint fields.
+
+   --mode-key-w is that longest label, measured — "STAND." at the .gcode-label
+   face (Rajdhani 600 12.5px, 0.04em) plus this rule's padding. It is a token
+   because BOTH hosts (the Control card's rows and the Tools table's cell) size
+   their tracks from it; a literal in two places would drift and the two banks
+   would stop matching. Re-measure it if the label text or the face changes. */
+/* Measured: "STAND" is 36px at that face; + 4px padding a side + 1px border a
+   side = 46. The label font is a fixed size, so this does not move with the
+   density pitch. */
+:root { --mode-key-w: 46px; }
+.mode-key {
+	width: 100%;
+	padding: 0 4px;
+	justify-content: center;
+	flex: none;
+}
+/* The ack/pending dot rides the corner rather than the label's end, so a
+   pending key is exactly as wide as a settled one. */
+.mode-key .gcode-ack { top: 3px; right: 3px; width: 5px; height: 5px; }
+/* Three levels, not two. is-engaged says the machine is IN this mode; the
+   filled ground (the app's selected-chip language) is reserved for having
+   ARRIVED at that mode's setpoint. In between — heating up, or cooling toward
+   standby — the key is outlined in its accent: lit enough to read as the
+   current mode, not so lit that it claims a temperature the heater has not
+   reached. Colour only: no size, border width or padding moves, so brightening
+   can never shift a control.
+
+   Off carries .at-target permanently (it has no setpoint to reach), so it
+   behaves exactly as before. */
+.mode-key.is-engaged:not(.at-target),
+.mode-key.is-engaged:not(.at-target):hover:not(:disabled),
+.mode-key.is-engaged:not(.at-target):active:not(:disabled) {
+	background: linear-gradient(180deg, #24405f 0%, #1b3350 100%);
+	border-color: var(--btn-accent);
+}
+.mode-key.is-engaged:not(.at-target) .gcode-label { color: var(--btn-accent); }
+/* Resting: dark green, nothing to do. Scoped to :not(.is-engaged) — this rule
+   sits after the shared engaged rule, so without the guard it would repaint an
+   ARRIVED key's label back to green on its own green ground and hide the word.
+   */
+.mode-key.heat-active:not(.is-engaged) { border-color: rgba(111, 191, 143, 0.35); }
+.mode-key.heat-active:not(.is-engaged) .gcode-label { color: rgba(111, 191, 143, 0.75); }
+.mode-key.heat-standby:not(.is-engaged) { border-color: rgba(233, 238, 244, 0.18); }
+.mode-key.heat-off:not(.is-engaged) { border-color: rgba(224, 92, 74, 0.35); }
+/* The bed has no S key. Its slot is held open so A and O stay in the tools'
+   columns — the same empty-cell discipline the heater table uses.
+   ONE definition, shared by the Control card's rows and the Tools table's
+   action cell: the two banks are the same control, so they cannot be allowed
+   separate track lists that drift apart. */
+.heat-modes {
+	display: grid;
+	grid-template-columns: repeat(3, var(--mode-key-w));
+	gap: 4px;
+	align-items: center;
+	/* Right-aligned in both hosts: margin-left for the flex row, justify-content
+	   for the table cell, which stretches instead of shrink-wrapping. */
+	margin-left: auto;
+	justify-content: end;
+}
+.heat-modes .heat-active { grid-column: 1; }
+.heat-modes .heat-standby { grid-column: 2; }
+.heat-modes .heat-off { grid-column: 3; }
 
 .ctl-wrap { display: flex; flex-wrap: wrap; gap: 8px; }
 .ctl-name { font: 600 13px/1 var(--font-display); text-transform: uppercase; letter-spacing: 0.03em; color: var(--silk); min-width: 74px; }
@@ -1521,51 +1580,52 @@
    modes on the second. The track list is shared, so every field and every
    button lines up down the whole card whatever the labels measure. The bed
    spends the same tracks with its standby and Set cells empty. */
-.heater-ctl {
+/* The heater rows share ONE track list via subgrid, rather than each row being
+   its own grid that happens to use the same numbers. Two things follow that
+   per-row grids could not give:
+     · the name column is sized to the LONGEST tool name across the card and no
+       more — a 1fr name track stretched every selector to the full leftover
+       width, which made four buttons the size of banners;
+     · alignment down the card is true by construction, not by agreement.
+   Only the heaters card opts in: .heater-list also carries the Fans and Tuning
+   rows, which have nothing to align with these. */
+.heater-list.heat-rows {
 	display: grid;
-	/* name | Set | active | standby | Set — each commit against the field it
-	   writes, the pair bracketing the two inputs.
-	   FIXED widths, not max-content: the bed row has no Set buttons and no
-	   standby field, and a max-content track with nothing in it collapses to
-	   zero — which slid the bed's input 106px right of the tools' and put it
-	   under the standby column instead. A fixed track holds its place empty. */
-	grid-template-columns: minmax(56px, 1fr) 40px 78px 78px 40px;
-	grid-template-areas:
-		"name setactive active standby setstandby"
-		"modes modes modes modes modes";
+	grid-template-columns: max-content 78px 78px max-content;
 	gap: 6px 8px;
 	align-items: center;
 }
-.heater-ctl > .ctl-name, .heater-ctl > .tool-select { grid-area: name; }
-.heater-ctl > .set-active { grid-area: setactive; }
-.heater-ctl > .temp-field:nth-of-type(1) { grid-area: active; }
-.heater-ctl > .temp-field:nth-of-type(2) { grid-area: standby; }
-.heater-ctl > .set-standby { grid-area: setstandby; }
-.heater-ctl > .btn-cluster { grid-area: modes; }
-/* The bed has no standby field and no Set buttons. It spends the SAME track
-   list with those cells empty, so its input sits under the tools' active
-   input rather than sliding left into the vacated space. */
-.heater-ctl .temp-field input { width: 54px; }
-.heater-ctl .heat-set-btn { padding: 0 8px; }
+.heater-list.heat-rows > .heater-ctl {
+	grid-column: 1 / -1;
+	grid-template-columns: subgrid;
+}
+.heater-ctl {
+	display: grid;
+	/* name | active | standby | A S O — one line per tool now that the two Set
+	   buttons are gone and the modes are single-letter keys.
+	   FIXED widths, not max-content: the bed row has no standby field, and a
+	   max-content track with nothing in it collapses to zero — which slid the
+	   bed's input right, under the standby column. A fixed track holds its
+	   place empty. */
+	grid-template-columns: minmax(56px, 1fr) 78px 78px max-content;
+	gap: 6px 8px;
+	align-items: center;
+}
+.heater-ctl > .ctl-name, .heater-ctl > .tool-select { grid-column: 1; }
+.heater-ctl > .temp-field:nth-of-type(1) { grid-column: 2; }
+.heater-ctl > .temp-field:nth-of-type(2) { grid-column: 3; }
+.heater-ctl > .heat-modes { grid-column: 4; }
 .temp-field { display: inline-flex; align-items: center; gap: 3px; }
-.temp-field input, .feed-field input {
+/* Feed and step fields only. A heater SETPOINT is not one of these — it wears
+   .heat-input, the single definition shared with the Tools card's table, so
+   the same control cannot end up looking like two controls in two cards. The
+   :not() keeps this rule from re-styling them by virtue of the wrapper. */
+.temp-field input:not(.heat-input), .feed-field input {
 	width: 66px; background: var(--mask-900); border: 1px solid var(--hairline); border-radius: 5px;
 	color: var(--silk); padding: 6px 8px; font: 600 14px/1 var(--font-display); font-variant-numeric: tabular-nums;
 }
 .deg { color: var(--silk-dim); font-size: 12px; }
 .btn-cluster { display: flex; gap: 6px; margin-left: auto; }
-/* The Control card's mode cluster gets the table's pinned columns for the same
-   reason: the bed has no standby, and without a column to leave empty its
-   Active and Off would slide right and sit under the tools' Standby and Off. */
-.btn-cluster.heat-modes {
-	display: grid;
-	grid-template-columns: 64px 72px 44px;
-	justify-content: end;
-}
-.heat-modes .heat-active { grid-column: 1; }
-.heat-modes .heat-standby { grid-column: 2; }
-.heat-modes .heat-off { grid-column: 3; }
-.heat-modes .gcode-btn { width: 100%; justify-content: center; padding: 0 2px; }
 
 /* Horizontal Fans layout (orientationToggle) — same .heater-ctl rows, just
    reflowed into a row of compact vertical blocks instead of a stack. */

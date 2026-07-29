@@ -48,6 +48,12 @@ export function GcodeButton(props: {
 	 * visual cue that a screen reader does not convey.
 	 */
 	ariaLabel?: string;
+	/**
+	 * There is an edit sitting in this button's field that has not been sent.
+	 * Lights the ack dot in copper and pulses it — the same fixed-size dot the
+	 * send states use, so signalling "unapplied" cannot change the button's box.
+	 */
+	pending?: boolean;
 }) {
 	const app = useApp();
 	const [state, setState] = createSignal<SendState>("idle");
@@ -86,6 +92,9 @@ export function GcodeButton(props: {
 				"gcode-danger": props.variant === "danger",
 				"gcode-quiet": props.variant === "quiet",
 				"is-engaged": props.engaged === true,
+				// Only while idle: a live send's own dot outranks it, or the
+				// button would claim "unapplied" during the very send applying it.
+				"is-pending": props.pending === true && state() === "idle",
 				"is-sending": state() === "sending",
 				"is-sent": state() === "sent",
 				"is-failed": state() === "failed",
