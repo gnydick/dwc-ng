@@ -1703,7 +1703,12 @@
 .heater-list.horizontal .heater-ctl .btn-cluster { margin-left: 0; }
 
 /* jog */
-.jog-controls { display: flex; flex-direction: column; gap: 12px; }
+/* --ctl-gap, not a literal 12px. The Homing card is ONE grid on --ctl-gap, so
+   its head row and axis rows sit 24px apart; this column's 12px put Movement's
+   step row 32px above its first axis and every row below it half a row out of
+   step with Homing beside it. Same token, same pitch, and it tracks density
+   instead of holding still while everything around it shrinks. */
+.jog-controls { display: flex; flex-direction: column; gap: var(--ctl-gap); }
 .step-row, .jog-row, .coupler-row, .extrude-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .coupler-stack {
     display: grid;
@@ -1792,12 +1797,17 @@
 	   pair of "− 1" buttons grew to 300px apiece — a stretch of empty ground
 	   that reads as importance the control does not have, and that puts the two
 	   directions absurdly far apart for what is meant to be a quick nudge.
-	   Fixed and generous instead: wide enough for "− 100" at any density, and
-	   the leftover width now goes to the trailing track rather than into the
-	   buttons, so a wider card no longer means bigger keys. */
-	grid-template-columns: max-content var(--jog-key-w) var(--jog-key-w) minmax(0, 1fr);
+	   Fixed and generous instead: wide enough for "− 100" at any density.
+
+	   EXACTLY three tracks, because each row spends exactly three items via
+	   display:contents — a fourth track (added to soak up the slack) made every
+	   row start one cell further along than the last and the axis table folded
+	   into nonsense. The leftover width simply sits to the right of the grid,
+	   which is what "the keys do not grow with the card" means. */
+	grid-template-columns: max-content var(--jog-key-w) var(--jog-key-w);
 	gap: var(--ctl-gap);
 	align-items: center;
+	justify-content: start;
 }
 :root { --jog-key-w: 92px; }
 .jog-table .jog-row { display: contents; }
@@ -2496,7 +2506,11 @@
 /* The manual-feed footer. Its two fields share the picker's track — the widest
    one, and the only one that can hold a pair without adding a column. */
 .filament-feed-fields { display: flex; align-items: center; gap: 6px; min-width: 0; }
-.filament-feed-fields .feed-field input { width: 52px; }
+/* Sized to what each one HOLDS, not to each other. A distance is two or three
+   digits; a feedrate is four or five (the Movement card's is 66px for "6000"),
+   and at a shared 52px "300" already clipped its last digit. */
+.filament-feed-fields .feed-mm input { width: 48px; }
+.filament-feed-fields .feed-rate input { width: 70px; }
 /* Equal-width All/Load and All/Unload columns come free from the shared
    tracks; centre the shorter label so the pair reads as one column. */
 .filament-row .gcode-btn { width: 100%; justify-content: center; }

@@ -193,7 +193,7 @@ export function FilamentCard(props: { tools: (Tool | null)[] }) {
 					/>
 					<span class="ctl-name">Feed</span>
 					<span class="filament-feed-fields">
-						<label class="feed-field">
+						<label class="feed-field feed-mm">
 							<input
 								type="number"
 								value={feedMm()}
@@ -202,7 +202,7 @@ export function FilamentCard(props: { tools: (Tool | null)[] }) {
 							/>
 							mm
 						</label>
-						<label class="feed-field">
+						<label class="feed-field feed-rate">
 							<input
 								type="number"
 								value={feedRate()}
@@ -215,7 +215,7 @@ export function FilamentCard(props: { tools: (Tool | null)[] }) {
 					{/* Which tool these two will move, in the column that already
 					    answers "what is on this extruder". */}
 					<span class="filament-loaded" classList={{ none: current() < 0 }}>
-						{current() < 0 ? "no tool" : `T${current()}`}
+						{current() < 0 ? "no tool" : `Tool ${current()}`}
 					</span>
 				</div>
 			</div>
