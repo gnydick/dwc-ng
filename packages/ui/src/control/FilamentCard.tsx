@@ -24,6 +24,12 @@ export function FilamentCard(props: { tools: (Tool | null)[] }) {
 	const [runMacros, setRunMacros] = createSignal(true);
 	/** Chosen filament per tool number — what Load will send. */
 	const [choice, setChoice] = createSignal<Record<number, string>>({});
+	/** Manual feed, in the footer row. Card-local, like every other step size. */
+	const [feedMm, setFeedMm] = createSignal(5);
+	const [feedRate, setFeedRate] = createSignal(300);
+
+	/** The tool a manual feed will move, or -1 for none. */
+	const current = (): number => app.om.om.state.currentTool;
 
 	const connected = (): boolean => app.om.connection.status === "connected";
 
@@ -121,7 +127,10 @@ export function FilamentCard(props: { tools: (Tool | null)[] }) {
 				>
 					<For each={feeders()}>
 						{tool => (
-							<div class="filament-row">
+							// is-current is not decoration: the Feed row below acts on
+							// whichever tool is selected, so this marks the row those
+							// buttons will move.
+							<div class="filament-row" classList={{ "is-current": tool.number === current() }}>
 								<GcodeButton
 									label="Load"
 									variant="go"
@@ -160,6 +169,55 @@ export function FilamentCard(props: { tools: (Tool | null)[] }) {
 						)}
 					</For>
 				</Show>
+
+				{/* Feed the CURRENT tool. G1 E has no tool parameter — it moves
+				    whichever extruder is selected — so this row sits below the
+				    per-tool rows as a machine-wide footer, and the row it will
+				    actually move is marked above. Without that mark these are two
+				    buttons whose effect you have to remember the tool state to
+				    predict. */}
+				<div class="filament-row filament-feed">
+					<GcodeButton
+						label="Retract"
+						variant="danger"
+						stamp={false}
+						disabled={current() < 0}
+						command={cmd.extrude(-feedMm(), feedRate())}
+					/>
+					<GcodeButton
+						label="Extrude"
+						variant="go"
+						stamp={false}
+						disabled={current() < 0}
+						command={cmd.extrude(feedMm(), feedRate())}
+					/>
+					<span class="ctl-name">Feed</span>
+					<span class="filament-feed-fields">
+						<label class="feed-field">
+							<input
+								type="number"
+								value={feedMm()}
+								onInput={e => setFeedMm(Number(e.currentTarget.value))}
+								aria-label="Feed distance"
+							/>
+							mm
+						</label>
+						<label class="feed-field">
+							<input
+								type="number"
+								value={feedRate()}
+								onInput={e => setFeedRate(Number(e.currentTarget.value))}
+								aria-label="Feed rate"
+							/>
+							F
+						</label>
+					</span>
+					{/* Which tool these two will move, in the column that already
+					    answers "what is on this extruder". */}
+					<span class="filament-loaded" classList={{ none: current() < 0 }}>
+						{current() < 0 ? "no tool" : `T${current()}`}
+					</span>
+				</div>
 			</div>
 		</Show>
 	);
