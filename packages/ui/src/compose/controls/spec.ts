@@ -30,7 +30,7 @@ export interface InputDef {
 export type ButtonVariant = "go" | "danger" | "quiet";
 
 export type ControlNode =
-	| { type: "gcode-button"; label: string; template: string; variant?: ButtonVariant; stamp?: boolean; class?: string }
+	| { type: "gcode-button"; label: string; template: string; variant?: ButtonVariant; stamp?: boolean; class?: string; aria?: string }
 	| { type: "jog-pad"; step: string; feed: string }
 	| { type: "axis-jog"; axisVar: string; step: string; feed: string }
 	| { type: "row"; label?: string; sub?: string; class?: string; items: RowItem[] }
@@ -61,7 +61,7 @@ export type EnrichmentId = (typeof ENRICHMENT_IDS)[number];
 // ---- compiled forms (what the renderer accepts) ----
 
 export type CompiledNode =
-	| { type: "gcode-button"; label: CompiledTemplate; template: CompiledTemplate; variant?: ButtonVariant; stamp?: boolean; class?: string }
+	| { type: "gcode-button"; label: CompiledTemplate; template: CompiledTemplate; variant?: ButtonVariant; stamp?: boolean; class?: string; aria?: CompiledTemplate }
 	| { type: "jog-pad"; step: string; feed: string }
 	| { type: "axis-jog"; axisVar: string; step: string; feed: string }
 	// label/sub are TEMPLATES here, not plain strings: a row emitted inside a
@@ -100,12 +100,20 @@ export function compileControlSpec(spec: ControlSpec): CompiledControlSpec {
 
 	const compileNode = (node: ControlNode, where: string): CompiledNode => {
 		switch (node.type) {
-			case "gcode-button":
-				return {
+			case "gcode-button": {
+				const compiled: CompiledNode = {
 					...node,
 					label: tpl(node.label, `${where}.label`),
 					template: tpl(node.template, `${where}.template`),
+					// Overwritten below or deleted: `...node` carried the RAW
+					// string through, so without this the compiled node would
+					// hold a string where a CompiledTemplate is declared.
+					aria: undefined,
 				};
+				if (node.aria !== undefined) compiled.aria = tpl(node.aria, `${where}.aria`);
+				else delete compiled.aria;
+				return compiled;
+			}
 			case "jog-pad":
 				needInput(node.step, `${where}.step`);
 				needInput(node.feed, `${where}.feed`);

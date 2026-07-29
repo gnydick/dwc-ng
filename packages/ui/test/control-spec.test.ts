@@ -137,27 +137,30 @@ function extractButtons(spec: CompiledControlSpec): Array<{ label: string; templ
 test("the weld: every builtin gcode-button template resolves to its cmd.* form", () => {
 	const axis = { letter: "U", label: "U · Z motor 1" };
 	const fixture = scope({ extMm: 5, extFeed: 300 }, {}, { axis });
-	// Keyed by the button's RAW label text. Every builtin button MUST have an
-	// entry — an unwelded button is itself a failure.
+	// Keyed by the button's RAW TEMPLATE text, not its label. Labels are not
+	// unique any more — the homing table has two buttons reading "All", one in
+	// the Home column and one in Release, disambiguated by position. Templates
+	// are unique by nature, and they are what this test is actually welding.
+	// Every builtin button MUST have an entry: an unwelded button is a failure.
 	const expected: Record<string, string> = {
-		// Homing — the per-axis buttons are labelled by VERB now ("Home",
+		// Homing — the per-axis buttons are labelled by VERB ("Home",
 		// "Release"); the axis is named once by the row they sit in.
-		"Home All": cmd.homeAll(),
-		"Bed Tram": cmd.bedTram(),
-		"Release All": cmd.releaseAllMotors(),
-		"Home": cmd.homeAxis("U"),
-		"Release": cmd.releaseAxis("U"),
+		"G28": cmd.homeAll(),
+		"G32": cmd.bedTram(),
+		"M84": cmd.releaseAllMotors(),
+		"G28 {axis.letter}": cmd.homeAxis("U"),
+		"M84 {axis.letter}": cmd.releaseAxis("U"),
 		// Movement
-		"Lock": cmd.couplerLock(),
-		"Unlock": cmd.couplerUnlock(),
-		"Retract": cmd.extrude(-5, 300),
-		"Extrude": cmd.extrude(5, 300),
+		'M98 P"/macros/tool_lock"': cmd.couplerLock(),
+		'M98 P"/macros/tool_unlock"': cmd.couplerUnlock(),
+		"M83\nG1 E-{input.extMm} F{input.extFeed}": cmd.extrude(-5, 300),
+		"M83\nG1 E{input.extMm} F{input.extFeed}": cmd.extrude(5, 300),
 	};
 	const buttons = [...extractButtons(HOMING_SPEC), ...extractButtons(MOVEMENT_SPEC)];
 	assert.equal(buttons.length, Object.keys(expected).length, "weld table and builtin buttons must stay 1:1");
 	for (const button of buttons) {
-		const want = expected[button.label];
-		assert.notEqual(want, undefined, `unwelded builtin button "${button.label}" — add its cmd.* weld`);
+		const want = expected[button.template.text];
+		assert.notEqual(want, undefined, `unwelded builtin button "${button.label}" (${button.template.text}) — add its cmd.* weld`);
 		assert.equal(resolveTemplate(button.template, fixture), want, `template drift on "${button.label}"`);
 	}
 });
