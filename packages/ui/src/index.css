@@ -27,6 +27,12 @@
 	--ok: #6fbf8f;
 	--fault: #e05c4a;
 	--gold: #c9a227;
+	/* OFF, as a state rather than an alarm. --fault is for a heater that has
+	   gone wrong; a heater deliberately switched off is not a fault and should
+	   not wear the same red. Pitched to sit with copper and gold rather than
+	   against them: same mid lightness, same restrained saturation, so a row of
+	   Act/Stand/Off reads as three peers. */
+	--magenta: #c45fa0;
 	/* The thermal ramp. These three are USER-CONFIGURABLE: App.tsx writes them
 	   onto documentElement from config.thermalColors on every change. The
 	   values here must stay identical to DEFAULT_THERMAL_COLORS in
