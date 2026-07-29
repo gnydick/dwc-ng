@@ -264,8 +264,8 @@ function HeaterControl(props: {
 				}}
 				aria-label={`${props.label} current temperature`}
 			>
-				{Number.isFinite(props.reading) ? props.reading.toFixed(1) : ""}
-				<span class="deg">�C</span>
+				{Number.isFinite(props.reading) ? props.reading.toFixed(1) : "—"}
+				<span class="deg">°C</span>
 			</span>
 			<label class="temp-field">
 				<input class="heat-input" type="number" value={temp()} onInput={e => setTemp(Number(e.currentTarget.value))} aria-label={`${props.label} active target`} />

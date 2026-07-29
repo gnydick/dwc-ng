@@ -1593,7 +1593,9 @@
 	display: grid;
 	/* name | reading | active | standby | modes */
 	grid-template-columns: max-content 60px 78px 78px max-content;
-	gap: 6px 8px;
+	/* --ctl-gap, not a literal: the Filament card's rows use the same token, so
+	   the two cards keep the same row pitch at every density. */
+	gap: var(--ctl-gap) 8px;
 	align-items: center;
 }
 .heater-list.heat-rows > .heater-ctl {
@@ -2160,7 +2162,11 @@
 
 /* Tool-change macro bitmask (T… P<n>). Sits above the tool buttons so the
    parameter they will carry is visible before any of them is pressed. */
-.tool-p { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
+/* The head row's gap to the rows below is --ctl-gap, the same one the row
+   grids use — so this card's rows land on the same pitch as the Filament
+   card's beside it, and the two read as one set of tool rows rather than two
+   lists that drift apart down the column. */
+.tool-p { display: flex; align-items: center; gap: 10px; margin-bottom: var(--ctl-gap); flex-wrap: wrap; }
 
 .tool-p input { width: 62px; }
 .tool-p-decode {
