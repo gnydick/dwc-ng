@@ -114,6 +114,24 @@ function executeLine(machine: Machine, line: string): string {
 			}
 			return "";
 		}
+		// Filament load/unload. The card that drives these reads what is loaded
+		// straight from move.extruders[].filament, so a mock that accepted them
+		// silently left every row saying "nothing loaded" forever and the
+		// Unload buttons permanently dead.
+		case "M701": {
+			const name = quotedParam("S") ?? quoted();
+			if (name !== null) setFilament(machine, name);
+			return "";
+		}
+		case "M702": {
+			setFilament(machine, "");
+			return "";
+		}
+		// Applies the loaded filament's own config.g. Nothing in the model
+		// changes, so an empty reply is the whole of it — but it is named here
+		// rather than falling through, because the pair above would be a lie
+		// without it.
+		case "M703": return "";
 		case "M106": {
 			const p = param("P") ?? 0;
 			const s = param("S") ?? 255;
@@ -319,6 +337,27 @@ function setToolHeater(machine: Machine, toolNumber: number, active: number | nu
 			tool.standby[0] = standby;
 		}
 	}
+}
+
+/**
+ * Load ("" unloads) filament on the CURRENT tool's extruder. M701/M702 take no
+ * tool parameter — a caller that means a particular tool selects it first,
+ * which is exactly what the T-code ahead of them in a bundle is for.
+ */
+function setFilament(machine: Machine, name: string): void {
+	const om = machine.om;
+	const tool = om.tools[currentToolNumber(machine)];
+	if (!tool) return;
+	// filamentExtruder, not extruders[0] — it is the field the UI reads back,
+	// and the two must not be allowed to name different extruders.
+	const extruder = om.move.extruders[tool.filamentExtruder ?? -1];
+	if (!extruder) return;
+	extruder.filament = name;
+	// filament is a RARELY-changing field: it does not travel in the live (`f`)
+	// projection, so a client only ever sees it by refetching move — which it
+	// only does when seqs.move moves. Without this bump the load succeeds and
+	// the UI never learns, which is indistinguishable from it having failed.
+	machine.bump("move");
 }
 
 /** M568 An — 0 off, 1 standby, 2 active. */

@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { commitPhase, clickSendsSetpoint, atTarget, modeClass, AT_TARGET_C } from "../src/control/setpointCommit.ts";
+import { commitPhase, clickSendsSetpoint, atTarget, AT_TARGET_C } from "../src/control/setpointCommit.ts";
+import { readFileSync } from "node:fs";
 import { cmd } from "../src/control/commands.ts";
 
 test("an edited field is pending — the click will write the setpoint", () => {
@@ -94,13 +95,35 @@ test("a null target counts as arrived; an unknown reading does not", () => {
 	assert.equal(atTarget(205, Number.NaN), false);
 });
 
+const read = (rel: string): string => readFileSync(new URL(rel, import.meta.url), "utf8");
+
 /**
- * The CSS keys off these exact names — .mode-key.is-engaged:not(.at-target) is
- * the whole three-level scheme, so a typo here silently loses the mid state.
+ * `at-target` has to be applied through classList, NOT through the `class`
+ * prop. Both write the same attribute, and a reactive `class` re-assignment
+ * overwrites the whole string — which silently unset is-engaged every time a
+ * heater arrived, so the key went bright and stopped showing it was the
+ * current mode at the same instant. This pins the prop→classList→stylesheet
+ * chain that makes the three-level scheme work.
  */
-test("modeClass emits the class names the stylesheet targets", () => {
-	assert.equal(modeClass("active", false), "mode-key heat-active");
-	assert.equal(modeClass("active", true), "mode-key heat-active at-target");
-	assert.equal(modeClass("standby", true), "mode-key heat-standby at-target");
-	assert.equal(modeClass("off", true), "mode-key heat-off at-target");
+test("at-target travels by classList and the stylesheet reads it", () => {
+	const btn = read("../src/control/GcodeButton.tsx");
+	assert.match(btn, /classList=\{\{[\s\S]*?"at-target": props\.atTarget === true/,
+		"at-target must be a classList entry, not part of the class string");
+
+	const css = read("../src/app.css");
+	assert.ok(css.includes(".mode-key.is-engaged:not(.at-target)"),
+		"the mid state (engaged, not yet arrived) must still have a rule");
+});
+
+/** A computed `class` on a GcodeButton is the exact shape of that bug. */
+test("no card hands GcodeButton a reactive class", () => {
+	for (const file of ["../src/cards/ControlCards.tsx", "../src/cards/ToolsHeatersCard.tsx"]) {
+		// Only GcodeButton usages: a computed class on a plain <span> is fine —
+		// nothing else is writing that element's class attribute.
+		for (const [usage] of read(file).matchAll(/<GcodeButton[\s\S]*?\/>/g)) {
+			const dynamic = /\sclass=\{/.exec(usage);
+			assert.equal(dynamic, null,
+				`${file}: a GcodeButton takes a computed class — put the varying part in its own prop:\n${usage.slice(0, 200)}`);
+		}
+	}
 });

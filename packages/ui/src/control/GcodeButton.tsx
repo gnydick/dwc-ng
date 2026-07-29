@@ -39,7 +39,14 @@ export function GcodeButton(props: {
 	 * accept, which this project does not do.
 	 */
 	engaged?: boolean;
-	/** Extra class(es) for layout variants (e.g. the jog pad's square keys). */
+	/**
+	 * Extra class(es) for layout variants (e.g. the jog pad's square keys).
+	 * STATIC ONLY. `class` and `classList` both write this element's class
+	 * attribute, and a `class` re-assignment overwrites the whole string —
+	 * wiping every classList-managed flag until something else toggles it. A
+	 * reactive `class` here silently unsets is-engaged/is-sent. Anything that
+	 * varies belongs in classList below, as its own prop.
+	 */
 	class?: string;
 	/**
 	 * Accessible name, when the visible label is only unambiguous because of
@@ -54,6 +61,12 @@ export function GcodeButton(props: {
 	 * send states use, so signalling "unapplied" cannot change the button's box.
 	 */
 	pending?: boolean;
+	/**
+	 * This mode's heater has REACHED its setpoint. Only meaningful alongside
+	 * `engaged`: together they mean "in this mode and arrived", which is what
+	 * earns the filled ground. Engaged without it stays outlined.
+	 */
+	atTarget?: boolean;
 }) {
 	const app = useApp();
 	const [state, setState] = createSignal<SendState>("idle");
@@ -92,6 +105,7 @@ export function GcodeButton(props: {
 				"gcode-danger": props.variant === "danger",
 				"gcode-quiet": props.variant === "quiet",
 				"is-engaged": props.engaged === true,
+				"at-target": props.atTarget === true,
 				// Only while idle: a live send's own dot outranks it, or the
 				// button would claim "unapplied" during the very send applying it.
 				"is-pending": props.pending === true && state() === "idle",

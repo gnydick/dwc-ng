@@ -69,12 +69,3 @@ export function atTarget(current: number, target: number | null): boolean {
 	if (!Number.isFinite(current) || !Number.isFinite(target)) return false;
 	return Math.abs(current - target) <= AT_TARGET_C;
 }
-
-/**
- * The class list for one mode key. Shared by both heater cards so the two banks
- * cannot end up wearing different class names for the same state — the CSS
- * targets these exact names.
- */
-export function modeClass(mode: "active" | "standby" | "off", arrived: boolean): string {
-	return `mode-key heat-${mode}${arrived ? " at-target" : ""}`;
-}
