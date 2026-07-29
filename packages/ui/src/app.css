@@ -1708,16 +1708,37 @@
    step row 32px above its first axis and every row below it half a row out of
    step with Homing beside it. Same token, same pitch, and it tracks density
    instead of holding still while everything around it shrinks. */
-.jog-controls { display: flex; flex-direction: column; gap: var(--ctl-gap); }
-.step-row, .jog-row, .coupler-row, .extrude-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.coupler-stack {
-    display: grid;
-    grid-template-columns: auto auto;
-    gap: 6px 8px;
-    align-items: center;
-    justify-content: start;
+/* Two columns, not a stack: the jog table is only as wide as its own keys now,
+   so the coupler has somewhere to BE — beside the axis rows rather than
+   underneath them, spending a row and a half of card height on two buttons.
+
+   END-aligned, which lands it on the LAST axis row. That is the C row, and C
+   is the coupler: the buttons that lock and unlock it now sit in line with the
+   axis they act on rather than in a separate labelled block explaining the
+   connection. If an axis is ever added after C this alignment stops being
+   true, and the row it lands on is the one to check. */
+.jog-controls {
+	display: grid;
+	grid-template-columns: max-content max-content;
+	gap: var(--ctl-gap);
+	align-content: start;
+	justify-content: start;
 }
-.coupler-stack .gcode-btn { grid-column: 2; }
+.jog-controls > .step-row { grid-column: 1 / -1; }
+.jog-controls > .coupler-row { grid-column: 2; grid-row: 2; align-self: end; }
+.step-row, .jog-row, .extrude-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+/* TWO tracks, one per button — the row carries no label any more, and a
+   leading max-content track with nothing in it does not vanish: Lock fell
+   into it and came out 49px against Unlock's 70. It also used to pin BOTH
+   buttons to grid-column 2, which is what actually stacked them. */
+.coupler-stack {
+	display: grid;
+	grid-template-columns: var(--home-key-w) var(--home-key-w);
+	gap: var(--ctl-gap);
+	align-items: center;
+	justify-content: start;
+}
+.coupler-stack .gcode-btn { width: 100%; justify-content: center; }
 
 /* Label and both inputs stay inline (auto-flowed into columns 1-3, exactly
    as the original row read); only the two buttons stack, pinned to the last

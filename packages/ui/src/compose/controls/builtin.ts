@@ -110,13 +110,20 @@ export const MOVEMENT_SPEC = compileControlSpec({
 			from: "move.axes[letter=C]",
 			as: "axis",
 			node: {
+				// No label. "Lock" and "Unlock" beside the C axis row say what
+				// these are, and the word Coupler was only repeating the C row's
+				// own sub-label directly above them.
 				type: "row",
-				label: "Coupler",
-				sub: "C",
+				label: "",
 				class: "coupler-row coupler-stack",
 				items: [
-					{ type: "gcode-button", label: "Lock", template: 'M98 P"/macros/tool_lock"' },
-					{ type: "gcode-button", label: "Unlock", template: 'M98 P"/macros/tool_unlock"', variant: "quiet" },
+					// stamp: false — the macro path is long enough that the two
+					// buttons were wider than the jog table above them and had to
+					// stack. The command is still on the control, on hover (every
+					// GcodeButton carries it in `title`), so the 1:1 guarantee is
+					// intact without spending a row and a half on it.
+					{ type: "gcode-button", label: "Lock", template: 'M98 P"/macros/tool_lock"', stamp: false },
+					{ type: "gcode-button", label: "Unlock", template: 'M98 P"/macros/tool_unlock"', variant: "quiet", stamp: false },
 				],
 			},
 		},
