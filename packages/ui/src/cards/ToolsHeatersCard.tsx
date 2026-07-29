@@ -353,7 +353,8 @@ function HeaterCells(props: { heater: Heater; index: number; kind: "tool" | "bed
 						variant="go"
 						class="mode-key heat-active"
 						atTarget={thermalMark(props.heater.current, props.heater.active) === "near"}
-						overTarget={thermalMark(props.heater.current, props.heater.active) === "over"}
+						overWarm={thermalMark(props.heater.current, props.heater.active) === "warm"}
+						overHot={thermalMark(props.heater.current, props.heater.active) === "hot"}
 						stamp={false}
 						engaged={props.heater.state === "active"}
 						command={activeCmd()}
@@ -370,7 +371,8 @@ function HeaterCells(props: { heater: Heater; index: number; kind: "tool" | "bed
 							label="Stand"
 							class="mode-key heat-standby"
 							atTarget={thermalMark(props.heater.current, props.heater.standby) === "near"}
-							overTarget={thermalMark(props.heater.current, props.heater.standby) === "over"}
+							overWarm={thermalMark(props.heater.current, props.heater.standby) === "warm"}
+							overHot={thermalMark(props.heater.current, props.heater.standby) === "hot"}
 							stamp={false}
 							engaged={props.heater.state === "standby"}
 							command={standbyCmd()}
@@ -417,7 +419,8 @@ function HeaterActions(props: {
 				variant="go"
 				class="mode-key heat-active"
 				atTarget={thermalMark(props.reading, props.active) === "near"}
-				overTarget={thermalMark(props.reading, props.active) === "over"}
+				overWarm={thermalMark(props.reading, props.active) === "warm"}
+				overHot={thermalMark(props.reading, props.active) === "hot"}
 				stamp={false}
 				engaged={props.state === "active"}
 				command={isBed() ? cmd.bedActive(props.num, props.active) : cmd.toolActive(props.num)}
@@ -428,7 +431,8 @@ function HeaterActions(props: {
 					label="Stand"
 					class="mode-key heat-standby"
 					atTarget={thermalMark(props.reading, props.standby) === "near"}
-					overTarget={thermalMark(props.reading, props.standby) === "over"}
+					overWarm={thermalMark(props.reading, props.standby) === "warm"}
+					overHot={thermalMark(props.reading, props.standby) === "hot"}
 					stamp={false}
 					engaged={props.state === "standby"}
 					command={cmd.toolStandby(props.num)}

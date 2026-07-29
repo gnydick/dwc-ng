@@ -310,7 +310,8 @@ function HeaterControl(props: {
 					variant="go"
 					class="mode-key heat-active"
 						atTarget={activeMark() === "near"}
-					overTarget={activeMark() === "over"}
+					overWarm={activeMark() === "warm"}
+					overHot={activeMark() === "hot"}
 					command={activeCmd()}
 					stamp={false}
 					engaged={props.state === "active"}
@@ -327,7 +328,8 @@ function HeaterControl(props: {
 						label="Stand"
 						class="mode-key heat-standby"
 							atTarget={standbyMark() === "near"}
-						overTarget={standbyMark() === "over"}
+						overWarm={standbyMark() === "warm"}
+						overHot={standbyMark() === "hot"}
 						command={standbyCmd()}
 						stamp={false}
 						engaged={props.state === "standby"}

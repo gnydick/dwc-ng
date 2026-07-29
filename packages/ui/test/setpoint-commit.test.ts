@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-	commitPhase, clickSendsSetpoint, staysArmed, thermalMark, NEAR_BELOW_C, OVER_ABOVE_C,
+	commitPhase, clickSendsSetpoint, staysArmed, thermalMark, NEAR_BELOW_C, OVER_WARM_C, OVER_HOT_C,
 } from "../src/control/setpointCommit.ts";
 import { cmd } from "../src/control/commands.ts";
 import { readFileSync } from "node:fs";
@@ -109,10 +109,17 @@ test("the approach window is generous: NEAR_BELOW_C under counts as near", () =>
 });
 
 /** Asymmetric on purpose: approaching is expected, overshooting is worth a look. */
-test("overshoot is tight, and only past OVER_ABOVE_C", () => {
-	assert.equal(thermalMark(205 + OVER_ABOVE_C, 205), "near", "exactly at the margin is not yet over");
-	assert.equal(thermalMark(205 + OVER_ABOVE_C + 0.1, 205), "over");
-	assert.ok(OVER_ABOVE_C < NEAR_BELOW_C, "running hot must be flagged sooner than running cool");
+test("overshoot escalates in two bands, warm then hot", () => {
+	assert.equal(thermalMark(205 + OVER_WARM_C, 205), "near", "exactly at the warm margin is not yet over");
+	assert.equal(thermalMark(205 + OVER_WARM_C + 0.1, 205), "warm");
+	assert.equal(thermalMark(205 + OVER_HOT_C, 205), "warm", "exactly at the hot margin is still warm");
+	assert.equal(thermalMark(205 + OVER_HOT_C + 0.1, 205), "hot");
+	assert.equal(thermalMark(205 + 200, 205), "hot", "the hot band has no upper end");
+});
+
+test("the bands are ordered and running hot is flagged sooner than running cool", () => {
+	assert.ok(OVER_WARM_C < OVER_HOT_C, "warm must come first or it is unreachable");
+	assert.ok(OVER_WARM_C < NEAR_BELOW_C);
 });
 
 /**
@@ -128,7 +135,7 @@ test("a non-positive setpoint asks for no heat: never far, never over", () => {
 });
 
 /** Off has nothing to reach, so its key must not sit forever un-glowed. */
-test("a null target is near; an unknown reading is far, never over", () => {
+test("a null target is near; an unknown reading is far, never warm or hot", () => {
 	assert.equal(thermalMark(24, null), "near");
 	assert.equal(thermalMark(Number.NaN, 205), "far", "a heater the model lacks must not claim anything");
 	assert.equal(thermalMark(205, Number.NaN), "far");
@@ -166,6 +173,8 @@ test("every state of the mode key is drawn", () => {
 		".gcode-btn.is-pending",                   // an unwritten edit
 		".gcode-btn.is-engaged",                   // confirmed: solid
 		".mode-key.is-engaged.at-target",          // …and the reading arrived
+		".mode-key.is-engaged.over-warm",          // running over by the warm margin
+		".mode-key.is-engaged.over-hot",           // …and by the hot one
 		".is-sent.ack-mode .gcode-ack",            // the press that switched mode
 	]) {
 		assert.ok(css.includes(selector), `${selector} has no rule — that rung is invisible`);

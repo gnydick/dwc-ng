@@ -6,6 +6,15 @@ export type { Scenario, ScenarioEvent } from "./types.ts";
 const idle: Scenario = {
 	name: "idle",
 	description: "Powered on, homed nothing, everything at ambient.",
+	init(machine: Machine) {
+		// Tool 0 runs hot on purpose. The UI escalates a mode key's glow at 5°
+		// and again at 10° above setpoint, and a perfectly tuned first-order
+		// heater never gets there — so on the bench those two states could only
+		// ever be reasoned about, never seen. One deliberately badly tuned
+		// heater makes them reachable by just switching a tool on.
+		const hotend = machine.om.heat.heaters[1];
+		if (hotend) hotend.overshoot = 12;
+	},
 };
 
 const midPrint: Scenario = {

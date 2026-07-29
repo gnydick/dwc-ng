@@ -73,8 +73,10 @@ export function GcodeButton(props: {
 	 * earns the filled ground. Engaged without it stays outlined.
 	 */
 	atTarget?: boolean;
-	/** Reading is above the setpoint by more than the overshoot margin. */
-	overTarget?: boolean;
+	/** Reading is over the setpoint by more than the warm margin. */
+	overWarm?: boolean;
+	/** Over by more than the hot margin — outranks overWarm. */
+	overHot?: boolean;
 	/**
 	 * A setpoint was just written from this button's field and the machine has
 	 * acknowledged it, but the mode has not been set yet — so the NEXT click is
@@ -141,7 +143,8 @@ export function GcodeButton(props: {
 				"gcode-quiet": props.variant === "quiet",
 				"is-engaged": props.engaged === true,
 				"at-target": props.atTarget === true,
-				"over-target": props.overTarget === true,
+				"over-warm": props.overWarm === true,
+				"over-hot": props.overHot === true,
 				"is-applied": props.applied === true,
 				// Snapshot, not props.ackAccent: the flash must keep the colour of
 				// the press that produced it.
