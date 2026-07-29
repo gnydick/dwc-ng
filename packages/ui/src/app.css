@@ -1772,10 +1772,19 @@
    ("W Z motor 3") exactly once, and a long role cannot widen the buttons. */
 .home-table {
 	display: grid;
-	grid-template-columns: max-content minmax(0, 1fr) minmax(0, 1fr);
+	/* Same argument as the jog table: these are targets, not banners. The two
+	   action columns were minmax(0,1fr), so on a wide card Home and Release
+	   stretched to ~170px each — empty ground that reads as importance the
+	   control does not have. Measured: "Release" is the widest label either
+	   column can carry at 47.6px, plus 20px of padding, so 70px holds it with
+	   room to spare. The slack now sits to the right of the grid instead of
+	   inside the buttons. */
+	grid-template-columns: max-content var(--home-key-w) var(--home-key-w);
 	gap: var(--ctl-gap);
 	align-items: center;
+	justify-content: start;
 }
+:root { --home-key-w: 70px; }
 .home-table .home-row { display: contents; }
 .home-table .ctl-name { min-width: 0; white-space: nowrap; }
 .home-table .gcode-btn { width: 100%; justify-content: center; }
