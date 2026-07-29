@@ -302,14 +302,27 @@ function HeaterCells(props: { heater: Heater; index: number; kind: "tool" | "bed
 				{/* The three buttons are modal: the one matching the heater's reported
 				    state lights up, which is what the State column used to say in
 				    words. */}
-				<div class="heat-actions">
+				<div class="heat-actions" classList={{ "has-set": !isBed() }}>
+					{/* The explicit commit. The mode buttons no longer carry a
+					    setpoint, so without this the two entry fields would have
+					    no way to reach the machine. Nothing is sent by a field
+					    losing focus — you press Set. */}
+					<Show when={!isBed()}>
+						<GcodeButton
+							label="Set"
+							class="heat-set-btn"
+							stamp={false}
+							command={cmd.toolSetpoints(props.num, active(), standby())}
+							ariaLabel={`Set tool ${props.num} active and standby targets`}
+						/>
+					</Show>
 					<GcodeButton
 						label="Active"
 						variant="go"
 						class="heat-active"
 						stamp={false}
 						engaged={props.heater.state === "active"}
-						command={isBed() ? cmd.bedActive(props.num, active()) : cmd.toolActive(props.num, active())}
+						command={isBed() ? cmd.bedActive(props.num, active()) : cmd.toolActive(props.num)}
 					/>
 					{/* The bed has no standby mode, so its column stays EMPTY rather
 					    than closing up — Active and Off keep the tools' columns. */}
@@ -319,7 +332,7 @@ function HeaterCells(props: { heater: Heater; index: number; kind: "tool" | "bed
 							class="heat-standby"
 							stamp={false}
 							engaged={props.heater.state === "standby"}
-							command={cmd.toolStandby(props.num, standby())}
+							command={cmd.toolStandby(props.num)}
 						/>
 					</Show>
 					<GcodeButton
@@ -354,7 +367,7 @@ function HeaterActions(props: {
 				class="heat-active"
 				stamp={false}
 				engaged={props.state === "active"}
-				command={isBed() ? cmd.bedActive(props.num, props.active) : cmd.toolActive(props.num, props.active)}
+				command={isBed() ? cmd.bedActive(props.num, props.active) : cmd.toolActive(props.num)}
 			/>
 			<Show when={!isBed() && props.standby !== null}>
 				<GcodeButton
@@ -362,7 +375,7 @@ function HeaterActions(props: {
 					class="heat-standby"
 					stamp={false}
 					engaged={props.state === "standby"}
-					command={cmd.toolStandby(props.num, props.standby ?? 0)}
+					command={cmd.toolStandby(props.num)}
 				/>
 			</Show>
 			<GcodeButton

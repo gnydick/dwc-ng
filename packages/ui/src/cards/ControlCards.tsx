@@ -44,6 +44,8 @@ export function HeatersBody() {
 	const toolPValue = (): number | undefined => parseToolP(toolP());
 	const heaterActive = (modelIndex: number): number =>
 		app.om.om.heat.heaters[modelIndex]?.active ?? 0;
+	const heaterStandby = (modelIndex: number): number =>
+		app.om.om.heat.heaters[modelIndex]?.standby ?? 0;
 	// "" for a heater the model doesn't have: no mode button lights up, rather
 	// than one lighting up on a guess.
 	const heaterState = (modelIndex: number): string =>
@@ -88,6 +90,7 @@ export function HeatersBody() {
 									kind="tool"
 									num={t().number}
 									active={heaterActive(t().heaters[0] ?? -1)}
+									standby={heaterStandby(t().heaters[0] ?? -1)}
 									state={heaterState(t().heaters[0] ?? -1)}
 									selectCommand={cmd.selectTool(t().number, toolPValue())}
 									current={app.om.om.state.currentTool === t().number}
@@ -102,6 +105,7 @@ export function HeatersBody() {
 						kind="bed"
 						num={0}
 						active={heaterActive(bedModelIndex())}
+						standby={0}
 						state={heaterState(bedModelIndex())}
 					/>
 				</Show>
@@ -175,14 +179,22 @@ function HeaterControl(props: {
 	kind: "tool" | "bed";
 	num: number;
 	active: number;
+	/** Reported standby setpoint. Always 0 for the bed, which has no standby. */
+	standby: number;
 	/** heat.heaters[].state — lights the mode button the machine is in. */
 	state: string;
 	/** Present only for a selectable tool; the bed has none. */
 	selectCommand?: string;
 	current?: boolean;
 }) {
+	// Two setpoints, two fields. There was ONE, feeding both buttons, so
+	// pressing Standby sent the active field's number as R — a tool could not
+	// be given different active and standby targets from this card.
 	const [temp, setTemp] = createSignal(props.active > 0 ? props.active : 0);
-	const activeCmd = () => (props.kind === "bed" ? cmd.bedActive(props.num, temp()) : cmd.toolActive(props.num, temp()));
+	const [standbyTemp, setStandbyTemp] = createSignal(props.standby > 0 ? props.standby : 0);
+	// The bed has no mode parameter (M140), so its Active still carries the
+	// setpoint; a tool's mode buttons are pure A2/A1/A0 and SET carries both.
+	const activeCmd = () => (props.kind === "bed" ? cmd.bedActive(props.num, temp()) : cmd.toolActive(props.num));
 	const offCmd = () => (props.kind === "bed" ? cmd.bedOff(props.num) : cmd.toolOff(props.num));
 	return (
 		<div class="heater-ctl">
@@ -204,9 +216,31 @@ function HeaterControl(props: {
 				)}
 			</Show>
 			<label class="temp-field">
-				<input type="number" value={temp()} onInput={e => setTemp(Number(e.currentTarget.value))} aria-label={`${props.label} target`} />
+				<input type="number" value={temp()} onInput={e => setTemp(Number(e.currentTarget.value))} aria-label={`${props.label} active target`} />
 				<span class="deg">°C</span>
 			</label>
+			{/* Standby field + the commit. The bed gets neither: M140 has no
+			    standby and no mode, so its Active button already IS its commit. */}
+			<Show when={props.kind === "tool"}>
+				<label class="temp-field">
+					<input
+						type="number"
+						value={standbyTemp()}
+						onInput={e => setStandbyTemp(Number(e.currentTarget.value))}
+						aria-label={`${props.label} standby target`}
+					/>
+					<span class="deg">°C</span>
+				</label>
+				{/* Explicit commit — nothing is sent by a field losing focus.
+				    Sends BOTH setpoints and leaves the mode alone. */}
+				<GcodeButton
+					label="Set"
+					class="heat-set-btn"
+					stamp={false}
+					command={cmd.toolSetpoints(props.num, temp(), standbyTemp())}
+					ariaLabel={`Set ${props.label} active and standby targets`}
+				/>
+			</Show>
 			{/* Modal, exactly as in the Tools & heaters card: the button for the
 			    mode the machine reports lights up. Still 1:1 with its G-code and
 			    still clickable when lit — re-sending Active after editing the
@@ -226,7 +260,7 @@ function HeaterControl(props: {
 					<GcodeButton
 						label="Standby"
 						class="heat-standby"
-						command={cmd.toolStandby(props.num, temp())}
+						command={cmd.toolStandby(props.num)}
 						stamp={false}
 						engaged={props.state === "standby"}
 					/>

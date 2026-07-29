@@ -656,7 +656,8 @@
 /* Current: the padding is what keeps the reading off the Active button — right
    aligned in a bare cell, its right edge met the button's left edge exactly. */
 .heat-table th:nth-child(5), .heat-table td:nth-child(5) { width: 76px; padding-right: 14px; }
-.heat-table th:nth-child(6), .heat-table td:nth-child(6) { width: 156px; }
+/* 156 -> 202 for the Set button's own track (40px + its 6px gap). */
+.heat-table th:nth-child(6), .heat-table td:nth-child(6) { width: 202px; }
 .heat-input {
 	width: 56px;
 	padding: var(--sp-chip-py) 6px;
@@ -694,14 +695,19 @@
    rather than by the three labels happening to measure the same. */
 .heat-actions {
 	display: grid;
-	grid-template-columns: 52px 60px 32px;
+	/* Four fixed columns: Set, then the three modes. The bed has no Set and no
+	   Standby, but it spends the SAME track list — its cells are simply empty,
+	   so Active and Off stay under the tools' Active and Off. Alignment is
+	   true by construction rather than by the labels measuring the same. */
+	grid-template-columns: 40px 52px 60px 32px;
 	gap: 6px;
 	align-items: center;
 	justify-content: end;
 }
-.heat-actions .heat-active { grid-column: 1; }
-.heat-actions .heat-standby { grid-column: 2; }
-.heat-actions .heat-off { grid-column: 3; }
+.heat-actions .heat-set-btn { grid-column: 1; }
+.heat-actions .heat-active { grid-column: 2; }
+.heat-actions .heat-standby { grid-column: 3; }
+.heat-actions .heat-off { grid-column: 4; }
 /* Fill the column and centre the label, so equal columns look equal. */
 .heat-actions .gcode-btn { padding: 5px 2px; width: 100%; justify-content: center; }
 .heat-table th {
