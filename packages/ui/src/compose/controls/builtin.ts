@@ -17,36 +17,50 @@ export const HOMING_SPEC = compileControlSpec({
 	inputs: {},
 	nodes: [
 		{
-			type: "grid",
+			// Machine-wide actions first: they act on everything, so they sit
+			// above the per-axis table rather than inside it. Bed tram belongs
+			// here because bed.g wants the machine homed — it reads as the step
+			// after "Home All", not as a peer of one axis.
+			type: "row",
+			class: "ctl-wrap",
 			items: [
 				{ type: "gcode-button", label: "Home All", template: "G28", variant: "go" },
+				{ type: "gcode-button", label: "Bed Tram", template: "G32", variant: "go" },
+				{ type: "gcode-button", label: "Release All", template: "M84", variant: "danger" },
+			],
+		},
+		{
+			// One row per axis, Home and Release as COLUMNS. Previously these
+			// were two separate blocks — a 184px-tracked grid of "Home U · Z
+			// motor 1" buttons, then a wrapping bank of single-letter release
+			// keys — so the same axis appeared twice, in two idioms, at two
+			// sizes. As a table the axis is named once and its two verbs line
+			// up under their headings.
+			//
+			// The column tracks live on THIS container and every row spends
+			// them via display: contents (see .home-table), so Home and Release
+			// align across all seven axes by construction.
+			type: "row",
+			class: "home-table",
+			items: [
 				{
 					type: "forEach",
 					from: "move.axes[visible]",
 					as: "axis",
 					enrich: "axisLabel",
-					node: { type: "gcode-button", label: "Home {axis.label}", template: "G28 {axis.letter}" },
-				},
-				// Bed tramming (G32 → bed.g) as the last grid cell, right after
-				// the per-axis homes (…Home C) — bed.g wants the machine homed
-				// first, so it reads as the step after homing.
-				{ type: "gcode-button", label: "Bed Tram", template: "G32", variant: "go" },
-			],
-		},
-		{
-			// Releasing drops the homed state the grid above establishes, so it
-			// belongs on this card. Stamp-free: sixteen full-size stamps would
-			// not fit, and the card tip already names M84.
-			type: "row",
-			label: "Release",
-			class: "release-row",
-			items: [
-				{ type: "gcode-button", label: "All", template: "M84", variant: "danger", stamp: false, class: "rel-key" },
-				{
-					type: "forEach",
-					from: "move.axes[visible]",
-					as: "axis",
-					node: { type: "gcode-button", label: "{axis.letter}", template: "M84 {axis.letter}", variant: "quiet", stamp: false, class: "rel-key" },
+					node: {
+						type: "row",
+						class: "home-row",
+						// Letter and role in separate slots — the role renders as
+						// the <small> beside the letter, so a long role name
+						// cannot widen the button columns.
+						label: "{axis.letter}",
+						sub: "{axis.role}",
+						items: [
+							{ type: "gcode-button", label: "Home", template: "G28 {axis.letter}", stamp: false },
+							{ type: "gcode-button", label: "Release", template: "M84 {axis.letter}", variant: "quiet", stamp: false },
+						],
+					},
 				},
 			],
 		},

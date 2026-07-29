@@ -1585,6 +1585,24 @@
 .jog-row .gcode-btn, .extrude-row .gcode-btn { padding: 7px 14px; }
 .jog-row .gcode-label { font-variant-numeric: tabular-nums; }
 
+/* ---------- the homing table ----------
+   Axis name, Home, Release — one grid, three tracks declared once here. Each
+   .home-row is display: contents so its cells are direct children of THIS
+   grid, which is what makes the two button columns line up across all seven
+   axes rather than depending on the axis letters measuring the same.
+
+   The name track is max-content: it fits the widest letter+role pair
+   ("W Z motor 3") exactly once, and a long role cannot widen the buttons. */
+.home-table {
+	display: grid;
+	grid-template-columns: max-content minmax(0, 1fr) minmax(0, 1fr);
+	gap: var(--ctl-gap);
+	align-items: center;
+}
+.home-table .home-row { display: contents; }
+.home-table .ctl-name { min-width: 0; white-space: nowrap; }
+.home-table .gcode-btn { width: 100%; justify-content: center; }
+
 /* ---------- the axis jog table ----------
    One grid for ALL axes, not a stack of independently-laid-out rows. The
    column tracks are declared once here; each .jog-row is display: contents,

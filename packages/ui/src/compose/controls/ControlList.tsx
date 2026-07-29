@@ -23,7 +23,11 @@ const ENRICHMENTS: Record<EnrichmentId, (item: Record<string, unknown>, ctx: Car
 	axisLabel: (item, ctx) => {
 		const letter = String(item.letter ?? "");
 		const role = ctx.config.config.axisRoles[letter];
-		return { ...item, label: role ? `${letter} · ${role}` : letter };
+		// `role` is exposed separately from `label` so a caller can put the
+		// letter and the role in DIFFERENT slots — the homing table sets them
+		// as a row's label and sub, which a single pre-joined string cannot do.
+		// Empty (not undefined) when unset, so a template resolves it to "".
+		return { ...item, label: role ? `${letter} · ${role}` : letter, role: role ?? "" };
 	},
 };
 
@@ -127,17 +131,26 @@ export function ControlList(props: { spec: CompiledControlSpec; ctx: CardCtx }) 
 					</div>
 				);
 			}
-			case "row":
+			case "row": {
+				// Resolved, not read: a row inside a forEach names its own item
+				// ("{axis.letter}"). Gating <Show> on the RESOLVED text keeps an
+				// empty result — an axis with no role — from rendering an empty
+				// <small> that would still occupy its slot.
+				const rowLabel = (): string =>
+					node.label === undefined ? "" : resolveTemplate(node.label, scopeWith(p.vars));
+				const rowSub = (): string =>
+					node.sub === undefined ? "" : resolveTemplate(node.sub, scopeWith(p.vars));
 				return (
 					<div class={node.class ?? "ctl-wrap"}>
-						<Show when={node.label}>
-							<span class="ctl-name">{node.label}<Show when={node.sub}>{s => <small>{s()}</small>}</Show></span>
+						<Show when={rowLabel()}>
+							<span class="ctl-name">{rowLabel()}<Show when={rowSub()}>{s => <small>{s()}</small>}</Show></span>
 						</Show>
 						<For each={node.items}>
 							{item => <RenderRowItem item={item} vars={p.vars} />}
 						</For>
 					</div>
 				);
+			}
 			case "grid":
 				return (
 					<div class="ctl-grid">
