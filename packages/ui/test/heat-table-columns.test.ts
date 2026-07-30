@@ -86,10 +86,11 @@ const COLUMN_COUNT = [...cardTsx.matchAll(/<th scope="col">/g)].length;
 const base = withoutMediaBlocks(appCss);
 const narrow = mediaBlock(appCss, "max-width: 900px");
 
-test("the card renders the six columns the stylesheet is written for", () => {
+test("the card renders the five columns the stylesheet is written for", () => {
 	// Guards the arithmetic below: with a different count, the sums are checking
-	// a table that no longer exists.
-	assert.equal(COLUMN_COUNT, 6);
+	// a table that no longer exists. 6 -> 5 when the Filament column left both
+	// tool cards for Extruders, which owns the pickers and the load macros.
+	assert.equal(COLUMN_COUNT, 5);
 });
 
 test("every column has a declared width — table-layout:fixed has no fallback", () => {
@@ -130,26 +131,6 @@ test("the narrow-viewport table is NARROWER than the base — the point of the b
 		declaredTableWidth(narrow) < declaredTableWidth(base),
 		`narrow ${declaredTableWidth(narrow)}px is not below base ${declaredTableWidth(base)}px`,
 	);
-});
-
-test("the Filament column keeps room for the picker's own min-width", () => {
-	// .heat-fil declares min-width: 88px. A column narrower than that plus its
-	// gutters does not squeeze the picker, it overflows the cell.
-	const pickerMin = Number(/\.heat-fil\s*\{[^}]*min-width:\s*(\d+)px/.exec(appCss)?.[1]);
-	assert.ok(Number.isFinite(pickerMin), "could not read .heat-fil min-width");
-
-	const filamentRule = /\.heat-table th:nth-child\(2\)[^{]*\{([^}]*)\}/g;
-	for (const css of [base, narrow]) {
-		const body = [...css.matchAll(filamentRule)].at(-1)?.[1];
-		if (body === undefined) continue;
-		const width = Number(/width:\s*(\d+)px/.exec(body)?.[1]);
-		const padLeft = Number(/padding-left:\s*(\d+)px/.exec(body)?.[1] ?? 0);
-		const padRight = Number(/padding-right:\s*(\d+)px/.exec(body)?.[1] ?? 0);
-		assert.ok(
-			width - padLeft - padRight >= pickerMin,
-			`Filament column leaves ${width - padLeft - padRight}px for an ${pickerMin}px picker`,
-		);
-	}
 });
 
 test("the Deselect row does NOT wrap — content inside a card must not move", () => {
