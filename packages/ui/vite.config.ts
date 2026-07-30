@@ -1,5 +1,14 @@
 import { defineConfig, loadEnv, type ProxyOptions } from 'vite'
 import solid from 'vite-plugin-solid'
+import { fileURLToPath } from 'node:url'
+
+// .env / .env.local live at the REPO ROOT, but vite runs with cwd =
+// packages/ui — so loadEnv(mode, process.cwd()) looked in the wrong directory
+// and read nothing. Every documented knob in .env.local was silently ignored:
+// DWC_ALLOWED_HOSTS never reached the host check, VITE_DWC_PASSWORD never
+// reached the bundle. Anchored to this file instead of to the cwd, so it does
+// not matter where vite is invoked from.
+const repoRoot = fileURLToPath(new URL('../../', import.meta.url))
 
 // Dev parity with production: on a real board the UI is served from the SD card
 // by RRF itself, so rr_ requests are same-origin. In dev we proxy them to a
@@ -73,7 +82,8 @@ if (transport !== undefined && !TRANSPORTS.includes(transport)) {
 export default defineConfig(({ mode }) => {
   // loadEnv reads .env / .env.local — process.env alone does NOT, which is why
   // per-developer settings have to come through here to be settable at all.
-  const env = { ...loadEnv(mode, process.cwd(), ''), ...process.env }
+  // Read from repoRoot (see above), NOT the cwd.
+  const env = { ...loadEnv(mode, repoRoot, ''), ...process.env }
 
   const target = env['DWC_TARGET'] ?? MOCK_TARGET
   // No fallback: unset means "I have not told this checkout about a board".
@@ -82,6 +92,30 @@ export default defineConfig(({ mode }) => {
   // devices reach the dev server by hostname. Comma-separated, empty by
   // default — localhost works regardless.
   const allowedHosts = (env['DWC_ALLOWED_HOSTS'] ?? '').split(',').map(h => h.trim()).filter(Boolean)
+
+  // Vite 6+ rejects cross-origin requests to the dev server by default
+  // (CVE-2025-24010): without it, any page your browser happens to be on could
+  // drive this server — and this one PROXIES TO A PRINTER, so "drive" includes
+  // sending G-code. The default stays closed and we open it deliberately.
+  //
+  // Allowed: localhost/127.0.0.1 on any port, plus whatever DWC_ALLOWED_HOSTS
+  // already names (the LAN hostnames you reach the dev server by) on any port
+  // and either scheme. Add anything else through DWC_ALLOWED_ORIGINS as full
+  // origins, e.g. "http://duet3.nydick.net".
+  //
+  // Deliberately NOT `cors: true`. That reflects back whatever Origin is sent,
+  // which is the same as no protection at all.
+  const escapeForRegex = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const hostPattern = (host: string): RegExp =>
+    new RegExp(`^https?://${escapeForRegex(host)}(:\\d+)?$`)
+  const extraOrigins = (env['DWC_ALLOWED_ORIGINS'] ?? '').split(',').map(o => o.trim()).filter(Boolean)
+  const corsOrigins: Array<string | RegExp> = [
+    hostPattern('localhost'),
+    hostPattern('127.0.0.1'),
+    hostPattern('[::1]'),
+    ...allowedHosts.map(hostPattern),
+    ...extraOrigins,
+  ]
 
   // The "Real" dev backend can only exist if a board was configured. Omitting
   // the routes entirely is the point: a request to /real then fails visibly
@@ -104,6 +138,9 @@ export default defineConfig(({ mode }) => {
 
   return {
     base,
+    // Same directory loadEnv above uses, so import.meta.env and this config
+    // cannot disagree about which .env file is in force.
+    envDir: repoRoot,
     // The declared transport, frozen into the bundle. Vite substitutes it
     // literally, so the branch that does not apply is dead code the minifier
     // removes — a bundle built for one dialect does not carry the other's
@@ -115,6 +152,7 @@ export default defineConfig(({ mode }) => {
     server: {
       host: true, // listen on all interfaces, not just localhost
       allowedHosts,
+      cors: { origin: corsOrigins, credentials: true },
       proxy: {
         ...realProxy,
         '^/rr_.*': { target, changeOrigin: true },
