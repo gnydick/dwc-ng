@@ -3326,3 +3326,12 @@
 }
 .layout-audit-table td { padding: var(--sp-cell) var(--ctl-gap) var(--sp-cell) 0; border-top: 1px solid var(--hairline); font-variant-numeric: tabular-nums; }
 .layout-audit-table td.bad { color: var(--fault); font-weight: 600; }
+/* A row the sweep could NOT measure. Whole-row, not one cell: there is no
+   verdict to colour, and a card that went unmeasured has to be as loud as one
+   that failed — the defect this replaces was such a card leaving no line at
+   all. */
+.layout-audit-table tr.bad td { color: var(--fault); font-weight: 600; }
+/* The scope note. Deliberately not small print: it is the sentence that stops a
+   column of passing verdicts being read as "this layout is sound". */
+.layout-audit-scope { margin: var(--sp-flow) 0 0; max-width: 78ch; line-height: 1.5; }
+.layout-audit-scope b { color: var(--silk); font-weight: 600; }
