@@ -39,10 +39,10 @@ export function ActiveJobBody(props: { detailed?: boolean }) {
 		<Show
 			when={isActive()}
 			fallback={
-				<Show when={app.om.om.job.lastFileName} fallback={<p class="job-empty">No job running.</p>}>
+				<Show when={app.om.om.job.lastFileName} fallback={<p class="job-empty">No job</p>}>
 					{last => (
 						<>
-							<p class="job-empty">No job running. Last: {baseName(last())}</p>
+							<p class="job-empty">No job Last: {baseName(last())}</p>
 							{/* Re-run the last file — a plain M32 on it, the same code Jobs
 							    sends to start a print. Only offered when a last file exists. */}
 							<div class="btn-row">

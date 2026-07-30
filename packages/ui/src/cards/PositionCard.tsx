@@ -14,7 +14,7 @@ export function PositionBody(props: { orientation: () => Orientation }) {
 	const speeds = createMemo(() => speedRow(app.om.om, speedFlowMode()));
 
 	return (
-		<Show when={visibleAxes().length} fallback={<p class="job-empty">Waiting for the machine…</p>}>
+		<Show when={visibleAxes().length} fallback={<p class="job-empty">Waiting…</p>}>
 			<Show
 				when={props.orientation() === "horizontal"}
 				fallback={

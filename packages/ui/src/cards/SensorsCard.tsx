@@ -16,7 +16,7 @@ export function SensorsBody(props: { orientation: () => Orientation }) {
 	const sensorList = createMemo(() => sensorRows(app.om.om.sensors, app.om.om.move.axes, app.config.config.sensorNames));
 
 	return (
-		<Show when={sensorList().length} fallback={<p class="job-empty">No sensors configured.</p>}>
+		<Show when={sensorList().length} fallback={<p class="job-empty">No sensors</p>}>
 			<Show
 				when={props.orientation() === "horizontal"}
 				fallback={

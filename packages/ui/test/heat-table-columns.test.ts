@@ -152,11 +152,13 @@ test("the Filament column keeps room for the picker's own min-width", () => {
 	}
 });
 
-test("the Deselect row wraps, like the Tools card's identical row", () => {
-	// Same three controls in both cards. Unwrapped, its minimum is their sum
-	// (322px) rather than the widest of them (150px) — a floor on the whole
-	// card that nothing about the row needs.
+test("the Deselect row does NOT wrap — content inside a card must not move", () => {
+	// Reversed the same day it was added. Wrapping dropped this card's floor
+	// from 322 to 150, but a row that re-flows makes the card "fit" at any
+	// width by rearranging itself, which is the one thing a card must not do
+	// (Gabe, 2026-07-30: "not let content move at all — that's the point of the
+	// cards"). It costs nothing here: the table beside it declares 598.
 	const rule = /\.heat-deselect\s*\{([^}]*)\}/.exec(appCss);
 	assert.ok(rule, "no .heat-deselect rule");
-	assert.match(rule[1]!, /flex-wrap:\s*wrap/);
+	assert.match(rule[1]!, /flex-wrap:\s*nowrap/);
 });

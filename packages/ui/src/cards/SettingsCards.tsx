@@ -26,7 +26,7 @@ export function AxisRolesBody() {
 				Label what each axis physically is on this machine — the firmware only
 				knows letters. Labels appear in the position readout and jog controls.
 			</p>
-			<Show when={visibleAxes().length} fallback={<p class="job-empty">Waiting for the machine…</p>}>
+			<Show when={visibleAxes().length} fallback={<p class="job-empty">Waiting…</p>}>
 				<For each={visibleAxes()}>
 					{axis => (
 						<label class="field">
@@ -84,7 +84,7 @@ export function HeaterColorsBody() {
 			    the live <input type="color"> and the OS colour dialog closes
 			    the instant you pick anything. Index keys by position and
 			    updates in place, so the input element survives. */}
-			<Show when={series().length} fallback={<p class="job-empty">Waiting for heaters…</p>}>
+			<Show when={series().length} fallback={<p class="job-empty">Waiting…</p>}>
 				<Index each={series()}>
 					{(s, i) => {
 						const clash = createMemo(() => nearestCollision(s().stroke, others(i)));
@@ -273,7 +273,7 @@ export function SensorNamesBody() {
 				Name the endstops, filament monitors, and probes that show up on the
 				Machine view's Sensors card — RRF only knows them by index.
 			</p>
-			<Show when={sensorList().length} fallback={<p class="job-empty">Waiting for the machine…</p>}>
+			<Show when={sensorList().length} fallback={<p class="job-empty">Waiting…</p>}>
 				<For each={sensorList()}>
 					{row => (
 						<label class="field">
@@ -305,7 +305,7 @@ export function SavedVersionsBody() {
 				one click. Settings live on the SD card ({CONFIG_FILE}), so they
 				follow the machine to any browser.
 			</p>
-			<Show when={app.config.snapshots.length} fallback={<p class="job-empty">No saved versions yet.</p>}>
+			<Show when={app.config.snapshots.length} fallback={<p class="job-empty">No saved versions</p>}>
 				<For each={app.config.snapshots}>
 					{(snap, index) => (
 						<div class="field">

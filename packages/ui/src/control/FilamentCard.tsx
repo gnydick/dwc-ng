@@ -81,7 +81,7 @@ export function FilamentCard(props: { tools: (Tool | null)[] }) {
 	return (
 		<Show
 			when={feeders().length > 0}
-			fallback={<p class="job-empty">No tools on this machine feed filament.</p>}
+			fallback={<p class="job-empty">No filament extruders</p>}
 		>
 			{/* One grid for the whole card, head row included, so the two All
 			    buttons sit in the SAME tracks as the Load and Unload beneath
