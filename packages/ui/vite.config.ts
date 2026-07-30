@@ -21,9 +21,13 @@ function gitCommit(): string {
   const git = (...args: string[]): string =>
     execFileSync('git', args, { cwd: repoRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()
   try {
-    // --porcelain is empty exactly when tracked files match HEAD. Untracked
-    // files do not count: they are not in the bundle.
-    return git('rev-parse', '--short', 'HEAD') + (git('status', '--porcelain', '--untracked-files=no') === '' ? '' : '-dirty')
+    // Scoped to what can actually reach the bundle. Unscoped, editing a README
+    // or an audit note marked the build dirty — and a flag that is on for
+    // changes which cannot affect the code is one you stop reading, which
+    // costs you exactly the time it is supposed to save. Untracked files do
+    // not count either: they are not in the bundle.
+    const dirty = git('status', '--porcelain', '--untracked-files=no', '--', 'packages/ui', 'pnpm-lock.yaml')
+    return git('rev-parse', '--short', 'HEAD') + (dirty === '' ? '' : '-dirty')
   } catch {
     return 'nogit'
   }
