@@ -53,14 +53,6 @@
 	   coming from the same component depending on whether its stamp showed.
 	   The jog pad is the one deliberate exception, at exactly 2x. */
 	--ctl-h: 28px;
-	/* A SECOND control height, for a row that is a heading which happens to
-	   carry a control — the Extruders card's All / All. Everything else shares
-	   --ctl-h on purpose (one knowable height is what lets a card be fitted to
-	   its content), so this is deliberately the only exception and is derived
-	   from --ctl-h rather than declared per pitch. The 18px floor is the same
-	   reasoning as --ctl-h's own 20px one: density buys rows from air, never
-	   from something you have to hit. */
-	--ctl-h-slim: max(18px, calc(var(--ctl-h) - 6px));
 	--ctl-gap: 8px;
 
 	/* ---------- density: the baseline ("1.27 mm" lead pitch) ----------
