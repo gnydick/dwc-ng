@@ -692,11 +692,11 @@
    brought its own bugs: containment silenced the table completely, and the
    horizontal layout then disagreed with the vertical about the minimum.
    152 + 120 + 56 + 56 + 58 + 156 = 598. */
-/* 152 + 56 + 56 + 58 + 156 = 478. Heater | Active | Standby | Current | Set.
+/* 152 + 70 + 56 + 58 + 156 = 492. Heater | Active | Standby | Current | Set.
    No Filament column on either tool card: loading a material is the Extruders
    card's job — it owns the pickers, the macros and the All buttons — and a
    second picker here was the same control in two places. */
-:root { --heat-table-w: 478px; }
+:root { --heat-table-w: 492px; }
 .heat-table {
 	width: 100%;
 	min-width: var(--heat-table-w);
@@ -709,8 +709,12 @@
    card's minimum and the column layout argued with each other. */
 .heat-table th:nth-child(1), .heat-table td:nth-child(1) { width: 152px; }
 /* 56px, measured: .heat-input is 56px wide and these were once declared 54, so
-   both setpoint fields overflowed their own column by 2px. */
-.heat-table th:nth-child(2), .heat-table td:nth-child(2) { width: 56px; }
+   both setpoint fields overflowed their own column by 2px.
+   Active carries 14px of LEFT gutter on top of that — the tool selector in
+   column 1 fills its cell, so with bare columns the button's right edge met
+   the first input's left edge exactly. The gutter is added to the width, not
+   taken out of it (box-sizing is border-box), so the field is still 56. */
+.heat-table th:nth-child(2), .heat-table td:nth-child(2) { width: 70px; padding-left: 14px; }
 .heat-table th:nth-child(3), .heat-table td:nth-child(3) { width: 56px; }
 /* Current: the padding is what keeps the reading off the first mode key —
    right-aligned in a bare cell, its right edge met the key exactly. 58px
@@ -1271,9 +1275,9 @@
 	   Only two columns are touched, because only two have slack: the picker
 	   measures 87 (min-width 88) inside 120, and the widest reading is 44
 	   inside 58. Heater/Active/Standby/Set are already at their contents. */
-	.heat-table { --heat-table-w: 470px; }
+	.heat-table { --heat-table-w: 484px; }
 	/* Only Current has measured slack at this width; the setpoint fields are at
-	   their inputs and Set is at its three keys. 152 + 56 + 56 + 50 + 156 = 470. */
+	   their inputs and Set is at its three keys. 152 + 70 + 56 + 50 + 156 = 484. */
 	.heat-table th:nth-child(4), .heat-table td:nth-child(4) { width: 50px; padding-right: 6px; }
 	/* Same two columns, narrow: 152 + 50 = 202. */
 	.heat-table.info-only { min-width: 202px; }
@@ -1768,7 +1772,12 @@
 .heat-modes {
 	display: grid;
 	grid-template-columns: repeat(3, var(--mode-key-w));
-	gap: 4px;
+	/* 8px, not 4. Three modal keys sitting 4px apart read as one segmented
+	   control, which is wrong: they are three separate commands and only one is
+	   lit. The bank is 3 x 46 + 2 x 8 = 154 against the Set column's 156, so the
+	   extra air comes out of that column's existing slack and the table's own
+	   width is unchanged. */
+	gap: 8px;
 	align-items: center;
 	/* Right-aligned in both hosts: margin-left for the flex row, justify-content
 	   for the table cell, which stretches instead of shrink-wrapping. */
