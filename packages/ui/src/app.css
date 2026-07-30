@@ -1930,9 +1930,23 @@
 .heater-ctl > .ctl-name, .heater-ctl > .tool-select { grid-column: 1; }
 /* Pinned per column, so the bed — no standby field — leaves a HOLE instead of
    sliding its later cells left into the vacated track. Scoped to the heaters
-   card: the Tuning row shares .heater-ctl but not this column scheme. */
-.heat-rows > .heater-ctl > .temp-field:nth-of-type(1) { grid-column: 2; }
-.heat-rows > .heater-ctl > .temp-field:nth-of-type(2) { grid-column: 3; }
+   card: the Tuning row shares .heater-ctl but not this column scheme.
+
+   By ROLE, not by sibling index. These two were the last :nth-of-type() in the
+   stylesheet carrying a track number, and they are the same regression the
+   Tools & heaters table was converted out of: both setpoint cells are
+   .temp-field, so "the first one" and "the second one" was the only way to tell
+   them apart — and a row that renders only ONE of them (the bed has no standby)
+   would have had its Active field land in the Standby track. The names are the
+   same col-active / col-standby the table beside it uses, so the two cards name
+   their columns in one vocabulary.
+
+   NOTE, verified 2026-07-30: nothing in the app renders `.heat-rows` today —
+   the heaters card was converted to `.heat-table`, and this block matches no
+   element. It is left in place rather than deleted (out of scope for the audit
+   fix), but it is named correctly now, so reviving it cannot revive the bug. */
+.heat-rows > .heater-ctl > .temp-field.col-active { grid-column: 2; }
+.heat-rows > .heater-ctl > .temp-field.col-standby { grid-column: 3; }
 .heat-rows > .heater-ctl > .heat-read { grid-column: 4; }
 .heat-rows > .heater-ctl > .heat-modes { grid-column: 5; }
 /* Column headings. Same face, size and alignment as .heat-table th, because
