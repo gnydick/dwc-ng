@@ -228,13 +228,17 @@ test("mergeCanvas KEEPS a stored layout whose rects overlap (audit residual clos
 	assert.deepEqual(mergeCanvas(stored, defaults), { a: rect(0, 0, 4, 4), b: rect(1, 1, 4, 4) });
 });
 
-// --- growToDefaults: adopt a span the composition grew (USER_AUDIT line 19) ---
+// --- growToDefaults: a STORED size is the operator's, in BOTH directions ---
 
-test("growToDefaults adopts the larger span per axis and never moves a card", () => {
+test("growToDefaults keeps a stored span SMALLER than the coded default", () => {
+	// This used to adopt the coded 103 via Math.max, so a card could never be
+	// made shorter than its default across a reload: shrink it, reload, and it
+	// sprang back — growing was remembered, shrinking was not (reported
+	// 2026-07-30, Tools & heaters held at rowSpan 77 against a coded 110).
 	const defaults = [{ id: "a", col: 0, row: 0, colSpan: 12, rowSpan: 103 }];
 	const { state, grew } = growToDefaults({ a: rect(3, 95, 12, 95) }, defaults);
-	assert.deepEqual(state.a, rect(3, 95, 12, 103), "rowSpan grown, col/row untouched");
-	assert.equal(grew, true);
+	assert.deepEqual(state.a, rect(3, 95, 12, 95), "stored span kept, col/row untouched");
+	assert.equal(grew, false, "adopting nothing means there is nothing to reflow around");
 });
 
 test("growToDefaults keeps a user-enlarged span and reports no growth", () => {
@@ -244,10 +248,12 @@ test("growToDefaults keeps a user-enlarged span and reports no growth", () => {
 	assert.equal(grew, false, "nothing grew, so no reflow may be triggered");
 });
 
-test("growToDefaults grows axes independently", () => {
+test("growToDefaults takes BOTH axes from storage, smaller or larger", () => {
+	// Mixed: narrower than the coded default on one axis, taller on the other.
+	// Both are the operator's, so both survive.
 	const defaults = [{ id: "a", col: 0, row: 0, colSpan: 20, rowSpan: 10 }];
 	const { state } = growToDefaults({ a: rect(0, 0, 8, 50) }, defaults);
-	assert.deepEqual(state.a, rect(0, 0, 20, 50), "colSpan from the default, rowSpan from storage");
+	assert.deepEqual(state.a, rect(0, 0, 8, 50), "stored wins on both axes");
 });
 
 test("growToDefaults defaults unknown/invalid stored entries and drops stale ids", () => {
@@ -323,15 +329,18 @@ test("reflow is deterministic regardless of key insertion order", () => {
 
 // --- the gate: reflow runs only when a span actually grew ---
 
-test("mergeCanvas reflows ONLY when a span actually grew", () => {
+test("mergeCanvas returns a stored arrangement exactly as it was", () => {
+	// The counterpart: nothing is adopted from the coded sizes, so nothing is
+	// displaced either. A reload gives back the screen the operator arranged,
+	// not a re-packed approximation of it.
 	const defaults = [
 		{ id: "a", col: 0, row: 0, colSpan: 24, rowSpan: 103 },
 		{ id: "b", col: 0, row: 95, colSpan: 24, rowSpan: 40 },
 	];
-	const grown = mergeCanvas({ a: rect(0, 0, 24, 95), b: rect(0, 95, 24, 40) }, defaults);
-	assert.deepEqual(grown.a, rect(0, 0, 24, 103), "coded growth adopted");
-	assert.deepEqual(grown.b, rect(0, 103, 24, 40), "displaced neighbour pushed down");
-	assert.equal(hasCollisions(grown), false);
+	const merged = mergeCanvas({ a: rect(0, 0, 24, 95), b: rect(0, 95, 24, 40) }, defaults);
+	assert.deepEqual(merged.a, rect(0, 0, 24, 95), "stored span kept");
+	assert.deepEqual(merged.b, rect(0, 95, 24, 40), "neighbour not pushed");
+	assert.equal(hasCollisions(merged), false);
 });
 
 test("mergeCanvas still KEEPS a legal overlap when nothing grew (hidden-card guard)", () => {

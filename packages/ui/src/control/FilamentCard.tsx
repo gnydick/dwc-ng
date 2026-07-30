@@ -124,7 +124,6 @@ export function FilamentCard(props: { tools: (Tool | null)[] }) {
 				    Unload with it. The empty list is a note beneath the rows now,
 				    and Load disables itself per row for want of a selection. */}
 				<Show when={!filaments.loading && (filaments() ?? []).length === 0}>
-					<p class="job-empty filament-note">No filaments in {FILAMENTS_DIR}.</p>
 				</Show>
 				<Show when={filaments.loading}>
 					<p class="job-empty filament-note">Reading filaments…</p>

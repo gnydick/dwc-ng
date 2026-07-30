@@ -193,7 +193,7 @@ export const CARD_DEFS = {
 	heaters: defineCard({
 		title: "Tools",
 		ariaLabel: "Tools",
-		tip: "T · M568 · M140",
+		tip: "T · tools · heat.heaters",
 		// 62 -> 115 when each tool gained a second setpoint field and two Set
 		// buttons: the row no longer fits one line, so every tool is two lines
 		// (entry, then modes). Sized for the DEFAULT pitch — 444px of content

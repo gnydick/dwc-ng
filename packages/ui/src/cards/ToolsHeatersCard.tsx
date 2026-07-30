@@ -24,8 +24,24 @@ const FILAMENTS_DIR = "0:/filaments";
  * Content-only body; chrome comes from the compose registry
  * (compose/defs.ts "tools-heaters") or the legacy wrapper below.
  */
-export function ToolsHeatersBody(props: { orientation: () => Orientation }) {
+export function ToolsHeatersBody(props: {
+	orientation: () => Orientation;
+	/**
+	 * false = READ THE HEAT, DO NOT SET IT. The Tools card renders this same
+	 * body with the heater CONTROLS dropped — the Active and Standby entry
+	 * columns and the Set column (Act / Stand / Off) are not rendered at all.
+	 * What remains is the tool, its filament and its reading.
+	 *
+	 * A prop rather than a second card. The two were separate implementations
+	 * that merely agreed: the same five tools at 36px and 45px row pitches,
+	 * Current second in one and fifth in the other, headings on one and not the
+	 * other. "Identical except for the columns" is now true by construction —
+	 * only what is REMOVED can differ.
+	 */
+	heaterControls?: boolean;
+}) {
 	const app = useApp();
+	const controls = (): boolean => props.heaterControls !== false;
 
 	// Blank means "send no P", which is not the same as P0 — see cmd.selectTool.
 	const [toolP, setToolP] = createSignal("");
@@ -132,18 +148,23 @@ export function ToolsHeatersBody(props: { orientation: () => Orientation }) {
 			<Show
 				when={props.orientation() === "horizontal"}
 				fallback={
-					<table class="heat-table">
+					<table class="heat-table" classList={{ "info-only": !controls() }}>
 						<thead>
 							<tr>
 								<th scope="col">Heater</th>
-								<th scope="col">Filament</th>
-								<th scope="col">Active</th>
-								<th scope="col">Standby</th>
+								{/* Filament goes with the controls. The Tools card is the tool and
+								    its reading; the picker is something you DO, and loading lives
+								    on Extruders. */}
+								<Show when={controls()}>
+									<th scope="col">Filament</th>
+									<th scope="col">Active</th>
+									<th scope="col">Standby</th>
+								</Show>
 								{/* Reading sits next to acting: Current is the last thing before
 								    the buttons, so the number you check and the button you press
 								    are the same glance. */}
 								<th scope="col">Current</th>
-								<th scope="col">Set</th>
+								<Show when={controls()}><th scope="col">Set</th></Show>
 							</tr>
 						</thead>
 						<tbody>
@@ -162,14 +183,16 @@ export function ToolsHeatersBody(props: { orientation: () => Orientation }) {
 												</td>
 												{/* Only a tool that feeds an extruder can hold filament;
 												    the rest keep an empty cell so the columns hold. */}
-												<td>
-													<Show when={t().filamentExtruder >= 0}>
-														<FilamentPick tool={t()} filaments={filaments() ?? []} />
-													</Show>
-												</td>
+												<Show when={controls()}>
+													<td>
+														<Show when={t().filamentExtruder >= 0}>
+															<FilamentPick tool={t()} filaments={filaments() ?? []} />
+														</Show>
+													</td>
+												</Show>
 												<Show
 													when={heaterAt(t().heaters[0] ?? -1)}
-													fallback={<td colspan="4" class="heat-set">no heater</td>}
+													fallback={<td colspan={controls() ? 4 : 1} class="heat-set">no heater</td>}
 												>
 													{h => (
 														<HeaterCells
@@ -177,6 +200,7 @@ export function ToolsHeatersBody(props: { orientation: () => Orientation }) {
 															index={t().heaters[0] ?? -1}
 															kind="tool"
 															num={t().number}
+															controls={controls()}
 														/>
 													)}
 												</Show>
@@ -192,8 +216,8 @@ export function ToolsHeatersBody(props: { orientation: () => Orientation }) {
 											<ToolName name="Bed" des={`heater${bedHeaterIndex()}`} dock={null} tool={null} />
 										</td>
 										{/* The bed holds no filament — the column stays empty. */}
-										<td />
-										<HeaterCells heater={h()} index={bedHeaterIndex()} kind="bed" num={0} />
+										<Show when={controls()}><td /></Show>
+										<HeaterCells heater={h()} index={bedHeaterIndex()} kind="bed" num={0} controls={controls()} />
 									</tr>
 								)}
 							</Show>
@@ -221,7 +245,9 @@ export function ToolsHeatersBody(props: { orientation: () => Orientation }) {
 														<b>{h().active}</b>°&nbsp;/&nbsp;{h().standby}°
 														<HeaterState heater={h()} index={t().heaters[0] ?? -1} />
 													</span>
-													<HeaterActions kind="tool" num={t().number} active={h().active} standby={h().standby} state={h().state} reading={h().current} />
+													<Show when={controls()}>
+														<HeaterActions kind="tool" num={t().number} active={h().active} standby={h().standby} state={h().state} reading={h().current} />
+													</Show>
 												</>
 											)}
 										</Show>
@@ -241,7 +267,9 @@ export function ToolsHeatersBody(props: { orientation: () => Orientation }) {
 									<b>{h().active}</b>°
 									<HeaterState heater={h()} index={bedHeaterIndex()} />
 								</span>
-								<HeaterActions kind="bed" num={0} active={h().active} standby={null} state={h().state} reading={h().current} />
+								<Show when={controls()}>
+									<HeaterActions kind="bed" num={0} active={h().active} standby={null} state={h().state} reading={h().current} />
+								</Show>
 							</div>
 						)}
 					</Show>
@@ -257,7 +285,7 @@ export function ToolsHeatersBody(props: { orientation: () => Orientation }) {
  * values and are the operator's from then on — one instance per row, so a poll
  * can never overwrite what is being typed.
  */
-function HeaterCells(props: { heater: Heater; index: number; kind: "tool" | "bed"; num: number }) {
+function HeaterCells(props: { heater: Heater; index: number; kind: "tool" | "bed"; num: number; controls: boolean }) {
 	const [active, setActive] = createSignal(props.heater.active);
 	const [standby, setStandby] = createSignal(props.heater.standby);
 	const isBed = (): boolean => props.kind === "bed";
@@ -302,33 +330,39 @@ function HeaterCells(props: { heater: Heater; index: number; kind: "tool" | "bed
 
 	return (
 		<>
-			<td>
-				<span class="heat-entry">
-					<input
-						class="heat-input"
-						type="number"
-						value={active()}
-						onInput={e => setActive(Number(e.currentTarget.value))}
-						aria-label={`${who()} active setpoint`}
-					/>
-				</span>
-			</td>
-			<td>
-				{/* The bed has no standby mode. The CELL stays (the column is what keeps
-				    every row's setpoints aligned) but it holds nothing — a placeholder
-				    dash just draws the eye to something that isn't there. */}
-				<Show when={!isBed()}>
+			{/* Active and Standby are SETPOINT ENTRY — controls, so they leave with
+			    the Set keys rather than staying on as read-only numbers. A card that
+			    only reports shows the reading; a target you cannot change is not
+			    what this card is for. */}
+			<Show when={props.controls}>
+				<td>
 					<span class="heat-entry">
 						<input
 							class="heat-input"
 							type="number"
-							value={standby()}
-							onInput={e => setStandby(Number(e.currentTarget.value))}
-							aria-label={`Tool ${props.num} standby setpoint`}
+							value={active()}
+							onInput={e => setActive(Number(e.currentTarget.value))}
+							aria-label={`${who()} active setpoint`}
 						/>
 					</span>
-				</Show>
-			</td>
+				</td>
+				<td>
+					{/* The bed has no standby mode. The CELL stays (the column is what keeps
+					    every row's setpoints aligned) but it holds nothing — a placeholder
+					    dash just draws the eye to something that isn't there. */}
+					<Show when={!isBed()}>
+						<span class="heat-entry">
+							<input
+								class="heat-input"
+								type="number"
+								value={standby()}
+								onInput={e => setStandby(Number(e.currentTarget.value))}
+								aria-label={`Tool ${props.num} standby setpoint`}
+							/>
+						</span>
+					</Show>
+				</td>
+			</Show>
 			{/* Current doubles as the slot for states no button can show. On a fault
 			    the reading is the thing you cannot trust anyway (a detached
 			    thermistor reads wild), and the reset is what you actually need, so
@@ -341,6 +375,7 @@ function HeaterCells(props: { heater: Heater; index: number; kind: "tool" | "bed
 					<HeaterCurrent heater={props.heater} />
 				</Show>
 			</td>
+			<Show when={props.controls}>
 			<td>
 				{/* The three keys are modal: the one matching the heater's reported
 				    state lights up, which is what the State column used to say in
@@ -395,6 +430,7 @@ function HeaterCells(props: { heater: Heater; index: number; kind: "tool" | "bed
 					/>
 				</div>
 			</td>
+			</Show>
 		</>
 	);
 }

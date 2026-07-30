@@ -18,7 +18,7 @@ import { SensorsBody } from "../cards/SensorsCard.tsx";
 import { TemperaturesBody } from "../cards/TemperaturesCard.tsx";
 import { BuildObjects } from "../cards/BuildObjects.tsx";
 import {
-	AtxBody, FilamentBody, HeatersBody, FansBody, TuningBody,
+	AtxBody, FilamentBody, FansBody, TuningBody,
 } from "../cards/ControlCards.tsx";
 import { PinnedCommandsBody } from "../cards/PinnedCommandsCard.tsx";
 import { ControlList } from "./controls/ControlList.tsx";
@@ -63,7 +63,14 @@ export const CARD_RENDER: Record<CardId, CardRender> = {
 	homing: { body: ctx => <ControlList spec={HOMING_SPEC} ctx={ctx} /> },
 	atx: { body: () => <AtxBody /> },
 	filament: { body: () => <FilamentBody /> },
-	heaters: { body: () => <HeatersBody /> },
+	// Tools renders the SAME body as Tools & heaters — not a second layout that
+	// agrees with it. They showed the same five tools at different row pitches
+	// (36px vs 45px), in a different column order (Current second vs fifth), one
+	// with column headings and one without. Sharing the body makes "identical
+	// except for the columns" true by construction; the columns Tools drops are
+	// the next step, and become one prop rather than a second implementation to
+	// keep in step.
+	heaters: { body: ctx => <ToolsHeatersBody orientation={ctx.orientation} heaterControls={false} /> },
 	movement: { body: ctx => <div class="jog-controls"><ControlList spec={MOVEMENT_SPEC} ctx={ctx} /></div> },
 	fans: { body: ctx => <FansBody orientation={ctx.orientation} /> },
 	"pinned-commands": { body: () => <PinnedCommandsBody /> },
