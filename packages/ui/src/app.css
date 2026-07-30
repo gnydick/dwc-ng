@@ -1407,9 +1407,35 @@
 .arm-btn.armed { color: #fff; background: var(--fault); border-color: var(--fault); }
 
 /* ---------- temperature chart ---------- */
-.temp-chart { width: 100%; display: flex; flex-direction: row; align-items: flex-start; gap: 12px; }
+/* A canvas reports its BITMAP width as intrinsic content, so uPlot's last draw
+   became the chart's min-content — 1308px on a 1240px card, which put the
+   width stop behind the card's own edge and the card could not be narrowed at
+   all. A chart is the most resizable thing on the page and must not claim
+   otherwise: the floor below is what this card is actually willing to be, and
+   the plot is told in CSS that it may always be smaller than its own bitmap.
+   uPlot redraws to the container on resize, so the bitmap follows. */
+.temp-chart {
+	width: 100%;
+	display: flex;
+	flex-direction: row;
+	align-items: flex-start;
+	gap: 12px;
+	/* The honest floor: legend + a plot still worth looking at. */
+	min-width: 280px;
+	overflow: hidden;
+}
 .temp-chart-legend { flex: 0 0 auto; }
 .temp-chart-plot { flex: 1; min-width: 0; }
+/* contain: inline-size — the plot's width no longer depends on its contents at
+   all, so uPlot's pixel-sized root, wrap and canvas stop contributing to the
+   card's minimum.
+   max-width: 100% does NOT do this: a percentage resolves against an
+   indefinite container during intrinsic sizing, so it becomes `none` exactly
+   when it is needed. Capping each layer by hand only walked the floor down
+   1308 -> 1094 -> 1023, always one uncapped descendant behind.
+   uPlot measures the container it is given and redraws, so containing the
+   inline axis costs nothing: the chart follows the card instead of setting it. */
+.temp-chart-plot { contain: inline-size; }
 .temp-chart .u-title { color: var(--silk); }
 .temp-chart-legend .u-legend {
 	color: var(--silk-dim);
