@@ -176,9 +176,22 @@ export default defineConfig(({ mode }) => {
     // null explicitly rather than treating it as one of the two answers.
     define: {
       __DWC_TRANSPORT__: JSON.stringify(transport ?? null),
-      __GIT_COMMIT__: JSON.stringify(gitCommit()),
     },
-    plugins: [solid()],
+    plugins: [
+      solid(),
+      // The commit goes in a META TAG, not a `define`. define is evaluated once
+      // when the dev server boots, so the stamp froze at whatever the tree was
+      // then and went on claiming it for the rest of the session — a stale SHA
+      // presented as current, which is the exact lie the -dirty suffix exists to
+      // prevent. transformIndexHtml runs per REQUEST in dev, so a reload always
+      // re-reads git; in a build it runs once, over the tree being built.
+      {
+        name: 'dwc-git-commit',
+        transformIndexHtml: () => [
+          { tag: 'meta', attrs: { name: 'dwc-commit', content: gitCommit() }, injectTo: 'head' as const },
+        ],
+      },
+    ],
     server: {
       host: true, // listen on all interfaces, not just localhost
       allowedHosts,

@@ -46,13 +46,24 @@ export function hashFromEntrySrc(src: string): string | null {
  * a hash to a commit you can read. The old fallback said "dev", which named
  * nothing at all.
  *
- * Guarded like __DWC_TRANSPORT__: under node:test there is no define pass, so
- * the identifier is genuinely absent rather than merely unset.
+ * Read from a `<meta name="dwc-commit">` that vite injects per request, NOT
+ * from a build-time `define`. A define is evaluated once when the dev server
+ * boots: the stamp then froze at whatever the tree looked like at that moment
+ * and kept asserting it for the rest of the session, so a dev page confidently
+ * named a commit it was not running. Per-request means a reload re-reads git.
+ *
+ * "nogit" when the tag is absent — under node:test there is no document, and a
+ * page served without the plugin has nothing to report. Better a marker that
+ * names nothing than a SHA that names the wrong thing.
  */
-declare const __GIT_COMMIT__: string | undefined;
+export function commitFromMeta(doc: Pick<Document, "querySelector"> | undefined): string {
+	if (doc === undefined) return "nogit";
+	const content = doc.querySelector<HTMLMetaElement>('meta[name="dwc-commit"]')?.content;
+	return content === undefined || content === "" ? "nogit" : content;
+}
 
 export const GIT_COMMIT: string =
-	typeof __GIT_COMMIT__ === "undefined" ? "nogit" : __GIT_COMMIT__;
+	commitFromMeta(typeof document === "undefined" ? undefined : document);
 
 /** The entry module's content hash, or null when there is no bundle (dev). */
 function readContentHash(): string | null {
