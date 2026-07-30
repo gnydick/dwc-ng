@@ -924,7 +924,11 @@
    single 90px cell, so the card could collapse to a column of slivers. 306px =
    three cells plus their gaps (90x3 + 18x2) — wide enough that it still reads
    as a strip of tools rather than a list. */
-.heat-h-row { display: flex; flex-wrap: wrap; gap: 18px; min-width: 306px; }
+/* nowrap, like every other row in the app. The landscape layout was the last
+   place content still re-flowed: the per-tool cells wrapped, so the card
+   appeared to "fit" at any width while silently rearranging itself, and the
+   measured minimum was whatever arrangement it happened to be in. */
+.heat-h-row { display: flex; flex-wrap: nowrap; gap: 18px; min-width: 306px; }
 .heat-h-cell { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 90px; }
 .heat-h-meta {
 	display: flex;
@@ -1597,10 +1601,14 @@
 	overflow: hidden;
 	/* Take the card's leftover HEIGHT. The plot used to be a fixed 220px with
 	   dead space under it however tall the card was; now the data area grows
-	   with the card. min-height 0 so this can also shrink — a flex item's
-	   default min-height: auto would floor it at its content. */
+	   with the card. NOT min-height 0: contentRowSpan counts a slack-absorbing
+	   child as its DECLARED floor, so a zero here made the whole card's stop
+	   header-only and it could be dragged over the entire chart. The toolpath
+	   viewport and the console log declare 0 deliberately — they are meant to
+	   collapse to the header. This one is not: it has a legend and a plot that
+	   both have real minimums, so it states the plot's own floor. */
 	flex: 1 1 0;
-	min-height: 0;
+	min-height: 120px;
 }
 /* Only the DATA AREA scales. The legend keeps its natural height at the top of
    the row and never stretches with it. */
@@ -2001,7 +2009,7 @@
 	border-top: none;
 	padding-top: 0;
 }
-.heater-list.horizontal { flex-direction: row; flex-wrap: wrap; gap: 16px; }
+.heater-list.horizontal { flex-direction: row; flex-wrap: nowrap; gap: 16px; }
 .heater-list.horizontal .heater-ctl { flex-direction: column; align-items: flex-start; gap: 6px; }
 .heater-list.horizontal .heater-ctl .btn-cluster { margin-left: 0; }
 
