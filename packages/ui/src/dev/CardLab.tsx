@@ -170,6 +170,7 @@ export default function CardLab() {
 					ids={() => allCardIds()}
 					titleOf={id => cardTitleOf(id as CardId)}
 					feature={id => setFeatured(id as CardId)}
+					current={() => featured()}
 					benchEl={() => benchEl?.querySelector<HTMLElement>("[data-panel-id]") ?? null}
 				/>
 			</Show>
