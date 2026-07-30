@@ -558,7 +558,12 @@
 
 /* Horizontal Position layout (orientationToggle) — same data, arranged as a
    row of compact per-axis cells instead of a stack of rows. */
-.dro-h-row { display: flex; flex-wrap: wrap; gap: 14px 22px; }
+/* FOUR columns, not a wrapping flex row. Wrapping broke wherever the width
+   happened to run out, so the break moved as the card was resized — the same
+   re-flow every other card had removed — and it put the coupler alone on a
+   second line away from the axes it belongs with. A fixed count breaks in the
+   same place always: X Y Z C, then U V W (see cellAxes in PositionCard). */
+.dro-h-row { display: grid; grid-template-columns: repeat(4, max-content); gap: 14px 22px; justify-content: start; }
 .dro-h-cell { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
 .dro-h-axis {
 	font-family: var(--font-display);
@@ -1399,8 +1404,21 @@
 .est-val { color: var(--silk); font-variant-numeric: tabular-nums; }
 
 /* ---------- gcode viewer ---------- */
-.gcode-viewer { position: relative; width: 100%; height: 100%; min-height: 240px; }
-.gcode-canvas { display: block; width: 100%; height: 100%; }
+/* The viewport ABSORBS whatever height the card has left and declares no floor
+   of its own, so this card is sized like every other one — by its header and
+   its controls — and can be dragged as small as they allow.
+   It used to be `height: 100%; min-height: 240px`. The percentage resolved
+   against an auto-height body, so the element's height came from its CONTENT,
+   and its content is a canvas whose bitmap is sized from the element: the card
+   reported its own current height back as its minimum and could not be
+   shortened by a single pixel (measured: rowStop 180 against a span of 180).
+   flex 1 1 0 with min-height 0 breaks the loop — the height now comes from the
+   flex line, which comes from the card. */
+.gcode-viewer { position: relative; flex: 1 1 0; min-height: 0; width: 100%; }
+/* Absolutely positioned, so the bitmap contributes NOTHING to intrinsic size.
+   The same reason .temp-chart-plot needs contain: inline-size — a canvas will
+   otherwise report the pixels it happens to have as a size it requires. */
+.gcode-canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
 .gcode-viewer-modes {
 	position: absolute; z-index: 1;
 	display: flex; gap: 4px;

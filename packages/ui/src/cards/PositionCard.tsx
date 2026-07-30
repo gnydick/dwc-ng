@@ -11,6 +11,29 @@ import type { Orientation } from "../shell/panelOrientation.ts";
 export function PositionBody(props: { orientation: () => Orientation }) {
 	const app = useApp();
 	const visibleAxes = createMemo(() => app.om.om.move.axes.filter(a => a.visible));
+	/**
+	 * The cell layout reads in rows of four, so the ROW BREAK has to fall
+	 * somewhere meaningful rather than wherever the count lands. X Y Z are the
+	 * machine's cardinal axes and C is the coupler — the four you look at as a
+	 * set — and U V W are the individual Z motors, which belong together on
+	 * their own line. In object-model order C trails the motors and lands alone
+	 * on a second row, splitting the group it belongs to.
+	 *
+	 * Cardinal-plus-coupler first, everything else after, each keeping its own
+	 * relative order. A machine without a C, or with axes we have not seen,
+	 * still renders every axis exactly once — nothing is filtered, only sorted.
+	 */
+	const cellAxes = createMemo(() => {
+		const FIRST_ROW = ["X", "Y", "Z", "C"];
+		const rank = (letter: string): number => {
+			const i = FIRST_ROW.indexOf(letter);
+			return i === -1 ? FIRST_ROW.length : i;
+		};
+		return visibleAxes()
+			.map((axis, i) => ({ axis, i }))
+			.sort((a, b) => rank(a.axis.letter) - rank(b.axis.letter) || a.i - b.i)
+			.map(entry => entry.axis);
+	});
 	const speeds = createMemo(() => speedRow(app.om.om, speedFlowMode()));
 
 	return (
@@ -48,7 +71,7 @@ export function PositionBody(props: { orientation: () => Orientation }) {
 				}
 			>
 				<div class="dro-h-row">
-					<For each={visibleAxes()}>
+					<For each={cellAxes()}>
 						{axis => (
 							<div class="dro-h-cell" classList={{ unhomed: !axis.homed }}>
 								<span class="dro-h-axis">
