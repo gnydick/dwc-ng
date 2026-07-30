@@ -426,7 +426,10 @@
 
 .console-panel .console-history { flex: 1; max-height: none; min-height: 0; margin-bottom: 8px; }
 .console-panel { display: flex; flex-direction: column; }
-.cam-panel .cam-body { flex: 1; min-height: 0; }
+/* No min-height here. It used to restate `0`, and being the more specific
+   selector it beat the floor .cam-body declares — so the floor lives in one
+   place and this rule only says the body takes the slack. */
+.cam-panel .cam-body { flex: 1; }
 .cam-panel { display: flex; flex-direction: column; }
 
 .layout-toolbar { display: flex; justify-content: flex-end; margin-bottom: 8px; }
@@ -1124,7 +1127,14 @@
 
 .cam-body {
 	flex: 1;
-	min-height: 0;
+	/* A viewport, like .gcode-viewer: the image scales to whatever it is given,
+	   so no content measurement produces this number and the card must state it.
+	   Declared `0` until 2026-07-30, which put the whole tile OUTSIDE the card's
+	   own minimum — contentRowSpan substitutes a grow child's declared floor for
+	   its rendered height, so the body counted for nothing and the card could be
+	   dragged shut over its own picture. Same 100px as the toolpath viewer: the
+	   point below which a camera frame stops being worth looking at. */
+	min-height: 100px;
 	background: radial-gradient(120% 90% at 65% 30%, #16283f 0%, #0a1220 70%);
 	display: grid;
 	place-items: center;
