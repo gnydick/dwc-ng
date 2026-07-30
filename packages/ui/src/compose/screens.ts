@@ -59,9 +59,21 @@ export const CONTROL_COMPOSITION: Composition = {
 	"pinned-commands": { col: 0, row: 324, colSpan: 156, rowSpan: 50 },
 	tuning: { col: 0, row: 374, colSpan: 156, rowSpan: 33 },
 	filament: { col: 156, row: 79, colSpan: 156, rowSpan: 50 },
-	movement: { col: 156, row: 129, colSpan: 156, rowSpan: 123 },
-	atx: { col: 156, row: 252, colSpan: 156, rowSpan: 32 },
-	// Left column now ends at 407, right at 284 — the strip clears both.
+	// movement 123 -> 76: the step bank left its full-width row above the jog
+	// table for a column beside it, so the card no longer needs the height.
+	// Measured at the default pitch, same as the card's own default.
+	//
+	// colSpan stays 156 even though the content fits in 99 (which IS the card's
+	// standalone default now). This screen is two 156-wide columns; a 99-wide
+	// card here would leave a 57-column hole beside it rather than a tidier
+	// layout. The slack sits inside the card, to the right of the jog table —
+	// which is what .jog-table's fixed key widths already assume.
+	movement: { col: 156, row: 129, colSpan: 156, rowSpan: 76 },
+	// Follows movement up by the same 47.
+	atx: { col: 156, row: 205, colSpan: 156, rowSpan: 32 },
+	// Left column ends at 407, right now at 237 — the strip still clears both,
+	// and the left column is still the taller of the two, so the strip does not
+	// move.
 	console: { col: 0, row: 407, colSpan: 312, rowSpan: 75 },
 	camera: { col: 0, row: 482, colSpan: 104, rowSpan: 75 },
 };
