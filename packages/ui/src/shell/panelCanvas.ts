@@ -330,8 +330,20 @@ export function contentRowSpan(cardEl: HTMLElement, gutterPx: number): number {
 	let contentBottom = 0;
 	for (const child of Array.from(body.children)) {
 		const rect = child.getBoundingClientRect();
-		const marginBottom = parseFloat(getComputedStyle(child).marginBottom) || 0;
-		contentBottom = Math.max(contentBottom, rect.bottom + marginBottom - bodyRect.top + body.scrollTop);
+		const style = getComputedStyle(child);
+		const marginBottom = parseFloat(style.marginBottom) || 0;
+		// A child that ABSORBS SLACK draws whatever height it is handed, so its
+		// rendered height is not a minimum — its declared min-height is. Without
+		// this a filler child hands the card its own current height back as a
+		// floor, and the card cannot be shortened at all: the toolpath viewport
+		// measured a rowStop of 180 against a span of 180, because its canvas is
+		// sized from the element the measurement was taking. Same shape for the
+		// console log and any future viewport.
+		const grows = (parseFloat(style.flexGrow) || 0) > 0;
+		const floor = parseFloat(style.minHeight);
+		const height = grows ? (Number.isFinite(floor) ? floor : 0) : rect.height;
+		const top = rect.top - bodyRect.top + body.scrollTop;
+		contentBottom = Math.max(contentBottom, top + height + marginBottom);
 	}
 	contentBottom += parseFloat(getComputedStyle(body).paddingBottom) || 0;
 	// The card's chrome around the body's content box (borders, outer padding)
