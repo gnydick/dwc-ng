@@ -362,6 +362,12 @@ export function ConfigSaveBody() {
 
 	return (
 		<div class="save-bar">
+			{/* The status and the save controls share a line and may wrap; Reset
+			    everything gets its own, below. It used to sit in the same flex
+			    flow, so arming the save (which swaps a name field in) pushed it
+			    onto a second line and back again — a destructive control moving
+			    under the pointer as a side effect of starting a save. */}
+			<div class="save-actions">
 			<Show
 				when={saveError()}
 				fallback={
@@ -396,8 +402,9 @@ export function ConfigSaveBody() {
 				<button class="primary-btn" onClick={save}>Save</button>
 				<button class="link-btn save-cancel" onClick={disarm}>Cancel</button>
 			</Show>
+			</div>
 			<button
-				class="link-btn"
+				class="link-btn reset-all"
 				title="Return every setting and built-in screen to defaults. Your custom cards and screens are kept — delete those individually."
 				onClick={() => app.config.resetAll()}
 			>

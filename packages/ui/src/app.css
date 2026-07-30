@@ -1110,7 +1110,14 @@
 /* The armed name field swaps in where the Save button was, so the bar is
    wider while naming. Wrap rather than overflow — the card is only 24 columns
    and the field must not push Cancel off the edge at mobile width. */
-.save-bar { flex-wrap: wrap; row-gap: 8px; }
+/* Two stacked lines, not one wrapping flow. Reset everything is destructive
+   and must not move: in a single flow, arming the save swapped a name field in,
+   the bar wrapped, and Reset dropped to the next line and back — a delete-ish
+   control shifting under the pointer as a side effect of starting a save. It
+   owns the second line now, so its position depends on nothing above it. */
+.save-bar { flex-direction: column; align-items: flex-end; row-gap: 8px; }
+.save-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; row-gap: 8px; width: 100%; }
+.save-bar .reset-all { margin-left: 0; }
 /* Shrinkable, with a floor: a field narrower than this can't show a name
    worth reading, and one that grows unbounded shoves the buttons around. */
 .save-bar .save-label { flex: 1 1 160px; min-width: 120px; max-width: 320px; }
