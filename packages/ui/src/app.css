@@ -1831,15 +1831,15 @@
    step row 32px above its first axis and every row below it half a row out of
    step with Homing beside it. Same token, same pitch, and it tracks density
    instead of holding still while everything around it shrinks. */
-/* Two columns, not a stack: the jog table is only as wide as its own keys now,
-   so the coupler has somewhere to BE — beside the axis rows rather than
-   underneath them, spending a row and a half of card height on two buttons.
+/* Two columns, not a stack: the jog table is only as wide as its own keys, so
+   everything else has somewhere to BE — beside the axis rows rather than
+   underneath them, spending rows of card height on controls one word wide.
 
-   END-aligned, which lands it on the LAST axis row. That is the C row, and C
-   is the coupler: the buttons that lock and unlock it now sit in line with the
-   axis they act on rather than in a separate labelled block explaining the
-   connection. If an axis is ever added after C this alignment stops being
-   true, and the row it lands on is the one to check. */
+   EXACTLY TWO CHILDREN, one per column: .jog-table and .jog-side. They are the
+   only two, so they auto-place and no child needs pinning. The previous form
+   pinned .step-row to `1 / -1` and .coupler-row to an explicit (2, 2), which
+   is three children negotiating over four cells — add a node and the placement
+   has to be re-derived by hand. Two children cannot be mis-placed. */
 .jog-controls {
 	display: grid;
 	grid-template-columns: max-content max-content;
@@ -1847,8 +1847,79 @@
 	align-content: start;
 	justify-content: start;
 }
-.jog-controls > .step-row { grid-column: 1 / -1; }
-.jog-controls > .coupler-row { grid-column: 2; grid-row: 2; align-self: end; }
+/* The right-hand column: step bank at the top, coupler pushed to the bottom.
+   `margin-top: auto` rather than a grid row pinned to the table's last row —
+   the column is a stretched grid item, so its bottom edge IS the jog table's
+   bottom edge, and the coupler lands on the last axis row (C, the axis these
+   two buttons act on) for as long as that holds. When the side column's own
+   content outgrows the table it simply gets taller; the old pinned form would
+   have overlapped instead. */
+/* Centred, not stretched. The column's WIDTH comes from its widest child (the
+   Lock/Unlock pair), and the step bank is deliberately narrower than that —
+   it is pinned to the jog-key width. Left-aligned, the bank sat hard against
+   the jog table with all the slack dumped on the outside edge, which reads as
+   a bank that failed to fill its column rather than one sized on purpose. */
+.jog-side {
+	display: flex;
+	flex-direction: column;
+	gap: var(--ctl-gap);
+	align-items: center;
+}
+.jog-side > .coupler-row { margin-top: auto; }
+/* The step bank runs DOWN this column, not across a row of its own — but each
+   LABEL stays beside what it names, so the bank is two tracks rather than four
+   stacked pairs: names on the left, values on the right.
+
+   A grid, not a flex column. The children are flat (Step, four chips, the feed
+   label) so only a track list can put one item beside a run of four; stacking
+   them in flex would have needed a wrapper per pair, and the wrapper would have
+   to come from the control spec — layout leaking into the data.
+
+   Value track = --jog-key-w, the SAME width as the −/+ keys the bank feeds: a
+   step chip and a jog key are the same kind of target, so they read as one
+   apparatus rather than two lists that happen to sit side by side. It fits by
+   measurement — the widest chip ("100 mm") is 60px against the 62 available.
+   (The feed input does not fit at the shared 8px padding: 62 - 16 - 2 leaves
+   44px and "60000" needs more, so the padding is tightened below rather than
+   the column widened past the keys.)
+
+   No explicit width on the bank itself, and none on the input: the column is a
+   stretched grid item, so a percentage width resolves against a track sized
+   from the very thing being measured. That circularity measured 170px — nearly
+   three times the keys — which is what made the distances read as banners. */
+.jog-side > .step-row {
+	display: grid;
+	grid-template-columns: max-content var(--jog-key-w);
+	gap: var(--sp-cell) var(--ctl-gap);
+	align-items: center;
+}
+/* The heading sits beside the whole run of chips, not beside the first one —
+   spanning them is what centres it against the bank. Hard-coded to 4 because
+   the step options are: control/spec.ts's `chips` input renders one button per
+   option and MOVEMENT_SPEC declares four. A fifth would leave the label short;
+   the test below is what says so out loud. */
+.jog-side > .step-row > .ctl-name { grid-column: 1; grid-row: 1 / span 4; min-width: 0; }
+.jog-side > .step-row > .chip-btn { grid-column: 2; }
+/* The feed label + box spend the bank's OWN two tracks via subgrid, so "Feed"
+   lands under "Step" and the box under the chips. Letting it flow as one
+   inline item instead would have put the box wherever the word happened to
+   end — right only for as long as the two words measure the same. */
+.jog-side > .step-row > .feed-field {
+	grid-column: 1 / -1;
+	display: grid;
+	grid-template-columns: subgrid;
+	/* Restated, not inherited. A subgrid takes its parent's TRACKS but its own
+	   gutters, and .feed-field's base rule declares gap: 4px for the inline
+	   form — which shifted the box 2px off the chips above it and stretched it
+	   2px wide to absorb the difference. */
+	column-gap: var(--ctl-gap);
+	align-items: center;
+}
+/* 4px of side padding, not the shared 8: at 62px the roomier padding clipped a
+   five-digit feed ("60000" — a fast machine's mm/min is not exotic). Tighten
+   the padding rather than widen the column, which would break the chips'
+   alignment with the jog keys for the sake of one field. */
+.jog-side .feed-field input { width: auto; padding-left: 4px; padding-right: 4px; }
 .step-row, .jog-row, .extrude-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 /* TWO tracks, one per button — the row carries no label any more, and a
    leading max-content track with nothing in it does not vanish: Lock fell
@@ -2633,6 +2704,10 @@
 /* One grid for the card, rows as subgrids: the head row's two All buttons and
    every row's Load/Unload share tracks 1 and 2, so "above Load" is structural
    rather than two independent layouts landing on the same width. */
+/* The value column's width — MEASURED against its widest occupant, the footer's
+   feed pair (159px), not chosen. 160 rounds it onto the 4px quantum the canvas
+   counts in. The filament picker shares this track and is capped below. */
+:root { --fil-value-w: 160px; }
 .filament-list {
 	display: grid;
 	/* load | unload | tool | picker | loaded.
@@ -2652,10 +2727,20 @@
 
 	   (min() cannot take max-content — math functions reject intrinsic
 	   keywords — and an invalid track list is DROPPED WHOLE, collapsing this
-	   grid to a single column. Which is exactly what it did when I tried.) */
+	   grid to a single column. Which is exactly what it did when I tried.)
+
+	   FIXED at --fil-value-w, not minmax(88px, 140px). The track has a second
+	   occupant — the footer's Feed distance + rate pair — which needs 159px,
+	   and minmax's minimum is a LITERAL: it does not rise to fit content, so
+	   the pair was simply clipped, by 19px at the ceiling and 71 at the floor.
+	   That is what "the card shrinks over its content" was. A fixed track sized
+	   to the widest real occupant cannot be squeezed past it, and the card's
+	   stop is then the honest sum of its columns like every other card's.
+	   The picker keeps its own 140 ceiling below, so a wider track does not
+	   turn a select showing "PETG" back into the widest thing in the row. */
 	grid-template-columns:
 		max-content max-content max-content
-		minmax(88px, 140px)
+		var(--fil-value-w)
 		max-content;
 	gap: var(--ctl-gap) 8px;
 	align-items: center;
@@ -2682,8 +2767,18 @@
 .filament-row.is-current { background: rgba(240, 160, 80, 0.08); border-radius: 4px; }
 .filament-row.is-current .ctl-name { color: var(--copper-bright); }
 /* The manual-feed footer. Its two fields share the picker's track — the widest
-   one, and the only one that can hold a pair without adding a column. */
-.filament-feed-fields { display: flex; align-items: center; gap: 6px; min-width: 0; }
+   one, and the only one that can hold a pair without adding a column, which is
+   what --fil-value-w above is sized for: 48 + "mm" + 70 + "F" and the gaps
+   between them measure 159.
+
+   NO min-width: 0 — the same rule .filament-pick states three rules below, for
+   the same reason, and this is the element that broke it. A flex container
+   that declares a zero minimum reports zero to the width detent
+   (panelCanvas contentColSpan) while still needing 159, so the card's stop
+   landed 71px inside its own content and the pair was clipped with nothing
+   anywhere saying so. Content declares what it needs; the card is sized from
+   that. Never the reverse. */
+.filament-feed-fields { display: flex; align-items: center; gap: 6px; }
 /* Sized to what each one HOLDS, not to each other. A distance is two or three
    digits; a feedrate is four or five (the Movement card's is 66px for "6000"),
    and at a shared 52px "300" already clipped its last digit. */
@@ -2692,6 +2787,10 @@
 /* Equal-width All/Load and All/Unload columns come free from the shared
    tracks; centre the shorter label so the pair reads as one column. */
 .filament-row .gcode-btn { width: 100%; justify-content: center; }
+/* The picker's own ceiling, kept when the track it sits in grew to hold the
+   feed pair. Without it the select simply fills 160px — the banner the track
+   comment above spends a paragraph arguing against. */
+.filament-row .filament-pick { max-width: 140px; }
 .filament-pick {
 	height: var(--ctl-h); box-sizing: border-box;
 	background: var(--mask-900); color: var(--silk);
