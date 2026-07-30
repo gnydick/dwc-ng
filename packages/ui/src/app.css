@@ -787,7 +787,19 @@
 	padding: calc((var(--tool-row-h) - var(--ctl-h) - 1px) / 2) 0;
 	border-top: 1px solid var(--hairline);
 	text-align: right;
-	vertical-align: baseline;
+	/* MIDDLE, not baseline. Every cell now holds a fixed-height control rather
+	   than loose text, and an inline-flex control's baseline is its bottom
+	   edge — so baseline alignment added phantom descender to the row. Same
+	   trap .heat-fil hit when it needed vertical-align: middle. */
+	vertical-align: middle;
+	/* And the LINE-BOX STRUT, which is the rest of it. An inline-level child
+	   (.heat-entry) sits in a line box at least as tall as the cell's own
+	   line-height — 20.3px at the inherited 14px face — so a 20px input still
+	   produced a 22px content box and the row came out 26 where every part of
+	   it added to 24. That 2px per row is why this table and the Extruders card
+	   scaled at different rates and crossed over. Each child already declares
+	   its own line-height; the cell needs none of its own. */
+	line-height: 1;
 }
 .heat-table td:first-child { text-align: left; }
 
@@ -2559,7 +2571,15 @@
 /* Each of these previously picked its own height out of its padding and
    line-height. Sharing --ctl-h is what makes a row of controls a knowable
    size, which is what lets a card be fitted to its content. */
-.chip-btn, .rel-key, .fb-act, .fb-tool, .run-btn, .btn,
+/* .heat-input belongs here too. It was the ONE control sizing itself from its
+   own padding and font instead of --ctl-h, and that is what made the two tool
+   cards scale at different rates: at 1.27 its natural 22px sits under --ctl-h
+   (28), so the heater row is control-driven and matches the Extruders card
+   row-for-row; at 0.50 --ctl-h falls to 20 and the input does NOT, so it
+   becomes the tallest thing in the row and the row stops shrinking at 27
+   against Extruders' 24. The two cards crossed over — Extruders taller at
+   1.27, shorter at 0.50 — for want of this one selector. */
+.chip-btn, .rel-key, .fb-act, .fb-tool, .run-btn, .btn, .heat-input,
 .temp-field input, .feed-field input, .fb-input, .tool-p input {
 	height: var(--ctl-h);
 	box-sizing: border-box;
