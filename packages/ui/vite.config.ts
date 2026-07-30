@@ -21,7 +21,28 @@ const MOCK_TARGET = 'http://127.0.0.1:8970'
 // lives under a subdirectory cannot be produced by moving files afterwards —
 // it has to be built with the right base. Side-by-side deploys next to stock
 // DWC use `DWC_BASE=/ng/ pnpm build`; see packages/deploy.
-const base = process.env.DWC_BASE ?? '/'
+//
+// VALIDATED, not trusted. A base is a URL path, and every shell on the way
+// here is entitled to disagree: Git Bash on Windows applies MSYS path
+// conversion to anything that looks POSIX, so `DWC_BASE=/ng/` arrives as
+// `C:/Program Files/Git/ng/` and Vite bakes THAT into every asset URL. The
+// build succeeds, the deploy uploads, and the only symptom is a blank page on
+// the printer — observed 2026-07-29, caught by packages/deploy's verifier only
+// after the files were already on the board.
+//
+// The shape below is the whole contract: leading slash, trailing slash, and
+// nothing in between that cannot appear in a URL path. A drive letter, a
+// backslash or a space fails all three.
+const RAW_BASE = process.env.DWC_BASE ?? '/'
+if (!/^\/(?:[A-Za-z0-9._~-]+\/)*$/.test(RAW_BASE)) {
+  throw new Error(
+    `DWC_BASE must be a URL path like "/" or "/ng/", got ${JSON.stringify(RAW_BASE)}.\n` +
+    `If that looks like a Windows path, your shell rewrote it: Git Bash converts ` +
+    `POSIX-looking values. Build from PowerShell ($env:DWC_BASE='/ng/'), or set ` +
+    `MSYS_NO_PATHCONV=1 for the command.`,
+  )
+}
+const base = RAW_BASE
 
 // OPTIONAL: pin the board dialect at build time.
 //

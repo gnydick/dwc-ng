@@ -2512,10 +2512,31 @@
    rather than two independent layouts landing on the same width. */
 .filament-list {
 	display: grid;
-	/* load | unload | tool | picker | loaded */
-	grid-template-columns: max-content max-content max-content minmax(0, 1fr) max-content;
+	/* load | unload | tool | picker | loaded.
+	   The picker is content-sized between a floor and a ceiling, NOT 1fr. As
+	   1fr it swallowed every spare pixel in the card — a select showing "PETG"
+	   rendered 158px wide, and wider still on a wider card, which reads as the
+	   most important thing in the row. The floor keeps a material name legible
+	   (and keeps the width detent honest); the ceiling stops one long name from
+	   pushing the loaded column off the end. Slack now sits after the last
+	   track instead of inside the control.
+
+	   A FIXED ceiling rather than max-content, because the track has another
+	   contributor: the "no filaments" note spans all five columns, and a
+	   spanning item's max-content is distributed across the tracks it covers —
+	   so the picker inherited the width of a sentence it has nothing to do
+	   with. A bounded track cannot be argued with by its neighbours.
+
+	   (min() cannot take max-content — math functions reject intrinsic
+	   keywords — and an invalid track list is DROPPED WHOLE, collapsing this
+	   grid to a single column. Which is exactly what it did when I tried.) */
+	grid-template-columns:
+		max-content max-content max-content
+		minmax(88px, 140px)
+		max-content;
 	gap: var(--ctl-gap) 8px;
 	align-items: center;
+	justify-content: start;
 }
 .filament-row {
 	display: grid;
@@ -2560,6 +2581,10 @@
 	   a filament name is still readable; the card cannot be shrunk past it
 	   without breaking the detent away deliberately. */
 	min-width: 88px;
+	/* The track's ceiling, expressed here because minmax() cannot hold it.
+	   Without it one long material name widens the column for every row and
+	   pushes the loaded cell off the end of the card. */
+	max-width: 200px;
 	flex: 1;
 }
 .filament-pick:focus-visible { outline: none; border-color: var(--copper); }

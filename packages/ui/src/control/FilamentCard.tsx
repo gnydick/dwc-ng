@@ -117,15 +117,19 @@ export function FilamentCard(props: { tools: (Tool | null)[] }) {
 					</label>
 				</div>
 
-				<Show
-					when={(filaments() ?? []).length > 0}
-					fallback={
-						<p class="job-empty filament-note">
-							{filaments.loading ? "Reading filaments…" : `No filaments in ${FILAMENTS_DIR}.`}
-						</p>
-					}
-				>
-					<For each={feeders()}>
+				{/* The rows are NOT gated on the material list. An extruder exists
+				    whether or not the machine knows any materials, and Unload acts
+				    on what is already loaded — so an empty 0:/filaments used to
+				    delete the whole tool listing along with the picker, taking
+				    Unload with it. The empty list is a note beneath the rows now,
+				    and Load disables itself per row for want of a selection. */}
+				<Show when={!filaments.loading && (filaments() ?? []).length === 0}>
+					<p class="job-empty filament-note">No filaments in {FILAMENTS_DIR}.</p>
+				</Show>
+				<Show when={filaments.loading}>
+					<p class="job-empty filament-note">Reading filaments…</p>
+				</Show>
+				<For each={feeders()}>
 						{tool => (
 							// is-current is not decoration: the Feed row below acts on
 							// whichever tool is selected, so this marks the row those
@@ -167,8 +171,7 @@ export function FilamentCard(props: { tools: (Tool | null)[] }) {
 								</span>
 							</div>
 						)}
-					</For>
-				</Show>
+				</For>
 
 				{/* Feed the CURRENT tool. G1 E has no tool parameter — it moves
 				    whichever extruder is selected — so this row sits below the
