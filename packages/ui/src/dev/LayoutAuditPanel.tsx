@@ -171,3 +171,113 @@ export function LayoutAuditPanel(props: { cardEl: () => HTMLElement | null; id: 
 		</div>
 	);
 }
+
+/**
+ * The floor table. Sweeps every registry card, audits it, and lists the
+ * results worst-first.
+ *
+ * Produced BEFORE any card is converted, deliberately: it is the empirical
+ * record of what each card's floors actually are today, so that a mismatch
+ * after conversion is attributable to the conversion rather than to a number
+ * nobody ever checked.
+ *
+ * Cards are audited one at a time against the bench element, because the lab
+ * mounts exactly one card. The caller features each id, waits a frame for the
+ * mount, then audits whatever is on the bench.
+ */
+export function LayoutAuditAll(props: {
+	ids: () => readonly string[];
+	titleOf: (id: string) => string;
+	feature: (id: string) => void;
+	benchEl: () => HTMLElement | null;
+}) {
+	const [rows, setRows] = createSignal<CardReport[]>([]);
+	const [busy, setBusy] = createSignal(false);
+
+	const sweep = async (): Promise<void> => {
+		setBusy(true);
+		setRows([]);
+		const out: CardReport[] = [];
+		for (const id of props.ids()) {
+			props.feature(id);
+			// Two frames: one for Solid to render the newly featured card, one
+			// for the browser to lay it out before anything is measured.
+			await new Promise(requestAnimationFrame);
+			await new Promise(requestAnimationFrame);
+			const el = props.benchEl();
+			if (el === null) continue;
+			out.push(auditCard(id, props.titleOf(id), el));
+		}
+		// Worst first: a violation is what the operator came here to find.
+		const rank = (r: CardReport): number =>
+			(r.axisRow.stable ? 0 : 4) + (r.axisCol.stable ? 0 : 2) + (r.drift.stable ? 0 : 1);
+		setRows([...out].sort((a, b) => rank(b) - rank(a)));
+		setBusy(false);
+	};
+
+	return (
+		<div class="layout-audit">
+			<div class="layout-audit-bar">
+				<button class="lab-pill" disabled={busy()} onClick={() => void sweep()}>
+					{busy() ? "Auditing…" : "Audit every card"}
+				</button>
+				<span class="lab-note">{rows().length} audited</span>
+			</div>
+			<Show when={rows().length > 0}>
+				<table class="layout-audit-table">
+					<thead>
+						<tr>
+							<th scope="col">Card</th>
+							<th scope="col">Rows</th>
+							<th scope="col">Cols</th>
+							<th scope="col">A · row</th>
+							<th scope="col">A · col</th>
+							<th scope="col">B · drift</th>
+						</tr>
+					</thead>
+					<tbody>
+						<For each={rows()}>
+							{r => (
+								<tr>
+									<td>{r.title}</td>
+									<td>{r.rowStop}</td>
+									<td>{r.colStop}</td>
+									<td classList={{ bad: !r.axisRow.stable }}>
+										<Show when={r.axisRow.stable} fallback={r.axisRow.reported.join("→")}>
+											ok
+										</Show>
+										{/* judgeAxis reports "stable" for fewer than two probes too —
+										    that is "untested", not "passing". Naming the probe count
+										    keeps a short-circuited audit visibly distinct from one that
+										    ran and found nothing wrong. */}
+										<Show when={r.axisRow.reported.length < 2}>
+											<span class="lab-note"> · {r.axisRow.reported.length} probe</span>
+										</Show>
+									</td>
+									<td classList={{ bad: !r.axisCol.stable }}>
+										<Show when={r.axisCol.stable} fallback={r.axisCol.reported.join("→")}>
+											ok
+										</Show>
+										<Show when={r.axisCol.reported.length < 2}>
+											<span class="lab-note"> · {r.axisCol.reported.length} probe</span>
+										</Show>
+									</td>
+									<td classList={{ bad: !r.drift.stable }}>
+										{/* judgeDrift's child-count-changed case is a sentinel string
+										    sitting in the moved array — it must not be shown as if it
+										    were a moved child id. */}
+										<Switch fallback={<Show when={r.drift.stable} fallback={`${r.drift.moved.length} moved`}>ok</Show>}>
+											<Match when={r.drift.moved.includes(CHILD_COUNT_CHANGED)}>
+												child count changed
+											</Match>
+										</Switch>
+									</td>
+								</tr>
+							)}
+						</For>
+					</tbody>
+				</table>
+			</Show>
+		</div>
+	);
+}
