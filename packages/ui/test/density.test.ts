@@ -89,3 +89,60 @@ test("the pitch control and the resize grip carry no density token", () => {
 		assert.ok(!block.includes("var(--sp-"), `${selector} must not scale with density`);
 	}
 });
+
+/**
+ * The canvas row unit scales with the pitch (shell/panelCanvas.ts rowUnitPx).
+ *
+ * Density used to shrink only the spacing INSIDE a card, leaving its box the
+ * height it had at 1.27 — so every card's content pulled away from its bottom
+ * edge and the whole layout had to be re-dragged by hand. Scaling the drawn
+ * unit fixes that without touching a single stored rect.
+ */
+test("every pitch declares --row-unit, and the default equals the stored unit", async () => {
+	const { ROW_UNIT_PX } = await import("../src/shell/panelCanvas.ts");
+	// The default pitch is the ABSENCE of an override, so :root's value is what
+	// it renders at — and it must equal the unit geometry is stored in, or the
+	// canvas would not render as it always has at the default.
+	const root = /:root\s*\{[^}]*--row-unit:\s*([\d.]+)px/.exec(indexCss);
+	assert.ok(root, ":root declares no --row-unit");
+	assert.equal(Number(root[1]), ROW_UNIT_PX);
+
+	for (const p of PITCHES) {
+		if (p.id === DEFAULT_PITCH) continue;
+		const start = indexCss.indexOf(`[data-pitch="${p.id}"]`);
+		const block = indexCss.slice(start, indexCss.indexOf("}", start));
+		assert.match(block, /--row-unit:\s*[\d.]+px/, `pitch ${p.id} declares no --row-unit`);
+	}
+});
+
+test("--row-unit never grows as the pitch tightens", () => {
+	// PITCHES is loosest-first. A tighter pitch that drew TALLER rows would
+	// expand the layout it is supposed to condense.
+	const unitOf = (id: string): number => {
+		if (id === DEFAULT_PITCH) return Number(/:root\s*\{[^}]*--row-unit:\s*([\d.]+)px/.exec(indexCss)![1]);
+		const start = indexCss.indexOf(`[data-pitch="${id}"]`);
+		return Number(/--row-unit:\s*([\d.]+)px/.exec(indexCss.slice(start, indexCss.indexOf("}", start)))![1]);
+	};
+	const units = PITCHES.map(p => unitOf(p.id));
+	for (let i = 1; i < units.length; i++) {
+		assert.ok(units[i]! <= units[i - 1]!, `pitch ${PITCHES[i]!.id} draws taller rows than ${PITCHES[i - 1]!.id}`);
+	}
+	// And the floor is a real floor: --ctl-h stops shrinking at 20px, so a unit
+	// that kept falling would shorten cards whose controls had stopped.
+	assert.ok(units[units.length - 1]! > 0);
+});
+
+/**
+ * The row-granularity migration converts canvases saved on the old 30px grid.
+ * It must use the FROZEN stored unit: with the live one, the same old layout
+ * would migrate to different numbers depending on which pitch the browser
+ * happened to be on the first time it loaded.
+ */
+test("the row-granularity migration does not use the density-scaled unit", () => {
+	const src = readFileSync(fileURLToPath(new URL("../src/shell/panelCanvas.ts", import.meta.url)), "utf8");
+	const start = src.indexOf("function migrateRowGranularity");
+	assert.ok(start > 0, "migrateRowGranularity not found");
+	const body = src.slice(start, src.indexOf("\n}", start));
+	assert.ok(body.includes("ROW_UNIT_PX"), "migration should convert against the stored unit");
+	assert.ok(!body.includes("rowUnitPx("), "migration must not depend on the current pitch");
+});
