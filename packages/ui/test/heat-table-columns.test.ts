@@ -63,14 +63,23 @@ function withoutMediaBlocks(css: string): string {
 	return out;
 }
 
-/** role -> declared px width, for `.heat-table` column rules. */
+/** role -> declared px width, resolving var(--tool-col-*) against :root. */
 function columnWidths(css: string): Map<string, number> {
+	const tokens = new Map<string, number>();
+	for (const [, role, px] of css.matchAll(/--tool-col-([a-z]+):\s*(\d+)px/g)) {
+		// LAST wins, matching the cascade — the narrow block overrides.
+		tokens.set(role!, Number(px));
+	}
 	const widths = new Map<string, number>();
 	const rule = /\.heat-table \.col-([a-z]+)\s*\{([^}]*)\}/g;
 	for (const [, role, body] of css.matchAll(rule)) {
-		const width = /(?:^|[;{\s])width:\s*(\d+)px/.exec(body!);
-		assert.ok(width, `.heat-table .col-${role} declares no px width`);
-		widths.set(role!, Number(width[1]));
+		const direct = /(?:^|[;{\s])width:\s*(\d+)px/.exec(body!);
+		if (direct) { widths.set(role!, Number(direct[1])); continue; }
+		const ref = /width:\s*var\(--tool-col-([a-z]+)\)/.exec(body!);
+		assert.ok(ref, `.heat-table .col-${role} declares no width`);
+		const resolved = tokens.get(ref[1]!);
+		assert.ok(resolved !== undefined, `--tool-col-${ref[1]} is never declared`);
+		widths.set(role!, resolved);
 	}
 	return widths;
 }
@@ -93,6 +102,11 @@ test("every column the component renders has a role class with a width", () => {
 	assert.deepEqual([...inMarkup].sort(), [...COLUMN_ROLES].sort());
 	const widths = columnWidths(base);
 	for (const role of COLUMN_ROLES) assert.ok(widths.has(role), `no width for col-${role}`);
+	// Reverse direction: a stray `.heat-table .col-foo { width: … }` rule with
+	// no matching rendered column would pass every check above unnoticed. The
+	// CSS role set and the markup role set must be exactly equal, not just
+	// markup-subset-of-CSS.
+	assert.deepEqual([...widths.keys()].sort(), [...COLUMN_ROLES].sort());
 });
 
 test("the base column widths sum to --heat-table-w", () => {
@@ -125,8 +139,15 @@ test("no load-bearing width is carried by a positional selector", () => {
 });
 
 test("the narrow-viewport widths sum to the --heat-table-w it restates", () => {
+	// The narrow block overrides only the TOKEN (`.heat-table { --tool-col-current:
+	// 50px; }`), not the `.col-current` rule — that rule now carries only
+	// padding-right in this block, so it has no width of its own to hand
+	// columnWidths(narrow). Resolve the real cascade instead: base widths,
+	// with any token the narrow block redeclares taking precedence.
 	const widths = columnWidths(base);
-	for (const [index, width] of columnWidths(narrow)) widths.set(index, width);
+	for (const [, role, px] of narrow.matchAll(/--tool-col-([a-z]+):\s*(\d+)px/g)) {
+		widths.set(role!, Number(px));
+	}
 	const sum = [...widths.values()].reduce((a, b) => a + b, 0);
 	assert.equal(sum, declaredTableWidth(narrow));
 });
@@ -150,4 +171,31 @@ test("the Deselect row does NOT wrap — content inside a card must not move", (
 	const rule = /\.heat-deselect\s*\{([^}]*)\}/.exec(appCss);
 	assert.ok(rule, "no .heat-deselect rule");
 	assert.match(rule[1]!, /flex-wrap:\s*nowrap/);
+});
+
+/**
+ * Regression class (e). Tools and Tools & heaters are the same table with
+ * columns removed, but their widths were two sets of numbers that happened to
+ * match - and they stopped matching at a different density, where one card's
+ * rows were driven by --ctl-h and the other's by a control that had opted out
+ * of it. Agreement has to be structural: ONE declaration, subtracted from.
+ */
+test("tool column widths come from tokens, not from literals", () => {
+	const widths = columnWidths(base);
+	assert.ok(widths.size > 0, "no column rules found");
+	const literal = /\.heat-table \.col-([a-z]+)\s*\{[^}]*width:\s*\d+px/g;
+	const offenders = [...base.matchAll(literal)].map(m => m[1]!);
+	assert.deepEqual(offenders, [], "these columns hard-code a width instead of naming a token");
+});
+
+test("every tool column token has exactly one BASE declaration", () => {
+	// Scoped to the BASE cascade, not the whole file. A viewport or density
+	// block may legitimately OVERRIDE a token — that is what naming it is for —
+	// but there must be exactly one place the default is set, or "one
+	// declaration" is a claim rather than a fact.
+	for (const role of COLUMN_ROLES) {
+		const decl = new RegExp(`--tool-col-${role}:\\s*\\d+px`, "g");
+		const hits = [...base.matchAll(decl)];
+		assert.equal(hits.length, 1, `--tool-col-${role} declared ${hits.length} times in the base cascade, expected 1`);
+	}
 });
