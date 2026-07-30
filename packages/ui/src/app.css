@@ -852,7 +852,15 @@
 
 /* Horizontal Tools & Heaters layout (orientationToggle) — one compact block
    per tool/bed instead of a table row. */
-.heat-h-row { display: flex; flex-wrap: wrap; gap: 18px; }
+/* Same floor as the table layout, deliberately. This card has TWO layouts and
+   they were declaring two different minimums: the table said 384 (see
+   .heat-scroll) while this one, being flex-wrap, claimed only the width of a
+   single 90px cell and defended nothing. Since orientation is stored
+   per-browser, the same card then refused to shrink on one machine and
+   collapsed on another — which is exactly the "it behaves differently over
+   there" it was reported as.
+   One card, one minimum, whichever way you are viewing it. */
+.heat-h-row { display: flex; flex-wrap: wrap; gap: 18px; min-width: 384px; }
 .heat-h-cell { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 90px; }
 .heat-h-meta {
 	display: flex;
