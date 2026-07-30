@@ -339,8 +339,8 @@ export const CARD_DEFS = {
 	}),
 	/** The cold/warm/hot ramp for temperature readings (config overlay). */
 	"thermal-colors": defineCard({
-		title: "Reading colours",
-		ariaLabel: "Reading colours",
+		title: "Temperature Gradient",
+		ariaLabel: "Temperature Gradient",
 		size: { colSpan: 156, rowSpan: 60 },
 	}),
 	/** Tool dock presence sensors (config overlay). */
