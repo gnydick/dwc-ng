@@ -1,0 +1,305 @@
+{
+	"version": 2,
+	"overlay": {
+		"axisRoles": {
+			"U": "Z motor 1",
+			"V": "Z motor 2",
+			"W": "Z motor 3",
+			"C": "Coupler",
+			"X": "Axis",
+			"Y": "Axis",
+			"Z": "Axis"
+		},
+		"dockSensors": {
+			"0": {
+				"gpIn": 10
+			},
+			"1": {
+				"gpIn": 11
+			},
+			"2": {
+				"gpIn": 12
+			},
+			"3": {
+				"gpIn": 13
+			}
+		},
+		"camera": {
+			"streamUrl": "http://printercams:8080/stream"
+		},
+		"sensorNames": {
+			"probe:0": "z",
+			"probe:1": "Nudge"
+		},
+		"macros": {
+			"autoConfirmRun": false
+		},
+		"screens": {
+			"layouts": {
+				"control": {
+					"movement": {
+						"col": 0,
+						"row": 51,
+						"colSpan": 104,
+						"rowSpan": 152
+					},
+					"tools-heaters": {
+						"col": 156,
+						"row": 0,
+						"colSpan": 160,
+						"rowSpan": 307,
+						"orientation": "horizontal"
+					},
+					"homing": {
+						"col": 0,
+						"row": 0,
+						"colSpan": 156,
+						"rowSpan": 51
+					}
+				},
+				"machine": {
+					"position": {
+						"col": 0,
+						"row": 0,
+						"colSpan": 156,
+						"rowSpan": 103
+					},
+					"sensors": {
+						"col": 156,
+						"row": 110,
+						"colSpan": 156,
+						"rowSpan": 42
+					},
+					"temperatures": {
+						"col": 0,
+						"row": 152,
+						"colSpan": 312,
+						"rowSpan": 80
+					},
+					"camera": {
+						"col": 0,
+						"row": 307,
+						"colSpan": 104,
+						"rowSpan": 75
+					},
+					"layers": {
+						"col": 312,
+						"row": 0,
+						"colSpan": 130,
+						"rowSpan": 66
+					}
+				},
+				"jobs": {
+					"job-files": {
+						"col": 0,
+						"row": 0,
+						"colSpan": 156,
+						"rowSpan": 135
+					},
+					"job-details": {
+						"col": 156,
+						"row": 0,
+						"colSpan": 156,
+						"rowSpan": 135
+					},
+					"console": {
+						"col": 0,
+						"row": 135,
+						"colSpan": 312,
+						"rowSpan": 88
+					},
+					"camera": {
+						"col": 312,
+						"row": 0,
+						"colSpan": 260,
+						"rowSpan": 223
+					}
+				},
+				"macros": {
+					"macros": {
+						"col": 0,
+						"row": 0,
+						"colSpan": 130,
+						"rowSpan": 150
+					},
+					"macros-editor": {
+						"col": 130,
+						"row": 0,
+						"colSpan": 182,
+						"rowSpan": 150
+					},
+					"console": {
+						"col": 0,
+						"row": 150,
+						"colSpan": 312,
+						"rowSpan": 75
+					}
+				},
+				"system": {
+					"system-files": {
+						"col": 0,
+						"row": 0,
+						"colSpan": 104,
+						"rowSpan": 237
+					},
+					"system-editor": {
+						"col": 104,
+						"row": 0,
+						"colSpan": 273,
+						"rowSpan": 238
+					},
+					"console": {
+						"col": 0,
+						"row": 238,
+						"colSpan": 377,
+						"rowSpan": 75
+					},
+					"camera": {
+						"col": 0,
+						"row": 307,
+						"colSpan": 104,
+						"rowSpan": 75
+					}
+				},
+				"settings": {
+					"axis-roles": {
+						"col": 0,
+						"row": 32,
+						"colSpan": 156,
+						"rowSpan": 109
+					},
+					"camera-config": {
+						"col": 0,
+						"row": 141,
+						"colSpan": 156,
+						"rowSpan": 40
+					},
+					"tool-dock-sensors": {
+						"col": 156,
+						"row": 0,
+						"colSpan": 156,
+						"rowSpan": 76
+					},
+					"saved-versions": {
+						"col": 156,
+						"row": 151,
+						"colSpan": 156,
+						"rowSpan": 75
+					},
+					"bed-probe": {
+						"col": 0,
+						"row": 181,
+						"colSpan": 156,
+						"rowSpan": 45
+					},
+					"sensor-names": {
+						"col": 156,
+						"row": 76,
+						"colSpan": 156,
+						"rowSpan": 75
+					},
+					"config-save": {
+						"col": 0,
+						"row": 0,
+						"colSpan": 156,
+						"rowSpan": 32
+					},
+					"camera": {
+						"col": 0,
+						"row": 340,
+						"colSpan": 104,
+						"rowSpan": 75
+					}
+				},
+				"activity": {
+					"fans": {
+						"col": 260,
+						"row": 0,
+						"colSpan": 130,
+						"rowSpan": 62
+					},
+					"tuning": {
+						"col": 260,
+						"row": 62,
+						"colSpan": 130,
+						"rowSpan": 35
+					},
+					"position": {
+						"col": 0,
+						"row": 0,
+						"colSpan": 78,
+						"rowSpan": 91
+					},
+					"tools-heaters": {
+						"col": 78,
+						"row": 0,
+						"colSpan": 171,
+						"rowSpan": 61
+					},
+					"console": {
+						"col": 0,
+						"row": 147,
+						"colSpan": 260,
+						"rowSpan": 102
+					},
+					"gcode-viewer": {
+						"col": 0,
+						"row": 249,
+						"colSpan": 390,
+						"rowSpan": 180
+					},
+					"active-job": {
+						"col": 0,
+						"row": 91,
+						"colSpan": 156,
+						"rowSpan": 56
+					},
+					"camera": {
+						"col": 390,
+						"row": 0,
+						"colSpan": 104,
+						"rowSpan": 75
+					}
+				},
+				"bed": {
+					"heightmap": {
+						"col": 0,
+						"row": 0,
+						"colSpan": 208,
+						"rowSpan": 149
+					},
+					"mesh": {
+						"col": 208,
+						"row": 0,
+						"colSpan": 104,
+						"rowSpan": 50
+					},
+					"bed-tram": {
+						"col": 208,
+						"row": 50,
+						"colSpan": 104,
+						"rowSpan": 45
+					},
+					"probe-point": {
+						"col": 208,
+						"row": 95,
+						"colSpan": 104,
+						"rowSpan": 54
+					},
+					"console": {
+						"col": 0,
+						"row": 149,
+						"colSpan": 312,
+						"rowSpan": 75
+					},
+					"camera": {
+						"col": 312,
+						"row": 0,
+						"colSpan": 247,
+						"rowSpan": 224
+					}
+				}
+			}
+		}
+	}
+}

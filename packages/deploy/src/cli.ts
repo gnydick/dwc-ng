@@ -49,6 +49,27 @@ export function parseArgs(argv: readonly string[]): CliArgs {
 
 const kb = (n: number): string => `${(n / 1024).toFixed(1)} KB`
 
+/**
+ * The entry module's content hash, from the deployed file list.
+ *
+ * The SAME string the running app shows in its rail footer — it reads the hash
+ * off this very filename at runtime (packages/ui/src/shell/buildId.ts), so the
+ * two cannot drift: there is one identity, computed once by the bundler, and
+ * both ends quote it. A tab showing a different hash is running different
+ * code, which is otherwise indistinguishable from a deploy that did not work.
+ *
+ * Deliberately not a build timestamp. That records when the build RAN, so two
+ * builds of identical code disagree and a rebuild of unchanged code looks new
+ * — it cannot answer "are these the same code", which is the only question.
+ */
+export function entryHash(boardPaths: readonly string[]): string | null {
+	for (const path of boardPaths) {
+		const match = /\/assets\/index-([A-Za-z0-9_-]{6,})\.js$/.exec(path)
+		if (match) return match[1] ?? null
+	}
+	return null
+}
+
 async function main(): Promise<void> {
 	const args = parseArgs(process.argv.slice(2))
 	const transport: Transport =
@@ -88,8 +109,13 @@ async function main(): Promise<void> {
 		// from the board. The deploy verifies the BOARD; only the browser can
 		// clear the browser. Observed 2026-07-29: dev showed a fix, the printer
 		// did not, and the deployed bytes were correct the whole time.
+		// The entry module's content hash — the same string the running app
+		// shows in its rail footer, because it reads it off this very filename.
+		// A tab showing a different one is running different code, which is
+		// otherwise indistinguishable from a deploy that did not work.
+		const entry = entryHash(result.uploaded.concat(result.skipped))
+		if (entry !== null) console.log(`build: ${entry}  (shown in the app's rail footer)`)
 		console.log(`note: an already-open tab may hold ${args.name}.html for up to an hour — hard-reload it`)
-		console.log(`      the rail footer shows each tab's build stamp; two tabs that disagree are not running the same code`)
 	}
 }
 
