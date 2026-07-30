@@ -12,7 +12,7 @@ import { For, Index, Show, createMemo, createSignal } from "solid-js";
 import { useApp } from "../shell/context.ts";
 import { CONFIG_FILE, MAX_LABEL_LEN, DEFAULT_THERMAL_COLORS, type ThermalColors } from "../config/types.ts";
 import { heaterSeries } from "../om/heaterSeries.ts";
-import { nearestCollision, isHexColor, MIN_SEPARATION } from "../util/colorDistance.ts";
+import { nearestCollision, isHexColor } from "../util/colorDistance.ts";
 import { sensorRows } from "../om/sensorRows.ts";
 import { captureScreenGeometry } from "../compose/screens.ts";
 import { formatTimestamp } from "../files/format.ts";
@@ -74,11 +74,10 @@ export function HeaterColorsBody() {
 
 	return (
 		<>
-			<p class="hint">
-				Line colours on the temperature chart. The shipped palette keeps every
-				line distinguishable; your own picks are flagged when they get close,
-				never blocked. Reset restores the palette.
-			</p>
+			{/* No standing hint. The rows say it themselves: a swatch beside its
+			    hex, a Reset that appears only on an override, and the ΔE warning
+			    when two picks get close. A paragraph restating that was prose the
+			    card had to be wide enough to hold. */}
 			{/* Index, NOT For. heaterSeries() returns fresh objects on every
 			    config change, so For — which keys by reference — would rebuild
 			    each row's DOM on every keystroke of the picker. That destroys
@@ -89,6 +88,10 @@ export function HeaterColorsBody() {
 				<Index each={series()}>
 					{(s, i) => {
 						const clash = createMemo(() => nearestCollision(s().stroke, others(i)));
+						const clashText = (): string => {
+							const c = clash();
+							return c === null ? "" : `close to ${c.label} (ΔE ${c.separation.toFixed(1)})`;
+						};
 						const overridden = (): boolean => app.config.config.heaterColors[String(i)] !== undefined;
 						return (
 							<div class="field">
@@ -106,13 +109,13 @@ export function HeaterColorsBody() {
 										Reset
 									</button>
 								</Show>
-								<Show when={clash()}>
-									{c => (
-										<span class="color-clash" role="status">
-											close to {c().label} (ΔE {c().separation.toFixed(1)})
-										</span>
-									)}
-								</Show>
+								{/* ALWAYS rendered, empty when there is nothing to say. A box
+								    that came and went would change the row's width, and with it
+								    the card's own minimum, every time a pick landed near
+								    another. */}
+								<span class="color-clash" role="status" title={clashText()}>
+									{clashText()}
+								</span>
 							</div>
 						);
 					}}
@@ -133,10 +136,6 @@ export function ThermalColorsBody() {
 	const current = (): ThermalColors => app.config.config.thermalColors;
 	return (
 		<>
-			<p class="hint">
-				How a temperature reading is coloured as it warms. Applies everywhere a
-				reading is shown, not just the chart.
-			</p>
 			{/* Index for the same reason as the chart rows above: the picker
 			    element must outlive its own input events. */}
 			<Index each={channels}>
@@ -147,6 +146,10 @@ export function ThermalColorsBody() {
 						nearestCollision(value(), channels
 							.filter(o => o.key !== ch.key)
 							.map(o => [o.label, current()[o.key]] as const)));
+					const clashText = (): string => {
+						const c = clash();
+						return c === null ? "" : `close to ${c.label} (ΔE ${c.separation.toFixed(1)})`;
+					};
 					return (
 						<div class="field">
 							<span class="field-label">{ch.label}</span>
@@ -159,20 +162,13 @@ export function ThermalColorsBody() {
 							/>
 							<span class={`color-hex t-${ch.key}`}>{value()}</span>
 							<span class="color-range">{ch.range}</span>
-							<Show when={clash()}>
-								{c => (
-									<span class="color-clash" role="status">
-										close to {c().label} (ΔE {c().separation.toFixed(1)})
-									</span>
-								)}
-							</Show>
+							<span class="color-clash" role="status" title={clashText()}>
+								{clashText()}
+							</span>
 						</div>
 					);
 				}}
 			</Index>
-			<p class="hint">
-				Readings below ΔE {MIN_SEPARATION} apart are hard to tell at a glance.
-			</p>
 		</>
 	);
 }

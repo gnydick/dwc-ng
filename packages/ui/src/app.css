@@ -1342,7 +1342,24 @@
 	font-size: 11px;
 	letter-spacing: 0.04em;
 	color: var(--gold);
-	min-width: 0;
+	/* A RESERVED box, always present and always this wide — empty when there is
+	   nothing to say. Two things follow.
+
+	   It is included in the card's width stop: contentColSpan measures
+	   min-content, so wrappable prose would contribute only its longest word
+	   and the card could be dragged narrow enough to fold this into three
+	   lines. Refusing to wrap makes its min-content its full width.
+
+	   And that width is FIXED rather than the message's own. The text runs 99px
+	   ("close to Bed (ΔE 2.1)") to 138px ("close to Chamber (ΔE 100.0)"), so a
+	   content-sized box moved the card's minimum by 40px depending on which two
+	   colours happened to be close — a stop that shifts under you as you edit.
+	   Same discipline as .filament-loaded: reserve the space, let the content
+	   come and go inside it. */
+	flex: 0 0 140px;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
 }
 
 /* ---------- density (lead pitch) toggle ----------
