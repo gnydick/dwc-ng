@@ -127,15 +127,38 @@ test("the base column widths sum to --heat-table-w", () => {
  * nobody inserts a column. A named role class travels WITH its column, so
  * inserting one shifts nothing.
  */
-test("no load-bearing width is carried by a positional selector", () => {
-	const positional = /(th|td):nth-(child|of-type)\(\d+\)[^{]*\{([^}]*)\}/g;
+test("no load-bearing layout property is carried by a positional selector", () => {
+	// ANY element, not just th|td. The first version of this guard was scoped to
+	// table cells because that is where the bug was found, so it passed while
+	// `.heat-rows > .heater-ctl > .temp-field:nth-of-type(1) { grid-column: 2 }`
+	// sat two hundred lines below in the same stylesheet — the identical defect
+	// on a grid instead of a table. A selector's damage does not depend on the
+	// element it names.
+	//
+	// Every :nth-* form, not just nth-child/nth-of-type: :nth-last-child counts
+	// from the other end, which is no more stable under an insertion.
+	const positional = /([^{}]*:nth-(?:child|last-child|of-type|last-of-type)\([^)]*\)[^{}]*)\{([^}]*)\}/g;
+	// LOAD-BEARING = decides where a box sits or how big it is, so inserting or
+	// removing a sibling silently moves or resizes a LATER one and the stylesheet
+	// still parses. That is the whole regression class:
+	//   · sizing        width / min-width / max-width / flex-basis
+	//   · placement     grid-column* / grid-row* / grid-area / order
+	//   · offsets       left / right / top / bottom
+	// Deliberately NOT listed: padding, margin, colour, border, background,
+	// text-align. A stale one of those is a cosmetic wart on one cell — visible,
+	// local, and not capable of sliding a column under its neighbour. Adding them
+	// would make the guard fire on rules that are correct by intent (zebra
+	// striping, first-row padding) and it would then be silenced rather than
+	// obeyed.
+	const loadBearing =
+		/(^|[;{\s])(width|min-width|max-width|flex-basis|grid-column|grid-column-start|grid-column-end|grid-row|grid-row-start|grid-row-end|grid-area|order|left|right|top|bottom)\s*:/;
 	const offenders: string[] = [];
-	for (const [whole, , , body] of appCss.matchAll(positional)) {
-		if (/(^|[;{\s])(width|min-width|max-width|flex-basis):/.test(body!)) {
-			offenders.push(whole.slice(0, 70));
+	for (const [, selector, body] of appCss.matchAll(positional)) {
+		if (loadBearing.test(body!)) {
+			offenders.push(`${selector!.trim().replace(/\s+/g, " ")} { ${body!.trim()} }`);
 		}
 	}
-	assert.deepEqual(offenders, [], "these rules set a width from a position, not from a role");
+	assert.deepEqual(offenders, [], "these rules take a size or a position from a sibling index, not from a role");
 });
 
 test("the narrow-viewport widths sum to the --heat-table-w it restates", () => {
