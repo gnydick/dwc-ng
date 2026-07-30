@@ -77,7 +77,6 @@ export const MOVEMENT_SPEC = compileControlSpec({
 		feed: { kind: "number", label: "Feed", default: 6000 },
 	},
 	nodes: [
-		{ type: "row", label: "Step", class: "step-row", items: [{ input: "step" }, { input: "feed" }] },
 		{
 			// EVERY visible axis, one row each, in one table — no cardinal pad.
 			// The pad only ever covered X/Y/Z, so a 7-axis machine read as two
@@ -104,28 +103,43 @@ export const MOVEMENT_SPEC = compileControlSpec({
 			],
 		},
 		{
-			// The coupler row exists exactly when a C axis does — a forEach over
-			// a filtered selector doubles as the existence gate.
-			type: "forEach",
-			from: "move.axes[letter=C]",
-			as: "axis",
-			node: {
-				// No label. "Lock" and "Unlock" beside the C axis row say what
-				// these are, and the word Coupler was only repeating the C row's
-				// own sub-label directly above them.
-				type: "row",
-				label: "",
-				class: "coupler-row coupler-stack",
-				items: [
-					// stamp: false — the macro path is long enough that the two
-					// buttons were wider than the jog table above them and had to
-					// stack. The command is still on the control, on hover (every
-					// GcodeButton carries it in `title`), so the 1:1 guarantee is
-					// intact without spending a row and a half on it.
-					{ type: "gcode-button", label: "Lock", template: 'M98 P"/macros/tool_lock"', stamp: false },
-					{ type: "gcode-button", label: "Unlock", template: 'M98 P"/macros/tool_unlock"', variant: "quiet", stamp: false },
-				],
-			},
+			// Everything to the RIGHT of the jog table, in one node so the card
+			// is two columns rather than a grid of loose children fighting over
+			// cells. The step bank used to be a full-width row ABOVE the table:
+			// four chips and a feed field spending a whole row of card height on
+			// controls that are each one word wide, and putting the distance you
+			// are about to move furthest from the keys that move it. As a column
+			// beside the keys it costs no height at all and sits next to what it
+			// governs.
+			type: "row",
+			class: "jog-side",
+			items: [
+				{ type: "row", label: "Step", class: "step-row", items: [{ input: "step" }, { input: "feed" }] },
+				{
+					// The coupler row exists exactly when a C axis does — a forEach
+					// over a filtered selector doubles as the existence gate.
+					type: "forEach",
+					from: "move.axes[letter=C]",
+					as: "axis",
+					node: {
+						// No label. "Lock" and "Unlock" beside the C axis row say what
+						// these are, and the word Coupler was only repeating the C row's
+						// own sub-label directly above them.
+						type: "row",
+						label: "",
+						class: "coupler-row coupler-stack",
+						items: [
+							// stamp: false — the macro path is long enough that the two
+							// buttons were wider than the jog table above them and had to
+							// stack. The command is still on the control, on hover (every
+							// GcodeButton carries it in `title`), so the 1:1 guarantee is
+							// intact without spending a row and a half on it.
+							{ type: "gcode-button", label: "Lock", template: 'M98 P"/macros/tool_lock"', stamp: false },
+							{ type: "gcode-button", label: "Unlock", template: 'M98 P"/macros/tool_unlock"', variant: "quiet", stamp: false },
+						],
+					},
+				},
+			],
 		},
 		// The manual-feed row moved to the Extruders card (control/FilamentCard).
 		// It never belonged here: G1 E feeds the CURRENT tool's extruder, which
