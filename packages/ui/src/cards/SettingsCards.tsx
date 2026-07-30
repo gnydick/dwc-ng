@@ -101,17 +101,17 @@ export function HeaterColorsBody() {
 									onInput={e => app.config.setHeaterColor(i, e.currentTarget.value)}
 								/>
 								<span class="color-hex">{s().stroke}</span>
+								<Show when={overridden()}>
+									<button type="button" class="lab-pill" onClick={() => app.config.clearHeaterColor(i)}>
+										Reset
+									</button>
+								</Show>
 								<Show when={clash()}>
 									{c => (
 										<span class="color-clash" role="status">
 											close to {c().label} (ΔE {c().separation.toFixed(1)})
 										</span>
 									)}
-								</Show>
-								<Show when={overridden()}>
-									<button type="button" class="lab-pill" onClick={() => app.config.clearHeaterColor(i)}>
-										Reset
-									</button>
 								</Show>
 							</div>
 						);
