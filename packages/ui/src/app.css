@@ -1912,6 +1912,8 @@
 [data-panel-id="fans"] .heater-list:not(.horizontal) { gap: 0; }
 [data-panel-id="fans"] .heater-list:not(.horizontal) > .heater-ctl {
 	border-top: 1px solid var(--hairline);
+	/* --sp-cell either side. This is the spacing the other three list cards now
+	   take too, via --tool-row-h — see its definition. */
 	padding: var(--sp-cell) 0;
 }
 [data-panel-id="fans"] .heater-list:not(.horizontal) > .heater-ctl:first-child {
@@ -2135,12 +2137,20 @@
    62px fits that with a couple of px to spare at the loosest density and is
    still a comfortable pointer target — 92px was a third of it empty ground. */
 :root { --jog-key-w: 62px; }
-/* ONE row pitch for the two tool cards. Tools draws its rows as grid rows
-   (--ctl-h plus the grid gap); Tools & heaters draws them as table rows
-   (--ctl-h plus cell padding plus a border). Left to themselves they came out
-   36px and 45px, so the same five tools stood at two different heights side
-   by side. Derived from the same tokens, so it holds at every density. */
-:root { --tool-row-h: calc(var(--ctl-h) + var(--ctl-gap)); }
+/* ONE row pitch for every card that is a LIST OF ROWS SEPARATED BY A HAIRLINE:
+   Tools, Tools & heaters, Extruders, Fans. Each drew its rows differently —
+   grid rows from --ctl-h plus the grid gap, table rows from cell padding plus
+   a border, a flex column from its gap — so the same five tools stood at
+   different heights in cards sitting side by side.
+
+   --sp-cell EITHER SIDE of the control, which is the Fans card's spacing and
+   the one that was preferred. It is deliberately more than --ctl-gap: these
+   rows carry a rule between them, and a line wants air on both sides or it
+   reads as attached to the row below it.
+
+   Derived from --ctl-h and --sp-cell, both of which scale with the density
+   pitch, so all four cards keep the same pitch AND the same scaling rate. */
+:root { --tool-row-h: calc(var(--ctl-h) + 2 * var(--sp-cell)); }
 .jog-table .jog-row { display: contents; }
 /* Fill the track rather than hug the label, so the two columns read as columns. */
 .jog-table .jog-row .gcode-btn { width: 100%; justify-content: center; }
