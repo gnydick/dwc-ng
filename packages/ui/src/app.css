@@ -645,6 +645,14 @@
    598. That is what this card needs. Whether it FITS where it sits is a
    layout question — if it will not grow, look for a neighbour boxing it in
    before touching these numbers. */
+/* The table's 598px is a MINIMUM for the table, not a demand on the card.
+   contain: inline-size stops it reaching the card's width stop, exactly as it
+   does for the temperature chart's canvas — otherwise this card could never be
+   narrowed below ~623px, which is wider than a tablet in portrait, and the one
+   card the operator most wants to shrink was the one that refused.
+   Six columns of live controls do not fit a phone. The honest answer is that
+   the table scrolls within its card, not that the columns get crushed. */
+.heat-scroll { overflow-x: auto; contain: inline-size; }
 .heat-table { width: 100%; min-width: 598px; border-collapse: collapse; font-variant-numeric: tabular-nums; table-layout: fixed; }
 /* Widths carry slack past the widest content: cells have no horizontal
    padding, so a column sized exactly to its text leaves adjacent right-aligned
