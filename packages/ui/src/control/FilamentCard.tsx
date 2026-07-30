@@ -2,6 +2,7 @@ import { For, Show, createMemo, createResource, createSignal } from "solid-js";
 import { useApp } from "../shell/context.ts";
 import { cmd } from "./commands.ts";
 import { GcodeButton } from "./GcodeButton.tsx";
+import { describeToolP, parseToolP } from "./toolP.ts";
 import type { Tool } from "../om/types.ts";
 
 const FILAMENTS_DIR = "0:/filaments";
@@ -27,6 +28,9 @@ export function FilamentCard(props: { tools: (Tool | null)[] }) {
 	/** Manual feed, in the footer row. Card-local, like every other step size. */
 	const [feedMm, setFeedMm] = createSignal(5);
 	const [feedRate, setFeedRate] = createSignal(300);
+	// Blank means "send no P", which is not the same as P0 — see cmd.selectTool.
+	const [toolP, setToolP] = createSignal("");
+	const toolPValue = (): number | undefined => parseToolP(toolP());
 
 	/** The tool a manual feed will move, or -1 for none. */
 	const current = (): number => app.om.om.state.currentTool;
@@ -83,6 +87,35 @@ export function FilamentCard(props: { tools: (Tool | null)[] }) {
 			when={feeders().length > 0}
 			fallback={<p class="job-empty">No filament extruders</p>}
 		>
+			{/* The SAME Deselect + P row the two tool cards carry, and the same
+			    component-level behaviour: blank P sends no P at all and lets the
+			    firmware run every tool-change macro, P0 suppresses them. It
+			    belongs here because loading filament acts on the CURRENT tool —
+			    M701/M702 prepend a T only when the row's tool is not already
+			    selected — so which tool is current is as much this card's
+			    business as the tool cards'. Three cards, one row, one idiom. */}
+			<div class="heat-deselect">
+				<GcodeButton
+					label="Deselect"
+					variant="quiet"
+					stamp={false}
+					engaged={app.om.om.state.currentTool < 0}
+					command={cmd.deselectTool(toolPValue())}
+				/>
+				<label class="feed-field">
+					P
+					<input
+						type="number"
+						min="0"
+						max="7"
+						placeholder="all"
+						value={toolP()}
+						onInput={e => setToolP(e.currentTarget.value)}
+						aria-label="Tool change macro bitmask"
+					/>
+				</label>
+				<span class="tool-p-decode">{describeToolP(toolPValue())}</span>
+			</div>
 			{/* One grid for the whole card, head row included, so the two All
 			    buttons sit in the SAME tracks as the Load and Unload beneath
 			    them — above their own column by construction, not by two
@@ -121,10 +154,9 @@ export function FilamentCard(props: { tools: (Tool | null)[] }) {
 				    whether or not the machine knows any materials, and Unload acts
 				    on what is already loaded — so an empty 0:/filaments used to
 				    delete the whole tool listing along with the picker, taking
-				    Unload with it. The empty list is a note beneath the rows now,
-				    and Load disables itself per row for want of a selection. */}
-				<Show when={!filaments.loading && (filaments() ?? []).length === 0}>
-				</Show>
+				    Unload with it. An empty list says nothing at all now: Load
+				    disables itself per row for want of a selection, which is the
+				    same fact without a sentence. */}
 				<Show when={filaments.loading}>
 					<p class="job-empty filament-note">Reading filaments…</p>
 				</Show>
