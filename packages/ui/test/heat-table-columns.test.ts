@@ -63,14 +63,14 @@ function withoutMediaBlocks(css: string): string {
 	return out;
 }
 
-/** nth-child index -> declared px width, for `.heat-table` column rules. */
-function columnWidths(css: string): Map<number, number> {
-	const widths = new Map<number, number>();
-	const rule = /\.heat-table th:nth-child\((\d+)\)[^{]*\{([^}]*)\}/g;
-	for (const [, index, body] of css.matchAll(rule)) {
+/** role -> declared px width, for `.heat-table` column rules. */
+function columnWidths(css: string): Map<string, number> {
+	const widths = new Map<string, number>();
+	const rule = /\.heat-table \.col-([a-z]+)\s*\{([^}]*)\}/g;
+	for (const [, role, body] of css.matchAll(rule)) {
 		const width = /(?:^|[;{\s])width:\s*(\d+)px/.exec(body!);
-		assert.ok(width, `.heat-table column ${index} rule declares no px width`);
-		widths.set(Number(index), Number(width[1]));
+		assert.ok(width, `.heat-table .col-${role} declares no px width`);
+		widths.set(role!, Number(width[1]));
 	}
 	return widths;
 }
@@ -82,23 +82,17 @@ function declaredTableWidth(css: string): number {
 	return Number(all[all.length - 1]![1]);
 }
 
-const COLUMN_COUNT = [...cardTsx.matchAll(/<th scope="col">/g)].length;
+const COLUMN_ROLES = ["heater", "active", "standby", "current", "set"] as const;
 const base = withoutMediaBlocks(appCss);
 const narrow = mediaBlock(appCss, "max-width: 900px");
 
-test("the card renders the five columns the stylesheet is written for", () => {
-	// Guards the arithmetic below: with a different count, the sums are checking
-	// a table that no longer exists. 6 -> 5 when the Filament column left both
-	// tool cards for Extruders, which owns the pickers and the load macros.
-	assert.equal(COLUMN_COUNT, 5);
-});
-
-test("every column has a declared width — table-layout:fixed has no fallback", () => {
+test("every column the component renders has a role class with a width", () => {
+	// Welded to the markup: a <th> without a col- class, or a col- class the
+	// markup never uses, fails here rather than silently inheriting a width.
+	const inMarkup = [...cardTsx.matchAll(/<th scope="col" class="col-([a-z]+)"/g)].map(m => m[1]!);
+	assert.deepEqual([...inMarkup].sort(), [...COLUMN_ROLES].sort());
 	const widths = columnWidths(base);
-	assert.deepEqual(
-		[...widths.keys()].sort((a, b) => a - b),
-		Array.from({ length: COLUMN_COUNT }, (_, i) => i + 1),
-	);
+	for (const role of COLUMN_ROLES) assert.ok(widths.has(role), `no width for col-${role}`);
 });
 
 test("the base column widths sum to --heat-table-w", () => {
@@ -107,13 +101,27 @@ test("the base column widths sum to --heat-table-w", () => {
 	assert.equal(sum, declaredTableWidth(base));
 });
 
-test("the narrow-viewport block names no column the table does not have", () => {
-	// THE regression. The stale block addressed nth-child(2)…(5) of a
-	// five-column table, which is in range and therefore not caught here —
-	// so this pairs with the sum check below, which is what actually caught it.
-	for (const index of columnWidths(narrow).keys()) {
-		assert.ok(index >= 1 && index <= COLUMN_COUNT, `narrow block sets column ${index} of ${COLUMN_COUNT}`);
+/**
+ * THE regression this whole file exists for. A media query written for the
+ * FIVE-column table kept its nth-child indices when Filament was inserted as
+ * column 2, so every index slid one to the left: Filament took the width meant
+ * for Active (under the picker's own min-width, so it overflowed) and Current
+ * took the width meant for Set. The card's minimum went UP under rules meant to
+ * shrink it, and it was the one card that would not narrow in portrait.
+ *
+ * A positional selector cannot be made safe - it is correct only for as long as
+ * nobody inserts a column. A named role class travels WITH its column, so
+ * inserting one shifts nothing.
+ */
+test("no load-bearing width is carried by a positional selector", () => {
+	const positional = /(th|td):nth-(child|of-type)\(\d+\)[^{]*\{([^}]*)\}/g;
+	const offenders: string[] = [];
+	for (const [whole, , , body] of appCss.matchAll(positional)) {
+		if (/(^|[;{\s])(width|min-width|max-width|flex-basis):/.test(body!)) {
+			offenders.push(whole.slice(0, 70));
+		}
 	}
+	assert.deepEqual(offenders, [], "these rules set a width from a position, not from a role");
 });
 
 test("the narrow-viewport widths sum to the --heat-table-w it restates", () => {

@@ -138,20 +138,20 @@ export function ToolsHeatersBody(props: {
 					<table class="heat-table" classList={{ "info-only": !controls() }}>
 						<thead>
 							<tr>
-								<th scope="col">Heater</th>
+								<th scope="col" class="col-heater">Heater</th>
 								{/* No Filament column on either tool card. Loading a material is
 								    the Extruders card's job — it owns the pickers, the load and
 								    unload macros and the All buttons — and a second picker here
 								    was the same control in two places. */}
 								<Show when={controls()}>
-									<th scope="col">Active</th>
-									<th scope="col">Standby</th>
+									<th scope="col" class="col-active">Active</th>
+									<th scope="col" class="col-standby">Standby</th>
 								</Show>
 								{/* Reading sits next to acting: Current is the last thing before
 								    the buttons, so the number you check and the button you press
 								    are the same glance. */}
-								<th scope="col">Current</th>
-								<Show when={controls()}><th scope="col">Set</th></Show>
+								<th scope="col" class="col-current">Current</th>
+								<Show when={controls()}><th scope="col" class="col-set">Set</th></Show>
 							</tr>
 						</thead>
 						<tbody>
@@ -160,7 +160,7 @@ export function ToolsHeatersBody(props: {
 									<Show when={tool}>
 										{t => (
 											<tr>
-												<td>
+												<td class="col-heater">
 													<ToolName
 														name={t().name || `Tool ${t().number}`}
 														des={`T${t().number}`}
@@ -170,7 +170,7 @@ export function ToolsHeatersBody(props: {
 												</td>
 												<Show
 													when={heaterAt(t().heaters[0] ?? -1)}
-													fallback={<td colspan={controls() ? 3 : 1} class="heat-set">no heater</td>}
+													fallback={<td colspan={controls() ? 3 : 1} class="heat-set col-current">no heater</td>}
 												>
 													{h => (
 														<HeaterCells
@@ -190,7 +190,7 @@ export function ToolsHeatersBody(props: {
 							<Show when={heaterAt(bedHeaterIndex())}>
 								{h => (
 									<tr>
-										<td>
+										<td class="col-heater">
 											<ToolName name="Bed" des={`heater${bedHeaterIndex()}`} dock={null} tool={null} />
 										</td>
 										<HeaterCells heater={h()} index={bedHeaterIndex()} kind="bed" num={0} controls={controls()} />
@@ -311,7 +311,7 @@ function HeaterCells(props: { heater: Heater; index: number; kind: "tool" | "bed
 			    only reports shows the reading; a target you cannot change is not
 			    what this card is for. */}
 			<Show when={props.controls}>
-				<td>
+				<td class="col-active">
 					<span class="heat-entry">
 						<input
 							class="heat-input"
@@ -322,7 +322,7 @@ function HeaterCells(props: { heater: Heater; index: number; kind: "tool" | "bed
 						/>
 					</span>
 				</td>
-				<td>
+				<td class="col-standby">
 					{/* The bed has no standby mode. The CELL stays (the column is what keeps
 					    every row's setpoints aligned) but it holds nothing — a placeholder
 					    dash just draws the eye to something that isn't there. */}
@@ -343,7 +343,7 @@ function HeaterCells(props: { heater: Heater; index: number; kind: "tool" | "bed
 			    the reading is the thing you cannot trust anyway (a detached
 			    thermistor reads wild), and the reset is what you actually need, so
 			    the badge takes the cell rather than costing a column of its own. */}
-			<td>
+			<td class="col-current">
 				<Show
 					when={isModalState(props.heater.state)}
 					fallback={<HeaterState heater={props.heater} index={props.index} />}
@@ -352,7 +352,7 @@ function HeaterCells(props: { heater: Heater; index: number; kind: "tool" | "bed
 				</Show>
 			</td>
 			<Show when={props.controls}>
-			<td>
+			<td class="col-set">
 				{/* The three keys are modal: the one matching the heater's reported
 				    state lights up, which is what the State column used to say in
 				    words. Single letters, because each one now sits at the end of a

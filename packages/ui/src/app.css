@@ -712,34 +712,19 @@
 	font-variant-numeric: tabular-nums;
 	table-layout: fixed;
 }
-/* Every width below is FIXED, so the table is the same width whatever the card
-   does and the card's stop is simply their sum. An elastic column meant the
-   card's minimum and the column layout argued with each other. */
-.heat-table th:nth-child(1), .heat-table td:nth-child(1) { width: 152px; }
-/* 56px, measured: .heat-input is 56px wide and these were once declared 54, so
-   both setpoint fields overflowed their own column by 2px.
-   Active carries 14px of LEFT gutter on top of that — the tool selector in
-   column 1 fills its cell, so with bare columns the button's right edge met
-   the first input's left edge exactly. The gutter is added to the width, not
-   taken out of it (box-sizing is border-box), so the field is still 56. */
-.heat-table th:nth-child(2), .heat-table td:nth-child(2) { width: 70px; padding-left: 14px; }
-.heat-table th:nth-child(3), .heat-table td:nth-child(3) { width: 56px; }
-/* Current: the padding is what keeps the reading off the first mode key —
-   right-aligned in a bare cell, its right edge met the key exactly. 58px
-   measured in the Card Lab (isolated, so no neighbour distorts it): the widest
-   reading is 44px and this padding is 14. */
-.heat-table th:nth-child(4), .heat-table td:nth-child(4) { width: 58px; padding-right: 14px; }
-.heat-table th:nth-child(5), .heat-table td:nth-child(5) { width: 156px; }
-/* The Tools card: the same table with the heater CONTROLS not rendered, so it
-   is Heater | Current and nothing else. min-width directly rather than through
-   --heat-table-w, so the token keeps meaning "the full table" and the
-   column-sum test still has one number to check. 152 + 58 = 210. Current is
-   nth-child(2) here, so it would otherwise inherit Active's bare 56px. */
+/* Columns by ROLE, not by position. The width travels with the column, so
+   inserting or removing one shifts nothing — which is the entire content of
+   regression class (f). Sum: 152 + 70 + 56 + 58 + 156 = 492. */
+.heat-table .col-heater { width: 152px; }
+.heat-table .col-active { width: 70px; padding-left: 14px; }
+.heat-table .col-standby { width: 56px; }
+.heat-table .col-current { width: 58px; padding-right: 14px; }
+.heat-table .col-set { width: 156px; }
+/* The Tools card renders the same table without the control columns, so
+   Current is the second cell rather than the fourth. Under role classes that
+   fact needs no restatement of any OTHER column's width — which is what the
+   positional version got wrong. 152 + 58 = 210. */
 .heat-table.info-only { min-width: 210px; }
-.heat-table.info-only th:nth-child(2), .heat-table.info-only td:nth-child(2) {
-	width: 58px;
-	padding-right: 14px;
-}
 .heat-input {
 	width: 56px;
 	padding: var(--sp-chip-py) 6px;
@@ -1298,10 +1283,9 @@
 	.heat-table { --heat-table-w: 484px; }
 	/* Only Current has measured slack at this width; the setpoint fields are at
 	   their inputs and Set is at its three keys. 152 + 70 + 56 + 50 + 156 = 484. */
-	.heat-table th:nth-child(4), .heat-table td:nth-child(4) { width: 50px; padding-right: 6px; }
+	.heat-table .col-current { width: 50px; padding-right: 6px; }
 	/* Same two columns, narrow: 152 + 50 = 202. */
 	.heat-table.info-only { min-width: 202px; }
-	.heat-table.info-only th:nth-child(2), .heat-table.info-only td:nth-child(2) { width: 50px; padding-right: 6px; }
 	/* tighten headers so labels ("STANDBY") fit their narrower columns */
 	.heat-table th { font-size: 9.5px; letter-spacing: 0.05em; }
 }
