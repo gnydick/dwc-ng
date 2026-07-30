@@ -3294,3 +3294,17 @@
 }
 .layer-summary b { color: var(--silk); font-weight: 600; }
 .layer-chart { width: 100%; }
+
+/* ---------- layout audit (dev only) ---------- */
+.layout-audit { margin-top: var(--sp-flow); border-top: 1px solid var(--hairline); padding-top: var(--sp-flow); }
+.layout-audit-bar { display: flex; align-items: center; gap: var(--ctl-gap); }
+.layout-audit-grid {
+	display: grid;
+	grid-template-columns: max-content 1fr;
+	gap: var(--sp-cell) var(--ctl-gap);
+	margin: var(--sp-flow) 0 0;
+	font: 400 12.5px/1.4 var(--font-body);
+}
+.layout-audit-grid dt { color: var(--silk-dim); }
+.layout-audit-grid dd { margin: 0; color: var(--silk); font-variant-numeric: tabular-nums; }
+.layout-audit-grid dd.bad { color: var(--fault); font-weight: 600; }
