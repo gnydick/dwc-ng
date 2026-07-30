@@ -1331,14 +1331,18 @@
 .color-range { font-size: 11.5px; color: var(--silk-dim); flex: none; }
 /* A statement of fact, not an error: the pick still stands. Gold, not red —
    red would read as "rejected", and nothing here is rejected. */
+/* Sits immediately after the Reset button, left-aligned, in the flow.
+   It used to carry margin-left:auto and text-align:right, which pinned it to
+   the far edge — so the row's controls were separated from their own warning
+   by a gap that changed width with the card, and the Reset button's position
+   moved with the length of a sentence. */
 .color-clash {
 	font-family: var(--font-display);
 	font-weight: 600;
 	font-size: 11px;
 	letter-spacing: 0.04em;
 	color: var(--gold);
-	margin-left: auto;
-	text-align: right;
+	min-width: 0;
 }
 
 /* ---------- density (lead pitch) toggle ----------
