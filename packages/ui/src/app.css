@@ -1366,7 +1366,16 @@
 	display: flex;
 	flex-direction: column;
 	flex: 1 1 0;
-	min-height: 0;
+	/* NOT 0. contentRowSpan counts a slack-absorbing child as its DECLARED
+	   floor, so a zero here made the whole card's stop header-only and Jobs,
+	   Macros and System files could all be dragged over their own breadcrumbs
+	   and file-management buttons — the same shape as the chart and the
+	   toolpath viewport. Measured: crumbs 18 + tools 30 (its own declared min)
+	   + message line 16 + their margins, plus two list rows so the thing is
+	   still a file browser and not just a toolbar. Nothing inside can state
+	   this — the list is deliberately allowed to shrink to nothing so it can
+	   scroll — so the container has to. */
+	min-height: 140px;
 }
 .file-list::-webkit-scrollbar { display: none; }
 .file-row {
