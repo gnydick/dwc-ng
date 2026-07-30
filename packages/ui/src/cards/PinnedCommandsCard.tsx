@@ -35,7 +35,7 @@ export function PinnedCommandsBody() {
 				</span>
 			</div>
 
-			<Show when={rows().length > 0} fallback={<p class="job-empty">No pinned commands. Add a row to hold a G-code against a running job.</p>}>
+			<Show when={rows().length > 0} fallback={<p class="job-empty">No pinned commands</p>}>
 				<ul class="pin-list">
 					<For each={rows()}>
 						{pin => (

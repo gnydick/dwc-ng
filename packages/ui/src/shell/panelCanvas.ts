@@ -108,6 +108,28 @@ export interface PanelDefault extends PanelRect {
 	id: string;
 	/** From the composition. Seeds a browser that has none stored yet. */
 	orientation?: Orientation;
+	/**
+	 * A floor for a card whose CONTENT CAN BE ABSENT.
+	 *
+	 * Every card's minimum is measured from what it draws, uniformly. That rule
+	 * breaks for the handful whose body has an empty state: the Printing card
+	 * with no job renders one line and a button, so its measured minimum
+	 * collapses to 48 columns — drag it small while idle and it cannot hold the
+	 * print when one starts. The measurement is not wrong, it is measuring a
+	 * card that is temporarily nearly empty.
+	 *
+	 * So those cards declare what they need when FULL, and the stop is the
+	 * larger of the two. Cards whose content is always present declare nothing
+	 * and are governed entirely by measurement — one rule, with a floor that
+	 * defaults to none.
+	 *
+	 * In stored row/column units, like every other span here, which makes it
+	 * pitch-correct for free: the row unit shrinks with the density (see
+	 * rowUnitPx), so a span floor is physically smaller at a tighter pitch —
+	 * exactly as the full content it stands in for would be.
+	 */
+	minColSpan?: number;
+	minRowSpan?: number;
 }
 
 function safeNum(n: number, fallback: number): number {
@@ -1023,14 +1045,33 @@ export function createPanelCanvas(
 		// stays the same physical size rather than drifting.
 		const unitPx = rowUnitPx();
 		const hardFloor = Math.max(1, Math.ceil((floorPx + gutterPx) / unitPx));
-		const rowStop = Math.max(cardEl ? contentRowSpan(cardEl, gutterPx) : 1, hardFloor);
+		// The declared floor for cards whose content can be absent — see
+		// PanelDefault.minRowSpan. Every rung is a Math.max, so the order they
+		// are written in does not matter and the header floor is genuinely the
+		// LAST resort: it only decides the stop when neither the measurement nor
+		// the declaration asks for more.
+		const declared = defaults.find(d => d.id === id);
+		const rowStop = Math.max(
+			cardEl ? contentRowSpan(cardEl, gutterPx) : 1,
+			hardFloor,
+			declared?.minRowSpan ?? 1,
+		);
 
 		// The same on the horizontal axis, which had no limit at all: a card
 		// could be dragged narrower than its own controls, which then simply
 		// disappeared off the side with nothing shown and nothing felt.
 		const sideGutterPx = cardEl ? parseFloat(getComputedStyle(cardEl).marginRight || "0") : 0;
+		// headerColSpan is the title + the G-code/macro hint laid out unclipped:
+		// the absolute floor, below which a card stops being able to say what it
+		// is. .card-title is white-space: nowrap precisely so this number means
+		// something — a title that folded would shrink the very wall meant to
+		// protect it.
 		const hardWall = cardEl ? headerColSpan(cardEl, sideGutterPx) : 1;
-		const colStop = Math.max(cardEl ? contentColSpan(cardEl, sideGutterPx) : 1, hardWall);
+		const colStop = Math.max(
+			cardEl ? contentColSpan(cardEl, sideGutterPx) : 1,
+			hardWall,
+			declared?.minColSpan ?? 1,
+		);
 		let pointerX = event.clientX;
 		let pointerY = event.clientY;
 

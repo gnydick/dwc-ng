@@ -63,7 +63,7 @@ export function FirmwareBody() {
 				</ul>
 			</div>
 
-			<Show when={boards().length} fallback={<p class="job-empty">No boards reported.</p>}>
+			<Show when={boards().length} fallback={<p class="job-empty">No boards</p>}>
 				<table class="fw-table">
 					<thead>
 						<tr>

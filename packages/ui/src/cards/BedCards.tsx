@@ -291,7 +291,7 @@ export function BedTramBody() {
 			</div>
 			<Show
 				when={lastTram()}
-				fallback={<p class="job-empty">No tram result yet this session.</p>}
+				fallback={<p class="job-empty">No tram result</p>}
 			>
 				{tram => (
 					<dl class="meta-grid tram-result">
@@ -456,7 +456,7 @@ export function ProbePointBody(props: { ctx: CardCtx }) {
 	};
 
 	return (
-		<Show when={svc.cell()} fallback={<p class="job-empty">Select a point on the map.</p>}>
+		<Show when={svc.cell()} fallback={<p class="job-empty">No point selected</p>}>
 			{target => (
 				<div class="hm-detail">
 					<dl class="meta-grid">

@@ -24,7 +24,7 @@ export function AtxBody() {
 	// atxPower is null on a board with no PS_ON port. Say so rather than offer a
 	// DEAD switch — but keep the card visible, not vanished.
 	return (
-		<Show when={app.om.om.state.atxPower !== null} fallback={<p class="job-empty">This machine has no ATX power control.</p>}>
+		<Show when={app.om.om.state.atxPower !== null} fallback={<p class="job-empty">No ATX control</p>}>
 			<div class="ctl-wrap">
 				<GcodeButton label="PSU On" variant="go" command={cmd.atxPower(true)} />
 				<GcodeButton label="PSU Off" variant="danger" command={cmd.atxPower(false)} />
@@ -129,7 +129,7 @@ export function FansBody(props: { orientation: () => Orientation }) {
 		app.om.om.fans.flatMap((fan, i) => (isManualFan(fan) ? [{ fan, i }] : [])),
 	);
 	return (
-		<Show when={manualFans().length > 0} fallback={<p class="job-empty">This machine has no adjustable fans.</p>}>
+		<Show when={manualFans().length > 0} fallback={<p class="job-empty">No adjustable fans</p>}>
 			<div class="heater-list" classList={{ horizontal: props.orientation() === "horizontal" }}>
 				<For each={manualFans()}>
 					{entry => (

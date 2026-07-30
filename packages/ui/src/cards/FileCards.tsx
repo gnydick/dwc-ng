@@ -67,9 +67,9 @@ export function JobDetailsBody(props: { ctx: CardCtx }) {
 
 	return (
 		<Switch>
-			<Match when={svc.selected() === null}><p class="job-empty">No job selected.</p></Match>
-			<Match when={svc.info.loading}><p class="job-empty">Reading metadata…</p></Match>
-			<Match when={svc.info.error}><p class="job-empty">No metadata for this file.</p></Match>
+			<Match when={svc.selected() === null}><p class="job-empty">No selection</p></Match>
+			<Match when={svc.info.loading}><p class="job-empty">Reading…</p></Match>
+			<Match when={svc.info.error}><p class="job-empty">No metadata</p></Match>
 			<Match when={svc.info()}>
 				{info => (
 					<>
@@ -94,7 +94,7 @@ export function JobDetailsBody(props: { ctx: CardCtx }) {
 						<div class="btn-row detail-actions">
 							<button class="btn btn-go" disabled={active()} onClick={startPrint}>Start print</button>
 							<button class="btn" disabled={active()} onClick={simulate} title="Run the file without heating or moving, to get RRF's own time estimate">Simulate</button>
-							<Show when={active()}><span class="job-empty">A job is already running.</span></Show>
+							<Show when={active()}><span class="job-empty">Job running</span></Show>
 						</div>
 					</>
 				)}

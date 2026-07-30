@@ -17,7 +17,7 @@ export function LayersBody() {
 	const chartData = createMemo(() => layerChartData(app.om.om.job.layers));
 
 	return (
-		<Show when={stats().count > 0} fallback={<p class="job-empty">No layer times yet.</p>}>
+		<Show when={stats().count > 0} fallback={<p class="job-empty">No layer times</p>}>
 			<div class="layer-summary">
 				<span><b>{stats().count}</b> layers</span>
 				<span>avg <b>{Math.round(stats().mean)}s</b></span>
