@@ -786,8 +786,13 @@
 	text-transform: none;
 }
 .heat-name span.heat-tool { display: flex; align-items: center; min-height: var(--ctl-h); }
-/* Deselect + P: machine-wide, above the selector column they govern. */
-.heat-deselect { display: flex; align-items: center; gap: 10px; margin: 0 0 var(--sp-flow); }
+/* Deselect + P: machine-wide, above the selector column they govern.
+   flex-wrap, matching .tool-p — the Tools card's identical row (same Deselect,
+   same P field, same decode). Without it the row's minimum is the SUM of the
+   three, 322px, a floor on the whole card that nothing about the row needs;
+   wrapping puts it at 150, the widest single item. Latent rather than binding
+   while the table is wider, which is exactly why it went unnoticed. */
+.heat-deselect { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0 0 var(--sp-flow); }
 
 /* Same size as the tool label it sits in a row with — the reading is a peer of
    the name, not a headline. */
@@ -1205,13 +1210,35 @@
 	.rail nav { flex-direction: row; }
 	.rail .machine-id { display: none; }
 
-	/* Narrower fixed columns + smaller temp on phones so the Heater name never
-	   gets starved (and stays unclipped) while columns remain reflow-proof. */
-	.heat-table th:nth-child(2), .heat-table td:nth-child(2) { width: 48px; }
-	.heat-table th:nth-child(3), .heat-table td:nth-child(3) { width: 48px; }
-	.heat-table th:nth-child(4), .heat-table td:nth-child(4) { width: 56px; }
-	/* Set column: still the buttons + the residual-state slot, just tighter. */
-	.heat-table th:nth-child(5), .heat-table td:nth-child(5) { width: 196px; }
+	/* Narrow-viewport columns. Two rules this block has to obey, because the
+	   table is `table-layout: fixed` with `min-width: var(--heat-table-w)`:
+	   it must trim only columns with MEASURED slack, and it must restate
+	   --heat-table-w to the new sum. A width list that disagrees with the
+	   variable is settled by whichever is larger, not by either.
+
+	   This used to name nth-child(2)…(5) of the FIVE-column table it was
+	   written for. Filament arrived later as column 2 and slid every index one
+	   to the left: Filament took the 48px meant for Active — under the picker's
+	   own 88px min-width, so it overflowed its cell — and Current, 44px of
+	   text, took the 196px meant for Set. --heat-table-w stayed 598. So below
+	   900px this card's minimum went UP, 598 -> 656 (body 622 -> 680), and it
+	   became the one card in the app that its own narrow rules made WIDER.
+	   That is the whole of "won't shrink in portrait on the printer, fine on
+	   the dev server": every desktop measurement is above the breakpoint.
+	   Verified 2026-07-30 by applying the old declarations at desktop width and
+	   re-measuring min-content — 598 -> 656 — then the new ones: 566.
+
+	   Heater 152 | Filament 96 | Active 56 | Standby 56 | Current 50 | Set 156.
+	   Only two columns are touched, because only two have slack: the picker
+	   measures 87 (min-width 88) inside 120, and the widest reading is 44
+	   inside 58. Heater/Active/Standby/Set are already at their contents. */
+	.heat-table { --heat-table-w: 566px; }
+	.heat-table th:nth-child(2), .heat-table td:nth-child(2) {
+		width: 96px;
+		padding-left: 4px;
+		padding-right: 4px;
+	}
+	.heat-table th:nth-child(5), .heat-table td:nth-child(5) { width: 50px; padding-right: 6px; }
 	/* tighten headers so labels ("STANDBY") fit their narrower columns */
 	.heat-table th { font-size: 9.5px; letter-spacing: 0.05em; }
 }
