@@ -1443,7 +1443,22 @@
    shortened by a single pixel (measured: rowStop 180 against a span of 180).
    flex 1 1 0 with min-height 0 breaks the loop — the height now comes from the
    flex line, which comes from the card. */
-.gcode-viewer { position: relative; flex: 1 1 0; min-height: 0; width: 100%; }
+/* A REAL floor on both axes. This declared 0 so the card could collapse to its
+   header like any other — but the viewport carries absolutely-positioned
+   overlay controls, and absolute children contribute nothing to the
+   measurement, so a zero here let the card be dragged straight over its own
+   buttons. Measured: the mode stack bottoms out at 89px (travel group at
+   top 64 + 25 high), so 100 clears it with the same 8px inset it has at the
+   top; and the colour group ends at x=185 while the right-hand groups are 168
+   wide and right-anchored, so below ~361 they overlap — 364 on the 4px
+   quantum. Nothing inside can state these, so the container must. */
+.gcode-viewer {
+	position: relative;
+	flex: 1 1 0;
+	min-height: 100px;
+	min-width: 364px;
+	width: 100%;
+}
 /* Absolutely positioned, so the bitmap contributes NOTHING to intrinsic size.
    The same reason .temp-chart-plot needs contain: inline-size — a canvas will
    otherwise report the pixels it happens to have as a size it requires. */
