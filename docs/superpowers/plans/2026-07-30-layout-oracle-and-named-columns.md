@@ -898,11 +898,15 @@ test("tool column widths come from tokens, not from literals", () => {
 	assert.deepEqual(offenders, [], "these columns hard-code a width instead of naming a token");
 });
 
-test("every tool column token is declared once on :root", () => {
+test("every tool column token has exactly one BASE declaration", () => {
+	// Scoped to the BASE cascade, not the whole file. A viewport or density
+	// block may legitimately OVERRIDE a token — that is what naming it is for —
+	// but there must be exactly one place the default is set, or "one
+	// declaration" is a claim rather than a fact.
 	for (const role of COLUMN_ROLES) {
-		const decl = new RegExp(`--tool-col-${role}:\\s*\\d+px`, "g");
-		const hits = [...appCss.matchAll(decl)];
-		assert.equal(hits.length, 1, `--tool-col-${role} declared ${hits.length} times, expected exactly 1`);
+		const decl = new RegExp(`--tool-col-${role}:\s*\d+px`, "g");
+		const hits = [...base.matchAll(decl)];
+		assert.equal(hits.length, 1, `--tool-col-${role} declared ${hits.length} times in the base cascade, expected 1`);
 	}
 });
 ```
