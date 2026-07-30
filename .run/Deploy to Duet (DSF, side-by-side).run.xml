@@ -1,0 +1,31 @@
+<component name="ProjectRunConfigurationManager">
+  <!--
+    Build and ship the side-by-side bundle to a Duet 3 + SBC.
+
+    Runs through PowerShell DELIBERATELY. Git Bash applies MSYS path conversion
+    to POSIX-looking values, so DWC_BASE=/ng/ reaches Vite as
+    "C:/Program Files/Git/ng/" and every asset URL in the built HTML points at a
+    path the board has never heard of. The build succeeds and the deploy uploads;
+    the only symptom is a blank page on the printer.
+
+    vite.config.ts now rejects a malformed base outright, so this cannot ship
+    silently any more — this configuration is the path that simply gets it right.
+
+    Set the target to YOUR board. Nothing in this repo defaults to a machine.
+  -->
+  <configuration default="false" name="Deploy to Duet (DSF, side-by-side)" type="ShConfigurationType">
+    <option name="SCRIPT_TEXT" value="$env:DWC_TRANSPORT='dsf'; $env:DWC_BASE='/ng/'; pnpm build; if ($?) { node packages/deploy/src/cli.ts --target http://duet3.nydick.net --mode dsf --name ng --dist packages/ui/dist }" />
+    <option name="INDEPENDENT_SCRIPT_PATH" value="true" />
+    <option name="SCRIPT_PATH" value="" />
+    <option name="SCRIPT_OPTIONS" value="" />
+    <option name="INDEPENDENT_SCRIPT_WORKING_DIRECTORY" value="true" />
+    <option name="SCRIPT_WORKING_DIRECTORY" value="$PROJECT_DIR$" />
+    <option name="INDEPENDENT_INTERPRETER_PATH" value="true" />
+    <option name="INTERPRETER_PATH" value="powershell.exe" />
+    <option name="INTERPRETER_OPTIONS" value="-NoProfile -Command" />
+    <option name="EXECUTE_IN_TERMINAL" value="true" />
+    <option name="EXECUTE_SCRIPT_FILE" value="false" />
+    <envs />
+    <method v="2" />
+  </configuration>
+</component>
