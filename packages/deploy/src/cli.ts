@@ -89,6 +89,7 @@ async function main(): Promise<void> {
 		// clear the browser. Observed 2026-07-29: dev showed a fix, the printer
 		// did not, and the deployed bytes were correct the whole time.
 		console.log(`note: an already-open tab may hold ${args.name}.html for up to an hour — hard-reload it`)
+		console.log(`      the rail footer shows each tab's build stamp; two tabs that disagree are not running the same code`)
 	}
 }
 

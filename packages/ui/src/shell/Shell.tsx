@@ -4,6 +4,7 @@ import { cmd } from "../control/commands.ts";
 import { createRouter, LAB_ROUTE } from "./router.ts";
 import { navHidden, setNavHidden } from "./navState.ts";
 import { PITCHES, pitch, setPitch } from "./density.ts";
+import { BUILD_ID } from "./buildId.ts";
 import {
 	BACKENDS, type Backend, rememberBackend,
 	writesArmed, setWritesArmed,
@@ -82,6 +83,13 @@ export default function Shell() {
 						<Match when={app.om.connection.transport === "rr-emulated"}>SBC · DSF (rr_)</Match>
 						<Match when={app.om.connection.transport === "rr"}>RRF · standalone</Match>
 					</Switch>
+					{/* WHICH BUILD you are looking at. The board caches the entry
+					    document for an hour, so a tab can quietly keep running an
+					    older bundle after a deploy — and then the same code appears
+					    to behave differently in two places, which is exactly the
+					    hunt this stamp exists to end. Compare it against what the
+					    deploy printed before believing any such difference. */}
+					<br /><span class="build-id">{BUILD_ID}</span>
 				</p>
 			</aside>
 

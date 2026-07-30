@@ -50,6 +50,15 @@
 	padding-left: 10px;
 	line-height: 1.6;
 }
+/* Quieter than the machine identity above it — this is a diagnostic, wanted
+   only when two tabs disagree about what they are running. Tabular so two
+   stamps can be compared digit by digit. */
+.rail .build-id {
+	font-size: 10px;
+	opacity: 0.55;
+	font-variant-numeric: tabular-nums;
+	letter-spacing: 0.02em;
+}
 
 .main {
 	/* Tight left/right gutter around the content; the header (a .main child)
