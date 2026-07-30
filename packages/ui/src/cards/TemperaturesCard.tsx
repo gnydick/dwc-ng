@@ -25,7 +25,7 @@ export function TemperaturesBody() {
 
 	return (
 		<Show when={chartSeries().length} fallback={<p class="job-empty">Waiting…</p>}>
-			<TemperatureChart data={app.temps.data} series={chartSeries()} height={220} />
+			<TemperatureChart data={app.temps.data} series={chartSeries()} />
 		</Show>
 	);
 }

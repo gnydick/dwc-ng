@@ -23,7 +23,19 @@ export function TemperatureChart(props: { data: () => AlignedData; series: Chart
 	// Theme-matched axis/grid (uPlot needs concrete colors, not CSS vars).
 	const AXIS = "#8fa3b8"; // --silk-dim
 	const GRID = "rgba(143,163,184,0.10)";
-	const height = () => props.height ?? 200;
+	/**
+	 * The plot fills its host, so the DATA AREA grows with the card instead of
+	 * sitting at a fixed 220px with dead space beneath it. Callers may still pin
+	 * a height (the Layer chart does); when they don't, the host decides.
+	 *
+	 * Reading the HOST rather than uPlot's own root is what keeps this from
+	 * being circular — uPlot sizes its root from the number we hand it, so
+	 * measuring that would feed the last answer back in. The root is taken out
+	 * of flow in CSS (.temp-chart-plot > .uplot) precisely so the host's height
+	 * comes from the card's layout and nothing else.
+	 */
+	const MIN_PLOT_H = 120;
+	const height = (): number => props.height ?? Math.max(MIN_PLOT_H, plotEl.clientHeight || 200);
 
 	// uPlot's legend only shows a value at the hovered cursor position — blank
 	// whenever the mouse isn't over the chart. Force it back to the newest
@@ -72,8 +84,19 @@ export function TemperatureChart(props: { data: () => AlignedData; series: Chart
 
 	onMount(() => {
 		build();
+		// Both axes now. It watched width only, so a taller card left the plot at
+		// whatever height it was built with.
 		const ro = new ResizeObserver(() => plot?.setSize({ width: plotEl.clientWidth, height: height() }));
 		ro.observe(plotEl);
+		// AND the parent. plotEl carries contain: inline-size (it has to — see
+		// app.css — or uPlot's pixel-sized canvas sets the card's minimum width),
+		// and an element with size containment does not notify a ResizeObserver
+		// when the containing block resizes it. Measured: the host went 253 ->
+		// 541px as the card grew and the observer fired zero times, so the plot
+		// stayed at the height it was built with. The wrapper is uncontained, so
+		// it always fires; the height still comes from plotEl, which is the box
+		// uPlot has to fill.
+		if (plotEl.parentElement) ro.observe(plotEl.parentElement);
 		onCleanup(() => {
 			ro.disconnect();
 			plot?.destroy();

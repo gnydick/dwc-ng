@@ -1338,7 +1338,32 @@
 .crumb.active { color: var(--copper-bright); }
 .crumb-sep { color: var(--silk-dim); font-size: 12px; }
 
-.file-list { list-style: none; margin: 0; padding: 0; max-height: 62vh; overflow-y: auto; scrollbar-width: none; }
+/* The list fills the CARD and scrolls inside it. It used to cap at 62vh — a
+   slice of the VIEWPORT, which has nothing to do with the card it lives in: on
+   a tall screen that is a large fixed floor the Jobs and Macros cards could
+   never be dragged below, and it did not move when the card did.
+   flex 1 1 0 + min-height 0 makes the card the authority; .fb above is the
+   column that hands it the space. */
+.file-list {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	flex: 1 1 0;
+	min-height: 0;
+	overflow-y: auto;
+	scrollbar-width: none;
+}
+/* The browser body itself: a column that takes the card's leftover height, so
+   the list has something definite to fill. It had NO rule at all, so it simply
+   grew with its contents — the taller the file list, the taller the card's
+   minimum, which is why a machine with many files could not shrink the card
+   even though the mock could. */
+.fb {
+	display: flex;
+	flex-direction: column;
+	flex: 1 1 0;
+	min-height: 0;
+}
 .file-list::-webkit-scrollbar { display: none; }
 .file-row {
 	width: 100%; display: flex; align-items: center; gap: 10px;
@@ -1563,28 +1588,58 @@
 	width: 100%;
 	display: flex;
 	flex-direction: row;
-	align-items: flex-start;
+	align-items: stretch;
 	gap: 12px;
 	/* The honest floor: legend + a plot still worth looking at. */
 	min-width: 280px;
 	overflow: hidden;
+	/* Take the card's leftover HEIGHT. The plot used to be a fixed 220px with
+	   dead space under it however tall the card was; now the data area grows
+	   with the card. min-height 0 so this can also shrink — a flex item's
+	   default min-height: auto would floor it at its content. */
+	flex: 1 1 0;
+	min-height: 0;
 }
-.temp-chart-legend { flex: 0 0 auto; }
-.temp-chart-plot { flex: 1; min-width: 0; }
-/* contain: inline-size — the plot's width no longer depends on its contents at
-   all, so uPlot's pixel-sized root, wrap and canvas stop contributing to the
-   card's minimum.
-   max-width: 100% does NOT do this: a percentage resolves against an
-   indefinite container during intrinsic sizing, so it becomes `none` exactly
-   when it is needed. Capping each layer by hand only walked the floor down
-   1308 -> 1094 -> 1023, always one uncapped descendant behind.
-   uPlot measures the container it is given and redraws, so containing the
-   inline axis costs nothing: the chart follows the card instead of setting it. */
-.temp-chart-plot { contain: inline-size; }
+/* Only the DATA AREA scales. The legend keeps its natural height at the top of
+   the row and never stretches with it. */
+.temp-chart-legend { flex: 0 0 auto; align-self: flex-start; }
+.temp-chart-plot {
+	flex: 1;
+	/* A REAL floor on both axes, because contain: inline-size below silences
+	   this element's contents entirely — nothing inside it can state a width, so
+	   it has to state one itself or the card may shrink to nothing. 160 x 120 is
+	   the point below which a temperature trace stops being readable; the height
+	   is the same number the chart enforces in JS (MIN_PLOT_H). */
+	min-width: 160px;
+	min-height: 120px;
+	position: relative;
+	/* contain: inline-size — the plot's width no longer depends on its contents
+	   at all, so uPlot's pixel-sized root, wrap and canvas stop contributing to
+	   the card's minimum. max-width: 100% does NOT do this: a percentage
+	   resolves against an indefinite container during intrinsic sizing, so it
+	   becomes `none` exactly when it is needed. Capping each layer by hand only
+	   walked the floor down 1308 -> 1094 -> 1023, always one uncapped descendant
+	   behind. uPlot measures the container it is given and redraws, so
+	   containing the inline axis costs nothing: the chart follows the card
+	   instead of setting it.
+	   Declared HERE rather than in a rule of its own so the floor above and the
+	   containment that makes it necessary cannot be read apart — a separate
+	   block hid the min-width from the guard test, which is what caught this. */
+	contain: inline-size;
+}
+/* uPlot's root is sized in PIXELS from the number we hand it. Left in flow it
+   would drive the host's height, and the host's height is what we measure to
+   pick that number — the same closed loop the toolpath canvas had. Out of flow,
+   the host's height comes from the card and nothing else. */
+.temp-chart-plot > .uplot { position: absolute; inset: 0; }
 .temp-chart .u-title { color: var(--silk); }
 .temp-chart-legend .u-legend {
 	color: var(--silk-dim);
-	font-size: 12px;
+	/* One step up the scale the rest of the app uses (12 -> 13, the size the
+	   card bodies read at). This legend is the only place the live temperature
+	   is named alongside its number, so it was the smallest text carrying the
+	   most-read value on the screen. */
+	font-size: 13px;
 	font-family: var(--font-display);
 	display: flex;
 	flex-direction: column;
