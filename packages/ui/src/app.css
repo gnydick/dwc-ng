@@ -592,12 +592,15 @@
 .speed-foot {
 	display: flex;
 	align-items: baseline;
-	/* Wrap rather than overflow: the three fixed cells plus the tag need
-	   ~346px, which a narrow card does not have, and a horizontally
-	   scrolling card is worse than a two-line footer. Safe only because the
-	   cells are fixed-width — the wrap point moves with the CARD width, not
-	   with the values, so a changing digit count cannot reflow it. */
-	flex-wrap: wrap;
+	/* nowrap. This used to wrap on the argument that a two-line footer beats a
+	   scrolling card, and that it was safe because the cells are fixed-width so
+	   only the CARD width moves the wrap point. Both true, and both beside the
+	   point: a row that re-flows lets the card keep "fitting" at widths its
+	   content does not fit, so contentColSpan() measures a card that has
+	   rearranged itself and the stop lands inside the real content. The ~346px
+	   this needs is now simply part of the card's declared minimum, which is
+	   what a minimum is for. */
+	flex-wrap: nowrap;
 	gap: 14px;
 	margin-top: var(--sp-flow);
 	padding-top: var(--sp-flow);
@@ -1899,6 +1902,22 @@
 
 /* Horizontal Fans layout (orientationToggle) — same .heater-ctl rows, just
    reflowed into a row of compact vertical blocks instead of a stack. */
+/* Faint rules between fan rows, the same hairline the tool cards use. Drawn on
+   each row's TOP edge with the list's gap moved into the rows' own padding, so
+   the air sits evenly either side of the line instead of all above it — the
+   same fix the Extruders card needed. Scoped to the card by panel id because
+   .heater-list is shared with Tuning, whose two rows are not a list of peers,
+   and skipped in the horizontal layout where the rows are columns.
+   :first-child, so the row under the header carries no rule. */
+[data-panel-id="fans"] .heater-list:not(.horizontal) { gap: 0; }
+[data-panel-id="fans"] .heater-list:not(.horizontal) > .heater-ctl {
+	border-top: 1px solid var(--hairline);
+	padding: var(--sp-cell) 0;
+}
+[data-panel-id="fans"] .heater-list:not(.horizontal) > .heater-ctl:first-child {
+	border-top: none;
+	padding-top: 0;
+}
 .heater-list.horizontal { flex-direction: row; flex-wrap: wrap; gap: 16px; }
 .heater-list.horizontal .heater-ctl { flex-direction: column; align-items: flex-start; gap: 6px; }
 .heater-list.horizontal .heater-ctl .btn-cluster { margin-left: 0; }
