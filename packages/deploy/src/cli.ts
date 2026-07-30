@@ -80,6 +80,15 @@ async function main(): Promise<void> {
 	)
 	if (!args.dryRun) {
 		console.log(`verified: ${args.target}/${args.name}.html serves the deployed bytes`)
+		// The board caches the entry document. DuetWebServer sends
+		// `cache-control: public,max-age=3600,must-revalidate` for it, and
+		// must-revalidate only bites once the hour is up — so for an hour after
+		// a deploy an already-open tab keeps its old <script src>, and the old
+		// hashed assets are still in ITS cache even though they have been pruned
+		// from the board. The deploy verifies the BOARD; only the browser can
+		// clear the browser. Observed 2026-07-29: dev showed a fix, the printer
+		// did not, and the deployed bytes were correct the whole time.
+		console.log(`note: an already-open tab may hold ${args.name}.html for up to an hour — hard-reload it`)
 	}
 }
 
