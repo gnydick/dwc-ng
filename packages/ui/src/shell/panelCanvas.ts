@@ -49,6 +49,44 @@ export const COL_GRANULARITY_FACTOR = 13;
  */
 export const ROW_UNIT_PX = 4;
 export const ROW_GAP_PX = 0;
+
+/**
+ * How many PIXELS one stored row unit renders as at the current density pitch.
+ *
+ * ROW_UNIT_PX above is the unit stored geometry is WRITTEN IN — a card's
+ * rowSpan, the sizes in compose/defs.ts, the row-granularity migration. That
+ * number is frozen: it defines the saved format, and a format whose meaning
+ * depends on a display preference is not a format.
+ *
+ * This is the unit geometry is DRAWN IN, and it tracks the pitch. Density
+ * shrinks the spacing inside a card but used to leave the card's box alone, so
+ * every card kept the height it had at 1.27 while its contents pulled away from
+ * the bottom edge — measured on the Control screen, the cards' content fell to
+ * 0.63–0.73 of its default-pitch height while the boxes did not move at all.
+ * Tightening the pitch therefore meant re-dragging every card by hand. Scaling
+ * the DRAWN unit instead means the stored layout is never touched and every
+ * card scales at once.
+ *
+ * The value lives in index.css beside the other density tokens, so the
+ * stylesheet stays the single authority on what a pitch IS (see
+ * shell/density.ts) and this cannot drift from the spacing it has to match.
+ *
+ * Deliberately CONSERVATIVE — the least-shrinking card sets it, not the
+ * average. Cards shrink at different rates (a card is n control-heights plus
+ * fixed chrome, so its ratio depends on n), and one unit cannot be right for
+ * all of them. Erring large leaves some slack; erring small CLIPS, and a
+ * clipped control is not a cosmetic problem. Measured maxima excluding the
+ * console: 0.867 at 0.80, 0.733 at 0.50, 0.700 at 0.40.
+ */
+export function rowUnitPx(): number {
+	if (typeof document === "undefined") return ROW_UNIT_PX;
+	const raw = getComputedStyle(document.documentElement).getPropertyValue("--row-unit");
+	const px = parseFloat(raw);
+	// A stylesheet that hasn't loaded, or a pitch block missing the token, must
+	// fall back to the stored unit rather than to NaN — which would silently
+	// collapse every card to a single row.
+	return Number.isFinite(px) && px > 0 ? px : ROW_UNIT_PX;
+}
 /** Both gutters now live on the card, not on the grid — see GRID_COLS. */
 export const GAP_PX = 0;
 /** Fixed column width (matches app.css's .panel-canvas grid-template-columns)
@@ -276,9 +314,14 @@ export function contentRowSpan(cardEl: HTMLElement, gutterPx: number): number {
 	contentBottom += parseFloat(getComputedStyle(body).paddingBottom) || 0;
 	// The card's chrome around the body's content box (borders, outer padding)
 	// — measured, not assumed, and size-invariant since card and body grow
-	// together. Card border-box height == ROW_UNIT_PX*rowSpan - gutter.
+	// together. Card border-box height == rowUnitPx()*rowSpan - gutter.
+	//
+	// rowUnitPx(), not the constant: this converts MEASURED PIXELS into stored
+	// row units, and how many pixels a unit draws as depends on the pitch. With
+	// the constant, a fit measured at 0.50 would come back ~33% too large and
+	// the resize stop would refuse to let the card near its own content.
 	const chrome = cardEl.getBoundingClientRect().height - body.clientHeight;
-	return Math.max(1, Math.ceil((contentBottom + chrome + gutterPx) / ROW_UNIT_PX));
+	return Math.max(1, Math.ceil((contentBottom + chrome + gutterPx) / rowUnitPx()));
 }
 
 /**
@@ -876,6 +919,9 @@ export function createPanelCanvas(
 		const originX = event.clientX;
 		const originY = event.clientY;
 		const originScrollY = window.scrollY;
+		// Read ONCE per drag, not per frame: it cannot change while a pointer is
+		// down, and getComputedStyle in a rAF loop is a style flush per frame.
+		const unitPx = rowUnitPx();
 		let pointerX = event.clientX;
 		let pointerY = event.clientY;
 		let lastValid = start;
@@ -907,7 +953,7 @@ export function createPanelCanvas(
 		const tick = (): void => {
 			const effectiveY = pointerY + (window.scrollY - originScrollY);
 			const deltaCol = Math.round((pointerX - originX) / (COL_UNIT_PX + GAP_PX));
-			const deltaRow = Math.round((effectiveY - originY) / (ROW_UNIT_PX + ROW_GAP_PX));
+			const deltaRow = Math.round((effectiveY - originY) / (unitPx + ROW_GAP_PX));
 			const reachRow = Math.max(0, start.row + deltaRow) + start.rowSpan;
 			spacer.style.gridRow = `${reachRow + 1} / span 1`;
 
@@ -971,7 +1017,12 @@ export function createPanelCanvas(
 		const headPx = cardEl?.querySelector<HTMLElement>(".card-head")?.getBoundingClientRect().height ?? 0;
 		const footPx = cardEl?.querySelector<HTMLElement>(".panel-resize-grip")?.getBoundingClientRect().height ?? 0;
 		const floorPx = (headPx + footPx) * 1.5;
-		const hardFloor = Math.max(1, Math.ceil((floorPx + gutterPx) / ROW_UNIT_PX));
+		// Read once per drag; same reason as startMove. Both floors are measured
+		// in pixels and converted here, so both track the pitch: at a tighter
+		// pitch the header is shorter AND the unit is smaller, and the stop
+		// stays the same physical size rather than drifting.
+		const unitPx = rowUnitPx();
+		const hardFloor = Math.max(1, Math.ceil((floorPx + gutterPx) / unitPx));
 		const rowStop = Math.max(cardEl ? contentRowSpan(cardEl, gutterPx) : 1, hardFloor);
 
 		// The same on the horizontal axis, which had no limit at all: a card
@@ -1001,7 +1052,7 @@ export function createPanelCanvas(
 				+ ((scroller?.scrollTop ?? 0) - originScrollTop);
 			const effectiveY = pointerY + scrolled;
 			const deltaColSpan = Math.round((pointerX - originX) / (COL_UNIT_PX + GAP_PX));
-			const deltaRowSpan = Math.round((effectiveY - originY) / (ROW_UNIT_PX + ROW_GAP_PX));
+			const deltaRowSpan = Math.round((effectiveY - originY) / (unitPx + ROW_GAP_PX));
 			// Detent at the content fit (snaps, then breaks away), THEN the hard
 			// floor clamps whatever the detent produced so a released card still
 			// can't shrink past the wall. The gold cue lights only while the

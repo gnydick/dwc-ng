@@ -86,6 +86,14 @@
 	--sp-chip-px: 12px;
 	--sp-pre-py: 7px;    /* preflight strip padding */
 	--sp-input-py: 7px;  /* free-standing inputs and ghost buttons */
+
+	/* How many pixels one STORED row unit draws as (shell/panelCanvas.ts
+	   rowUnitPx). At the default pitch it is the stored unit itself, so the
+	   canvas renders exactly as it always has. Each pitch below shrinks it, so
+	   a card's box follows its contents down and the saved layout is never
+	   rewritten. Chosen from the LEAST-shrinking card, not the average — see
+	   rowUnitPx's comment: slack is a blemish, clipping is a bug. */
+	--row-unit: 4px;
 }
 
 /* ---------- density overrides ----------
@@ -106,6 +114,8 @@
 	--sp-rail-py: 10px; --sp-rail-gap: 12px; --sp-nav-py: 6px;
 	--sp-chip-py: 3px; --sp-chip-px: 10px; --sp-pre-py: 5px;
 	--sp-input-py: 5px;
+	/* 0.875 — clears the least-shrinking card's measured 0.867. */
+	--row-unit: 3.5px;
 }
 
 /* 0.50 mm — dense. About half the air. */
@@ -118,6 +128,8 @@
 	--sp-rail-py: 8px; --sp-rail-gap: 10px; --sp-nav-py: 4px;
 	--sp-chip-py: 2px; --sp-chip-px: 8px; --sp-pre-py: 3px;
 	--sp-input-py: 4px;
+	/* 0.75 — clears the least-shrinking card's measured 0.733. */
+	--row-unit: 3px;
 }
 
 /* 0.40 mm — fine. The practical floor: below this the hairlines start
@@ -131,6 +143,12 @@
 	--sp-rail-py: 6px; --sp-rail-gap: 8px; --sp-nav-py: 3px;
 	--sp-chip-py: 1px; --sp-chip-px: 7px; --sp-pre-py: 2px;
 	--sp-input-py: 3px;
+	/* 0.70 — the measured maximum exactly. Barely below 0.50's because --ctl-h
+	   is FLOORED at 20px for both pitches (it is a pointer target, not air), so
+	   only the paddings shrink between them. A row unit that kept falling here
+	   would shorten cards whose controls had stopped shrinking — the clip this
+	   whole token is chosen to avoid. */
+	--row-unit: 2.8px;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
