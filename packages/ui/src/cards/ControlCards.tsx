@@ -8,15 +8,13 @@
  * is what made this a pure extraction. Chrome/visibility live in
  * compose/defs.ts; these are content-only bodies.
  */
-import { For, Show, createEffect, createMemo, createSignal } from "solid-js";
+import { For, Show, createMemo, createSignal } from "solid-js";
 import { useApp } from "../shell/context.ts";
-import { commitPhase, clickSendsSetpoint, staysArmed, thermalMark, type CommitPhase } from "../control/setpointCommit.ts";
 import { cmd } from "../control/commands.ts";
 import { GcodeButton } from "../control/GcodeButton.tsx";
 import { SpeedSlider } from "../control/SpeedSlider.tsx";
 import { FilamentCard } from "../control/FilamentCard.tsx";
 import { isManualFan } from "../om/fans.ts";
-import { describeToolP, parseToolP } from "../control/toolP.ts";
 import type { Orientation } from "../shell/panelOrientation.ts";
 
 export function AtxBody() {
@@ -93,181 +91,6 @@ export function TuningBody() {
 					<GcodeButton label={`+ ${babyStep()}`} command={cmd.babystep(babyStep())} stamp={false} />
 					<GcodeButton label="Zero" command={cmd.babystepZero()} variant="quiet" stamp={false} />
 				</div>
-			</div>
-		</div>
-	);
-}
-
-function HeaterControl(props: {
-	label: string;
-	kind: "tool" | "bed";
-	num: number;
-	active: number;
-	/** Reported standby setpoint. Always 0 for the bed, which has no standby. */
-	standby: number;
-	/** heat.heaters[].state — lights the mode button the machine is in. */
-	state: string;
-	/** The reading. Brightens the engaged key once it reaches that setpoint. */
-	reading: number;
-	/** Present only for a selectable tool; the bed has none. */
-	selectCommand?: string;
-	current?: boolean;
-}) {
-	// Two setpoints, two fields. There was ONE, feeding both buttons, so
-	// pressing Standby sent the active field's number as R — a tool could not
-	// be given different active and standby targets from this card.
-	const [temp, setTemp] = createSignal(props.active);
-	const [standbyTemp, setStandbyTemp] = createSignal(props.standby);
-
-	// Re-seed from the machine whenever the MACHINE's setpoint moves — a macro
-	// or another client changing it must clear "pending", not leave the button
-	// insisting there is something left to send. Keyed on the reported value,
-	// so it cannot fire while you type (your keystrokes don't move it).
-	createEffect(() => setTemp(props.active));
-	createEffect(() => setStandbyTemp(props.standby));
-
-	const activePhase = (): CommitPhase => commitPhase(temp(), props.active, props.state === "active");
-	const standbyPhase = (): CommitPhase => commitPhase(standbyTemp(), props.standby, props.state === "standby");
-
-	// Press 1 writes the setpoint and arms; press 2 switches the profile. Armed
-	// is dropped once the machine is IN that mode (nothing left to switch to) or
-	// the field is edited again (the new value has to be written first), so a
-	// key can never be left quietly loaded from minutes ago.
-	const [armedActive, setArmedActive] = createSignal(false);
-	const [armedStandby, setArmedStandby] = createSignal(false);
-	createEffect(() => {
-		if (!staysArmed(activePhase(), props.state === "active")) setArmedActive(false);
-	});
-	createEffect(() => {
-		if (!staysArmed(standbyPhase(), props.state === "standby")) setArmedStandby(false);
-	});
-
-	// The bed has no mode parameter (M140), so setting its temperature IS
-	// turning it on — one command, and no arming step to make sense of.
-	const activeCmd = (): string =>
-		props.kind === "bed"
-			? cmd.bedActive(props.num, temp())
-			: clickSendsSetpoint(armedActive())
-				? cmd.toolActiveSetpoint(props.num, temp())
-				: cmd.toolActive(props.num);
-	const standbyCmd = (): string =>
-		clickSendsSetpoint(armedStandby())
-			? cmd.toolStandbySetpoint(props.num, standbyTemp())
-			: cmd.toolStandby(props.num);
-	const offCmd = () => (props.kind === "bed" ? cmd.bedOff(props.num) : cmd.toolOff(props.num));
-
-	// Arrival, per mode. Only the engaged key can be at its target, so these are
-	// read against the MACHINE's setpoint, not the field — a half-typed number
-	// must not brighten anything.
-	const activeMark = () => thermalMark(props.reading, props.active);
-	const standbyMark = () => thermalMark(props.reading, props.standby);
-	return (
-		<div class="heater-ctl">
-			{/* A tool's own label IS its selector (T<n>) - the thing you read is the
-			    thing you click. The bed is not selectable and stays a plain label.
-			    Selection is modal too — exactly one tool is current — so it wears
-			    the same glow as the mode buttons, on top of the label colour it
-			    already had. */}
-			<Show when={props.selectCommand} fallback={<span class="ctl-name">{props.label}</span>}>
-				{command => (
-					<GcodeButton
-						class="ctl-name tool-select"
-						label={props.label}
-						variant={props.current ? "go" : "quiet"}
-						stamp={false}
-						engaged={props.current}
-						command={command()}
-					/>
-				)}
-			</Show>
-			{/* The READING, ahead of the two setpoints it is being driven toward.
-			    Its own fixed-width cell with tabular figures, so a temperature
-			    sweeping 21.9 -> 205.0 cannot widen the column and shove the rest
-			    of the row sideways. Thermal-keyed like every other reading in the
-			    app (the colours are user-configurable in Settings). */}
-			<span
-				class="heat-read"
-				classList={{
-					"t-cold": props.reading < 45,
-					"t-warm": props.reading >= 45 && props.reading < 160,
-					"t-hot": props.reading >= 160,
-				}}
-				aria-label={`${props.label} current temperature`}
-			>
-				{Number.isFinite(props.reading) ? props.reading.toFixed(1) : "—"}
-				<span class="deg">°C</span>
-			</span>
-			<label class="temp-field">
-				<input class="heat-input" type="number" value={temp()} onInput={e => setTemp(Number(e.currentTarget.value))} aria-label={`${props.label} active target`} />
-				<span class="deg">°C</span>
-			</label>
-			{/* The bed has no standby: M140 has neither a standby nor a mode. */}
-			<Show when={props.kind === "tool"}>
-				<label class="temp-field">
-					<input
-						class="heat-input"
-						type="number"
-						value={standbyTemp()}
-						onInput={e => setStandbyTemp(Number(e.currentTarget.value))}
-						aria-label={`${props.label} standby target`}
-					/>
-					<span class="deg">°C</span>
-				</label>
-			</Show>
-			{/* One compact key per mode at the end of the row. Each carries TWO
-			    jobs, and which one it will do is on its face before you press
-			    it: a pulsing copper dot — the same fixed-size ack dot every
-			    send already uses — means the field beside it is unsent, so the
-			    click writes the setpoint; no dot means the click sets the mode.
-			    See control/setpointCommit.ts for why that multiplexing is only
-			    admissible while it stays visible. */}
-			<div class="heat-modes">
-				<GcodeButton
-					label="Act"
-					variant="go"
-					class="mode-key heat-active"
-						atTarget={activeMark() === "near"}
-					overWarm={activeMark() === "warm"}
-					overHot={activeMark() === "hot"}
-					command={activeCmd()}
-					stamp={false}
-					engaged={props.state === "active"}
-					pending={props.kind === "tool" && activePhase() === "pending"}
-					applied={armedActive()}
-					ackAccent={clickSendsSetpoint(armedActive())}
-					onSent={() => setArmedActive(props.kind === "tool" && clickSendsSetpoint(armedActive()))}
-					ariaLabel={`${props.label} active${activePhase() === "pending" ? " — set target" : ""}`}
-				/>
-				{/* The bed's standby cell stays EMPTY rather than closing up, so
-				    its A and O keep the tools' columns. */}
-				<Show when={props.kind === "tool"}>
-					<GcodeButton
-						label="Stand"
-						class="mode-key heat-standby"
-							atTarget={standbyMark() === "near"}
-						overWarm={standbyMark() === "warm"}
-						overHot={standbyMark() === "hot"}
-						command={standbyCmd()}
-						stamp={false}
-						engaged={props.state === "standby"}
-						pending={standbyPhase() === "pending"}
-						applied={armedStandby()}
-						ackAccent={clickSendsSetpoint(armedStandby())}
-						onSent={() => setArmedStandby(clickSendsSetpoint(armedStandby()))}
-						ariaLabel={`${props.label} standby${standbyPhase() === "pending" ? " — set target" : ""}`}
-					/>
-				</Show>
-				{/* Off has no setpoint, so it is never pending — one click, always. */}
-				<GcodeButton
-					label="Off"
-					variant="danger"
-					class="mode-key heat-off"
-						atTarget
-					command={offCmd()}
-					stamp={false}
-					engaged={props.state === "off"}
-					ariaLabel={`${props.label} off`}
-				/>
 			</div>
 		</div>
 	);

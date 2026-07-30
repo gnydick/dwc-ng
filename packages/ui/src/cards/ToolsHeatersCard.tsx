@@ -1,14 +1,12 @@
-import { For, Show, createEffect, createMemo, createResource, createSignal } from "solid-js";
+import { For, Show, createEffect, createMemo, createSignal } from "solid-js";
 import { commitPhase, clickSendsSetpoint, staysArmed, thermalMark, type CommitPhase } from "../control/setpointCommit.ts";
 import { useApp } from "../shell/context.ts";
 import { cmd } from "../control/commands.ts";
 import { GcodeButton } from "../control/GcodeButton.tsx";
-import type { Heater, Tool } from "../om/types.ts";
+import type { Heater } from "../om/types.ts";
 import { HeaterState, isModalState } from "./HeaterState.tsx";
 import { describeToolP, parseToolP } from "../control/toolP.ts";
 import type { Orientation } from "../shell/panelOrientation.ts";
-
-const FILAMENTS_DIR = "0:/filaments";
 
 /**
  * Tools & heaters: one row per tool (current / active / standby / state) plus
@@ -30,7 +28,7 @@ export function ToolsHeatersBody(props: {
 	 * false = READ THE HEAT, DO NOT SET IT. The Tools card renders this same
 	 * body with the heater CONTROLS dropped — the Active and Standby entry
 	 * columns and the Set column (Act / Stand / Off) are not rendered at all.
-	 * What remains is the tool, its filament and its reading.
+	 * What remains is the tool and its reading.
 	 *
 	 * A prop rather than a second card. The two were separate implementations
 	 * that merely agreed: the same five tools at 36px and 45px row pitches,
@@ -46,17 +44,6 @@ export function ToolsHeatersBody(props: {
 	// Blank means "send no P", which is not the same as P0 — see cmd.selectTool.
 	const [toolP, setToolP] = createSignal("");
 	const toolPValue = (): number | undefined => parseToolP(toolP());
-
-	// The filament list is a property of the machine, not of a row — fetched once
-	// for the card and handed to every picker.
-	const [filaments] = createResource(
-		() => (app.om.connection.status === "connected" ? FILAMENTS_DIR : false),
-		async dir => {
-			const entries = await app.connector.list(dir as string);
-			// Each filament is a DIRECTORY holding load.g/unload.g/config.g.
-			return entries.filter(e => e.type === "d").map(e => e.name).sort((a, b) => a.localeCompare(b));
-		},
-	);
 
 	const heaterAt = (index: number): Heater | null => app.om.om.heat.heaters[index] ?? null;
 	const bedHeaterIndex = createMemo(() => app.om.om.heat.bedHeaters.find(i => i >= 0) ?? -1);
@@ -152,11 +139,11 @@ export function ToolsHeatersBody(props: {
 						<thead>
 							<tr>
 								<th scope="col">Heater</th>
-								{/* Filament goes with the controls. The Tools card is the tool and
-								    its reading; the picker is something you DO, and loading lives
-								    on Extruders. */}
+								{/* No Filament column on either tool card. Loading a material is
+								    the Extruders card's job — it owns the pickers, the load and
+								    unload macros and the All buttons — and a second picker here
+								    was the same control in two places. */}
 								<Show when={controls()}>
-									<th scope="col">Filament</th>
 									<th scope="col">Active</th>
 									<th scope="col">Standby</th>
 								</Show>
@@ -181,18 +168,9 @@ export function ToolsHeatersBody(props: {
 														tool={t().number}
 													/>
 												</td>
-												{/* Only a tool that feeds an extruder can hold filament;
-												    the rest keep an empty cell so the columns hold. */}
-												<Show when={controls()}>
-													<td>
-														<Show when={t().filamentExtruder >= 0}>
-															<FilamentPick tool={t()} filaments={filaments() ?? []} />
-														</Show>
-													</td>
-												</Show>
 												<Show
 													when={heaterAt(t().heaters[0] ?? -1)}
-													fallback={<td colspan={controls() ? 4 : 1} class="heat-set">no heater</td>}
+													fallback={<td colspan={controls() ? 3 : 1} class="heat-set">no heater</td>}
 												>
 													{h => (
 														<HeaterCells
@@ -215,8 +193,6 @@ export function ToolsHeatersBody(props: {
 										<td>
 											<ToolName name="Bed" des={`heater${bedHeaterIndex()}`} dock={null} tool={null} />
 										</td>
-										{/* The bed holds no filament — the column stays empty. */}
-										<Show when={controls()}><td /></Show>
 										<HeaterCells heater={h()} index={bedHeaterIndex()} kind="bed" num={0} controls={controls()} />
 									</tr>
 								)}
@@ -486,58 +462,6 @@ function HeaterActions(props: {
 				ariaLabel={`${who()} off`}
 			/>
 		</div>
-	);
-}
-
-/**
- * The filament on a tool's extruder — the reading AND the control that changes
- * it, in one cell (M701 to load, M702 for "none", both via the forms already
- * verified in commands.ts).
- *
- * Deliberately a PURE MIRROR of move.extruders[].filament: what you see is what
- * the firmware reports, never what was last picked. So while load.g is running
- * the cell still reads as not-yet-loaded, and a load that fails simply never
- * appears — the control cannot show a filament the machine does not have.
- */
-function FilamentPick(props: { tool: Tool; filaments: string[] }) {
-	const app = useApp();
-
-	const loaded = (): string => app.om.om.move.extruders[props.tool.filamentExtruder]?.filament ?? "";
-
-	// A filament loaded on the machine but no longer on the SD card would leave
-	// the select with nothing to show — carry it as an option so the cell always
-	// reports the truth.
-	const options = createMemo(() => {
-		const list = [...props.filaments];
-		const current = loaded();
-		if (current !== "" && !list.includes(current)) list.push(current);
-		return list;
-	});
-
-	/** M701/M702 act on the SELECTED tool — prepend a T only when it isn't. */
-	const selectFirst = (): number | undefined =>
-		app.om.om.state.currentTool === props.tool.number ? undefined : props.tool.number;
-
-	const commandFor = (name: string): string =>
-		name === ""
-			? cmd.unloadFilament({ selectTool: selectFirst() })
-			: cmd.loadFilament(name, { selectTool: selectFirst() });
-
-	const label = (): string => props.tool.name || `Tool ${props.tool.number}`;
-
-	return (
-		<select
-			class="filament-pick heat-fil"
-			aria-label={`Filament for ${label()}`}
-			title={`${commandFor(loaded())} — picking sends the load for that filament`}
-			value={loaded()}
-			onChange={e => {
-				void app.connector.sendCode(commandFor(e.currentTarget.value)).catch(() => undefined);
-			}}
-		>
-			<option value="">—</option>
-			<For each={options()}>{name => <option value={name}>{name}</option>}</For>
-		</select>
 	);
 }
 
