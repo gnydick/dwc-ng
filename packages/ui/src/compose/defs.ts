@@ -105,7 +105,12 @@ export const CARD_DEFS = {
 	sensors: defineCard({
 		title: "Sensors",
 		ariaLabel: "Sensors",
-		tip: "sensors.endstops · filamentMonitors · probes",
+		// Just the subtree. The three leaves it holds — endstops, filamentMonitors,
+		// probes — spelled the tip out to 300-odd px, and the header IS the card's
+		// absolute minimum width (headerColSpan in shell/panelCanvas.ts), so
+		// naming them cost the card a floor it never needed. Each row already
+		// says which kind of sensor it is.
+		tip: "sensors",
 		orientationToggle: true,
 		size: { colSpan: 156, rowSpan: 42 },
 	}),
