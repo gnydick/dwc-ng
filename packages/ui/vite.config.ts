@@ -42,6 +42,10 @@ const MOCK_TARGET = 'http://127.0.0.1:8970'
 // The shape below is the whole contract: leading slash, trailing slash, and
 // nothing in between that cannot appear in a URL path. A drive letter, a
 // backslash or a space fails all three.
+// Minute-resolution UTC stamp: short enough to read off a tablet screen at a
+// glance, unique enough that two deploys are never confused.
+const buildId = new Date().toISOString().slice(0, 16).replace('T', ' ') + 'Z'
+
 const RAW_BASE = process.env.DWC_BASE ?? '/'
 if (!/^\/(?:[A-Za-z0-9._~-]+\/)*$/.test(RAW_BASE)) {
   throw new Error(
@@ -147,7 +151,14 @@ export default defineConfig(({ mode }) => {
     // decision at all.
     // null = "not pinned, detect at boot". NOT a dialect: the app branches on
     // null explicitly rather than treating it as one of the two answers.
-    define: { __DWC_TRANSPORT__: JSON.stringify(transport ?? null) },
+    define: {
+      __DWC_TRANSPORT__: JSON.stringify(transport ?? null),
+      // Stamped into the bundle so a running tab can say WHICH build it is.
+      // The board caches the entry document for an hour, so a stale tab is
+      // indistinguishable from a failed deploy without this. See
+      // src/shell/buildId.ts.
+      __BUILD_ID__: JSON.stringify(buildId),
+    },
     plugins: [solid()],
     server: {
       host: true, // listen on all interfaces, not just localhost
