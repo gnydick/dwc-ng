@@ -634,54 +634,39 @@
 /* min-width covers the fixed columns (152+54+54+76+156 = 492) plus enough for
    the elastic Filament column to stay usable rather than collapsing to a sliver
    when the panel is dragged narrow. */
-/* min-width must ACCOMMODATE the contents, not just the fixed columns. The
-   fixed ones sum to 484px; Filament is the elastic one and needs 88px for the
-   picker plus its two 16px gutters = 120. At the old 592 the column got 100,
-   the picker's own min-width (88) overflowed the 68px content box, and it ran
-   4px past the cell — straight over the gutter and into the Active input,
-   which is what "the space collapses when I resize" was.
-
-   Every column is measured to its content: 152 + 120 + 56 + 56 + 58 + 156 =
-   598. That is what this card needs. Whether it FITS where it sits is a
-   layout question — if it will not grow, look for a neighbour boxing it in
-   before touching these numbers. */
-/* The table's 598px is a MINIMUM for the table, not a demand on the card.
-   contain: inline-size stops it reaching the card's width stop, exactly as it
-   does for the temperature chart's canvas — otherwise this card could never be
-   narrowed below ~623px, which is wider than a tablet in portrait, and the one
-   card the operator most wants to shrink was the one that refused.
-   Six columns of live controls do not fit a phone. The honest answer is that
-   the table scrolls within its card, not that the columns get crushed. */
-.heat-scroll {
-	overflow-x: auto;
-	contain: inline-size;
-	/* Containment silences the table entirely — it contributed 0 to the card's
-	   minimum, so the card could be squeezed until the table was a sliver and
-	   nothing objected. That is the trade `contain` always makes: it buys the
-	   card its freedom by taking away the content's vote, so the floor has to
-	   be stated deliberately instead of inferred.
-	   384px = Heater + Filament + Active + Standby (152 + 120 + 56 + 56): the
-	   narrowest at which a row still shows a tool, what it is loaded with, and
-	   both setpoints. Current and the mode keys scroll into view. */
-	min-width: 384px;
+/* This card sizes itself like every other one: EVERY column is a fixed width,
+   their sum is the card's minimum, and the resize stops there — right edge and
+   bottom edge both. No elastic column, no scroller, no containment.
+   Earlier attempts gave the table its own scroll box so the card could be
+   dragged narrower than its contents. That made this the one card in the app
+   whose stop did not mean "this is as small as the content goes", and it
+   brought its own bugs: containment silenced the table completely, and the
+   horizontal layout then disagreed with the vertical about the minimum.
+   152 + 120 + 56 + 56 + 58 + 156 = 598. */
+:root { --heat-table-w: 598px; }
+.heat-table {
+	width: 100%;
+	min-width: var(--heat-table-w);
+	border-collapse: collapse;
+	font-variant-numeric: tabular-nums;
+	table-layout: fixed;
 }
-.heat-table { width: 100%; min-width: 598px; border-collapse: collapse; font-variant-numeric: tabular-nums; table-layout: fixed; }
 /* Widths carry slack past the widest content: cells have no horizontal
    padding, so a column sized exactly to its text leaves adjacent right-aligned
    labels touching ("ACTIVESTANDBY"). */
 /* Columns: Heater | Filament | Active | Standby | Current | Set. Current sits
    last before the buttons so the reading and the control are one glance apart.
 
-   EXACTLY ONE column is left elastic, and it is FILAMENT — every other width is
-   fixed. This card lives on a resizable panel, so whichever column has no width
-   absorbs the whole difference. That used to be Heater, which meant widening the
-   card just grew dead space between the tool button and the picker (120px of it
-   at a 721px card) and narrowing it made the name overflow into Filament. Slack
-   now lands on the material name, where extra width is worth something. */
+   NO elastic column. Every width below is fixed, so the table is the same
+   width whatever the card does and the card's stop is simply their sum. An
+   elastic column meant the card's minimum and the column layout argued with
+   each other: the picker carries min-width 88, which a squeezed elastic column
+   could not honour, so it overflowed its own cell and stood on the gutter. */
 .heat-table th:nth-child(1), .heat-table td:nth-child(1) { width: 152px; }
-/* col 2 = Filament: deliberately no width. Left-aligned with a gutter on both
-   sides, so the picker is tied to neither neighbour. */
+/* Filament: 88px of picker plus a 16px gutter each side. Fixed like the rest —
+   this is the width that ACCEPTS the dropdown rather than negotiating with it. */
 .heat-table th:nth-child(2), .heat-table td:nth-child(2) {
+	width: 120px;
 	text-align: left;
 	padding-left: 16px;
 	padding-right: 16px;
@@ -852,15 +837,13 @@
 
 /* Horizontal Tools & Heaters layout (orientationToggle) — one compact block
    per tool/bed instead of a table row. */
-/* Same floor as the table layout, deliberately. This card has TWO layouts and
-   they were declaring two different minimums: the table said 384 (see
-   .heat-scroll) while this one, being flex-wrap, claimed only the width of a
-   single 90px cell and defended nothing. Since orientation is stored
-   per-browser, the same card then refused to shrink on one machine and
-   collapsed on another — which is exactly the "it behaves differently over
-   there" it was reported as.
+/* Same minimum as the table, from the same token. This card has TWO layouts
+   and they were declaring different minimums — the table its column sum, this
+   one (being flex-wrap) the width of a single 90px cell. Orientation is stored
+   per-browser, so the same card refused to shrink on one machine and collapsed
+   on another with no code difference between them.
    One card, one minimum, whichever way you are viewing it. */
-.heat-h-row { display: flex; flex-wrap: wrap; gap: 18px; min-width: 384px; }
+.heat-h-row { display: flex; flex-wrap: wrap; gap: 18px; min-width: var(--heat-table-w); }
 .heat-h-cell { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 90px; }
 .heat-h-meta {
 	display: flex;
