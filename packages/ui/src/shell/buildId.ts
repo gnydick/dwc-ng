@@ -10,7 +10,13 @@
  * appearing to behave differently in two places. So the running app says which
  * build it is, in the rail footer.
  *
- * The value is the ENTRY MODULE'S CONTENT HASH, read out of its own filename.
+ * The stamp is TWO values, because there are two questions. The commit SHA
+ * says which source this is — the one you can `git show`. The content hash says
+ * whether your tab is actually running it. Neither substitutes for the other:
+ * a hash maps back to no commit, and a commit does not tell you what a stale
+ * tab is executing.
+ *
+ * The second value is the ENTRY MODULE'S CONTENT HASH, read out of its filename.
  * A build stamp was the obvious first idea and it is the wrong one: it records
  * when the build ran, so two builds of identical code disagree and a rebuild
  * of unchanged code looks new. Neither tells you whether two tabs are running
@@ -30,15 +36,45 @@ export function hashFromEntrySrc(src: string): string | null {
 	return match?.[1] ?? null;
 }
 
-function readBuildId(): string {
-	if (typeof document === "undefined") return "dev";
-	// The module script the page actually loaded. In dev this is /src/main.tsx
-	// (unhashed, because there is no bundle yet) and the fallback applies.
+/**
+ * WHICH SOURCE the bundle was built from — the short commit SHA, `-dirty` when
+ * the tree had uncommitted tracked changes, `nogit` when it could not be read.
+ * Substituted at build time by vite's `define` (see vite.config.ts).
+ *
+ * This is the half the content hash cannot supply. A hash tells you two tabs
+ * agree; it does not tell you WHAT they agree on, and there is no way back from
+ * a hash to a commit you can read. The old fallback said "dev", which named
+ * nothing at all.
+ *
+ * Guarded like __DWC_TRANSPORT__: under node:test there is no define pass, so
+ * the identifier is genuinely absent rather than merely unset.
+ */
+declare const __GIT_COMMIT__: string | undefined;
+
+export const GIT_COMMIT: string =
+	typeof __GIT_COMMIT__ === "undefined" ? "nogit" : __GIT_COMMIT__;
+
+/** The entry module's content hash, or null when there is no bundle (dev). */
+function readContentHash(): string | null {
+	if (typeof document === "undefined") return null;
+	// The module script the page actually loaded. In dev this is /src/main.tsx —
+	// unhashed, because there is no bundle yet.
 	for (const el of document.querySelectorAll<HTMLScriptElement>('script[type="module"][src]')) {
 		const hash = hashFromEntrySrc(el.src);
 		if (hash !== null) return hash;
 	}
-	return "dev";
+	return null;
 }
 
-export const BUILD_ID: string = readBuildId();
+/**
+ * Both identities, because they answer different questions: the commit says
+ * what the code IS, the content hash says whether your tab is running it. In
+ * dev there is no bundle and so no second half.
+ */
+export function buildStamp(commit: string, contentHash: string | null): string {
+	return contentHash === null ? commit : `${commit} · ${contentHash}`;
+}
+
+export const CONTENT_HASH: string | null = readContentHash();
+
+export const BUILD_ID: string = buildStamp(GIT_COMMIT, CONTENT_HASH);

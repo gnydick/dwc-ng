@@ -1,6 +1,33 @@
 import { defineConfig, loadEnv, type ProxyOptions } from 'vite'
 import solid from 'vite-plugin-solid'
 import { fileURLToPath } from 'node:url'
+import { execFileSync } from 'node:child_process'
+
+/**
+ * WHICH SOURCE this bundle was built from, for the rail footer.
+ *
+ * The content hash beside it answers "are these two tabs running the same
+ * code"; it cannot answer "what am I looking at", because no hash maps back to
+ * a commit you can `git show`. Both are needed and they are different
+ * questions.
+ *
+ * The `-dirty` suffix is the point, not a nicety. A bare SHA on a build made
+ * from an edited tree names a commit that does NOT contain the code running —
+ * the stamp would be confidently wrong, which is worse than absent. Anything
+ * that goes wrong here degrades to a visible marker rather than a plausible
+ * lie: no git, no repo, git missing from PATH all end up as "nogit".
+ */
+function gitCommit(): string {
+  const git = (...args: string[]): string =>
+    execFileSync('git', args, { cwd: repoRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()
+  try {
+    // --porcelain is empty exactly when tracked files match HEAD. Untracked
+    // files do not count: they are not in the bundle.
+    return git('rev-parse', '--short', 'HEAD') + (git('status', '--porcelain', '--untracked-files=no') === '' ? '' : '-dirty')
+  } catch {
+    return 'nogit'
+  }
+}
 
 // .env / .env.local live at the REPO ROOT, but vite runs with cwd =
 // packages/ui — so loadEnv(mode, process.cwd()) looked in the wrong directory
@@ -149,6 +176,7 @@ export default defineConfig(({ mode }) => {
     // null explicitly rather than treating it as one of the two answers.
     define: {
       __DWC_TRANSPORT__: JSON.stringify(transport ?? null),
+      __GIT_COMMIT__: JSON.stringify(gitCommit()),
     },
     plugins: [solid()],
     server: {
