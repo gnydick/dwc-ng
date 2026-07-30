@@ -2835,17 +2835,6 @@
 	border-top: 1px solid var(--hairline);
 }
 .filament-list > .filament-row:first-of-type { border-top: none; }
-/* The head row is a HEADING that happens to carry two buttons, not a row of
-   primary targets, so it takes the slim height — which is also what takes a
-   little off the card's total. The tool rows below keep the shared pitch.
-
-   The ROW is not collapsed all the way to the button, though. Collapsed flush
-   to --ctl-h-slim the card read short; at --tool-row-h minus 6 it read tall.
-   Half a row unit of air above and below the buttons is the setting between
-   the two. Derived from --ctl-h-slim rather than declared, so it still tracks
-   density. */
-.filament-list > .filament-head { height: calc(var(--ctl-h-slim) + 3px); }
-.filament-head .gcode-btn { height: var(--ctl-h-slim); }
 /* The head row's switch spans everything after the two All buttons and hugs
    the right edge — it governs the whole card, not the row it sits on. */
 .filament-head .filament-macros { grid-column: 3 / -1; justify-self: end; }
