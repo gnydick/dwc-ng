@@ -700,6 +700,17 @@
    brought its own bugs: containment silenced the table completely, and the
    horizontal layout then disagreed with the vertical about the minimum.
    152 + 120 + 56 + 56 + 58 + 156 = 598. */
+/* ONE declaration of the tool table's columns. Both tool cards render the same
+   table; Tools simply omits the control columns. Before this the two carried
+   separate numbers that agreed by coincidence, and stopped agreeing at a
+   different density. Subtraction cannot disagree. */
+:root {
+	--tool-col-heater: 152px;
+	--tool-col-active: 70px;
+	--tool-col-standby: 56px;
+	--tool-col-current: 58px;
+	--tool-col-set: 156px;
+}
 /* 152 + 70 + 56 + 58 + 156 = 492. Heater | Active | Standby | Current | Set.
    No Filament column on either tool card: loading a material is the Extruders
    card's job — it owns the pickers, the macros and the All buttons — and a
@@ -715,11 +726,11 @@
 /* Columns by ROLE, not by position. The width travels with the column, so
    inserting or removing one shifts nothing — which is the entire content of
    regression class (f). Sum: 152 + 70 + 56 + 58 + 156 = 492. */
-.heat-table .col-heater { width: 152px; }
-.heat-table .col-active { width: 70px; padding-left: 14px; }
-.heat-table .col-standby { width: 56px; }
-.heat-table .col-current { width: 58px; padding-right: 14px; }
-.heat-table .col-set { width: 156px; }
+.heat-table .col-heater { width: var(--tool-col-heater); }
+.heat-table .col-active { width: var(--tool-col-active); padding-left: 14px; }
+.heat-table .col-standby { width: var(--tool-col-standby); }
+.heat-table .col-current { width: var(--tool-col-current); padding-right: 14px; }
+.heat-table .col-set { width: var(--tool-col-set); }
 /* The Tools card renders the same table without the control columns, so
    Current is the second cell rather than the fourth. Under role classes that
    fact needs no restatement of any OTHER column's width — which is what the
@@ -1282,8 +1293,10 @@
 	   inside 58. Heater/Active/Standby/Set are already at their contents. */
 	.heat-table { --heat-table-w: 484px; }
 	/* Only Current has measured slack at this width; the setpoint fields are at
-	   their inputs and Set is at its three keys. 152 + 70 + 56 + 50 + 156 = 484. */
-	.heat-table .col-current { width: 50px; padding-right: 6px; }
+	   their inputs and Set is at its three keys. Overriding the TOKEN keeps one
+	   declaration site — the rule above never changes. 152 + 70 + 56 + 50 + 156 = 484. */
+	.heat-table { --tool-col-current: 50px; }
+	.heat-table .col-current { padding-right: 6px; }
 	/* Same two columns, narrow: 152 + 50 = 202. */
 	.heat-table.info-only { min-width: 202px; }
 	/* tighten headers so labels ("STANDBY") fit their narrower columns */
