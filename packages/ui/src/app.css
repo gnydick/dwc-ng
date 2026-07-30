@@ -733,6 +733,22 @@
    the only slack left in the table. */
 .heat-table th:nth-child(5), .heat-table td:nth-child(5) { width: 58px; padding-right: 14px; }
 .heat-table th:nth-child(6), .heat-table td:nth-child(6) { width: 156px; }
+/* The Tools card: the same table with the heater CONTROLS not rendered, so it
+   is Heater | Filament | Current and nothing else. min-width directly rather
+   than through --heat-table-w, so the token keeps meaning "the full table" and
+   the column-sum tests still have one number to check.
+   152 + 120 + 58 = 330. Current is nth-child(3) here, not (5), so it would
+   otherwise inherit Active's 56px and lose the padding that keeps a reading off
+   the card edge. */
+/* Heater 152 + Current 58 = 210. Current is nth-child(2) here, not (5), so it
+   would otherwise inherit the Filament column's width and gutters. */
+.heat-table.info-only { min-width: 210px; }
+.heat-table.info-only th:nth-child(2), .heat-table.info-only td:nth-child(2) {
+	width: 58px;
+	padding-left: 0;
+	padding-right: 14px;
+	text-align: right;
+}
 .heat-input {
 	width: 56px;
 	padding: var(--sp-chip-py) 6px;
@@ -782,7 +798,10 @@
 }
 .heat-table th:first-child { text-align: left; }
 .heat-table td {
-	padding: var(--sp-cell) 0;
+	/* Derived, not chosen: whatever is left of the shared row pitch once the
+	   control and the rule are taken out, split top and bottom. This is what
+	   makes a table row exactly as tall as the Tools card's grid row. */
+	padding: calc((var(--tool-row-h) - var(--ctl-h) - 1px) / 2) 0;
 	border-top: 1px solid var(--hairline);
 	text-align: right;
 	vertical-align: baseline;
@@ -1280,6 +1299,9 @@
 		padding-right: 4px;
 	}
 	.heat-table th:nth-child(5), .heat-table td:nth-child(5) { width: 50px; padding-right: 6px; }
+	/* Same two columns, narrow: 152 + 50 = 202. */
+	.heat-table.info-only { min-width: 202px; }
+	.heat-table.info-only th:nth-child(2), .heat-table.info-only td:nth-child(2) { width: 50px; padding-left: 0; padding-right: 6px; }
 	/* tighten headers so labels ("STANDBY") fit their narrower columns */
 	.heat-table th { font-size: 9.5px; letter-spacing: 0.05em; }
 }
@@ -1809,7 +1831,11 @@
 .heater-list.heat-rows {
 	display: grid;
 	/* name | reading | active | standby | modes */
-	grid-template-columns: max-content 60px 78px 78px max-content;
+	/* name | active | standby | current | modes — the SAME order as the
+	   Tools & heaters table minus its Filament column, so the two cards read as
+	   one layout at two widths. Current used to sit second here and fifth
+	   there. */
+	grid-template-columns: max-content 78px 78px 60px max-content;
 	/* --ctl-gap, not a literal: the Filament card's rows use the same token, so
 	   the two cards keep the same row pitch at every density. */
 	gap: var(--ctl-gap) 8px;
@@ -1835,10 +1861,24 @@
 /* Pinned per column, so the bed — no standby field — leaves a HOLE instead of
    sliding its later cells left into the vacated track. Scoped to the heaters
    card: the Tuning row shares .heater-ctl but not this column scheme. */
-.heat-rows > .heater-ctl > .heat-read { grid-column: 2; }
-.heat-rows > .heater-ctl > .temp-field:nth-of-type(1) { grid-column: 3; }
-.heat-rows > .heater-ctl > .temp-field:nth-of-type(2) { grid-column: 4; }
+.heat-rows > .heater-ctl > .temp-field:nth-of-type(1) { grid-column: 2; }
+.heat-rows > .heater-ctl > .temp-field:nth-of-type(2) { grid-column: 3; }
+.heat-rows > .heater-ctl > .heat-read { grid-column: 4; }
 .heat-rows > .heater-ctl > .heat-modes { grid-column: 5; }
+/* Column headings. Same face, size and alignment as .heat-table th, because
+   they name the same columns on the card beside it — and the same bottom
+   padding, so the two cards' first data rows start at the same y. */
+.heat-rows-head > span {
+	font-family: var(--font-display);
+	font-weight: 600;
+	font-size: 10.5px;
+	letter-spacing: 0.14em;
+	text-transform: uppercase;
+	color: var(--silk-dim);
+	text-align: right;
+	padding-bottom: var(--sp-cell);
+	white-space: nowrap;
+}
 /* The reading. Fixed cell, tabular figures, right-aligned on the decimal side
    so the column cannot breathe as the number climbs. */
 .heat-read {
@@ -2079,6 +2119,12 @@
    62px fits that with a couple of px to spare at the loosest density and is
    still a comfortable pointer target — 92px was a third of it empty ground. */
 :root { --jog-key-w: 62px; }
+/* ONE row pitch for the two tool cards. Tools draws its rows as grid rows
+   (--ctl-h plus the grid gap); Tools & heaters draws them as table rows
+   (--ctl-h plus cell padding plus a border). Left to themselves they came out
+   36px and 45px, so the same five tools stood at two different heights side
+   by side. Derived from the same tokens, so it holds at every density. */
+:root { --tool-row-h: calc(var(--ctl-h) + var(--ctl-gap)); }
 .jog-table .jog-row { display: contents; }
 /* Fill the track rather than hug the label, so the two columns read as columns. */
 .jog-table .jog-row .gcode-btn { width: 100%; justify-content: center; }
@@ -2787,13 +2833,19 @@
 	align-items: center;
 	justify-content: start;
 }
+/* Same faint rule and the same row pitch as the two tool tables, because this
+   card sits beside them and lists the same tools. --tool-row-h is the shared
+   pitch; the rule is drawn on the row's top edge, so the first row does not
+   get one under the heading. */
 .filament-row {
 	display: grid;
 	grid-column: 1 / -1;
 	grid-template-columns: subgrid;
 	align-items: center;
-	height: var(--ctl-h);
+	height: var(--tool-row-h);
+	border-top: 1px solid var(--hairline);
 }
+.filament-list > .filament-row:first-of-type { border-top: none; }
 /* The head row's switch spans everything after the two All buttons and hugs
    the right edge — it governs the whole card, not the row it sits on. */
 .filament-head .filament-macros { grid-column: 3 / -1; justify-self: end; }

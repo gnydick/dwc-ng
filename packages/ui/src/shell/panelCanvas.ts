@@ -655,16 +655,20 @@ export function growToDefaults(
 			added.push(d.id);
 			continue;
 		}
-		const coded = fallback[d.id]!;
-		const before = clampRect(entry);
-		const next = clampRect({
-			col: entry.col,
-			row: entry.row,
-			colSpan: Math.max(entry.colSpan, coded.colSpan),
-			rowSpan: Math.max(entry.rowSpan, coded.rowSpan),
-		});
-		if (next.colSpan > before.colSpan || next.rowSpan > before.rowSpan) grew = true;
-		state[d.id] = next;
+		// The STORED size wins outright. This used to be
+		// Math.max(entry, coded) per axis, so a card could never be smaller than
+		// its coded default across a reload: shrink it, reload, and it sprang
+		// back — growing was remembered and shrinking was not (reported
+		// 2026-07-30, Tools & heaters at rowSpan 77 against a coded 110).
+		//
+		// The max existed so a card that GAINED content in a release would adopt
+		// the bigger coded size instead of clipping. That is now covered better
+		// by the thing that actually knows: the resize stop measures content and
+		// refuses to go under it, so any size the operator can set already
+		// contains what the card draws. A default is a starting point for a card
+		// that has none — see the `added` pass below — not a floor under one the
+		// operator has already placed.
+		state[d.id] = clampRect(entry);
 	}
 	// Second pass, after every stored rect is placed: a new card can now be
 	// sited against the WHOLE canvas rather than against a partial one, so the
