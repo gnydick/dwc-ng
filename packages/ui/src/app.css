@@ -1589,7 +1589,9 @@
 	display: flex;
 	flex-direction: row;
 	align-items: stretch;
-	gap: 12px;
+	/* --ctl-gap, not 12: the legend NAMES the traces beside it, so the two read
+	   as one figure rather than two blocks. Tracks density like everything else. */
+	gap: var(--ctl-gap);
 	/* The honest floor: legend + a plot still worth looking at. */
 	min-width: 280px;
 	overflow: hidden;
@@ -1645,6 +1647,12 @@
 	flex-direction: column;
 	gap: 4px;
 }
+/* The x-series row — uPlot's first legend row, which carries the timestamp at
+   the cursor. Hidden: the chart's x axis already reads in time, so this row
+   restated it in a place reserved for the series you are actually reading, and
+   it is the widest thing in the legend (a full date) setting that column's
+   width for nothing. */
+.temp-chart-legend .u-legend tr:first-child { display: none; }
 .temp-chart-legend .u-legend tr { display: flex; align-items: center; }
 .temp-chart-legend .u-legend .u-label { color: var(--silk); white-space: nowrap; }
 .temp-chart-legend .u-legend .u-value { color: var(--silk); font-variant-numeric: tabular-nums; }
