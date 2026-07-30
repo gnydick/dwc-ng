@@ -652,7 +652,19 @@
    card the operator most wants to shrink was the one that refused.
    Six columns of live controls do not fit a phone. The honest answer is that
    the table scrolls within its card, not that the columns get crushed. */
-.heat-scroll { overflow-x: auto; contain: inline-size; }
+.heat-scroll {
+	overflow-x: auto;
+	contain: inline-size;
+	/* Containment silences the table entirely — it contributed 0 to the card's
+	   minimum, so the card could be squeezed until the table was a sliver and
+	   nothing objected. That is the trade `contain` always makes: it buys the
+	   card its freedom by taking away the content's vote, so the floor has to
+	   be stated deliberately instead of inferred.
+	   384px = Heater + Filament + Active + Standby (152 + 120 + 56 + 56): the
+	   narrowest at which a row still shows a tool, what it is loaded with, and
+	   both setpoints. Current and the mode keys scroll into view. */
+	min-width: 384px;
+}
 .heat-table { width: 100%; min-width: 598px; border-collapse: collapse; font-variant-numeric: tabular-nums; table-layout: fixed; }
 /* Widths carry slack past the widest content: cells have no horizontal
    padding, so a column sized exactly to its text leaves adjacent right-aligned
