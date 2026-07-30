@@ -206,7 +206,23 @@ export const CARD_DEFS = {
 		title: "Movement",
 		ariaLabel: "Movement",
 		tip: "M120 · G91 · M121",
-		size: { colSpan: 156, rowSpan: 123 },
+		// 156x123 -> 99x76, and NOT the 156 the cards around it use: this one
+		// stopped being a quarter-canvas card when the step bank moved out of a
+		// full-width row above the jog table and into a column beside it. Both
+		// numbers are the card AS ARRANGED in the Card Lab at the default pitch
+		// (396 x 304px), which is also exactly where contentColSpan() and
+		// contentRowSpan() put its stops — so the default is the card fitted to
+		// its content on both axes, with no slack to resize away.
+		//
+		// A narrower card than Homing or Position beside it, so their right
+		// edges no longer agree. Deliberate: the jog keys are fixed-width by
+		// design (see .jog-table) and padding this out to 156 would be 228px of
+		// empty ground inside the card rather than beside it.
+		//
+		// Lowering a default cannot shrink an existing layout — growToDefaults()
+		// merges with Math.max(stored, coded), so this reaches fresh installs,
+		// Reset Layout and the Card Lab only.
+		size: { colSpan: 99, rowSpan: 76 },
 	}),
 	/** Manual fans only — thermostatic ones belong to the firmware. The body
 	 *  says so when there are none rather than the card disappearing. */
