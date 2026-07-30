@@ -74,6 +74,35 @@ test("every contain: inline-size element declares an explicit min-width", () => 
 });
 
 /**
+ * The other half of the same discipline: a LIVE readout must not sit in an
+ * elastic track. `1fr` grows with the card, so the digits slide across it as it
+ * is resized (the DRO's value track measured 264px narrow and 744px wide), and
+ * `max-content` re-sizes the track as the reading crosses a digit or picks up a
+ * minus sign — which moves every other row with it. Fixed track, tabular
+ * figures, slack after the last column.
+ */
+test("the DRO value track is fixed — a live reading cannot be in 1fr", () => {
+	const tracks = /grid-template-columns:([^;]*)/.exec(ruleBody(".dro-list"));
+	assert.ok(tracks, ".dro-list declares no track list");
+	assert.doesNotMatch(tracks[1]!, /\bfr\b|\d+fr/);
+	assert.match(tracks[1]!, /var\(--dro-val-w\)/);
+
+	const token = /--dro-val-w:\s*(\d+)px/.exec(appCss);
+	assert.ok(token, "no --dro-val-w token");
+	// "-99999.99mm" measures 99px at .dro-val's face and size.
+	assert.ok(Number(token[1]) >= 99, `value track ${token[1]}px cannot hold a full reading`);
+});
+
+test("the DRO rows share ONE track list via subgrid", () => {
+	// Per-row grids sized the axis track to that row's own label, so seven rows
+	// had seven different column positions.
+	assert.match(ruleBody(".dro-row"), /grid-template-columns:\s*subgrid/);
+	// The gutter belongs to the parent: a gap restated on the subgrid silently
+	// overrides the inherited one and shifts the tracks (see .feed-field).
+	assert.doesNotMatch(ruleBody(".dro-row"), /(^|[;{\s])(gap|column-gap):/);
+});
+
+/**
  * The Extruders value column holds the filament picker AND the footer's feed
  * pair. A minmax() minimum is a literal — it does not rise to fit content — so
  * this track has to be at least as wide as the wider occupant, and the picker

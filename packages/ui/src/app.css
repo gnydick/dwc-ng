@@ -468,17 +468,50 @@
 
 /* ---------- DRO ---------- */
 
+/* ONE grid for every axis; each .dro-row spends its tracks via subgrid. Rows
+   were previously independent grids, so the axis track was sized per row —
+   34px on "X", 76px on "W Z motor 3" — and the three columns only appeared to
+   line up because the value was right-aligned against a fixed tag. Same idiom
+   as .home-table and .heater-list.heat-rows.
+
+   NO 1fr. The value track was elastic, so it grew with the card (264px at a
+   narrow width, 744px at a wide one) and the digits slid right across the card
+   as it was resized — a live readout that will not hold still. Every track is
+   now a fixed or content-sized width and the leftover sits AFTER the last one,
+   which is what justify-content: start means here.
+
+   The value track is fixed rather than max-content because this is the one
+   column whose content changes every poll: max-content would resize the track
+   as the reading crossed a digit or picked up a minus sign, moving all seven
+   rows. 100px is measured — "-99999.99mm" renders 99px at this face and size,
+   past anything a machine coordinate reaches. */
+:root { --dro-val-w: 100px; }
+.dro-list {
+	display: grid;
+	/* axis (+ role) | reading | homed tag */
+	grid-template-columns: max-content var(--dro-val-w) 66px;
+	/* Column gutter only. Row separation is each row's own padding and rule; a
+	   row-gap would put a space between the rule and the next row's text. The
+	   subgrid rows inherit these gutters, so the gap lives HERE and nowhere
+	   else — a gap restated on .dro-row would silently override the inherited
+	   one and shift the tracks out from under the header alignment. */
+	gap: 0 12px;
+	justify-content: start;
+}
 .dro-row {
 	display: grid;
+	grid-column: 1 / -1;
+	grid-template-columns: subgrid;
 	/* Fixed tag slot (not auto): "homed"/"unhomed" differ in width, so an auto
 	   column would shift the value on every toggle and misalign rows against
 	   each other. A fixed slot keeps the value's right edge rock-steady. */
-	grid-template-columns: minmax(34px, auto) 1fr 66px;
 	align-items: baseline;
-	gap: 12px;
 	border-bottom: 1px solid var(--hairline);
 	padding: var(--sp-row) 0;
 }
+/* Now actually reachable: the rows are the only children of .dro-list. As
+   children of .panel-body the last row was followed by the speed footer, so
+   this never matched and every row carried a rule, including the last. */
 .dro-row:last-child { border-bottom: none; }
 
 .dro-axis {

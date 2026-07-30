@@ -18,24 +18,33 @@ export function PositionBody(props: { orientation: () => Orientation }) {
 			<Show
 				when={props.orientation() === "horizontal"}
 				fallback={
-					<For each={visibleAxes()}>
-						{axis => (
-							<div class="dro-row" classList={{ unhomed: !axis.homed }}>
-								<span class="dro-axis">
-									{axis.letter}
-									<Show when={app.config.config.axisRoles[axis.letter]}>
-										{role => <span class="dro-role">{role()}</span>}
-									</Show>
-								</span>
-								<span class="dro-val">
-									{(axis.machinePosition ?? 0).toFixed(2)}<small>mm</small>
-								</span>
-								<span class="homed-tag" classList={{ yes: axis.homed, no: !axis.homed }}>
-									{axis.homed ? "homed" : "unhomed"}
-								</span>
-							</div>
-						)}
-					</For>
+					/* ONE grid for all axes, rows as subgrids (see .dro-list in
+					   app.css). Each row used to be its own grid, so the axis track
+					   measured whatever THAT row's letter and role happened to need
+					   — 34px for "X", 76px for "W Z motor 3" — seven different track
+					   lists that only looked aligned because the value was
+					   right-aligned against a fixed-width tag. Sharing one track list
+					   makes the alignment true by construction. */
+					<div class="dro-list">
+						<For each={visibleAxes()}>
+							{axis => (
+								<div class="dro-row" classList={{ unhomed: !axis.homed }}>
+									<span class="dro-axis">
+										{axis.letter}
+										<Show when={app.config.config.axisRoles[axis.letter]}>
+											{role => <span class="dro-role">{role()}</span>}
+										</Show>
+									</span>
+									<span class="dro-val">
+										{(axis.machinePosition ?? 0).toFixed(2)}<small>mm</small>
+									</span>
+									<span class="homed-tag" classList={{ yes: axis.homed, no: !axis.homed }}>
+										{axis.homed ? "homed" : "unhomed"}
+									</span>
+								</div>
+							)}
+						</For>
+					</div>
 				}
 			>
 				<div class="dro-h-row">
