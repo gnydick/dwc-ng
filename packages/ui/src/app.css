@@ -846,13 +846,17 @@
 
 /* Horizontal Tools & Heaters layout (orientationToggle) — one compact block
    per tool/bed instead of a table row. */
-/* Same minimum as the table, from the same token. This card has TWO layouts
-   and they were declaring different minimums — the table its column sum, this
-   one (being flex-wrap) the width of a single 90px cell. Orientation is stored
-   per-browser, so the same card refused to shrink on one machine and collapsed
-   on another with no code difference between them.
-   One card, one minimum, whichever way you are viewing it. */
-.heat-h-row { display: flex; flex-wrap: wrap; gap: 18px; min-width: var(--heat-table-w); }
+/* Its OWN floor, deliberately smaller than the table's.
+   This layout exists because it is the compact one — six fixed columns need
+   598px, which is wider than a tablet in portrait, and the ⇄ toggle is the
+   answer to that. Briefly it was clamped to the table's width for the sake of
+   "one card, one minimum", which is a tidy-sounding rule that removed the only
+   reason this layout exists.
+   The real defect was that it had NO floor: flex-wrap makes its min-content a
+   single 90px cell, so the card could collapse to a column of slivers. 306px =
+   three cells plus their gaps (90x3 + 18x2) — wide enough that it still reads
+   as a strip of tools rather than a list. */
+.heat-h-row { display: flex; flex-wrap: wrap; gap: 18px; min-width: 306px; }
 .heat-h-cell { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 90px; }
 .heat-h-meta {
 	display: flex;
