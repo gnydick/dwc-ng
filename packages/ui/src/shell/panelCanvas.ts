@@ -282,22 +282,21 @@ export function contentRowSpan(cardEl: HTMLElement, gutterPx: number): number {
 }
 
 /**
- * An element's MAX-CONTENT width in px — the width at which nothing inside it
- * has to shrink, wrap, or clip.
+ * An element's intrinsic width in px, at the given sizing keyword.
  *
  * Not clientWidth or scrollWidth. Both report the BOX on an element wider than
  * its contents, which is the normal case for a card you are about to make
- * narrower: the detent would then catch at whatever width the card already
- * had, and the true fit would be unreachable. This asks the layout engine the
- * question directly by sizing the element to max-content for one measurement.
+ * narrower: the stop would then catch at whatever width the card already had,
+ * and the true fit would be unreachable. This asks the layout engine the
+ * question directly.
  *
  * Synchronous — set, read, restore inside one call, with no yield in between,
  * so the browser never paints the intermediate size. It does force a reflow,
  * which is why it is called ONCE at the start of a drag and never per frame.
  */
-function maxContentWidthPx(el: HTMLElement): number {
+function intrinsicWidthPx(el: HTMLElement, sizing: "min-content" | "max-content"): number {
 	const previous = el.style.width;
-	el.style.width = "max-content";
+	el.style.width = sizing;
 	const width = el.getBoundingClientRect().width;
 	el.style.width = previous;
 	return width;
@@ -305,14 +304,22 @@ function maxContentWidthPx(el: HTMLElement): number {
 
 /**
  * The smallest colSpan that still contains a card's content — the horizontal
- * twin of contentRowSpan, and the width the gold detent snaps to.
+ * twin of contentRowSpan, and the width the stop holds at.
+ *
+ * MIN-content, not max-content. Max-content is the width at which nothing has
+ * to wrap, which is not a limit at all for prose: the Chart colours card
+ * measured 1026px that way against a true minimum of 302px, so its stop sat
+ * miles wide of anything real and the card simply refused to be narrowed.
+ * Min-content is the actual wall — the narrowest the contents can be without
+ * overflowing — and it still protects the controls, because a fixed-width
+ * button or input contributes its full width to min-content while a sentence
+ * contributes only its longest word.
  *
  * Honest only insofar as the content is honest: a control with `min-width: 0`
  * (a select, an ellipsising name) will happily report that it can be a few
- * pixels wide, and the detent would then sit somewhere useless. Such controls
- * carry an explicit min-width in app.css for exactly this reason — the number
- * this returns is only ever as meaningful as the narrowest legible width the
- * contents are willing to declare.
+ * pixels wide. Such controls carry an explicit min-width in app.css for
+ * exactly this reason — the number this returns is only ever as meaningful as
+ * the narrowest legible width the contents are willing to declare.
  */
 export function contentColSpan(cardEl: HTMLElement, gutterPx: number): number {
 	const body = cardEl.querySelector<HTMLElement>(".panel-body");
@@ -320,7 +327,7 @@ export function contentColSpan(cardEl: HTMLElement, gutterPx: number): number {
 	// Chrome around the body's content box (borders, the card's own padding),
 	// measured rather than assumed — card and body widen together.
 	const chrome = cardEl.getBoundingClientRect().width - body.clientWidth;
-	return Math.max(1, Math.ceil((maxContentWidthPx(body) + chrome + gutterPx) / COL_UNIT_PX));
+	return Math.max(1, Math.ceil((intrinsicWidthPx(body, "min-content") + chrome + gutterPx) / COL_UNIT_PX));
 }
 
 /**
@@ -333,7 +340,10 @@ export function headerColSpan(cardEl: HTMLElement, gutterPx: number): number {
 	const head = cardEl.querySelector<HTMLElement>(".card-head");
 	if (!head) return 1;
 	const chrome = cardEl.getBoundingClientRect().width - head.clientWidth;
-	return Math.max(1, Math.ceil((maxContentWidthPx(head) + chrome + gutterPx) / COL_UNIT_PX));
+	// MIN-content here too. The header is one nowrap line, so the two usually
+	// agree — but a long title would otherwise set a floor no card could be
+	// narrowed past, and a title is the one thing that may ellipsise.
+	return Math.max(1, Math.ceil((intrinsicWidthPx(head, "min-content") + chrome + gutterPx) / COL_UNIT_PX));
 }
 
 /**
