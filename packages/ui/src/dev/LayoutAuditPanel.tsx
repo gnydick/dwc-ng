@@ -183,36 +183,48 @@ export function LayoutAuditPanel(props: { cardEl: () => HTMLElement | null; id: 
  *
  * Cards are audited one at a time against the bench element, because the lab
  * mounts exactly one card. The caller features each id, waits a frame for the
- * mount, then audits whatever is on the bench.
+ * mount, then audits whatever is on the bench. Whatever was featured before
+ * the sweep started is restored afterward — the sweep is a diagnostic pass
+ * over the bench, not a way to leave it parked on the last id in the registry.
  */
 export function LayoutAuditAll(props: {
 	ids: () => readonly string[];
 	titleOf: (id: string) => string;
 	feature: (id: string) => void;
+	current: () => string;
 	benchEl: () => HTMLElement | null;
 }) {
 	const [rows, setRows] = createSignal<CardReport[]>([]);
 	const [busy, setBusy] = createSignal(false);
 
 	const sweep = async (): Promise<void> => {
+		// Captured before the loop touches anything, so it can be restored
+		// whether the sweep finishes cleanly or throws partway through.
+		const before = props.current();
 		setBusy(true);
 		setRows([]);
-		const out: CardReport[] = [];
-		for (const id of props.ids()) {
-			props.feature(id);
-			// Two frames: one for Solid to render the newly featured card, one
-			// for the browser to lay it out before anything is measured.
-			await new Promise(requestAnimationFrame);
-			await new Promise(requestAnimationFrame);
-			const el = props.benchEl();
-			if (el === null) continue;
-			out.push(auditCard(id, props.titleOf(id), el));
+		try {
+			const out: CardReport[] = [];
+			for (const id of props.ids()) {
+				props.feature(id);
+				// Two frames: one for Solid to render the newly featured card, one
+				// for the browser to lay it out before anything is measured.
+				await new Promise(requestAnimationFrame);
+				await new Promise(requestAnimationFrame);
+				const el = props.benchEl();
+				if (el === null) continue;
+				out.push(auditCard(id, props.titleOf(id), el));
+			}
+			// Worst first: a violation is what the operator came here to find.
+			const rank = (r: CardReport): number =>
+				(r.axisRow.stable ? 0 : 4) + (r.axisCol.stable ? 0 : 2) + (r.drift.stable ? 0 : 1);
+			setRows([...out].sort((a, b) => rank(b) - rank(a)));
+		} finally {
+			// Runs on the happy path AND on a throw: the bench goes back to what
+			// the user had featured, and the button never sticks on "Auditing…".
+			props.feature(before);
+			setBusy(false);
 		}
-		// Worst first: a violation is what the operator came here to find.
-		const rank = (r: CardReport): number =>
-			(r.axisRow.stable ? 0 : 4) + (r.axisCol.stable ? 0 : 2) + (r.drift.stable ? 0 : 1);
-		setRows([...out].sort((a, b) => rank(b) - rank(a)));
-		setBusy(false);
 	};
 
 	return (
