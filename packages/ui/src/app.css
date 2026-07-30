@@ -634,7 +634,17 @@
 /* min-width covers the fixed columns (152+54+54+76+156 = 492) plus enough for
    the elastic Filament column to stay usable rather than collapsing to a sliver
    when the panel is dragged narrow. */
-.heat-table { width: 100%; min-width: 592px; border-collapse: collapse; font-variant-numeric: tabular-nums; table-layout: fixed; }
+/* min-width must ACCOMMODATE the contents, not just the fixed columns. The
+   fixed ones sum to 484px; Filament is the elastic one and needs 88px for the
+   picker plus its two 16px gutters = 120. At the old 592 the column got 100,
+   the picker's own min-width (88) overflowed the 68px content box, and it ran
+   4px past the cell — straight over the gutter and into the Active input,
+   which is what "the space collapses when I resize" was.
+
+   Sum: 152 + 120 + 56 + 56 + 76 + 156 = 616. That is what this card needs;
+   whether it FITS where it sits is a layout question, not a reason to shave
+   columns. */
+.heat-table { width: 100%; min-width: 616px; border-collapse: collapse; font-variant-numeric: tabular-nums; table-layout: fixed; }
 /* Widths carry slack past the widest content: cells have no horizontal
    padding, so a column sized exactly to its text leaves adjacent right-aligned
    labels touching ("ACTIVESTANDBY"). */
@@ -655,10 +665,14 @@
 	padding-left: 16px;
 	padding-right: 16px;
 }
-.heat-table th:nth-child(3), .heat-table td:nth-child(3) { width: 54px; }
-.heat-table th:nth-child(4), .heat-table td:nth-child(4) { width: 54px; }
+/* 56px, measured: .heat-input is 56px wide and these were declared 54, so both
+   setpoint inputs overflowed their own column by 2px. */
+.heat-table th:nth-child(3), .heat-table td:nth-child(3) { width: 56px; }
+.heat-table th:nth-child(4), .heat-table td:nth-child(4) { width: 56px; }
 /* Current: the padding is what keeps the reading off the Active button — right
    aligned in a bare cell, its right edge met the button's left edge exactly. */
+/* Current: the padding is what keeps the reading off the Active button — right
+   aligned in a bare cell, its right edge met the button left edge exactly. */
 .heat-table th:nth-child(5), .heat-table td:nth-child(5) { width: 76px; padding-right: 14px; }
 .heat-table th:nth-child(6), .heat-table td:nth-child(6) { width: 156px; }
 .heat-input {
