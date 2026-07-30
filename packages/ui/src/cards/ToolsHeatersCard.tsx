@@ -132,6 +132,11 @@ export function ToolsHeatersBody(props: { orientation: () => Orientation }) {
 			<Show
 				when={props.orientation() === "horizontal"}
 				fallback={
+					// The table SCROLLS inside the card rather than setting the card's
+					// width. Six columns of live controls genuinely need ~600px, which
+					// is wider than a tablet in portrait — so a card pinned to its
+					// table could not be narrowed at all there. See .heat-scroll.
+					<div class="heat-scroll">
 					<table class="heat-table">
 						<thead>
 							<tr>
@@ -199,6 +204,7 @@ export function ToolsHeatersBody(props: { orientation: () => Orientation }) {
 							</Show>
 						</tbody>
 					</table>
+					</div>
 				}
 			>
 				<div class="heat-h-row">
