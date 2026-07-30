@@ -3308,3 +3308,10 @@
 .layout-audit-grid dt { color: var(--silk-dim); }
 .layout-audit-grid dd { margin: 0; color: var(--silk); font-variant-numeric: tabular-nums; }
 .layout-audit-grid dd.bad { color: var(--fault); font-weight: 600; }
+.layout-audit-table { width: 100%; border-collapse: collapse; margin-top: var(--sp-flow); font: 400 12px/1.4 var(--font-body); }
+.layout-audit-table th {
+	font: 600 10.5px/1 var(--font-display); letter-spacing: 0.14em; text-transform: uppercase;
+	color: var(--silk-dim); text-align: left; padding: 0 var(--ctl-gap) var(--sp-cell) 0;
+}
+.layout-audit-table td { padding: var(--sp-cell) var(--ctl-gap) var(--sp-cell) 0; border-top: 1px solid var(--hairline); font-variant-numeric: tabular-nums; }
+.layout-audit-table td.bad { color: var(--fault); font-weight: 600; }
