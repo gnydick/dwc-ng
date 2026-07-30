@@ -326,26 +326,39 @@ export function clampToStop(rawSpan: number, minSpan: number): { span: number; a
 export function contentRowSpan(cardEl: HTMLElement, gutterPx: number): number {
 	const body = cardEl.querySelector<HTMLElement>(".panel-body");
 	if (!body) return 1;
-	const bodyRect = body.getBoundingClientRect();
+	// SUMMED, not taken from the lowest child's offset. Offsets are where things
+	// sit RIGHT NOW, so a filler child that is currently 189px tall pushes every
+	// sibling below it down by 189 and the card measures its own height back as
+	// its minimum — even with that child's own height correctly counted as zero.
+	// The console proved it: history counted 0, and the card still reported
+	// rowStop 75 against a span of 75, so it could not be dragged shorter at all.
+	// Stacking the children's own heights asks the right question — "how tall is
+	// this content" — instead of "where does it currently end".
 	let contentBottom = 0;
 	for (const child of Array.from(body.children)) {
 		const rect = child.getBoundingClientRect();
 		const style = getComputedStyle(child);
-		const marginBottom = parseFloat(style.marginBottom) || 0;
+		// Absolutely positioned children are out of the flow and contribute
+		// nothing to a stack's height (the toolpath canvas is one).
+		if (style.position === "absolute" || style.position === "fixed") continue;
 		// A child that ABSORBS SLACK draws whatever height it is handed, so its
 		// rendered height is not a minimum — its declared min-height is. Without
 		// this a filler child hands the card its own current height back as a
-		// floor, and the card cannot be shortened at all: the toolpath viewport
-		// measured a rowStop of 180 against a span of 180, because its canvas is
-		// sized from the element the measurement was taking. Same shape for the
-		// console log and any future viewport.
+		// floor: the toolpath viewport measured a rowStop of 180 against a span
+		// of 180, because its canvas is sized from the element being measured.
 		const grows = (parseFloat(style.flexGrow) || 0) > 0;
 		const floor = parseFloat(style.minHeight);
 		const height = grows ? (Number.isFinite(floor) ? floor : 0) : rect.height;
-		const top = rect.top - bodyRect.top + body.scrollTop;
-		contentBottom = Math.max(contentBottom, top + height + marginBottom);
+		contentBottom += height
+			+ (parseFloat(style.marginTop) || 0)
+			+ (parseFloat(style.marginBottom) || 0);
 	}
-	contentBottom += parseFloat(getComputedStyle(body).paddingBottom) || 0;
+	const bodyStyle = getComputedStyle(body);
+	// The gaps a flex/grid body puts BETWEEN its children are part of the stack.
+	const rowGap = parseFloat(bodyStyle.rowGap);
+	const spans = Math.max(0, body.children.length - 1);
+	if (Number.isFinite(rowGap)) contentBottom += rowGap * spans;
+	contentBottom += (parseFloat(bodyStyle.paddingTop) || 0) + (parseFloat(bodyStyle.paddingBottom) || 0);
 	// The card's chrome around the body's content box (borders, outer padding)
 	// — measured, not assumed, and size-invariant since card and body grow
 	// together. Card border-box height == rowUnitPx()*rowSpan - gutter.
