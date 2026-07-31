@@ -37,9 +37,25 @@ export function PanelTools(props: {
 			<button
 				type="button"
 				class="panel-grip"
-				title="Drag to move"
+				classList={{ picked: props.canvas.isSelected(props.id) }}
+				title="Drag to move · Ctrl or Shift click to pick up several"
 				aria-label={`Move ${props.ariaLabel}`}
-				onPointerDown={event => props.canvas.startMove(props.id, event)}
+				aria-pressed={props.canvas.isSelected(props.id)}
+				onPointerDown={event => {
+					// Modifier-click PICKS UP rather than drags: the pointer goes
+					// down and comes back up without the card leaving its cell, and
+					// the next plain drag on any member carries the whole formation.
+					// Checked here rather than inside startMove so a modified press
+					// never begins a drag at all — starting one and cancelling it
+					// leaves the canvas mid-gesture.
+					if (event.ctrlKey || event.metaKey || event.shiftKey) {
+						event.preventDefault();
+						event.stopPropagation();
+						props.canvas.toggleSelected(props.id);
+						return;
+					}
+					props.canvas.startMove(props.id, event);
+				}}
 			>
 				⠿
 			</button>

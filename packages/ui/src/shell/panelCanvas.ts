@@ -11,7 +11,7 @@
  * docs/superpowers/specs/2026-07-17-grid-canvas-design.md.
  */
 
-import { createSignal } from "solid-js";
+import { createSignal, onCleanup } from "solid-js";
 import {
 	type Orientation, type OrientationState,
 	parseOrientationState, serializeOrientationState, toggledOrientation,
@@ -151,9 +151,26 @@ export function rectsOverlap(a: PanelRect, b: PanelRect): boolean {
 		&& a.row < b.row + b.rowSpan && b.row < a.row + a.rowSpan;
 }
 
-export function collidesWithAny(state: CanvasState, id: string, rect: PanelRect): boolean {
+/**
+ * `exclude` is the panel (or panels) the candidate rect BELONGS to, so they do
+ * not collide with themselves. A set rather than a single id because a group
+ * move carries several rects at once: every member has to be excluded for all
+ * of them, or the second card tested would collide with where the first one
+ * still is.
+ *
+ * Deliberately one function taking both shapes instead of a `collidesWithAll`
+ * beside it. A second collision routine is a second definition of "overlap",
+ * and the group path would be the one that drifted — it is the one with no
+ * years of use behind it.
+ */
+export function collidesWithAny(
+	state: CanvasState,
+	exclude: string | ReadonlySet<string>,
+	rect: PanelRect,
+): boolean {
+	const excluded = typeof exclude === "string" ? null : exclude;
 	for (const [otherId, otherRect] of Object.entries(state)) {
-		if (otherId === id) continue;
+		if (excluded === null ? otherId === exclude : excluded.has(otherId)) continue;
 		if (rectsOverlap(rect, otherRect)) return true;
 	}
 	return false;
@@ -281,6 +298,100 @@ export function resolveMove(state: CanvasState, id: string, targetCol: number, t
 	}
 	if (col === current.col && row === current.row) return null;
 	return { col, row, colSpan: current.colSpan, rowSpan: current.rowSpan };
+}
+
+/**
+ * Move SEVERAL panels rigidly by one shared delta — "pick up these three and
+ * put them there".
+ *
+ * Rigid is the whole contract: every member shifts by the same (dCol, dRow), so
+ * their positions relative to each other are identical before and after. Two
+ * consequences fall out of that and are worth stating, because they are why
+ * this is short:
+ *
+ *   · Members can never collide with EACH OTHER. They did not overlap at the
+ *     start and a common translation preserves that, so only non-members need
+ *     testing — which is exactly what passing the whole selection to
+ *     collidesWithAny expresses.
+ *   · The group either lands or it does not. There is no partial move where two
+ *     cards travel and the third stays: that would silently rearrange the very
+ *     relationship the operator selected them to preserve.
+ *
+ * Steps one cell at a time toward the target, dominant axis first, like
+ * resolveMove — so a group dragged into a wall slides along it instead of
+ * freezing, and the blocked axis stops while the free one keeps tracking. A
+ * step is taken only if EVERY member's candidate is legal.
+ *
+ * Null when the group cannot move at all; otherwise a patch of just the moved
+ * panels, ready to spread over the state.
+ */
+export function resolveGroupMove(
+	state: CanvasState,
+	ids: readonly string[],
+	targetDeltaCol: number,
+	targetDeltaRow: number,
+): CanvasState | null {
+	const members = ids.filter(id => state[id] !== undefined);
+	if (members.length === 0) return null;
+	if (members.length === 1) {
+		const only = state[members[0]!]!;
+		const moved = resolveMove(state, members[0]!, only.col + targetDeltaCol, only.row + targetDeltaRow);
+		return moved === null ? null : { [members[0]!]: moved };
+	}
+
+	const selection = new Set(members);
+	const rects = members.map(id => ({ id, rect: state[id]! }));
+
+	// Clamp the delta so the whole group stays on the grid: the leftmost member
+	// bounds how far left it can go, the rightmost how far right. Clamping the
+	// GROUP rather than each card is what keeps the formation rigid at an edge —
+	// per-card clamping would squash them together against the wall.
+	const minCol = Math.min(...rects.map(r => r.rect.col));
+	const maxRight = Math.max(...rects.map(r => r.rect.col + r.rect.colSpan));
+	const minRow = Math.min(...rects.map(r => r.rect.row));
+	const wantCol = Math.round(safeNum(targetDeltaCol, 0));
+	const wantRow = Math.round(safeNum(targetDeltaRow, 0));
+	const tc = Math.min(Math.max(wantCol, -minCol), GRID_COLS - maxRight);
+	const tr = Math.max(wantRow, -minRow);
+
+	let dc = 0;
+	let dr = 0;
+	const stepTo = (nextCol: number, nextRow: number): boolean => {
+		for (const { rect } of rects) {
+			const candidate: PanelRect = {
+				col: rect.col + nextCol, row: rect.row + nextRow,
+				colSpan: rect.colSpan, rowSpan: rect.rowSpan,
+			};
+			if (!inBounds(candidate)) return false;
+			if (collidesWithAny(state, selection, candidate)) return false;
+		}
+		dc = nextCol;
+		dr = nextRow;
+		return true;
+	};
+
+	// The pointer's own offset wins outright when it is legal — dragging a group
+	// OVER an obstacle onto free space beyond it works, same as one card.
+	if (!stepTo(tc, tr)) {
+		let moved = true;
+		while (moved && (dc !== tc || dr !== tr)) {
+			moved = false;
+			const dCol = Math.abs(tc - dc);
+			const dRow = Math.abs(tr - dr);
+			const colFirst = dCol >= dRow;
+			if (colFirst && dc !== tc && stepTo(dc + Math.sign(tc - dc), dr)) moved = true;
+			else if (dr !== tr && stepTo(dc, dr + Math.sign(tr - dr))) moved = true;
+			else if (colFirst && dc !== tc && stepTo(dc + Math.sign(tc - dc), dr)) moved = true;
+			else if (dc !== tc && stepTo(dc + Math.sign(tc - dc), dr)) moved = true;
+		}
+	}
+
+	if (dc === 0 && dr === 0) return null;
+	const patch: CanvasState = {};
+	for (const { id, rect } of rects) {
+		patch[id] = { col: rect.col + dc, row: rect.row + dr, colSpan: rect.colSpan, rowSpan: rect.rowSpan };
+	}
+	return patch;
 }
 
 
@@ -796,6 +907,17 @@ function removeStorage(key: string): void {
 export interface PanelCanvasController {
 	styleFor: (id: string) => Record<string, string>;
 	startMove: (id: string, event: PointerEvent) => void;
+	/**
+	 * Cards picked up together, moved rigidly by one drag on any member.
+	 * Reactive; never persisted — a selection is a gesture, not a setting.
+	 */
+	isSelected: (id: string) => boolean;
+	/** Add or remove one card from the pick-up (modifier-click on its grip). */
+	toggleSelected: (id: string) => void;
+	/** Put everything down — Escape, a drop, or a drag on a card outside it. */
+	clearSelection: () => void;
+	/** How many are held, so a surface can say so without reading the set. */
+	selectedCount: () => number;
 	startResize: (id: string, event: PointerEvent) => void;
 	reset: () => void;
 	/** Content layout direction for a panel that opts into the toggle
@@ -882,6 +1004,33 @@ export function createPanelCanvas(
 	// nothing else remembers where it was.
 	const parkedKey = `${storageKey}.parked`;
 	const [parked, setParked] = createSignal<CanvasState>(sanitizeCanvas(parseStoredCanvas(readStorage(parkedKey))));
+
+	/**
+	 * Cards picked up together. Deliberately NOT persisted: a selection is a
+	 * gesture in progress, and finding three cards still lit from yesterday
+	 * would be a puzzle, not a convenience. Cleared on drop, on Escape, and by
+	 * dragging something outside it.
+	 */
+	const [selected, setSelected] = createSignal<ReadonlySet<string>>(new Set<string>());
+	const isSelected = (id: string): boolean => selected().has(id);
+	const clearSelection = (): void => { if (selected().size > 0) setSelected(new Set<string>()); };
+	const toggleSelected = (id: string): void => {
+		const next = new Set(selected());
+		if (!next.delete(id)) next.add(id);
+		setSelected(next);
+	};
+	// Escape puts everything down. Installed with the controller rather than in
+	// each view, so a surface that renders a canvas cannot forget the only way
+	// out of a selection that is otherwise cleared solely by dragging.
+	// Guarded: this controller is constructed headless in node:test, where the
+	// whole point is to exercise the layout arithmetic without a DOM. An
+	// unguarded listener made four existing tests fail on `window is not
+	// defined` — the storage helpers in this file already take the same care.
+	if (typeof window !== "undefined") {
+		const onKeyDown = (e: KeyboardEvent): void => { if (e.key === "Escape") clearSelection(); };
+		window.addEventListener("keydown", onKeyDown);
+		onCleanup(() => window.removeEventListener("keydown", onKeyDown));
+	}
 	const persistParked = (next: CanvasState): void => {
 		setParked(next);
 		writeStorage(parkedKey, serializeCanvas(next));
@@ -975,7 +1124,20 @@ export function createPanelCanvas(
 		const unitPx = rowUnitPx();
 		let pointerX = event.clientX;
 		let pointerY = event.clientY;
+		// Dragging a card that is NOT in the selection means the operator has
+		// moved on — the old pick-up is abandoned rather than dragged along
+		// invisibly behind the card under the pointer.
+		if (!isSelected(id)) clearSelection();
+		// Frozen for the drag: the group is whatever was picked up when the
+		// pointer went down, so a selection change mid-drag cannot make cards
+		// join or leave the formation halfway across the canvas.
+		const group = isSelected(id) ? [...selected()] : [];
+		// Snapshotted with the group, for the same reason: every frame resolves
+		// the delta against where the cards STARTED. Resolving against the live
+		// state would compound each frame's move into the next one's baseline.
+		const groupOrigin = collidableState(id);
 		let lastValid = start;
+		let lastPatch: CanvasState | null = null;
 
 		// A move only ever commits a fully-valid candidate, so a run of
 		// rejected candidates (dragging toward a spot that's currently
@@ -1011,10 +1173,22 @@ export function createPanelCanvas(
 			// resolveMove slides per axis: a blocked component stops at the
 			// obstacle (or edge) while the free component keeps tracking the
 			// pointer — a diagonal never freezes the whole card.
-			const candidate = resolveMove(collidableState(id), id, start.col + deltaCol, start.row + deltaRow);
-			if (candidate) {
-				lastValid = candidate;
-				setState({ ...state(), [id]: candidate }); // live preview, not yet persisted
+			if (group.length > 1) {
+				// The whole formation, rigidly, or nothing — see resolveGroupMove.
+				// Resolved from the drag's ORIGIN state, not the live previewed
+				// one, so the delta is always measured against where the cards
+				// were picked up rather than accumulating frame over frame.
+				const patch = resolveGroupMove(groupOrigin, group, deltaCol, deltaRow);
+				if (patch) {
+					lastPatch = patch;
+					setState({ ...state(), ...patch }); // live preview, not yet persisted
+				}
+			} else {
+				const candidate = resolveMove(collidableState(id), id, start.col + deltaCol, start.row + deltaRow);
+				if (candidate) {
+					lastValid = candidate;
+					setState({ ...state(), [id]: candidate }); // live preview, not yet persisted
+				}
 			}
 			raf = requestAnimationFrame(tick);
 		};
@@ -1029,7 +1203,18 @@ export function createPanelCanvas(
 			spacer.remove();
 			window.removeEventListener("pointermove", onMove);
 			window.removeEventListener("pointerup", onUp);
-			persist({ ...state(), [id]: lastValid });
+			if (group.length > 1) {
+				// lastPatch may be null: a group picked up and put back down
+				// without ever finding a legal delta. Persist the state as it
+				// stands rather than an empty patch, so the drop is still a
+				// no-op and not a write of stale rects.
+				persist(lastPatch === null ? state() : { ...state(), ...lastPatch });
+				// The formation has landed. Keeping it lit would make the next
+				// unrelated drag pick all of them up again.
+				clearSelection();
+			} else {
+				persist({ ...state(), [id]: lastValid });
+			}
 		};
 		window.addEventListener("pointermove", onMove);
 		window.addEventListener("pointerup", onUp);
@@ -1194,7 +1379,11 @@ export function createPanelCanvas(
 		writeStorage(orientationStorageKey, serializeOrientationState(nextOrientation));
 	};
 
-	return { styleFor, startMove, startResize, reset, orientationFor, toggleOrientation, slotIds, ensureSlot, removeSlot, adoptLayout, resetSlot };
+	return {
+		styleFor, startMove, startResize, reset, orientationFor, toggleOrientation,
+		slotIds, ensureSlot, removeSlot, adoptLayout, resetSlot,
+		isSelected, toggleSelected, clearSelection, selectedCount: () => selected().size,
+	};
 }
 
 /**

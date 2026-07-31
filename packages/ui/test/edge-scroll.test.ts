@@ -91,12 +91,32 @@ import { fileURLToPath } from "node:url";
 const appCss = readFileSync(fileURLToPath(new URL("../src/app.css", import.meta.url)), "utf8");
 
 test("the hover ghost is sized by the same --edge-w the handler sets", () => {
-	const rule = /\[data-edge-scroll\]:hover\s*\{([^}]*)\}/.exec(appCss);
-	assert.ok(rule, "no [data-edge-scroll]:hover rule — the strips have no cue");
+	const rule = /\[data-edge-scroll\]\s*\{([^}]*)\}/.exec(appCss);
+	assert.ok(rule, "no [data-edge-scroll] rule — the strips have no cue");
 	const body = rule[1]!;
 	assert.match(body, /background-size:\s*var\(--edge-w[^;]*\)/,
 		"the ghost must take its width from --edge-w, not a literal");
 	// Fixed to the box, not to the scrolled content: a pseudo-element or a
 	// `local` attachment would slide away as the box scrolls.
 	assert.doesNotMatch(body, /background-attachment:\s*local/);
+	// Nothing to see until you are over the box.
+	assert.match(/\[data-edge-scroll\]:hover\s*\{([^}]*)\}/.exec(appCss)?.[1] ?? "", /--edge-ghost-a:\s*0?\.\d+/);
+});
+
+/**
+ * The strips and .panel-scroll-nub are both scroll affordances revealed on
+ * hover, so they must read as ONE cue. Copper in this app means state and
+ * controls; a copper scroll hint beside a blue one says they are different
+ * things when they are not.
+ */
+test("the ghost wears the same blue as the other scroll cue", () => {
+	const nub = /\.panel-scroll-nub\.up\s*\{([^}]*)\}/.exec(appCss);
+	assert.ok(nub, "no .panel-scroll-nub.up rule");
+	assert.match(nub[1]!, /var\(--accent-blue\)/, "the nub is expected to use --accent-blue");
+
+	const ghost = /\[data-edge-scroll\]\s*\{([^}]*)\}/.exec(appCss)![1]!;
+	// --accent-blue is #5aa9e6; the gradient needs rgba() to carry the alpha, so
+	// it restates the channels. Pinned so the two cannot drift to different blues.
+	assert.match(ghost, /rgba\(90,\s*169,\s*230,/, "the ghost is not --accent-blue's rgb");
+	assert.doesNotMatch(ghost, /rgba\(217,\s*133,\s*59/, "copper is for state, not for scroll hints");
 });

@@ -77,6 +77,10 @@ export function Panel(props: {
 	return (
 		<section
 			class={props.class ? `card panel ${props.class}` : "card panel"}
+			// Picked up: the card says so, not just its grip. A formation of three
+			// has to be readable as a formation from across the canvas, or you
+			// cannot tell what a drag is about to carry.
+			classList={{ picked: props.canvas.isSelected(props.id) }}
 			aria-label={props.ariaLabel}
 			data-panel-id={props.id}
 			style={props.canvas.styleFor(props.id)}
