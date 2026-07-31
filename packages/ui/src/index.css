@@ -44,6 +44,16 @@
 	--accent-blue: #5aa9e6;
 	--font-display: "Rajdhani", "Segoe UI", system-ui, sans-serif;
 	--font-body: system-ui, "Segoe UI", Roboto, sans-serif;
+	/* Added to EVERY font-size in the app, which is why every one of them is a
+	   calc(). There was no type scale — 108 literal px values between 9 and 22 —
+	   so a global change meant 108 edits and a global revert meant 108 more.
+	   One number now, and it is the only place text size changes.
+
+	   It does NOT resize anything else. Card floors follow on their own because
+	   they are measured from rendered content (contentRowSpan), but control
+	   heights and the fixed column tracks are literals and have to be checked
+	   against a bump — see --ctl-h and the *-col-* widths. */
+	--fs-bump: 2px;
 	--radius: 6px;
 
 	/* One control height for the whole UI. Every button, input and chip is
@@ -163,7 +173,7 @@ body {
 	background: var(--mask-900);
 	color: var(--silk);
 	font-family: var(--font-body);
-	font-size: 14px;
+	font-size: calc(14px + var(--fs-bump));
 	line-height: 1.45;
 	min-height: 100vh;
 }
