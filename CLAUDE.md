@@ -16,8 +16,10 @@ with no rework above the connector abstraction.
   .gz transparently). **Never gzip for DSF/SBC** — verified 2026-07-24 on
   a Duet 3 + SBC: DuetWebServer (Kestrel) neither compresses on the fly
   nor serves .gz transparently, so a .gz deploy 404s every asset. The
-  packager derives compression from the transport; see
-  docs/superpowers/specs/2026-07-24-deployment-packaging-design.md.
+  packager derives compression from the SERVING STACK (which server will
+  answer the browser), not from the transport that wrote the files —
+  re-seated 2026-07-31 so one protocol, e.g. FTP, can serve either mode;
+  see docs/superpowers/specs/2026-07-24-deployment-packaging-design.md.
 - No heavy component libraries. Hand-rolled CSS. (The old "under ~300KB
   gzipped" bundle target is **non-binding** — Gabe, 2026-07-24: "that size
   is not a problem at all". Measured: eager 96.9 KB gz, total 665 KB gz,

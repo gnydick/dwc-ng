@@ -1,9 +1,11 @@
 // DSF / SBC transport. Verified against a Duet 3 + SBC board 2026-07-24.
 //
-// Note on compression: this transport mints `gzip: false` and there is no way
-// to talk it out of that. Kestrel returns 404 for a transparent .gz fetch.
+// Note on compression: this transport declares `serves: "kestrel"`, and plain
+// bytes follow from that — Kestrel returns 404 for a transparent .gz fetch.
+// There is no way to talk it out of that, because it never states a
+// compression mode at all; compressionFor does, from the stack.
 
-import { mintCompression, type FetchedResource, type Transport } from "./transport.ts"
+import { type FetchedResource, type Transport } from "./transport.ts"
 
 const filesEndpoint = (base: string, boardPath: string): string =>
 	`${base.replace(/\/$/, "")}/machine/file/${encodeURIComponent(boardPath)}`
@@ -11,8 +13,7 @@ const filesEndpoint = (base: string, boardPath: string): string =>
 export function dsfTransport(baseUrl: string): Transport {
 	const base = baseUrl.replace(/\/$/, "")
 	return {
-		kind: "dsf",
-		compression: mintCompression(false),
+		serves: "kestrel",
 
 		async put(boardPath, bytes) {
 			const res = await fetch(filesEndpoint(base, boardPath), {
