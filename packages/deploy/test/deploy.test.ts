@@ -18,17 +18,24 @@ const ALL_STACKS: ServingStack[] = ["rrf-embedded", "kestrel"]
 const ENTRY_HTML =
 	'<!doctype html><html><head><script type="module" crossorigin src="/ng/assets/index-abc.js"></script></head><body><div id="app"></div></body></html>'
 
+/** What Vite emits when built with the default base — root mode's input. */
+const ROOT_ENTRY_HTML =
+	'<!doctype html><html><head><script type="module" crossorigin src="/assets/index-abc.js"></script></head><body><div id="app"></div></body></html>'
+
 /** A miniature dist/ shaped like the real one, sourcemaps included. */
-async function makeDist(): Promise<string> {
+async function makeDist(html: string = ENTRY_HTML): Promise<string> {
 	const dir = await mkdtemp(join(tmpdir(), "dwc-ng-dist-"))
 	await mkdir(join(dir, "assets"), { recursive: true })
-	await writeFile(join(dir, "index.html"), ENTRY_HTML)
+	await writeFile(join(dir, "index.html"), html)
 	await writeFile(join(dir, "assets", "index-abc.js"), "export const x = 1\n")
 	await writeFile(join(dir, "assets", "index-abc.js.map"), '{"version":3}')
 	await writeFile(join(dir, "assets", "style.css"), ".a{color:red}")
 	await writeFile(join(dir, "favicon.svg"), "<svg/>")
 	return dir
 }
+
+/** A dist built with `DWC_BASE=/`, deployed as its own HTTP root. */
+const rootDist = (): Promise<string> => makeDist(ROOT_ENTRY_HTML)
 
 test("index.html becomes ng.html; everything else nests under ng/", async () => {
 	const files = await buildManifest(await makeDist(), { name: "ng", serves: "kestrel" })
@@ -44,6 +51,75 @@ test("the entry lives at 0:/www/ng.html, not inside the ng/ directory", async ()
 	const files = await buildManifest(await makeDist(), { name: "ng", serves: "kestrel" })
 	const entry = files.find(f => f.url === "/ng.html")
 	assert.equal(entry?.board, "0:/www/ng.html")
+})
+
+test("root layout keeps index.html as index.html, with assets beside it", async () => {
+	// M505.1 P"0:/ng" makes the deployment its own HTTP root, so the SPA
+	// fallback that forced the ng.html trick is no longer in the way: the
+	// server's own default document does the job.
+	const files = await buildManifest(await rootDist(), {
+		name: "ng", serves: "kestrel", layout: "root",
+	})
+	assert.deepEqual(
+		files.map(f => f.url).sort(),
+		["/assets/index-abc.js", "/assets/style.css", "/favicon.svg", "/index.html"],
+	)
+})
+
+test("root layout lives at 0:/ng, outside the directory a DWC update rewrites", async () => {
+	const files = await buildManifest(await rootDist(), {
+		name: "ng", serves: "kestrel", layout: "root",
+	})
+	assert.equal(files.find(f => f.url === "/index.html")?.board, "0:/ng/index.html")
+	assert.equal(files.find(f => f.url === "/assets/style.css")?.board, "0:/ng/assets/style.css")
+})
+
+test("a dist built for /ng/ cannot be deployed as a root, and vice versa", async () => {
+	// The build base and the deploy layout have to agree, and until now nothing
+	// checked: `pnpm ship` without DWC_BASE produced a deployment whose every
+	// asset URL was wrong, and the first sign of it was a blank page on the
+	// board. Caught here, before a byte is uploaded, naming the fix.
+	const sidecarBuild = await makeDist()
+	const rootBuild = await rootDist()
+	await assert.rejects(
+		() => buildManifest(sidecarBuild, { name: "ng", serves: "kestrel", layout: "root" }),
+		/DWC_BASE/,
+	)
+	await assert.rejects(
+		() => buildManifest(rootBuild, { name: "ng", serves: "kestrel", layout: "sidecar" }),
+		/DWC_BASE/,
+	)
+})
+
+test("a root deploy verifies, prunes and uninstalls within 0:/ng", async () => {
+	const dist = await rootDist()
+	// The fake's wwwRoot is what the SERVER serves from, which is exactly what
+	// M505.1 P"0:/ng" changes. Verification is therefore testing the same thing
+	// the board will: that our index.html is what answers "/".
+	const t = fakeTransport({ wwwRoot: "0:/ng" })
+	await deploy(dist, t, { name: "ng", layout: "root" }) // throws if verification fails
+
+	const stale = "0:/ng/assets/math.color-OLDHASH.js"
+	await t.put(stale, new TextEncoder().encode("old babylon"))
+	const result = await deploy(dist, t, { name: "ng", layout: "root" })
+	assert.deepEqual(result.pruned, [stale])
+
+	await uninstall(t, { name: "ng", layout: "root" })
+	assert.equal(t.files.size, 0)
+})
+
+test("a root deploy leaves stock DWC's files alone", async () => {
+	// Nothing is served from 0:/www while the root is 0:/ng, but the files must
+	// still be THERE — reverting is M505.1 P"0:/www" and nothing else.
+	const dist = await rootDist()
+	const t = fakeTransport({ wwwRoot: "0:/ng" })
+	await t.put("0:/www/index.html", new TextEncoder().encode("DWC"))
+	await t.put("0:/www/js/app.js", new TextEncoder().encode("DWC js"))
+	await deploy(dist, t, { name: "ng", layout: "root" })
+	await deploy(dist, t, { name: "ng", layout: "root" })
+	await uninstall(t, { name: "ng", layout: "root" })
+	assert.ok(t.files.has("0:/www/index.html"), "stock DWC index was deleted")
+	assert.ok(t.files.has("0:/www/js/app.js"), "stock DWC asset was deleted")
 })
 
 test("sourcemaps never reach the board", async () => {
@@ -172,6 +248,15 @@ test("cli rejects a bad mode and a missing target", () => {
 	assert.equal(args.mode, "dsf")
 	assert.equal(args.name, "ng")
 	assert.equal(args.dryRun, true)
+})
+
+test("cli defaults to the root layout and rejects an unknown one", () => {
+	assert.equal(parseArgs(["--target", "http://x"]).layout, "root")
+	assert.equal(parseArgs(["--target", "http://x", "--layout", "sidecar"]).layout, "sidecar")
+	assert.throws(
+		() => parseArgs(["--target", "http://x", "--layout", "beside"]),
+		/--layout must be/,
+	)
 })
 
 test("a redeploy PRUNES the previous build's orphaned chunks", async () => {

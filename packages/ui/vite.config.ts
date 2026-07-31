@@ -59,8 +59,17 @@ const MOCK_TARGET = 'http://127.0.0.1:8970'
 
 // Asset paths are baked into index.html at BUILD time, so a deployment that
 // lives under a subdirectory cannot be produced by moving files afterwards —
-// it has to be built with the right base. Side-by-side deploys next to stock
-// DWC use `DWC_BASE=/ng/ pnpm build`; see packages/deploy.
+// it has to be built with the right base.
+//
+// THE DEFAULT IS NOW CORRECT for the normal deploy. `--layout root` points the
+// board's HTTP server at the deployment itself (`M505.1 P"0:/ng"`), so the app
+// is served from `/` and needs no DWC_BASE at all. Set `DWC_BASE=/ng/` only for
+// `--layout sidecar`, which nests inside stock DWC's root and is kept for
+// boards without M505.1.
+//
+// The pairing is not left to memory: packages/deploy reads the base back out of
+// the built index.html and refuses to upload a dist whose base contradicts the
+// layout, before a byte is sent.
 //
 // VALIDATED, not trusted. A base is a URL path, and every shell on the way
 // here is entitled to disagree: Git Bash on Windows applies MSYS path

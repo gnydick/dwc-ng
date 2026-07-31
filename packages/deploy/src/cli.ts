@@ -1,9 +1,11 @@
 // pnpm ship --target http://duet3.local [--mode dsf|poll] [--name ng]
+//             [--layout root|sidecar] [--www-root 0:/ng]
 //             [--dist ../ui/dist] [--dry-run] [--uninstall]
 
 import { fileURLToPath, pathToFileURL } from "node:url"
 import { dirname, resolve } from "node:path"
 import { deploy, uninstall } from "./deploy.ts"
+import { entryUrl, type Layout } from "./manifest.ts"
 import { dsfTransport } from "./dsfTransport.ts"
 import { pollTransport } from "./pollTransport.ts"
 import { compressionFor, type Transport } from "./transport.ts"
@@ -12,9 +14,12 @@ export type CliArgs = {
 	readonly target: string
 	readonly mode: "dsf" | "poll"
 	readonly name: string
+	readonly layout: Layout
+	readonly wwwRoot?: string
 	readonly dist: string
 	readonly dryRun: boolean
 	readonly uninstall: boolean
+	readonly bootstrap: boolean
 }
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -37,13 +42,25 @@ export function parseArgs(argv: readonly string[]): CliArgs {
 		throw new Error(`--mode must be "dsf" or "poll", got "${mode}"`)
 	}
 
+	// Root is the default: the deployment is its own document root, reached by
+	// pointing the server at it once with M505.1. Sidecar stays available for a
+	// board where that command is absent — it is documented as temporary.
+	const layout = flag("layout") ?? "root"
+	if (layout !== "root" && layout !== "sidecar") {
+		throw new Error(`--layout must be "root" or "sidecar", got "${layout}"`)
+	}
+
+	const wwwRoot = flag("www-root")
 	return {
 		target,
 		mode,
 		name: flag("name") ?? "ng",
+		layout,
+		...(wwwRoot === undefined ? {} : { wwwRoot }),
 		dist: flag("dist") ?? DEFAULT_DIST,
 		dryRun: has("dry-run"),
 		uninstall: has("uninstall"),
+		bootstrap: has("bootstrap"),
 	}
 }
 
@@ -76,20 +93,37 @@ async function main(): Promise<void> {
 		args.mode === "dsf" ? dsfTransport(args.target) : pollTransport(args.target)
 
 	if (args.uninstall) {
-		await uninstall(transport, { name: args.name })
-		console.log(`removed ${args.name}.html and ${args.name}/ from ${args.target}`)
+		await uninstall(transport, {
+			name: args.name,
+			layout: args.layout,
+			...(args.wwwRoot === undefined ? {} : { wwwRoot: args.wwwRoot }),
+		})
+		console.log(`removed the ${args.layout} deployment of ${args.name} from ${args.target}`)
+		if (args.layout === "root") {
+			console.log(`note: point the server back at stock DWC with  M505.1 P"0:/www"`)
+		}
 		return
 	}
 
 	console.log(
 		`${args.dryRun ? "dry run" : "deploying"} ${args.dist}\n` +
-			`  -> ${args.target}  (${args.mode}, ` +
+			`  -> ${args.target}  (${args.mode}, ${args.layout} layout, ` +
 			`${compressionFor(transport.serves).gzip ? "gzipped" : "plain"})`,
 	)
 
 	const result = await deploy(args.dist, transport, {
 		name: args.name,
+		layout: args.layout,
+		...(args.wwwRoot === undefined ? {} : { wwwRoot: args.wwwRoot }),
 		dryRun: args.dryRun,
+		// THE FIRST ROOT DEPLOY ONLY, and it is a genuine chicken-and-egg rather
+		// than an escape hatch: verification asks whether the SERVER serves our
+		// bytes at "/", which cannot be true until M505.1 points the root at this
+		// directory — and M505.1 errors if the directory does not exist yet. So
+		// the files have to land unverified exactly once. Named for the situation
+		// rather than offered as a general --skip-verify, because every other
+		// deploy must keep proving itself.
+		skipVerify: args.bootstrap,
 		onProgress: (file, action) => {
 			if (action === "upload") console.log(`  + ${file.url} (${kb(file.bytes.length)})`)
 		},
@@ -99,8 +133,18 @@ async function main(): Promise<void> {
 		`\n${args.dryRun ? "would upload" : "uploaded"} ${result.uploaded.length} file(s), ` +
 			`${kb(result.bytes)}; skipped ${result.skipped.length} unchanged`,
 	)
+	const entryPath = entryUrl(args.name, args.layout)
+	if (args.bootstrap && !args.dryRun) {
+		console.log(
+			`\nNOT VERIFIED — bootstrap run. The files are on the card; nothing serves\n` +
+				`them yet. Point the board at them, then deploy again to prove it:\n` +
+				`  M505.1 P"${args.wwwRoot ?? "0:/ng"}"\n` +
+				`  pnpm ship --target ${args.target} --mode ${args.mode}`,
+		)
+		return
+	}
 	if (!args.dryRun) {
-		console.log(`verified: ${args.target}/${args.name}.html serves the deployed bytes`)
+		console.log(`verified: ${args.target}${entryPath} serves the deployed bytes`)
 		// The board caches the entry document. DuetWebServer sends
 		// `cache-control: public,max-age=3600,must-revalidate` for it, and
 		// must-revalidate only bites once the hour is up — so for an hour after
@@ -115,7 +159,7 @@ async function main(): Promise<void> {
 		// otherwise indistinguishable from a deploy that did not work.
 		const entry = entryHash(result.uploaded.concat(result.skipped))
 		if (entry !== null) console.log(`build: ${entry}  (shown in the app's rail footer)`)
-		console.log(`note: an already-open tab may hold ${args.name}.html for up to an hour — hard-reload it`)
+		console.log(`note: an already-open tab may hold ${entryPath} for up to an hour — hard-reload it`)
 	}
 }
 

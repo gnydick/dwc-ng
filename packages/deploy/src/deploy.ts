@@ -5,7 +5,7 @@
 // anywhere on the route, so there is no call site at which the bytes written and
 // the server that must read them can disagree.
 
-import { buildManifest, type DeployFile } from "./manifest.ts"
+import { assetDir, buildManifest, ownedPaths, type DeployFile, type Layout } from "./manifest.ts"
 import type { Transport } from "./transport.ts"
 import { verify } from "./verify.ts"
 
@@ -16,6 +16,7 @@ export type DeployOptions = {
 	/** Skip the post-deploy proof. Only for dry runs and tests. */
 	readonly skipVerify?: boolean
 	readonly wwwRoot?: string
+	readonly layout?: Layout
 	readonly onProgress?: (file: DeployFile, action: "upload" | "skip") => void
 }
 
@@ -35,9 +36,11 @@ export async function deploy(
 	transport: Transport,
 	opts: DeployOptions,
 ): Promise<DeployResult> {
+	const layout = opts.layout ?? "sidecar"
 	const manifest = await buildManifest(distDir, {
 		name: opts.name,
 		serves: transport.serves,
+		layout,
 		...(opts.wwwRoot === undefined ? {} : { wwwRoot: opts.wwwRoot }),
 	})
 
@@ -72,31 +75,36 @@ export async function deploy(
 	// Only the deployment's own asset directory is swept: a name not in this
 	// manifest is by definition from an older build of it. Nothing outside is
 	// touched, so stock DWC is never at risk.
-	const wwwRoot = opts.wwwRoot ?? "0:/www"
-	const assetDir = `${wwwRoot}/${opts.name}/assets`
+	const dir = assetDir(opts.name, layout, opts.wwwRoot)
 	const keep = new Set(
-		manifest.filter(f => f.board.startsWith(`${assetDir}/`)).map(f => f.board.slice(assetDir.length + 1)),
+		manifest.filter(f => f.board.startsWith(`${dir}/`)).map(f => f.board.slice(dir.length + 1)),
 	)
 	const pruned: string[] = []
-	for (const name of await transport.list(assetDir)) {
+	for (const name of await transport.list(dir)) {
 		if (keep.has(name)) continue
-		pruned.push(`${assetDir}/${name}`)
-		if (!opts.dryRun) await transport.remove(`${assetDir}/${name}`)
+		pruned.push(`${dir}/${name}`)
+		if (!opts.dryRun) await transport.remove(`${dir}/${name}`)
 	}
 
 	if (!opts.dryRun && opts.skipVerify !== true) {
-		await verify(transport, manifest, { name: opts.name })
+		await verify(transport, manifest, { name: opts.name, layout })
 	}
 
 	return { uploaded, skipped, pruned, bytes }
 }
 
-/** Remove a deployment: the entry document and everything under its directory. */
+/**
+ * Remove a deployment: everything it owns, and nothing else.
+ *
+ * The paths come from ownedPaths rather than being spelled out here, so an
+ * uninstall cannot reach somewhere a deploy never wrote — in sidecar that means
+ * never handing `0:/www` itself to remove(), which would take stock DWC with it.
+ */
 export async function uninstall(
 	transport: Transport,
-	opts: { readonly name: string; readonly wwwRoot?: string },
+	opts: { readonly name: string; readonly wwwRoot?: string; readonly layout?: Layout },
 ): Promise<void> {
-	const wwwRoot = opts.wwwRoot ?? "0:/www"
-	await transport.remove(`${wwwRoot}/${opts.name}.html`)
-	await transport.remove(`${wwwRoot}/${opts.name}`)
+	for (const path of ownedPaths(opts.name, opts.layout ?? "sidecar", opts.wwwRoot)) {
+		await transport.remove(path)
+	}
 }

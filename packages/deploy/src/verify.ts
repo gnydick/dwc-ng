@@ -7,10 +7,15 @@
 // nothing at all would "pass" a 200 check while the machine still served the
 // old UI. Everything below therefore checks CONTENT, not status.
 
-import { entryUrl, type DeployFile } from "./manifest.ts"
+import { entryUrl, parseEntryScript, type DeployFile, type Layout } from "./manifest.ts"
 import type { Transport } from "./transport.ts"
 
-export type VerifyOptions = { readonly name: string }
+// Re-exported, not redefined: buildManifest needs the same parse to check the
+// baked-in base before uploading, and two copies of "where is the entry script"
+// would be one copy too many.
+export { parseEntryScript }
+
+export type VerifyOptions = { readonly name: string; readonly layout?: Layout }
 
 /** Content types a browser will execute as a module. */
 const isJavaScript = (contentType: string): boolean =>
@@ -18,12 +23,6 @@ const isJavaScript = (contentType: string): boolean =>
 
 const bytesEqual = (a: Uint8Array, b: Uint8Array): boolean =>
 	a.length === b.length && a.every((byte, i) => byte === b[i])
-
-/** Pull the entry module's src out of the built index.html. */
-export function parseEntryScript(html: string): string | null {
-	const match = /<script[^>]*\bsrc="([^"]+)"/i.exec(html)
-	return match?.[1] ?? null
-}
 
 /**
  * Verify a deployment, throwing on the first failure.
@@ -36,9 +35,10 @@ export async function verify(
 	manifest: readonly DeployFile[],
 	opts: VerifyOptions,
 ): Promise<void> {
-	const entry = manifest.find(f => f.url === entryUrl(opts.name))
+	const url = entryUrl(opts.name, opts.layout ?? "sidecar")
+	const entry = manifest.find(f => f.url === url)
 	if (entry === undefined) {
-		throw new Error(`manifest has no entry document at ${entryUrl(opts.name)}`)
+		throw new Error(`manifest has no entry document at ${url}`)
 	}
 
 	// 1. The entry document must be OURS, byte for byte.
