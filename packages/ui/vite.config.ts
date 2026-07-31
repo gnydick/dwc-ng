@@ -1,6 +1,37 @@
 import { defineConfig, loadEnv, type ProxyOptions } from 'vite'
 import solid from 'vite-plugin-solid'
 import { fileURLToPath } from 'node:url'
+import { execFileSync } from 'node:child_process'
+
+/**
+ * WHICH SOURCE this bundle was built from, for the rail footer.
+ *
+ * The content hash beside it answers "are these two tabs running the same
+ * code"; it cannot answer "what am I looking at", because no hash maps back to
+ * a commit you can `git show`. Both are needed and they are different
+ * questions.
+ *
+ * The `-dirty` suffix is the point, not a nicety. A bare SHA on a build made
+ * from an edited tree names a commit that does NOT contain the code running —
+ * the stamp would be confidently wrong, which is worse than absent. Anything
+ * that goes wrong here degrades to a visible marker rather than a plausible
+ * lie: no git, no repo, git missing from PATH all end up as "nogit".
+ */
+function gitCommit(): string {
+  const git = (...args: string[]): string =>
+    execFileSync('git', args, { cwd: repoRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()
+  try {
+    // Scoped to what can actually reach the bundle. Unscoped, editing a README
+    // or an audit note marked the build dirty — and a flag that is on for
+    // changes which cannot affect the code is one you stop reading, which
+    // costs you exactly the time it is supposed to save. Untracked files do
+    // not count either: they are not in the bundle.
+    const dirty = git('status', '--porcelain', '--untracked-files=no', '--', 'packages/ui', 'pnpm-lock.yaml')
+    return git('rev-parse', '--short', 'HEAD') + (dirty === '' ? '' : '-dirty')
+  } catch {
+    return 'nogit'
+  }
+}
 
 // .env / .env.local live at the REPO ROOT, but vite runs with cwd =
 // packages/ui — so loadEnv(mode, process.cwd()) looked in the wrong directory
@@ -150,7 +181,21 @@ export default defineConfig(({ mode }) => {
     define: {
       __DWC_TRANSPORT__: JSON.stringify(transport ?? null),
     },
-    plugins: [solid()],
+    plugins: [
+      solid(),
+      // The commit goes in a META TAG, not a `define`. define is evaluated once
+      // when the dev server boots, so the stamp froze at whatever the tree was
+      // then and went on claiming it for the rest of the session — a stale SHA
+      // presented as current, which is the exact lie the -dirty suffix exists to
+      // prevent. transformIndexHtml runs per REQUEST in dev, so a reload always
+      // re-reads git; in a build it runs once, over the tree being built.
+      {
+        name: 'dwc-git-commit',
+        transformIndexHtml: () => [
+          { tag: 'meta', attrs: { name: 'dwc-commit', content: gitCommit() }, injectTo: 'head' as const },
+        ],
+      },
+    ],
     server: {
       host: true, // listen on all interfaces, not just localhost
       allowedHosts,
