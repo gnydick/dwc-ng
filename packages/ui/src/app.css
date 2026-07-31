@@ -426,7 +426,10 @@
 
 .console-panel .console-history { flex: 1; max-height: none; min-height: 0; margin-bottom: 8px; }
 .console-panel { display: flex; flex-direction: column; }
-.cam-panel .cam-body { flex: 1; min-height: 0; }
+/* No min-height here. It used to restate `0`, and being the more specific
+   selector it beat the floor .cam-body declares — so the floor lives in one
+   place and this rule only says the body takes the slack. */
+.cam-panel .cam-body { flex: 1; }
 .cam-panel { display: flex; flex-direction: column; }
 
 .layout-toolbar { display: flex; justify-content: flex-end; margin-bottom: 8px; }
@@ -920,7 +923,11 @@
    single 90px cell, so the card could collapse to a column of slivers. 306px =
    three cells plus their gaps (90x3 + 18x2) — wide enough that it still reads
    as a strip of tools rather than a list. */
-.heat-h-row { display: flex; flex-wrap: wrap; gap: 18px; min-width: 306px; }
+/* nowrap, like every other row in the app. The landscape layout was the last
+   place content still re-flowed: the per-tool cells wrapped, so the card
+   appeared to "fit" at any width while silently rearranging itself, and the
+   measured minimum was whatever arrangement it happened to be in. */
+.heat-h-row { display: flex; flex-wrap: nowrap; gap: 18px; min-width: 306px; }
 .heat-h-cell { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 90px; }
 .heat-h-meta {
 	display: flex;
@@ -1116,7 +1123,14 @@
 
 .cam-body {
 	flex: 1;
-	min-height: 0;
+	/* A viewport, like .gcode-viewer: the image scales to whatever it is given,
+	   so no content measurement produces this number and the card must state it.
+	   Declared `0` until 2026-07-30, which put the whole tile OUTSIDE the card's
+	   own minimum — contentRowSpan substitutes a grow child's declared floor for
+	   its rendered height, so the body counted for nothing and the card could be
+	   dragged shut over its own picture. Same 100px as the toolpath viewer: the
+	   point below which a camera frame stops being worth looking at. */
+	min-height: 100px;
 	background: radial-gradient(120% 90% at 65% 30%, #16283f 0%, #0a1220 70%);
 	display: grid;
 	place-items: center;
@@ -1359,7 +1373,16 @@
 	display: flex;
 	flex-direction: column;
 	flex: 1 1 0;
-	min-height: 0;
+	/* NOT 0. contentRowSpan counts a slack-absorbing child as its DECLARED
+	   floor, so a zero here made the whole card's stop header-only and Jobs,
+	   Macros and System files could all be dragged over their own breadcrumbs
+	   and file-management buttons — the same shape as the chart and the
+	   toolpath viewport. Measured: crumbs 18 + tools 30 (its own declared min)
+	   + message line 16 + their margins, plus two list rows so the thing is
+	   still a file browser and not just a toolbar. Nothing inside can state
+	   this — the list is deliberately allowed to shrink to nothing so it can
+	   scroll — so the container has to. */
+	min-height: 140px;
 }
 .file-list::-webkit-scrollbar { display: none; }
 .file-row {
@@ -1436,7 +1459,22 @@
    shortened by a single pixel (measured: rowStop 180 against a span of 180).
    flex 1 1 0 with min-height 0 breaks the loop — the height now comes from the
    flex line, which comes from the card. */
-.gcode-viewer { position: relative; flex: 1 1 0; min-height: 0; width: 100%; }
+/* A REAL floor on both axes. This declared 0 so the card could collapse to its
+   header like any other — but the viewport carries absolutely-positioned
+   overlay controls, and absolute children contribute nothing to the
+   measurement, so a zero here let the card be dragged straight over its own
+   buttons. Measured: the mode stack bottoms out at 89px (travel group at
+   top 64 + 25 high), so 100 clears it with the same 8px inset it has at the
+   top; and the colour group ends at x=185 while the right-hand groups are 168
+   wide and right-anchored, so below ~361 they overlap — 364 on the 4px
+   quantum. Nothing inside can state these, so the container must. */
+.gcode-viewer {
+	position: relative;
+	flex: 1 1 0;
+	min-height: 100px;
+	min-width: 364px;
+	width: 100%;
+}
 /* Absolutely positioned, so the bitmap contributes NOTHING to intrinsic size.
    The same reason .temp-chart-plot needs contain: inline-size — a canvas will
    otherwise report the pixels it happens to have as a size it requires. */
@@ -1586,16 +1624,22 @@
 	display: flex;
 	flex-direction: row;
 	align-items: stretch;
-	gap: 12px;
+	/* --ctl-gap, not 12: the legend NAMES the traces beside it, so the two read
+	   as one figure rather than two blocks. Tracks density like everything else. */
+	gap: var(--ctl-gap);
 	/* The honest floor: legend + a plot still worth looking at. */
 	min-width: 280px;
 	overflow: hidden;
 	/* Take the card's leftover HEIGHT. The plot used to be a fixed 220px with
 	   dead space under it however tall the card was; now the data area grows
-	   with the card. min-height 0 so this can also shrink — a flex item's
-	   default min-height: auto would floor it at its content. */
+	   with the card. NOT min-height 0: contentRowSpan counts a slack-absorbing
+	   child as its DECLARED floor, so a zero here made the whole card's stop
+	   header-only and it could be dragged over the entire chart. The toolpath
+	   viewport and the console log declare 0 deliberately — they are meant to
+	   collapse to the header. This one is not: it has a legend and a plot that
+	   both have real minimums, so it states the plot's own floor. */
 	flex: 1 1 0;
-	min-height: 0;
+	min-height: 120px;
 }
 /* Only the DATA AREA scales. The legend keeps its natural height at the top of
    the row and never stretches with it. */
@@ -1642,6 +1686,12 @@
 	flex-direction: column;
 	gap: 4px;
 }
+/* The x-series row — uPlot's first legend row, which carries the timestamp at
+   the cursor. Hidden: the chart's x axis already reads in time, so this row
+   restated it in a place reserved for the series you are actually reading, and
+   it is the widest thing in the legend (a full date) setting that column's
+   width for nothing. */
+.temp-chart-legend .u-legend tr:first-child { display: none; }
 .temp-chart-legend .u-legend tr { display: flex; align-items: center; }
 .temp-chart-legend .u-legend .u-label { color: var(--silk); white-space: nowrap; }
 .temp-chart-legend .u-legend .u-value { color: var(--silk); font-variant-numeric: tabular-nums; }
@@ -2004,7 +2054,7 @@
 	border-top: none;
 	padding-top: 0;
 }
-.heater-list.horizontal { flex-direction: row; flex-wrap: wrap; gap: 16px; }
+.heater-list.horizontal { flex-direction: row; flex-wrap: nowrap; gap: 16px; }
 .heater-list.horizontal .heater-ctl { flex-direction: column; align-items: flex-start; gap: 6px; }
 .heater-list.horizontal .heater-ctl .btn-cluster { margin-left: 0; }
 
