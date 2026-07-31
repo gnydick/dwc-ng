@@ -21,6 +21,9 @@ export interface CardCtx extends AppServices {
 	/** This slot's content-layout direction (only meaningful for cards that
 	 *  declare orientationToggle). */
 	orientation: () => Orientation;
+	/** Whether this slot shows its label column/row (only meaningful for cards
+	 *  that declare labelsToggle). Cards read it; they never own it. */
+	labels: () => boolean;
 	/**
 	 * Reach a shared service (compose/services.ts). First access provisions it
 	 * for this screen; every later access — from any card — returns the same

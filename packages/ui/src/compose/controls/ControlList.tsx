@@ -126,7 +126,9 @@ export function ControlList(props: { spec: CompiledControlSpec; ctx: CardCtx }) 
 				const feed = (): number => inputs[node.feed] ?? 0;
 				return (
 					<div class="jog-row">
-						<span class="ctl-name">{letter()}<Show when={role()}>{r => <small>{r()}</small>}</Show></span>
+						<Show when={props.ctx.labels()}>
+							<span class="ctl-name">{letter()}<Show when={role()}>{r => <small>{r()}</small>}</Show></span>
+						</Show>
 						<GcodeButton label={`− ${step()}`} command={cmd.jog(letter(), -step(), feed())} stamp={false} />
 						<GcodeButton label={`+ ${step()}`} command={cmd.jog(letter(), step(), feed())} stamp={false} />
 					</div>
@@ -143,7 +145,7 @@ export function ControlList(props: { spec: CompiledControlSpec; ctx: CardCtx }) 
 					node.sub === undefined ? "" : resolveTemplate(node.sub, scopeWith(p.vars));
 				return (
 					<div class={node.class ?? "ctl-wrap"}>
-						<Show when={rowLabel()}>
+						<Show when={props.ctx.labels() && rowLabel()}>
 							<span class="ctl-name">{rowLabel()}<Show when={rowSub()}>{s => <small>{s()}</small>}</Show></span>
 						</Show>
 						<For each={node.items}>

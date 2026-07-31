@@ -58,6 +58,7 @@ export function ComposedScreen(props: { screenId: string }) {
 		...app,
 		connected,
 		orientation: () => canvas.orientationFor(id),
+		labels: () => canvas.labelsFor(id),
 		service,
 	});
 

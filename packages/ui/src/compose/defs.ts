@@ -34,6 +34,10 @@ export interface CardMeta {
 	tip?: CardText;
 	class?: string;
 	orientationToggle?: boolean;
+	/** Offer the hide-labels toggle. For cards whose label cells restate what
+	 *  the control beside them already says (Homing's axis letters, Movement's
+	 *  jog names). */
+	labelsToggle?: boolean;
 	/** THE natural geometry (I4). */
 	size: CardSize;
 	/** THE visibility predicate (I3). Absent = always visible. */
@@ -167,6 +171,9 @@ export const CARD_DEFS = {
 		title: "Homing",
 		ariaLabel: "Homing",
 		tip: "G28 · G32 · M84",
+		// The axis letter beside a Home button that already reads "Home X" is
+		// the redundancy this toggle exists for.
+		labelsToggle: true,
 		// Sized for the DEFAULT pitch (1.27) with 7 axes plus the machine-wide
 		// row — 338px of content + 36px head + 22px of frame, rounded onto the
 		// 4px quantum. A tighter pitch leaves slack, which the operator can
@@ -212,6 +219,10 @@ export const CARD_DEFS = {
 		title: "Movement",
 		ariaLabel: "Movement",
 		tip: "M120 · G91 · M121",
+		// Same redundancy as Homing: the axis letter sits beside a −/+ pair that
+		// already carries it. Worth more here, where the letters are a whole
+		// column down the left of the jog rows.
+		labelsToggle: true,
 		// 156x123 -> 99x76, and NOT the 156 the cards around it use: this one
 		// stopped being a quarter-canvas card when the step bank moved out of a
 		// full-width row above the jog table and into a column beside it. Both

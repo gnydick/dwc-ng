@@ -12,9 +12,25 @@ export function PanelTools(props: {
 	canvas: PanelCanvasController;
 	ariaLabel: string;
 	orientationToggle?: boolean;
+	labelsToggle?: boolean;
 }) {
 	return (
 		<div class="panel-tools">
+			<Show when={props.labelsToggle}>
+				<button
+					type="button"
+					class="panel-labels-toggle"
+					aria-pressed={!props.canvas.labelsFor(props.id)}
+					title={props.canvas.labelsFor(props.id) ? "Hide the label column" : "Show the label column"}
+					aria-label={`Toggle ${props.ariaLabel} labels`}
+					onClick={() => props.canvas.toggleLabels(props.id)}
+				>
+					{/* The glyph names the STATE, like the orientation toggle beside
+					    it: a tag when labels are showing, a struck tag when they are
+					    not. */}
+					{props.canvas.labelsFor(props.id) ? "🏷" : "🏷̸"}
+				</button>
+			</Show>
 			<Show when={props.orientationToggle}>
 				<button
 					type="button"

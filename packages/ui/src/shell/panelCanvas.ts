@@ -951,6 +951,17 @@ export interface PanelCanvasController {
 	 *  (Panel's orientationToggle prop) — "vertical" for anything never set. */
 	orientationFor: (id: string) => Orientation;
 	toggleOrientation: (id: string) => void;
+	/**
+	 * Whether this slot shows its LABEL column/row — the axis letters beside a
+	 * Homing row, the names beside a jog pad. True for anything never toggled.
+	 *
+	 * A label is redundant the moment the control beside it already says the
+	 * same thing, and on a machine you use every day that redundancy is width
+	 * you paid for once and read never. Per-slot, because the same card can be
+	 * self-evident on one screen and unlabelled-and-confusing on another.
+	 */
+	labelsFor: (id: string) => boolean;
+	toggleLabels: (id: string) => void;
 	/** Ids currently tracked (reactive). */
 	slotIds: () => string[];
 	/** Adopt a slot added after mount (composition editing) at the given rect;
@@ -1088,6 +1099,27 @@ export function createPanelCanvas(
 		setState(next);
 		writeStorage(storageKey, serializeCanvas(next));
 		onLayoutChange?.();
+	};
+
+	// Hidden labels, stored as the EXCEPTION set rather than a value per card:
+	// labels are on unless a slot says otherwise, so a card added later is
+	// labelled by default and an empty store means "everything as shipped".
+	const labelsStorageKey = `${storageKey}.nolabels`;
+	const [hiddenLabels, setHiddenLabels] = createSignal<ReadonlySet<string>>(((): ReadonlySet<string> => {
+		try {
+			const raw = readStorage(labelsStorageKey);
+			const parsed: unknown = raw === null ? null : JSON.parse(raw);
+			return new Set(Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === "string") : []);
+		} catch {
+			return new Set<string>();
+		}
+	})());
+	const labelsFor = (id: string): boolean => !hiddenLabels().has(id);
+	const toggleLabels = (id: string): void => {
+		const next = new Set(hiddenLabels());
+		if (!next.delete(id)) next.add(id);
+		setHiddenLabels(next);
+		writeStorage(labelsStorageKey, JSON.stringify([...next]));
 	};
 
 	const orientationFor = (id: string): Orientation => orientationState()[id] ?? "vertical";
@@ -1430,6 +1462,7 @@ export function createPanelCanvas(
 	return {
 		styleFor, startMove, startResize, reset, orientationFor, toggleOrientation,
 		slotIds, ensureSlot, removeSlot, adoptLayout, resetSlot,
+		labelsFor, toggleLabels,
 		isSelected, toggleSelected, clearSelection, selectedCount: () => selected().size,
 	};
 }

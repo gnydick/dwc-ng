@@ -23,6 +23,7 @@ export function Panel(props: {
 	 *  direction (canvas.orientationFor/toggleOrientation) — opt-in per
 	 *  card, since not every card's content can meaningfully flip. */
 	orientationToggle?: boolean;
+	labelsToggle?: boolean;
 	/** Header left zone. */
 	title?: string;
 	/** Header float-left zone: the small tag naming what powers the card. */
@@ -80,7 +81,13 @@ export function Panel(props: {
 			// Picked up: the card says so, not just its grip. A formation of three
 			// has to be readable as a formation from across the canvas, or you
 			// cannot tell what a drag is about to carry.
-			classList={{ picked: props.canvas.isSelected(props.id) }}
+			classList={{
+					picked: props.canvas.isSelected(props.id),
+					// Grids whose first track IS the label column need to drop that
+					// track, not just leave it empty — an empty max-content track
+					// still takes its gap and slides every row right.
+					"no-labels": props.labelsToggle === true && !props.canvas.labelsFor(props.id),
+				}}
 			aria-label={props.ariaLabel}
 			data-panel-id={props.id}
 			style={props.canvas.styleFor(props.id)}
@@ -102,7 +109,7 @@ export function Panel(props: {
 					<Show when={props.tip}>{tip => <CardTip>{tip()}</CardTip>}</Show>
 					<div class="card-head-right">
 						<Show when={props.actions}>{a => <div class="card-actions">{a()}</div>}</Show>
-						<PanelTools id={props.id} canvas={props.canvas} ariaLabel={props.ariaLabel} orientationToggle={props.orientationToggle} />
+						<PanelTools id={props.id} canvas={props.canvas} ariaLabel={props.ariaLabel} orientationToggle={props.orientationToggle} labelsToggle={props.labelsToggle} />
 					</div>
 				</div>
 				{props.children}
