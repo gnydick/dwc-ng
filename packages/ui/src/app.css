@@ -3566,3 +3566,33 @@
    on rather than to the row of controls above. */
 .lab-main .lab-bar,
 .lab-main .layout-audit-bar { justify-content: flex-end; }
+
+/* ---------- card contents sit at the BOTTOM ---------- */
+
+/* Slack goes ABOVE the content, not below it, so a card's rows sit against its
+   bottom edge whatever size the card is.
+
+   Two rules because two cases. justify-content covers a card with no header;
+   the auto margin covers the rest and is what keeps the header at the TOP —
+   free space is absorbed immediately after it, so the head stays parked
+   against the padding edge (it is sticky) while everything below is pushed
+   down. An auto margin beats justify-content wherever both apply, which is why
+   the pair does not fight.
+
+   Cards whose body already fills — a flex-grow chart, viewer or log — have no
+   free space to move, so nothing about them changes. */
+.panel-body { justify-content: flex-end; }
+.panel-body > .card-head { margin-bottom: auto; }
+
+/* ---------- number inputs carry no spinners ---------- */
+
+/* The up/down steppers are a 16px-wide pointer target for changing a setpoint
+   by one, sitting inside a field you are about to type a real value into. On a
+   machine control they are a way to nudge a temperature or a feedrate by
+   accident, and every field here is typed, not stepped.
+   Removing them also stops the arrows appearing on focus and reflowing the
+   text inside the box, which is the kind of movement this UI is built to avoid.
+   Both engines: WebKit/Blink use the pseudo-elements, Gecko needs the property. */
+input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; appearance: none; margin: 0; }

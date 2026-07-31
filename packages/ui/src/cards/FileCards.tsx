@@ -20,8 +20,13 @@ import type { CardCtx } from "../compose/ctx.ts";
 
 // ---- Jobs ----
 
-export function JobFilesBody(props: { ctx: CardCtx }) {
-	const svc = props.ctx.service("jobsBrowser");
+/**
+ * The job listing, rendered by BOTH job cards — same split as the macro pair.
+ * One component with two props, so Download, the meta columns and the
+ * selection wiring stay maintained once.
+ */
+function JobsListing(props: { ctx: CardCtx; service: "jobsBrowser" | "jobsInventoryBrowser"; manageActions: boolean }) {
+	const svc = props.ctx.service(props.service);
 	return (
 		<Show when={props.ctx.connected()} fallback={<p class="job-empty">Not connected.</p>}>
 			<FileBrowserView
@@ -31,6 +36,7 @@ export function JobFilesBody(props: { ctx: CardCtx }) {
 				rootLabel="gcodes"
 				emptyText="Empty folder."
 				showMeta
+				manageActions={props.manageActions}
 				rowActions={entry => {
 					const path = svc.browser.pathOf(entry);
 					return (
@@ -47,6 +53,25 @@ export function JobFilesBody(props: { ctx: CardCtx }) {
 			/>
 		</Show>
 	);
+}
+
+/**
+ * Jobs: pick one to print. Download stays — it takes a copy and changes
+ * nothing — but Rename, Delete and the create/upload bar do not. This is the
+ * card you click through to start a print, and a Delete beside a filename in
+ * that list is the wrong button to have within reach.
+ *
+ * It also owns the selection Job details reads, so this is the card that says
+ * which job is "the" job.
+ */
+export function JobFilesBody(props: { ctx: CardCtx }) {
+	return <JobsListing ctx={props.ctx} service="jobsBrowser" manageActions={false} />;
+}
+
+/** The same listing with the management actions on, and its own browser so it
+ *  does not move the Jobs card — or its selection — underneath you. */
+export function JobsInventoryBody(props: { ctx: CardCtx }) {
+	return <JobsListing ctx={props.ctx} service="jobsInventoryBrowser" manageActions={true} />;
 }
 
 export function JobDetailsBody(props: { ctx: CardCtx }) {
