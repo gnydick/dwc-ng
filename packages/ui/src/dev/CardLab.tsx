@@ -16,7 +16,7 @@ import { createServicePool } from "../compose/services.ts";
 import type { CardCtx } from "../compose/ctx.ts";
 import { SCENARIOS, scenarioModel, type ScenarioId } from "./cardScenarios.ts";
 import { createStubConnector } from "../connector/stubConnector.ts";
-import { LayoutAuditAll } from "./LayoutAuditPanel.tsx";
+import { LayoutAuditAll, LayoutAuditPanel } from "./LayoutAuditPanel.tsx";
 
 /**
  * Card Lab (dev-only): render one REGISTRY card at a time against a synthetic
@@ -129,6 +129,9 @@ export default function CardLab() {
 	// one ref suffices; the sweep features each id and re-reads this.
 	let benchEl: HTMLDivElement | undefined;
 	const [auditOpen, setAuditOpen] = createSignal(false);
+	// The single-card audit hands its action here so its button can sit in the
+	// sweep's bar — every audit control on one row, per the operator.
+	let runThisCard: (() => void) | undefined;
 
 	return (
 		<div class="card-lab">
@@ -173,6 +176,20 @@ export default function CardLab() {
 				<span class="lab-note">{SCENARIOS.find(s => s.id === scenario())?.note}</span>
 			</div>
 
+			{/* Audit THIS card — built in the same pass as the sweep and then never
+			    rendered, so its "Run layout audit" button has been dead code since
+			    the day it was written. The sweep answers "which cards are wrong";
+			    this answers "what exactly is wrong with the one in front of me",
+			    which is the question you have while editing a card. */}
+			<LayoutAuditPanel
+				cardEl={() => benchEl?.querySelector<HTMLElement>("[data-panel-id]") ?? null}
+				id={() => featured()}
+				title={() => (isCustomCardId(featured())
+					? outer.config.config.cards[featured() as CustomCardId]?.name ?? featured()
+					: cardTitleOf(featured() as CardId))}
+				hideBar
+				registerRun={run => { runThisCard = run; }}
+			/>
 			{/* Always mounted: the sweep button lives in the audit's own bar
 			    beside this toggle, so neither appears nor disappears. Only the
 			    RESULTS collapse. */}
@@ -184,9 +201,13 @@ export default function CardLab() {
 				benchEl={() => benchEl?.querySelector<HTMLElement>("[data-panel-id]") ?? null}
 				open={auditOpen}
 				toggle={
-					<button class="lab-pill" aria-pressed={auditOpen()} onClick={() => setAuditOpen(v => !v)}>
-						{auditOpen() ? "Hide results" : "Show results"}
-					</button>
+					<>
+						<span class="lab-cap">Audit</span>
+						<button class="lab-pill" onClick={() => runThisCard?.()}>Audit this card</button>
+						<button class="lab-pill" aria-pressed={auditOpen()} onClick={() => setAuditOpen(v => !v)}>
+							{auditOpen() ? "Hide results" : "Show results"}
+						</button>
+					</>
 				}
 			/>
 
