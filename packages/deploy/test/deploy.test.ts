@@ -8,11 +8,12 @@ import { deploy, uninstall } from "../src/deploy.ts"
 import { verify, parseEntryScript } from "../src/verify.ts"
 import { crc32, crc32Hex } from "../src/crc32.ts"
 import { parseArgs } from "../src/cli.ts"
-import { mintCompression } from "../src/transport.ts"
+import { compressionFor, type ServingStack } from "../src/transport.ts"
 import { fakeTransport } from "./fakeTransport.ts"
 
-const PLAIN = mintCompression(false)
-const GZIP = mintCompression(true)
+/** Every stack there is. Adding one here without answering for it below is the
+ *  point — the A/B test then fails until the new stack's behaviour is stated. */
+const ALL_STACKS: ServingStack[] = ["rrf-embedded", "kestrel"]
 
 const ENTRY_HTML =
 	'<!doctype html><html><head><script type="module" crossorigin src="/ng/assets/index-abc.js"></script></head><body><div id="app"></div></body></html>'
@@ -30,7 +31,7 @@ async function makeDist(): Promise<string> {
 }
 
 test("index.html becomes ng.html; everything else nests under ng/", async () => {
-	const files = await buildManifest(await makeDist(), { name: "ng", compression: PLAIN })
+	const files = await buildManifest(await makeDist(), { name: "ng", serves: "kestrel" })
 	assert.deepEqual(
 		files.map(f => f.url).sort(),
 		["/ng.html", "/ng/assets/index-abc.js", "/ng/assets/style.css", "/ng/favicon.svg"],
@@ -40,18 +41,18 @@ test("index.html becomes ng.html; everything else nests under ng/", async () => 
 test("the entry lives at 0:/www/ng.html, not inside the ng/ directory", async () => {
 	// Verified on real hardware 2026-07-24: /ng/ serves stock DWC, because
 	// Kestrel has no UseDefaultFiles() for subdirectories.
-	const files = await buildManifest(await makeDist(), { name: "ng", compression: PLAIN })
+	const files = await buildManifest(await makeDist(), { name: "ng", serves: "kestrel" })
 	const entry = files.find(f => f.url === "/ng.html")
 	assert.equal(entry?.board, "0:/www/ng.html")
 })
 
 test("sourcemaps never reach the board", async () => {
-	const files = await buildManifest(await makeDist(), { name: "ng", compression: PLAIN })
+	const files = await buildManifest(await makeDist(), { name: "ng", serves: "kestrel" })
 	assert.equal(files.filter(f => f.url.endsWith(".map")).length, 0)
 })
 
 test("gzip mode appends .gz on the board and compresses the payload", async () => {
-	const files = await buildManifest(await makeDist(), { name: "ng", compression: GZIP })
+	const files = await buildManifest(await makeDist(), { name: "ng", serves: "rrf-embedded" })
 	assert.ok(files.every(f => f.board.endsWith(".gz")))
 	const entry = files.find(f => f.url === "/ng.html")
 	assert.ok(entry !== undefined)
@@ -85,7 +86,7 @@ test("a deploy that never landed FAILS verification instead of passing on the 20
 	// index.html with HTTP 200. A status-only check would call this success.
 	const dist = await makeDist()
 	const t = fakeTransport({ spaFallback: true })
-	const manifest = await buildManifest(dist, { name: "ng", compression: PLAIN })
+	const manifest = await buildManifest(dist, { name: "ng", serves: "kestrel" })
 	await assert.rejects(() => verify(t, manifest, { name: "ng" }), /content mismatch/i)
 })
 
@@ -100,8 +101,8 @@ test("an entry module served as text/html fails verification", async () => {
 
 test("a real deploy verifies clean, in both plain and gzip modes", async () => {
 	const dist = await makeDist()
-	for (const gzip of [false, true]) {
-		const t = fakeTransport({ gzip })
+	for (const serves of ALL_STACKS) {
+		const t = fakeTransport({ serves })
 		await deploy(dist, t, { name: "ng" }) // throws if verification fails
 		assert.ok(t.files.size > 0)
 	}
@@ -126,12 +127,42 @@ test("CRC-32 matches the reference vectors rr_upload checks against", () => {
 	assert.equal(crc32Hex(new TextEncoder().encode("123456789")), "cbf43926")
 })
 
-test("the transports carry the compression their board actually supports", async () => {
+test("each transport declares the stack that will serve what it writes", async () => {
 	const { dsfTransport } = await import("../src/dsfTransport.ts")
 	const { pollTransport } = await import("../src/pollTransport.ts")
-	// DSF/Kestrel 404s a transparent .gz fetch — verified on real hardware.
-	assert.equal(dsfTransport("http://x").compression.gzip, false)
-	assert.equal(pollTransport("http://x").compression.gzip, true)
+	assert.equal(dsfTransport("http://x").serves, "kestrel")
+	assert.equal(pollTransport("http://x").serves, "rrf-embedded")
+})
+
+test("compression is decided by the serving stack, and only there", () => {
+	// The mapping itself. DSF/Kestrel 404s a transparent .gz fetch and RRF's
+	// embedded server resolves one — both verified on real hardware 2026-07-24.
+	assert.equal(compressionFor("kestrel").gzip, false)
+	assert.equal(compressionFor("rrf-embedded").gzip, true)
+	// Total: every stack has an answer, so a new one cannot slip through
+	// silently taking whichever branch happened to be the default.
+	for (const serves of ALL_STACKS) {
+		assert.equal(typeof compressionFor(serves).gzip, "boolean")
+	}
+})
+
+test("what lands on the board matches what its server can serve", async () => {
+	// The A/B test the seam exists for: drive a whole deploy through each stack
+	// and read back the BOARD PATHS. Kestrel must receive no .gz at all (every
+	// asset would 404); RRF's embedded server must receive nothing but.
+	const dist = await makeDist()
+
+	const kestrel = fakeTransport({ serves: "kestrel" })
+	await deploy(dist, kestrel, { name: "ng" })
+	const kestrelPaths = [...kestrel.files.keys()]
+	assert.ok(kestrelPaths.length > 0)
+	assert.deepEqual(kestrelPaths.filter(p => p.endsWith(".gz")), [])
+
+	const rrf = fakeTransport({ serves: "rrf-embedded" })
+	await deploy(dist, rrf, { name: "ng" })
+	const rrfPaths = [...rrf.files.keys()]
+	assert.ok(rrfPaths.length > 0)
+	assert.deepEqual(rrfPaths.filter(p => !p.endsWith(".gz")), [])
 })
 
 test("cli rejects a bad mode and a missing target", () => {

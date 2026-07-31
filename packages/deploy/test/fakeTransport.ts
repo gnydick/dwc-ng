@@ -3,14 +3,15 @@
 // index.html and a 200, and content-type dispatch by file extension.
 
 import { gunzipSync } from "node:zlib"
-import { mintCompression, type FetchedResource, type Transport } from "../src/transport.ts"
+import { type FetchedResource, type ServingStack, type Transport } from "../src/transport.ts"
 
 export const DWC_FALLBACK = new TextEncoder().encode(
 	"<!doctype html><html lang=\"en\"><head><title>Duet Web Control</title></head></html>",
 )
 
 export type FakeOptions = {
-	readonly gzip?: boolean
+	/** Which server this fake stands in for. Defaults to Kestrel (plain). */
+	readonly serves?: ServingStack
 	/** Serve stock DWC with a 200 for anything not deployed. */
 	readonly spaFallback?: boolean
 	/** Serve every asset as text/html — the MIME trap. */
@@ -37,8 +38,7 @@ export function fakeTransport(opts: FakeOptions = {}): FakeTransport {
 	let puts = 0
 
 	return {
-		kind: opts.gzip === true ? "poll" : "dsf",
-		compression: mintCompression(opts.gzip === true),
+		serves: opts.serves ?? "kestrel",
 		files,
 		putCount: () => puts,
 

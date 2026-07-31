@@ -1,16 +1,17 @@
 // Standalone RRF transport, speaking the rr_ dialect.
 //
-// This one mints `gzip: true`: RRF's embedded server serves .gz transparently,
-// and its requests are expensive enough that shipping compressed matters.
+// Declares `serves: "rrf-embedded"` — a statement about the SERVER, from which
+// gzip follows: RRF's embedded server resolves .gz transparently, and its
+// requests are expensive enough that shipping compressed matters. This
+// transport does not decide compression and cannot state one.
 
 import { crc32Hex } from "./crc32.ts"
-import { mintCompression, type FetchedResource, type Transport } from "./transport.ts"
+import { type FetchedResource, type Transport } from "./transport.ts"
 
 export function pollTransport(baseUrl: string): Transport {
 	const base = baseUrl.replace(/\/$/, "")
 	return {
-		kind: "poll",
-		compression: mintCompression(true),
+		serves: "rrf-embedded",
 
 		async put(boardPath, bytes) {
 			const url = `${base}/rr_upload?name=${encodeURIComponent(boardPath)}&crc32=${crc32Hex(bytes)}`
