@@ -63,19 +63,23 @@ function withoutMediaBlocks(css: string): string {
 	return out;
 }
 
-/** nth-child index -> declared px width, for `.heat-table` column rules. */
-function columnWidths(css: string): Map<number, number> {
-	const widths = new Map<number, number>();
-	const rule = /\.heat-table th:nth-child\((\d+)\)[^{]*\{([^}]*)\}/g;
-	for (const [, index, body] of css.matchAll(rule)) {
-		// Reads the BASE literal out of `calc(152px + var(--fs-col))`. Every
-		// column and the total carry the same per-column allowance, so checking
-		// the bases still proves the sum — and the allowance itself is pinned
-		// separately below, which is what makes the sum hold at any --fs-bump
-		// rather than only at zero.
-		const width = /(?:^|[;{\s])width:\s*(?:calc\()?(\d+)px/.exec(body!);
-		assert.ok(width, `.heat-table column ${index} rule declares no px width`);
-		widths.set(Number(index), Number(width[1]));
+/** role -> declared px width, resolving var(--tool-col-*) against :root. */
+function columnWidths(css: string): Map<string, number> {
+	const tokens = new Map<string, number>();
+	for (const [, role, px] of css.matchAll(/--tool-col-([a-z]+):\s*(?:calc\()?(\d+)px/g)) {
+		// LAST wins, matching the cascade — the narrow block overrides.
+		tokens.set(role!, Number(px));
+	}
+	const widths = new Map<string, number>();
+	const rule = /\.heat-table \.col-([a-z]+)\s*\{([^}]*)\}/g;
+	for (const [, role, body] of css.matchAll(rule)) {
+		const direct = /(?:^|[;{\s])width:\s*(\d+)px/.exec(body!);
+		if (direct) { widths.set(role!, Number(direct[1])); continue; }
+		const ref = /width:\s*var\(--tool-col-([a-z]+)\)/.exec(body!);
+		assert.ok(ref, `.heat-table .col-${role} declares no width`);
+		const resolved = tokens.get(ref[1]!);
+		assert.ok(resolved !== undefined, `--tool-col-${ref[1]} is never declared`);
+		widths.set(role!, resolved);
 	}
 	return widths;
 }
@@ -87,23 +91,22 @@ function declaredTableWidth(css: string): number {
 	return Number(all[all.length - 1]![1]);
 }
 
-const COLUMN_COUNT = [...cardTsx.matchAll(/<th scope="col">/g)].length;
+const COLUMN_ROLES = ["heater", "active", "standby", "current", "set"] as const;
 const base = withoutMediaBlocks(appCss);
 const narrow = mediaBlock(appCss, "max-width: 900px");
 
-test("the card renders the five columns the stylesheet is written for", () => {
-	// Guards the arithmetic below: with a different count, the sums are checking
-	// a table that no longer exists. 6 -> 5 when the Filament column left both
-	// tool cards for Extruders, which owns the pickers and the load macros.
-	assert.equal(COLUMN_COUNT, 5);
-});
-
-test("every column has a declared width — table-layout:fixed has no fallback", () => {
+test("every column the component renders has a role class with a width", () => {
+	// Welded to the markup: a <th> without a col- class, or a col- class the
+	// markup never uses, fails here rather than silently inheriting a width.
+	const inMarkup = [...cardTsx.matchAll(/<th scope="col" class="col-([a-z]+)"/g)].map(m => m[1]!);
+	assert.deepEqual([...inMarkup].sort(), [...COLUMN_ROLES].sort());
 	const widths = columnWidths(base);
-	assert.deepEqual(
-		[...widths.keys()].sort((a, b) => a - b),
-		Array.from({ length: COLUMN_COUNT }, (_, i) => i + 1),
-	);
+	for (const role of COLUMN_ROLES) assert.ok(widths.has(role), `no width for col-${role}`);
+	// Reverse direction: a stray `.heat-table .col-foo { width: … }` rule with
+	// no matching rendered column would pass every check above unnoticed. The
+	// CSS role set and the markup role set must be exactly equal, not just
+	// markup-subset-of-CSS.
+	assert.deepEqual([...widths.keys()].sort(), [...COLUMN_ROLES].sort());
 });
 
 test("the base column widths sum to --heat-table-w", () => {
@@ -112,18 +115,62 @@ test("the base column widths sum to --heat-table-w", () => {
 	assert.equal(sum, declaredTableWidth(base));
 });
 
-test("the narrow-viewport block names no column the table does not have", () => {
-	// THE regression. The stale block addressed nth-child(2)…(5) of a
-	// five-column table, which is in range and therefore not caught here —
-	// so this pairs with the sum check below, which is what actually caught it.
-	for (const index of columnWidths(narrow).keys()) {
-		assert.ok(index >= 1 && index <= COLUMN_COUNT, `narrow block sets column ${index} of ${COLUMN_COUNT}`);
+/**
+ * THE regression this whole file exists for. A media query written for the
+ * FIVE-column table kept its nth-child indices when Filament was inserted as
+ * column 2, so every index slid one to the left: Filament took the width meant
+ * for Active (under the picker's own min-width, so it overflowed) and Current
+ * took the width meant for Set. The card's minimum went UP under rules meant to
+ * shrink it, and it was the one card that would not narrow in portrait.
+ *
+ * A positional selector cannot be made safe - it is correct only for as long as
+ * nobody inserts a column. A named role class travels WITH its column, so
+ * inserting one shifts nothing.
+ */
+test("no load-bearing layout property is carried by a positional selector", () => {
+	// ANY element, not just th|td. The first version of this guard was scoped to
+	// table cells because that is where the bug was found, so it passed while
+	// `.heat-rows > .heater-ctl > .temp-field:nth-of-type(1) { grid-column: 2 }`
+	// sat two hundred lines below in the same stylesheet — the identical defect
+	// on a grid instead of a table. A selector's damage does not depend on the
+	// element it names.
+	//
+	// Every :nth-* form, not just nth-child/nth-of-type: :nth-last-child counts
+	// from the other end, which is no more stable under an insertion.
+	const positional = /([^{}]*:nth-(?:child|last-child|of-type|last-of-type)\([^)]*\)[^{}]*)\{([^}]*)\}/g;
+	// LOAD-BEARING = decides where a box sits or how big it is, so inserting or
+	// removing a sibling silently moves or resizes a LATER one and the stylesheet
+	// still parses. That is the whole regression class:
+	//   · sizing        width / min-width / max-width / flex-basis
+	//   · placement     grid-column* / grid-row* / grid-area / order
+	//   · offsets       left / right / top / bottom
+	// Deliberately NOT listed: padding, margin, colour, border, background,
+	// text-align. A stale one of those is a cosmetic wart on one cell — visible,
+	// local, and not capable of sliding a column under its neighbour. Adding them
+	// would make the guard fire on rules that are correct by intent (zebra
+	// striping, first-row padding) and it would then be silenced rather than
+	// obeyed.
+	const loadBearing =
+		/(^|[;{\s])(width|min-width|max-width|flex-basis|grid-column|grid-column-start|grid-column-end|grid-row|grid-row-start|grid-row-end|grid-area|order|left|right|top|bottom)\s*:/;
+	const offenders: string[] = [];
+	for (const [, selector, body] of appCss.matchAll(positional)) {
+		if (loadBearing.test(body!)) {
+			offenders.push(`${selector!.trim().replace(/\s+/g, " ")} { ${body!.trim()} }`);
+		}
 	}
+	assert.deepEqual(offenders, [], "these rules take a size or a position from a sibling index, not from a role");
 });
 
 test("the narrow-viewport widths sum to the --heat-table-w it restates", () => {
+	// The narrow block overrides only the TOKEN (`.heat-table { --tool-col-current:
+	// 50px; }`), not the `.col-current` rule — that rule now carries only
+	// padding-right in this block, so it has no width of its own to hand
+	// columnWidths(narrow). Resolve the real cascade instead: base widths,
+	// with any token the narrow block redeclares taking precedence.
 	const widths = columnWidths(base);
-	for (const [index, width] of columnWidths(narrow)) widths.set(index, width);
+	for (const [, role, px] of narrow.matchAll(/--tool-col-([a-z]+):\s*(?:calc\()?(\d+)px/g)) {
+		widths.set(role!, Number(px));
+	}
 	const sum = [...widths.values()].reduce((a, b) => a + b, 0);
 	assert.equal(sum, declaredTableWidth(narrow));
 });
@@ -150,18 +197,30 @@ test("the Deselect row does NOT wrap — content inside a card must not move", (
 });
 
 /**
- * The type bump widens every column by `--fs-col`, so the table total must
- * carry exactly one allowance PER COLUMN. Checking the base literals sum
- * correctly only proves the table at --fs-bump: 0; this is what makes it hold
- * at every other value. A sixth column added without touching the multiplier
- * would make the columns outgrow their own table at any non-zero bump — the
- * same silent-overflow class the nth-child guard exists for.
+ * Regression class (e). Tools and Tools & heaters are the same table with
+ * columns removed, but their widths were two sets of numbers that happened to
+ * match - and they stopped matching at a different density, where one card's
+ * rows were driven by --ctl-h and the other's by a control that had opted out
+ * of it. Agreement has to be structural: ONE declaration, subtracted from.
  */
-test("the table total carries one --fs-col allowance per column", () => {
-	const totals = [...appCss.matchAll(/--heat-table-w:\s*calc\(\d+px \+ (\d+) \* var\(--fs-col\)\)/g)];
-	assert.equal(totals.length, 2, "expected a base and a narrow-viewport total, both scaled");
-	for (const [, multiplier] of totals) {
-		assert.equal(Number(multiplier), COLUMN_COUNT,
-			`total scales by ${multiplier} but the table has ${COLUMN_COUNT} columns`);
+test("tool column widths come from tokens, not from literals", () => {
+	const widths = columnWidths(base);
+	assert.ok(widths.size > 0, "no column rules found");
+	const literal = /\.heat-table \.col-([a-z]+)\s*\{[^}]*width:\s*\d+px/g;
+	const offenders = [...base.matchAll(literal)].map(m => m[1]!);
+	assert.deepEqual(offenders, [], "these columns hard-code a width instead of naming a token");
+});
+
+test("every tool column token has exactly one BASE declaration", () => {
+	// Scoped to the BASE cascade, not the whole file. A viewport or density
+	// block may legitimately OVERRIDE a token — that is what naming it is for —
+	// but there must be exactly one place the default is set, or "one
+	// declaration" is a claim rather than a fact.
+	for (const role of COLUMN_ROLES) {
+		// `calc(152px + var(--fs-col))` — the base literal plus the type-bump
+		// allowance. Still exactly one declaration; it just is not a bare length.
+		const decl = new RegExp(`--tool-col-${role}:\\s*(?:calc\\()?\\d+px`, "g");
+		const hits = [...base.matchAll(decl)];
+		assert.equal(hits.length, 1, `--tool-col-${role} declared ${hits.length} times in the base cascade, expected 1`);
 	}
 });
