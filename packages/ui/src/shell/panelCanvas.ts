@@ -460,9 +460,23 @@ export function contentRowSpan(cardEl: HTMLElement, gutterPx: number): number {
 		const grows = (parseFloat(style.flexGrow) || 0) > 0;
 		const floor = parseFloat(style.minHeight);
 		const height = grows ? (Number.isFinite(floor) ? floor : 0) : rect.height;
+		// An AUTO margin is slack, not content, and must contribute nothing.
+		//
+		// getComputedStyle resolves `margin: auto` to its USED value, so once the
+		// card header took `margin-bottom: auto` to push contents to the bottom,
+		// this loop started adding the card's own free space to its own content
+		// sum — 333px of it on the sensors card. The reported minimum then equalled
+		// the card's current height, so cards grew and would not shrink back
+		// (reported 2026-07-30). That is exactly the self-reference Invariant A
+		// exists to detect, introduced hours after the detector was built.
+		//
+		// The keyword is unrecoverable from the used value, so the rule that
+		// creates the slack DECLARES it: --absorbs-slack: 1 travels with the
+		// `margin: auto` in the same declaration block, and the two cannot drift
+		// apart the way a selector list here would.
+		const absorbsSlack = style.getPropertyValue("--absorbs-slack").trim() === "1";
 		contentBottom += height
-			+ (parseFloat(style.marginTop) || 0)
-			+ (parseFloat(style.marginBottom) || 0);
+			+ (absorbsSlack ? 0 : (parseFloat(style.marginTop) || 0) + (parseFloat(style.marginBottom) || 0));
 	}
 	const bodyStyle = getComputedStyle(body);
 	// The gaps a flex/grid body puts BETWEEN its children are part of the stack.

@@ -3582,7 +3582,15 @@
    Cards whose body already fills — a flex-grow chart, viewer or log — have no
    free space to move, so nothing about them changes. */
 .panel-body { justify-content: flex-end; }
-.panel-body > .card-head { margin-bottom: auto; }
+.panel-body > .card-head {
+	margin-bottom: auto;
+	/* Declares that the margin above is SLACK, so contentRowSpan does not count
+	   it as content. getComputedStyle resolves `auto` to its used value, so
+	   without this the card's own free space is summed into its own minimum and
+	   the card can grow but never shrink. Kept in the SAME block as the margin
+	   it describes — a separate rule could be deleted on its own. */
+	--absorbs-slack: 1;
+}
 
 /* ---------- number inputs carry no spinners ---------- */
 
