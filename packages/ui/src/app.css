@@ -2683,6 +2683,23 @@
 	overflow-y: auto; scrollbar-width: none;
 }
 .compose-drawer::-webkit-scrollbar { width: 0; }
+/* Bridges the 6px between the button and the drawer.
+   The drawer closes the moment the pointer leaves .compose-wrap, and that gap
+   belonged to NEITHER — so travelling from the button down to the menu crossed
+   open ground and shut it every time, which made the menu unreachable.
+
+   On the WRAP, not on the drawer: the drawer is `overflow-y: auto`, and a
+   scroll container clips its own absolutely-positioned children, so a ::before
+   hanging above it was clipped away and hit-tested as nothing. Verified by
+   walking elementFromPoint down the gap a pixel at a time.
+
+   Always present, which costs nothing: with the drawer closed it is 8px of
+   invisible strip under a button, and there is no menu for it to hold open. */
+.compose-wrap::after {
+	content: "";
+	position: absolute;
+	left: 0; right: 0; top: 100%; height: 8px;
+}
 .compose-row { display: flex; align-items: center; gap: 8px; }
 .compose-row .fb-input { flex: 1; }
 .compose-cards {
