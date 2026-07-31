@@ -105,9 +105,18 @@ export function JobDetailsBody(props: { ctx: CardCtx }) {
 
 // ---- Macros ----
 
-export function MacrosBody(props: { ctx: CardCtx }) {
+/**
+ * The macro listing, rendered by BOTH macro cards.
+ *
+ * They differ in exactly two ways — which browser service they drive, and
+ * whether the rows carry Rename/Delete — so they are one component with two
+ * props rather than two components that happen to agree today. Copying it
+ * would have made the two-step Run confirm, the AutoConfirm setting and the
+ * quoted M98 into things maintained twice.
+ */
+function MacrosListing(props: { ctx: CardCtx; service: "macrosBrowser" | "macrosInventoryBrowser"; manageActions: boolean }) {
 	const app = useApp();
-	const svc = props.ctx.service("macrosBrowser");
+	const svc = props.ctx.service(props.service);
 	// Two-step Run confirm — armed is card-local (the checkbox that clears it
 	// lives in this same card), collapsed by the persisted autoConfirm setting.
 	const [armed, setArmed] = createSignal<string | null>(null);
@@ -148,6 +157,7 @@ export function MacrosBody(props: { ctx: CardCtx }) {
 				onOpen={entry => svc.setSelected(svc.browser.pathOf(entry))}
 				rootLabel="macros"
 				emptyText="No macros here."
+				manageActions={props.manageActions}
 				rowActions={entry => {
 					const path = svc.browser.pathOf(entry);
 					return (
@@ -164,6 +174,24 @@ export function MacrosBody(props: { ctx: CardCtx }) {
 			/>
 		</Show>
 	);
+}
+
+/**
+ * Macros: RUN them. No Rename, no Delete — a destructive button a few pixels
+ * from ▶ Run, in a list you are clicking through, is an accident waiting for a
+ * slow afternoon. File management lives in macros-inventory.
+ */
+export function MacrosBody(props: { ctx: CardCtx }) {
+	return <MacrosListing ctx={props.ctx} service="macrosBrowser" manageActions={false} />;
+}
+
+/**
+ * Macros inventory: the same listing with the management actions on, and its
+ * OWN browser service — so navigating the inventory does not move the Macros
+ * card underneath you when both are on the same screen.
+ */
+export function MacrosInventoryBody(props: { ctx: CardCtx }) {
+	return <MacrosListing ctx={props.ctx} service="macrosInventoryBrowser" manageActions={true} />;
 }
 
 // ---- System ----

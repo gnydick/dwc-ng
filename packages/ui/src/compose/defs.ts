@@ -275,6 +275,14 @@ export const CARD_DEFS = {
 		tip: ctx => ctx.service("macrosBrowser").browser.dir(),
 		size: { colSpan: 130, rowSpan: 150 },
 	}),
+	/** The same macro listing with Rename and Delete, on its own browser so it
+	 *  can sit beside the Macros card without moving it. */
+	"macros-inventory": defineCard({
+		title: "Macros · inventory",
+		ariaLabel: "Macros inventory",
+		tip: ctx => ctx.service("macrosInventoryBrowser").browser.dir(),
+		size: { colSpan: 130, rowSpan: 150 },
+	}),
 	/** Macro editor — placeholder until a file is opened. */
 	"macros-editor": defineCard({
 		title: ctx => ctx.service("macrosBrowser").selected() ?? "Editor",

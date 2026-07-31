@@ -866,6 +866,19 @@ export function reflow(state: CanvasState): CanvasState {
 	return out;
 }
 
+/**
+ * Every rect back to the origin, sizes untouched — the bench's normal form.
+ * See the `bench` parameter of createPanelCanvas for why position is not the
+ * operator's to own on a one-card surface.
+ */
+export function benchOrigin(state: CanvasState): CanvasState {
+	const out: CanvasState = {};
+	for (const [id, r] of Object.entries(state)) {
+		out[id] = { col: 0, row: 0, colSpan: r.colSpan, rowSpan: r.rowSpan };
+	}
+	return out;
+}
+
 export function mergeCanvas(stored: unknown, defaults: PanelDefault[]): CanvasState {
 	const { state, grew } = growToDefaults(stored, defaults);
 	// Gated on an ACTUAL growth, which is a correctness requirement and not an
@@ -973,8 +986,29 @@ export function createPanelCanvas(
 	 * whose geometry is device-only (the Card Lab) pass nothing.
 	 */
 	onLayoutChange?: () => void,
+	/**
+	 * A BENCH: one card visible at a time, every card parked at the origin, and
+	 * the overlaps between them deliberate. The Card Lab is the only one.
+	 *
+	 * Two things follow, and both are corrections of real damage. reflow() must
+	 * not run — its job is to push overlapping cards right and down, and here
+	 * every card overlaps every other on purpose. It fired on 2026-07-30 when
+	 * the type bump grew the cards' default sizes, setting `grew` and scattering
+	 * all fifty across the grid; `position` ended up at row 2291, which is what
+	 * "way off to the right and down" looked like from the outside.
+	 *
+	 * And positions are normalised back to the origin on load, because on a
+	 * bench a card's col/row is not a thing the operator owns — only its SIZE
+	 * is. That also repairs the storage the scattering already wrote, without
+	 * anyone having to clear localStorage.
+	 */
+	bench?: boolean,
 ): PanelCanvasController {
-	const [state, setState] = createSignal(mergeCanvas(parseStoredCanvas(readStorage(storageKey)), defaults));
+	const [state, setState] = createSignal(
+		bench === true
+			? benchOrigin(growToDefaults(parseStoredCanvas(readStorage(storageKey)), defaults).state)
+			: mergeCanvas(parseStoredCanvas(readStorage(storageKey)), defaults),
+	);
 	// Settle a redesign repair once rather than recomputing it on every load.
 	// Deliberately NOT persist(): that fires onLayoutChange -> markLayoutDirty,
 	// and a repair is not a user edit — nor is mutating the config store during
