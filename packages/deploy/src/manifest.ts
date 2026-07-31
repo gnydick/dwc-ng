@@ -34,12 +34,76 @@ export type ManifestOptions = {
 	 * Naming the stack is the only thing anyone can say.
 	 */
 	readonly serves: ServingStack
-	/** Board directory the deployment lives in. */
+	/** Board directory the deployment lives in. Defaults per layout. */
 	readonly wwwRoot?: string
+	readonly layout?: Layout
 }
+
+/**
+ * WHERE a deployment sits relative to the server's document root.
+ *
+ * - `sidecar` — inside stock DWC's root, as `<root>/<name>.html` plus
+ *   `<root>/<name>/…`. Both UIs are served at once. The entry cannot be
+ *   `<name>/index.html`, because Kestrel has no `UseDefaultFiles()` for
+ *   subdirectories and `/ng/` falls through to the SPA fallback and serves
+ *   stock DWC (verified on hardware 2026-07-24). An extensioned path dodges it.
+ *
+ * - `root` — the deployment IS the document root, reached by pointing the
+ *   server at it with `M505.1 P"0:/ng"`. The fallback is no longer in the way,
+ *   so the entry is a plain `index.html` and assets keep their natural paths.
+ *   Stock DWC stays on the card at `0:/www`, just unserved; reverting is
+ *   `M505.1 P"0:/www"` and nothing else.
+ *
+ * Note M505.1 is documented as temporary and development-only, which is why
+ * `sidecar` remains supported rather than deleted.
+ */
+export type Layout = "root" | "sidecar"
 
 /** Vite's entry document. Everything else is an asset. */
 const ENTRY = "index.html"
+
+/** Where a layout's deployment lives when the caller does not say. */
+const defaultWwwRoot = (layout: Layout): string => (layout === "root" ? "0:/ng" : "0:/www")
+
+/** The URL prefix Vite baked into the asset paths, given a layout. */
+const expectedBase = (layout: Layout, name: string): string =>
+	layout === "root" ? "/" : `/${name}/`
+
+/** Pull the entry module's src out of the built index.html. */
+export function parseEntryScript(html: string): string | null {
+	const match = /<script[^>]*\bsrc="([^"]+)"/i.exec(html)
+	return match?.[1] ?? null
+}
+
+/**
+ * Refuse a dist whose baked-in base contradicts the layout it is being
+ * deployed as.
+ *
+ * The two are set in different places — `DWC_BASE` at build time, `--layout` at
+ * deploy time — and nothing used to check they agreed. A `pnpm ship` that
+ * forgot the env var uploaded a deployment whose every asset URL was wrong, and
+ * the first symptom was a blank page on the board with a MIME-type error in a
+ * console nobody had open.
+ *
+ * Checked against the ONE artefact that carries the answer: the base Vite
+ * actually wrote into index.html. Reading the env var here would only compare
+ * an intention with itself.
+ */
+function assertBaseMatchesLayout(html: string, layout: Layout, name: string): void {
+	const src = parseEntryScript(html)
+	if (src === null || !src.startsWith("/")) return
+	const want = expectedBase(layout, name)
+	// Root's base is "/", which every absolute path starts with, so the test is
+	// that it is NOT nested under a directory rather than a prefix match.
+	const ok = layout === "root" ? !/^\/[^/]+\/assets\//.test(src) : src.startsWith(want)
+	if (ok) return
+	throw new Error(
+		`dist was built for base "${src.replace(/assets\/.*$/, "")}" but is being deployed as ` +
+			`layout "${layout}", which needs base "${want}". Rebuild with ` +
+			(layout === "root" ? `DWC_BASE unset (it defaults to "/")` : `DWC_BASE=${want}`) +
+			` — from PowerShell, $env:DWC_BASE='${want}'.`,
+	)
+}
 
 /**
  * Sourcemaps are never deployed. Stock DWC ships 15,234,312 bytes of
@@ -66,12 +130,20 @@ async function walk(dir: string, prefix = ""): Promise<string[]> {
  * SPA fallback and serves stock DWC. An extensioned entry path bypasses it.
  */
 export async function buildManifest(distDir: string, opts: ManifestOptions): Promise<DeployFile[]> {
-	const wwwRoot = opts.wwwRoot ?? "0:/www"
+	const layout = opts.layout ?? "sidecar"
+	const wwwRoot = opts.wwwRoot ?? defaultWwwRoot(layout)
 	const compression = compressionFor(opts.serves)
 	const relPaths = (await walk(distDir)).filter(p => !isSourcemap(p))
 
+	// Before anything is read, let alone uploaded.
+	assertBaseMatchesLayout(await readFile(join(distDir, ENTRY), "utf8"), layout, opts.name)
+
 	const files = relPaths.map((rel): DeployFile => {
-		const urlPath = rel === ENTRY ? `/${opts.name}.html` : `/${opts.name}/${rel}`
+		// Root mode needs no rewriting at all: the deployment IS the root, so
+		// every file keeps the path Vite gave it, index.html included.
+		const urlPath = layout === "root"
+			? `/${rel}`
+			: rel === ENTRY ? `/${opts.name}.html` : `/${opts.name}/${rel}`
 		const suffix = compression.gzip ? ".gz" : ""
 		return {
 			local: join(distDir, rel),
@@ -97,5 +169,23 @@ export async function buildManifest(distDir: string, opts: ManifestOptions): Pro
 	)
 }
 
-/** The entry document's board path, for verification. */
-export const entryUrl = (name: string): string => `/${name}.html`
+/** The entry document's URL, for verification. */
+export const entryUrl = (name: string, layout: Layout = "sidecar"): string =>
+	layout === "root" ? `/${ENTRY}` : `/${name}.html`
+
+/**
+ * The directory a redeploy sweeps for orphans — and the reason it is derived
+ * here rather than spelled out at the call site: it has to be the same
+ * directory buildManifest just wrote the assets into, or a prune either misses
+ * the orphans or reaches outside the deployment.
+ */
+export const assetDir = (name: string, layout: Layout, wwwRoot?: string): string =>
+	`${wwwRoot ?? defaultWwwRoot(layout)}${layout === "root" ? "" : `/${name}`}/assets`
+
+/** Every board path a deployment owns, for uninstall. */
+export const ownedPaths = (name: string, layout: Layout, wwwRoot?: string): string[] => {
+	const root = wwwRoot ?? defaultWwwRoot(layout)
+	// Root mode owns its whole directory; sidecar owns exactly two entries and
+	// must never be handed the root it shares with stock DWC.
+	return layout === "root" ? [root] : [`${root}/${name}.html`, `${root}/${name}`]
+}
