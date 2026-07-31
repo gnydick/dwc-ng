@@ -171,8 +171,8 @@ export const CARD_DEFS = {
 		title: "Homing",
 		ariaLabel: "Homing",
 		tip: "G28 · G32 · M84",
-		// The axis letter beside a Home button that already reads "Home X" is
-		// the redundancy this toggle exists for.
+		// The axis letters (and their role names — "Z motor 1", "coupler") are the
+		// redundancy this hides: the button beside them already reads Home X.
 		labelsToggle: true,
 		// Sized for the DEFAULT pitch (1.27) with 7 axes plus the machine-wide
 		// row — 338px of content + 36px head + 22px of frame, rounded onto the

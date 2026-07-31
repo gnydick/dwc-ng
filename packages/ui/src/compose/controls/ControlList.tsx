@@ -126,9 +126,10 @@ export function ControlList(props: { spec: CompiledControlSpec; ctx: CardCtx }) 
 				const feed = (): number => inputs[node.feed] ?? 0;
 				return (
 					<div class="jog-row">
-						<Show when={props.ctx.labels()}>
-							<span class="ctl-name">{letter()}<Show when={role()}>{r => <small>{r()}</small>}</Show></span>
-						</Show>
+						{/* Always rendered, even with labels off — see .no-labels in app.css.
+						    Removing the cell re-places every later cell one track earlier
+						    and the rows rewrap. */}
+						<span class="ctl-name">{letter()}<Show when={role()}>{r => <small>{r()}</small>}</Show></span>
 						<GcodeButton label={`− ${step()}`} command={cmd.jog(letter(), -step(), feed())} stamp={false} />
 						<GcodeButton label={`+ ${step()}`} command={cmd.jog(letter(), step(), feed())} stamp={false} />
 					</div>
@@ -145,7 +146,7 @@ export function ControlList(props: { spec: CompiledControlSpec; ctx: CardCtx }) 
 					node.sub === undefined ? "" : resolveTemplate(node.sub, scopeWith(p.vars));
 				return (
 					<div class={node.class ?? "ctl-wrap"}>
-						<Show when={props.ctx.labels() && rowLabel()}>
+						<Show when={rowLabel()}>
 							<span class="ctl-name">{rowLabel()}<Show when={rowSub()}>{s => <small>{s()}</small>}</Show></span>
 						</Show>
 						<For each={node.items}>
