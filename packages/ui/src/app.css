@@ -3492,10 +3492,11 @@
 	background-position: left center, right center;
 	background-repeat: no-repeat;
 }
-/* 0.55, close to the nub's own 0.58 opacity. The first attempt at 0.28 was
-   technically visible and practically invisible — the strip has to advertise
-   itself, because it is the only part of the box that takes the wheel. */
-[data-edge-scroll]:hover { --edge-ghost-a: 0.55; }
+/* Bracketed rather than guessed: 0.28 was practically invisible, 0.55 (the
+   nub's own opacity) was too bright over text you are trying to read. This sits
+   between them — enough to find the strip, not enough to compete with the log
+   or the code under it. */
+[data-edge-scroll]:hover { --edge-ghost-a: 0.36; }
 
 /* ---------- picked up: cards held for a group move (shell/panelCanvas.ts) ---------- */
 
