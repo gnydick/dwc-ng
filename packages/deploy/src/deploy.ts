@@ -1,8 +1,9 @@
 // Orchestration: manifest -> idempotent upload -> proof.
 //
-// deploy() takes a Transport and reads its compression mode. There is no
-// compression parameter, so there is no call site at which the mode and the
-// dialect can disagree.
+// deploy() hands buildManifest the STACK its transport declares it serves, and
+// the manifest derives compression from that. There is no compression parameter
+// anywhere on the route, so there is no call site at which the bytes written and
+// the server that must read them can disagree.
 
 import { buildManifest, type DeployFile } from "./manifest.ts"
 import type { Transport } from "./transport.ts"
@@ -36,7 +37,7 @@ export async function deploy(
 ): Promise<DeployResult> {
 	const manifest = await buildManifest(distDir, {
 		name: opts.name,
-		compression: transport.compression,
+		serves: transport.serves,
 		...(opts.wwwRoot === undefined ? {} : { wwwRoot: opts.wwwRoot }),
 	})
 

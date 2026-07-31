@@ -84,17 +84,31 @@ absolute asset paths into `index.html` at build time, so a `/ng/` deploy
 `base: '/ng/'`. The entry HTML is emitted as `index.html` by Vite and uploaded
 to `ng.html`; assets keep their `/ng/…` references.
 
-## Compression is derived from the transport
+## Compression is derived from the serving stack
 
-| Target | Server | Ships |
+| Target | Serving stack (`ServingStack`) | Ships |
 |---|---|---|
-| DSF / SBC | Kestrel | plain files |
-| Standalone | RRF embedded | `.gz` |
+| DSF / SBC | `"kestrel"` | plain files |
+| Standalone | `"rrf-embedded"` | `.gz` |
 
 Pairing "DSF" with "gzip" produces a wholly broken deploy, so the pairing must
-not be expressible. Compression mode is a property *of* the transport, not a
-separate argument threaded alongside it — there is no call site at which the
-two can disagree.
+not be expressible. `compressionFor(stack)` is the sole producer of a
+`CompressionMode`; it is total over the union and takes no boolean, so
+"Kestrel, gzipped" is not a value anyone can construct. A transport declares
+only which stack will serve what it writes, and `buildManifest` takes that
+stack — compression never travels as a parameter, so there is no call site at
+which the bytes written and the server that must read them can disagree.
+
+**Re-seated 2026-07-31.** This was originally anchored to the *transport*
+(`mintCompression`, called only by the transport factories). That held only
+because transport and serving stack happened to be 1:1 — the rr_ dialect
+implied RRF, REST implied Kestrel. FTP breaks the correspondence: one protocol
+that can target either stack, decided by `M586 P1 S1` on the board rather than
+by which client wrote the files. An `ftpTransport` therefore could not have
+minted a compression mode from its own identity without taking the mode as an
+argument, which is exactly what the rule forbids. The invariant was right; its
+anchor was one level too low. Anchoring on the stack keeps the guarantee and
+lets a future FTP transport state which stack it is talking to.
 
 ## Upload
 

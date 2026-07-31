@@ -6,7 +6,7 @@ import { dirname, resolve } from "node:path"
 import { deploy, uninstall } from "./deploy.ts"
 import { dsfTransport } from "./dsfTransport.ts"
 import { pollTransport } from "./pollTransport.ts"
-import type { Transport } from "./transport.ts"
+import { compressionFor, type Transport } from "./transport.ts"
 
 export type CliArgs = {
 	readonly target: string
@@ -84,7 +84,7 @@ async function main(): Promise<void> {
 	console.log(
 		`${args.dryRun ? "dry run" : "deploying"} ${args.dist}\n` +
 			`  -> ${args.target}  (${args.mode}, ` +
-			`${transport.compression.gzip ? "gzipped" : "plain"})`,
+			`${compressionFor(transport.serves).gzip ? "gzipped" : "plain"})`,
 	)
 
 	const result = await deploy(args.dist, transport, {

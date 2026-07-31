@@ -4,7 +4,7 @@
 import { readdir, readFile } from "node:fs/promises"
 import { join } from "node:path"
 import { gzipSync } from "node:zlib"
-import type { CompressionMode } from "./transport.ts"
+import { compressionFor, type ServingStack } from "./transport.ts"
 
 export type DeployFile = {
 	/** Absolute path on disk. */
@@ -26,7 +26,14 @@ export type DeployFile = {
 export type ManifestOptions = {
 	/** Entry becomes `<name>.html`; everything else nests under `<name>/`. */
 	readonly name: string
-	readonly compression: CompressionMode
+	/**
+	 * The server that will serve these files. Compression is derived from it
+	 * here, rather than accepted as a mode alongside it: a caller holding both a
+	 * stack and a CompressionMode could hand over two that disagree, and this is
+	 * the function that decides whether bytes get a .gz suffix and a gzip pass.
+	 * Naming the stack is the only thing anyone can say.
+	 */
+	readonly serves: ServingStack
 	/** Board directory the deployment lives in. */
 	readonly wwwRoot?: string
 }
@@ -60,11 +67,12 @@ async function walk(dir: string, prefix = ""): Promise<string[]> {
  */
 export async function buildManifest(distDir: string, opts: ManifestOptions): Promise<DeployFile[]> {
 	const wwwRoot = opts.wwwRoot ?? "0:/www"
+	const compression = compressionFor(opts.serves)
 	const relPaths = (await walk(distDir)).filter(p => !isSourcemap(p))
 
 	const files = relPaths.map((rel): DeployFile => {
 		const urlPath = rel === ENTRY ? `/${opts.name}.html` : `/${opts.name}/${rel}`
-		const suffix = opts.compression.gzip ? ".gz" : ""
+		const suffix = compression.gzip ? ".gz" : ""
 		return {
 			local: join(distDir, rel),
 			board: `${wwwRoot}${urlPath}${suffix}`,
@@ -84,7 +92,7 @@ export async function buildManifest(distDir: string, opts: ManifestOptions): Pro
 	return Promise.all(
 		files.map(async f => {
 			const raw = new Uint8Array(await readFile(f.local))
-			return { ...f, raw, bytes: opts.compression.gzip ? new Uint8Array(gzipSync(raw)) : raw }
+			return { ...f, raw, bytes: compression.gzip ? new Uint8Array(gzipSync(raw)) : raw }
 		}),
 	)
 }
