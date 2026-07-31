@@ -1,5 +1,13 @@
 # Floor table — baseline, 2026-07-30
 
+> **Superseded for measurement purposes by
+> [2026-07-31-floor-table-four-pitch.md](2026-07-31-floor-table-four-pitch.md)**,
+> which covers all four density pitches over 43 cards. Keep this one: its value
+> is the record of what the audit reported while four cards were broken, and the
+> reasoning about what each check can and cannot establish still stands. Its
+> NUMBERS are stale, and its `body` column was produced by a check later found to
+> be inverted — see FINDING 1 in the newer table.
+
 Measured in Chrome at the default density pitch (`--row-unit: 4px`), against
 branch `layout-archetypes` at `563e1b9`, before any card is converted to a
 declaration. Units are canvas cells: rows × 4px, cols × 4px. Re-measured
