@@ -157,3 +157,28 @@ test("the chart component supplies --legend-rows from its series count", () => {
 	assert.match(chartTsx, /"--legend-rows":\s*String\(props\.series\.length\)/,
 		"without this the floor falls back to a fixed guess for every machine");
 });
+
+/**
+ * An AUTO margin is slack, not content.
+ *
+ * getComputedStyle resolves `margin: auto` to its USED value, so when
+ * .card-head took `margin-bottom: auto` to push card contents to the bottom,
+ * contentRowSpan began adding each card's own free space to its own content
+ * sum — 333px of it on the sensors card. The reported minimum then equalled the
+ * card's current height and cards would grow but never shrink back.
+ *
+ * The keyword cannot be recovered from the used value, so the rule that creates
+ * the slack declares it. These two assertions are the pairing: every auto
+ * margin in a card body carries the marker, and the measurement honours it.
+ */
+test("a slack-absorbing auto margin declares itself and is not counted", () => {
+	const head = ruleBody(".panel-body > .card-head");
+	assert.match(head, /margin-bottom:\s*auto/, "the header is expected to absorb the slack");
+	assert.match(head, /--absorbs-slack:\s*1/,
+		"an auto margin in a card body MUST declare --absorbs-slack, or contentRowSpan counts it as content");
+
+	const canvas = readFileSync(
+		fileURLToPath(new URL("../src/shell/panelCanvas.ts", import.meta.url)), "utf8");
+	assert.match(canvas, /--absorbs-slack/,
+		"contentRowSpan must honour the marker, or declaring it achieves nothing");
+});
