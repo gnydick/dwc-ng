@@ -15,6 +15,7 @@
  * stripping cannot load JSX).
  */
 import { baseName } from "../files/format.ts";
+import { CONFIG_FILE } from "../config/types.ts";
 import type { CardCtx } from "./ctx.ts";
 
 export interface CardSize {
@@ -408,6 +409,10 @@ export const CARD_DEFS = {
 	"saved-versions": defineCard({
 		title: "Saved versions",
 		ariaLabel: "Saved versions",
+		// Where the settings actually live, in the header rather than as a
+		// paragraph in the body — prose rewraps as the card is resized, and this
+		// card is a list of dated rows that explains itself.
+		tip: CONFIG_FILE,
 		size: { colSpan: 156, rowSpan: 40 },
 	}),
 	/** Save the config overlay to the machine's SD / reset everything —
@@ -451,6 +456,12 @@ export function parseCardId(raw: string): CardId | null {
  *  import reviews): static titles verbatim, dynamic ones fall back to the id.
  *  Lives here (not the JSX wrapper) so pure modules can import it. */
 export function cardTitleOf(id: CardId): string {
-	const title = CARD_DEFS[id].title;
-	return typeof title === "string" ? title : id;
+	const meta = CARD_DEFS[id];
+	// A dynamic title needs a ctx we do not have here — this is for pickers and
+	// lists, not for the rendered card. Fall back to the ARIA LABEL, not the id:
+	// the label is a static human name that already exists on every card
+	// ("Job details"), while the id is kebab-case and sorted into the Card Lab's
+	// alphabetical rail as though it were one, which is how "job-details" ended
+	// up sitting between "Jobs" and "Layer times".
+	return typeof meta.title === "string" ? meta.title : meta.ariaLabel;
 }

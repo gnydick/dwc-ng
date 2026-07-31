@@ -76,7 +76,9 @@ export function TuningBody() {
 	return (
 		<div class="heater-list">
 			<SpeedSlider currentPct={Math.round((app.om.om.move.speedFactor ?? 1) * 100)} />
-			<div class="heater-ctl">
+			{/* baby-row: same row rhythm as a heater row, but NOT its column
+			    scheme — see app.css. */}
+			<div class="heater-ctl baby-row">
 				<span class="ctl-name">Babystep Z</span>
 				<span
 					class="baby-applied"
