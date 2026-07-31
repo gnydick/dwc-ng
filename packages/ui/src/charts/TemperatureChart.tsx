@@ -119,8 +119,12 @@ export function TemperatureChart(props: { data: () => AlignedData; series: Chart
 		if (prev !== undefined && len !== prev) build();
 	}, { defer: true }));
 
+	// --legend-rows feeds the card's floor in app.css: the legend sits BESIDE
+	// the plot, so the card's minimum height is the taller of the two, and only
+	// this component knows how many rows the legend has. uPlot draws one row per
+	// series plus a hidden x-row, so the visible count is props.series.length.
 	return (
-		<div class="temp-chart">
+		<div class="temp-chart" style={{ "--legend-rows": String(props.series.length) }}>
 			<div class="temp-chart-legend" ref={legendEl} />
 			<div class="temp-chart-plot" ref={plotEl} />
 		</div>
