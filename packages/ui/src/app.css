@@ -3479,7 +3479,19 @@
 	font-variant-numeric: tabular-nums;
 }
 .layer-summary b { color: var(--silk); font-weight: 600; }
-.layer-chart { width: 100%; }
+/* Contained, with a declared floor — the same treatment .temp-chart-plot
+   documents at length, and for the identical reason.
+   LayerChart hands uPlot `plotEl.clientWidth`, and uPlot builds a
+   PIXEL-SIZED root inside that same element. So the element's min-content came
+   from its own current width: the card's floor was wherever the card already
+   was, and it could be widened but never narrowed again. Classic self-
+   reference — the thing Invariant A exists to catch.
+   `contain: inline-size` stops the contents having any say in the width, which
+   means nothing inside can state one, which means this rule must: 160px, the
+   same floor the temperature plot uses for the same judgement about when a
+   chart stops being worth looking at. uPlot measures whatever container it is
+   given and redraws, so containment costs it nothing. */
+.layer-chart { width: 100%; min-width: 160px; contain: inline-size; }
 
 /* ---------- layout audit (dev only) ---------- */
 .layout-audit { margin-top: var(--sp-flow); }
