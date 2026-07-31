@@ -3334,7 +3334,13 @@
 .mesh-status.on { color: var(--ok); }
 /* Tram result: fixed, tabular figures — this is read by comparing runs, and
    proportional digits make 0.001 and 0.007 hard to scan against each other. */
-.tram-result dd { font-variant-numeric: tabular-nums; }
+/* nowrap, like .mesh-actions above it. These values are runs of figures —
+   "-1.051  0.020  0.884", "0.044 → 0.000 mm" — and letting them wrap made the
+   card REFLOW as it was resized: the rows re-broke onto more lines, the content
+   height changed, and the card "fitted" at every width by rearranging itself,
+   which is the one thing a content-derived minimum cannot survive. Now the
+   figures state their width and the card is sized from it. */
+.tram-result dd { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .mesh-saveas input { width: 140px; }
 
 /* A tool button that is MODAL — it stays lit while the mode it opens is the one
@@ -3616,7 +3622,14 @@
 
    Cards whose body already fills — a flex-grow chart, viewer or log — have no
    free space to move, so nothing about them changes. */
-.panel-body { justify-content: flex-end; }
+/* NO justify-content here, and that is load-bearing. .panel-body is a SCROLL
+   container: with `justify-content: flex-end` its overflow escapes off the TOP,
+   where scrollTop cannot reach it, so a card whose content outgrew it simply
+   could not be scrolled — reported on Sensors in portrait, but it applied to
+   every card on the canvas.
+   The auto margin below does the whole job and has no such failure mode: an
+   auto margin absorbs POSITIVE free space only, so the moment content overflows
+   it resolves to 0 and scrolling behaves normally. */
 .panel-body > .card-head {
 	margin-bottom: auto;
 	/* Declares that the margin above is SLACK, so contentRowSpan does not count

@@ -6,9 +6,10 @@
  * browser card and its details/editor sibling share one selection by
  * construction.
  */
-import { Show, Switch, Match, createMemo, createSignal } from "solid-js";
+import { Show, Switch, Match, createMemo } from "solid-js";
 import { useApp } from "../shell/context.ts";
 import { cmd } from "../control/commands.ts";
+import { createArmed } from "../control/armed.ts";
 import { Thumbnail } from "../thumbnails/Thumbnail.tsx";
 import { FileBrowserView } from "../files/FileBrowserView.tsx";
 import { FileEditorBody } from "../editor/FileEditor.tsx";
@@ -21,13 +22,17 @@ import type { CardCtx } from "../compose/ctx.ts";
 // ---- Jobs ----
 
 /**
- * The job listing, rendered by BOTH job cards — same split as the macro pair.
- * One component with two props, so Download, the meta columns and the
- * selection wiring stay maintained once.
+ * The job listing, rendered by BOTH job cards.
+ *
+ * ONE jobsBrowser between them, deliberately. They had separate browsers for a
+ * few hours so the inventory could not move the Jobs card underneath you —
+ * which also meant opening a file in the inventory set a selection nothing
+ * read, so Job details never loaded it (reported 2026-07-30). Independent
+ * navigation is not worth a card whose clicks do nothing.
  */
-function JobsListing(props: { ctx: CardCtx; service: "jobsBrowser" | "jobsInventoryBrowser"; manageActions: boolean }) {
+function JobsListing(props: { ctx: CardCtx; manageActions: boolean }) {
 	const app = useApp();
-	const svc = props.ctx.service(props.service);
+	const svc = props.ctx.service("jobsBrowser");
 	// The row action splits with the card. Jobs ACTS on a job — the button
 	// starts the print, the same M32 the Job details card sends, so the two
 	// cannot mean different things by "print". The inventory MANAGES files, and
@@ -87,13 +92,13 @@ function JobsListing(props: { ctx: CardCtx; service: "jobsBrowser" | "jobsInvent
  * which job is "the" job.
  */
 export function JobFilesBody(props: { ctx: CardCtx }) {
-	return <JobsListing ctx={props.ctx} service="jobsBrowser" manageActions={false} />;
+	return <JobsListing ctx={props.ctx} manageActions={false} />;
 }
 
-/** The same listing with the management actions on, and its own browser so it
- *  does not move the Jobs card — or its selection — underneath you. */
+/** The same listing with the management actions on. Shares the Jobs card's
+ *  browser, so opening a file here is what Job details shows. */
 export function JobsInventoryBody(props: { ctx: CardCtx }) {
-	return <JobsListing ctx={props.ctx} service="jobsInventoryBrowser" manageActions={true} />;
+	return <JobsListing ctx={props.ctx} manageActions={true} />;
 }
 
 export function JobDetailsBody(props: { ctx: CardCtx }) {
@@ -155,18 +160,22 @@ export function JobDetailsBody(props: { ctx: CardCtx }) {
 /**
  * The macro listing, rendered by BOTH macro cards.
  *
- * They differ in exactly two ways — which browser service they drive, and
- * whether the rows carry Rename/Delete — so they are one component with two
- * props rather than two components that happen to agree today. Copying it
- * would have made the two-step Run confirm, the AutoConfirm setting and the
- * quoted M98 into things maintained twice.
+ * They differ in ONE way — whether the rows carry Rename/Delete — so they are
+ * one component with one prop rather than two that happen to agree today.
+ * Copying it would have made the two-step Run confirm, the AutoConfirm setting
+ * and the quoted M98 into things maintained twice.
+ *
+ * One macrosBrowser between them, for the reason the job pair shares one:
+ * opening a macro in the inventory has to be the macro the editor opens.
  */
-function MacrosListing(props: { ctx: CardCtx; service: "macrosBrowser" | "macrosInventoryBrowser"; manageActions: boolean }) {
+function MacrosListing(props: { ctx: CardCtx; manageActions: boolean }) {
 	const app = useApp();
-	const svc = props.ctx.service(props.service);
+	const svc = props.ctx.service("macrosBrowser");
 	// Two-step Run confirm — armed is card-local (the checkbox that clears it
 	// lives in this same card), collapsed by the persisted autoConfirm setting.
-	const [armed, setArmed] = createSignal<string | null>(null);
+	// createArmed, not createSignal: Escape disarms it. A row left saying
+	// "Confirm" whose next click runs a macro had no way back at all.
+	const [armed, setArmed] = createArmed<string>();
 	const autoConfirm = (): boolean => app.config.config.macros.autoConfirmRun;
 
 	const run = (path: string): void => {
@@ -229,16 +238,13 @@ function MacrosListing(props: { ctx: CardCtx; service: "macrosBrowser" | "macros
  * slow afternoon. File management lives in macros-inventory.
  */
 export function MacrosBody(props: { ctx: CardCtx }) {
-	return <MacrosListing ctx={props.ctx} service="macrosBrowser" manageActions={false} />;
+	return <MacrosListing ctx={props.ctx} manageActions={false} />;
 }
 
-/**
- * Macros inventory: the same listing with the management actions on, and its
- * OWN browser service — so navigating the inventory does not move the Macros
- * card underneath you when both are on the same screen.
- */
+/** Macros inventory: the same listing with the management actions on. Shares
+ *  the Macros card's browser, so a file opened here is the one the editor gets. */
 export function MacrosInventoryBody(props: { ctx: CardCtx }) {
-	return <MacrosListing ctx={props.ctx} service="macrosInventoryBrowser" manageActions={true} />;
+	return <MacrosListing ctx={props.ctx} manageActions={true} />;
 }
 
 // ---- System ----

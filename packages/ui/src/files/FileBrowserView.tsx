@@ -4,6 +4,7 @@ import type { FileBrowser, OpResult, RemovePlan } from "./browser.ts";
 import { parseFileName } from "./path.ts";
 import { loadBrowserMemory, saveBrowserScroll } from "./browserMemory.ts";
 import { formatModified, formatSize } from "./format.ts";
+import { createArmed } from "../control/armed.ts";
 
 /**
  * The single rendering of a domain file listing — breadcrumbs, create/rename/
@@ -60,7 +61,7 @@ export function FileBrowserView(props: {
 	const [renameText, setRenameText] = createSignal("");
 	// The armed delete carries its plan, so the warning shown and the request
 	// sent come from the same object and cannot disagree.
-	const [armed, setArmed] = createSignal<RemovePlan | null>(null);
+	const [armed, setArmed] = createArmed<RemovePlan>();
 	const [typedName, setTypedName] = createSignal("");
 	const [creating, setCreating] = createSignal<"dir" | "file" | null>(null);
 	const [createText, setCreateText] = createSignal("");

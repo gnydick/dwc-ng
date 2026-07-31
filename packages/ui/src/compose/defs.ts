@@ -273,7 +273,7 @@ export const CARD_DEFS = {
 	"jobs-inventory": defineCard({
 		title: "Jobs · inventory",
 		ariaLabel: "Jobs inventory",
-		tip: ctx => ctx.service("jobsInventoryBrowser").browser.dir(),
+		tip: ctx => ctx.service("jobsBrowser").browser.dir(),
 		size: { colSpan: 156, rowSpan: 150 },
 	}),
 	/** Macro listing (0:/macros) with two-step Run. */
@@ -288,7 +288,7 @@ export const CARD_DEFS = {
 	"macros-inventory": defineCard({
 		title: "Macros · inventory",
 		ariaLabel: "Macros inventory",
-		tip: ctx => ctx.service("macrosInventoryBrowser").browser.dir(),
+		tip: ctx => ctx.service("macrosBrowser").browser.dir(),
 		size: { colSpan: 130, rowSpan: 150 },
 	}),
 	/** Macro editor — placeholder until a file is opened. */

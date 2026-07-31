@@ -297,12 +297,18 @@ function ComposeDrawer(props: { screenId: string; entry: ScreenEntry | null; com
 				// Mouse only. On touch, pointerleave fires as soon as the finger
 				// lifts, so the drawer would shut on the tap that opened it.
 				if (e.pointerType !== "mouse") return;
-				// Never yank it away mid-edit: the screen-name field lives in here,
-				// and a rename you were halfway through typing is not something a
-				// stray mouse movement gets to discard. Leaving the pointer is a
-				// hint that you are done; the keyboard being in the drawer says
-				// otherwise, and that wins.
-				if (e.currentTarget.contains(document.activeElement)) return;
+				// Closes the FIRST time the pointer leaves, with no other condition.
+				//
+				// There was a guard here that kept the drawer open while focus was
+				// inside it, meant to protect a half-typed screen rename. It made
+				// the control unpredictable instead: clicking any button in the
+				// drawer focuses that button, so from then on leaving did nothing
+				// and the drawer stayed until you clicked Compose again. A close
+				// that happens only sometimes is worse than one that always does.
+				//
+				// And it was guarding a loss that cannot happen: the name field
+				// commits on `change`, which fires on blur, so closing the drawer
+				// SAVES the rename rather than discarding it.
 				setOpen(false);
 			}}
 		>
