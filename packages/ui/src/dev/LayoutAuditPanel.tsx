@@ -71,43 +71,24 @@ function probeAt<T>(el: HTMLElement, axis: "row" | "col", px: number, read: () =
  * else. Subtract it from the real floor and what is left is exactly the rows
  * the card's content is worth. (See judgeFloor.)
  *
- * Measured by hiding every non-header child and re-running contentRowSpan,
- * NOT by re-deriving the chrome term here. The difference matters: contentRowSpan
- * decides what counts (out-of-flow children skipped, a flex-grow child's
- * DECLARED min-height substituted for its rendered height, gaps, padding, the
- * card's own chrome, the pitch conversion). A second copy of that arithmetic
- * would be correct on the day it was written and wrong the first time the
- * original changed — and it is the original's grow-child substitution that
- * creates the defect being looked for, so a divergent copy would look clean
- * precisely when it mattered. Running the one function twice makes the two
- * numbers comparable by construction.
+ * The SAME function as the real floor, asked a different question — never a
+ * second copy of its arithmetic. contentRowSpan decides what counts (out-of-flow
+ * children skipped, a flex-grow child's DECLARED min-height substituted for its
+ * rendered height, gaps, padding, the card's own chrome, the pitch conversion),
+ * and a divergent copy here would look clean precisely when it mattered.
  *
- * `.card-head` is the header by the same selector headerColSpan uses, so "the
- * header" means one thing in both directions. Restored in a finally, like
- * probeAt: a throw mid-measure must not leave a card's body invisible.
+ * WHY THIS IS A PARAMETER AND NOT A DOM TRICK, since the DOM trick is the
+ * obvious thing to reach for and it is wrong: this used to set `display: none`
+ * on every non-header child and call contentRowSpan again. `display: none` does
+ * not clear `flex-grow` or `min-height` from computed style, and for a
+ * slack-absorbing child those two are the ONLY inputs contentRowSpan reads — so
+ * the hidden child went on contributing its declared floor, the subtraction came
+ * out zero, and the check fired on every card that correctly declares its
+ * minimum. Six did on 2026-07-31, all of them cards fixed the day before.
+ * Selecting children inside contentRowSpan's own loop cannot fail that way.
  */
 function chromeRowSpan(cardEl: HTMLElement, gutterPx: number): number {
-	const body = cardEl.querySelector<HTMLElement>(".panel-body");
-	if (!body) return 1;
-	const hidden: Array<[HTMLElement, string]> = [];
-	try {
-		for (const child of Array.from(body.children)) {
-			if (!(child instanceof HTMLElement)) continue;
-			if (child.classList.contains("card-head")) continue;
-			hidden.push([child, child.style.getPropertyValue("display")]);
-			child.style.setProperty("display", "none");
-		}
-		// Same synchronous flush probeAt relies on — reading geometry settles
-		// style and layout, so no frame wait and no observer is involved.
-		void cardEl.getBoundingClientRect();
-		return contentRowSpan(cardEl, gutterPx);
-	} finally {
-		for (const [child, previous] of hidden) {
-			if (previous === "") child.style.removeProperty("display");
-			else child.style.setProperty("display", previous);
-		}
-		void cardEl.getBoundingClientRect();
-	}
+	return contentRowSpan(cardEl, gutterPx, "header-only");
 }
 
 /** Every in-flow descendant of the body, with its offset from the body's box. */

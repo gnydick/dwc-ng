@@ -421,6 +421,31 @@ export function clampToStop(rawSpan: number, minSpan: number): { span: number; a
 }
 
 /**
+ * WHICH of the body's children a floor is computed over.
+ *
+ * Two named questions rather than a caller-supplied predicate, because there
+ * are exactly two and a third would be a mistake: "how tall is this card's
+ * content" (the resize stop) and "how tall would this card be with NO content"
+ * (the audit's body-in-floor check, which subtracts the second from the first).
+ *
+ * It is a parameter of contentRowSpan rather than something a caller arranges
+ * beforehand, and that is the whole point. The audit used to empty the body by
+ * setting `display: none` on every non-header child and calling this function
+ * again — which does not work, because `display: none` leaves `flex-grow` and
+ * `min-height` untouched in computed style and those two ARE the inputs this
+ * function uses for a slack-absorbing child. The hidden child kept contributing
+ * its declared floor, the subtraction came out zero, and every card that
+ * correctly DECLARES its minimum was reported as ignoring its own body
+ * (verified 2026-07-31: temperatures at min-height 150/400/20px reported
+ * 65/154/18 rows and "IGNORES BODY" at all three).
+ *
+ * Selecting the children inside the one loop that knows how to weigh a child
+ * means the caller cannot get that wrong: there is no second place where "what
+ * counts as content" is written down.
+ */
+export type FloorContent = "as-rendered" | "header-only";
+
+/**
  * The smallest rowSpan that still contains a card's content, measured from the
  * live DOM at resize start.
  *
@@ -434,7 +459,11 @@ export function clampToStop(rawSpan: number, minSpan: number): { span: number; a
  * this function was rewritten for) still measures full content — immune to
  * both the box size and the scroll position.
  */
-export function contentRowSpan(cardEl: HTMLElement, gutterPx: number): number {
+export function contentRowSpan(
+	cardEl: HTMLElement,
+	gutterPx: number,
+	content: FloorContent = "as-rendered",
+): number {
 	const body = cardEl.querySelector<HTMLElement>(".panel-body");
 	if (!body) return 1;
 	// SUMMED, not taken from the lowest child's offset. Offsets are where things
@@ -446,7 +475,20 @@ export function contentRowSpan(cardEl: HTMLElement, gutterPx: number): number {
 	// Stacking the children's own heights asks the right question — "how tall is
 	// this content" — instead of "where does it currently end".
 	let contentBottom = 0;
+	// How many children the gap term below spans. Incremented for every child
+	// the CONTENT FILTER admits and BEFORE the out-of-flow skip below, which is
+	// deliberate on both counts: "as-rendered" therefore still counts exactly
+	// body.children.length, as the old `children.length - 1` did, so this
+	// parameter cannot quietly change the resize stop of a card with an
+	// absolutely-positioned child (the toolpath canvas is one); and an emptied
+	// body counts its single header and so spans no gaps at all.
+	let counted = 0;
 	for (const child of Array.from(body.children)) {
+		// The audit's "with the body emptied" measurement. `.card-head` is the
+		// header by the same selector headerColSpan uses, so "the header" means
+		// one thing in both directions.
+		if (content === "header-only" && !child.classList.contains("card-head")) continue;
+		counted++;
 		const rect = child.getBoundingClientRect();
 		const style = getComputedStyle(child);
 		// Absolutely positioned children are out of the flow and contribute
@@ -481,7 +523,7 @@ export function contentRowSpan(cardEl: HTMLElement, gutterPx: number): number {
 	const bodyStyle = getComputedStyle(body);
 	// The gaps a flex/grid body puts BETWEEN its children are part of the stack.
 	const rowGap = parseFloat(bodyStyle.rowGap);
-	const spans = Math.max(0, body.children.length - 1);
+	const spans = Math.max(0, counted - 1);
 	if (Number.isFinite(rowGap)) contentBottom += rowGap * spans;
 	contentBottom += (parseFloat(bodyStyle.paddingTop) || 0) + (parseFloat(bodyStyle.paddingBottom) || 0);
 	// The card's chrome around the body's content box (borders, outer padding)
