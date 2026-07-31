@@ -3441,3 +3441,30 @@
    column of passing verdicts being read as "this layout is sound". */
 .layout-audit-scope { margin: var(--sp-flow) 0 0; max-width: 78ch; line-height: 1.5; }
 .layout-audit-scope b { color: var(--silk); font-weight: 600; }
+
+/* ---------- edge-scroll strips (shell/edgeScroll.ts) ---------- */
+
+/* A wheel over the middle of a tall scroller moves the PAGE; only these two
+   strips move the box. They carry no border and no cue at rest — but invisible
+   affordances are unfindable, so hovering the box ghosts them in.
+
+   The gradient runs from the OUTSIDE of the strip inward, strongest at the card
+   edge and gone by the time it reaches the content, so it reads as the box's
+   margin catching light rather than as two bars drawn on the text.
+
+   Painted as a background rather than with ::before/::after: this element is a
+   scroll container, so a pseudo-element would be positioned in the scrolled
+   content and slide away with it. A background-image with the default
+   `background-attachment: scroll` stays fixed to the box.
+
+   --edge-w is set by edgeScroll.ts from the SAME edgeWidth() the wheel handler
+   uses, so the lit area is exactly the area that responds. A literal here would
+   be a second opinion about where the strip is. */
+[data-edge-scroll]:hover {
+	background-image:
+		linear-gradient(to right, rgba(217, 133, 59, 0.16), rgba(217, 133, 59, 0) 100%),
+		linear-gradient(to left, rgba(217, 133, 59, 0.16), rgba(217, 133, 59, 0) 100%);
+	background-size: var(--edge-w, 0) 100%, var(--edge-w, 0) 100%;
+	background-position: left center, right center;
+	background-repeat: no-repeat;
+}
