@@ -3737,3 +3737,17 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; appe
 .heater-ctl.baby-row {
 	grid-template-columns: minmax(56px, 1fr) max-content max-content max-content;
 }
+
+/* ---------- labels hidden (PanelTools' 🏷 toggle) ---------- */
+
+/* Dropping the label CELL is not enough for a grid whose first track is the
+   label column: an empty max-content track still claims its gap and slides
+   every row right by it. So the grids that have one lose the track too.
+   Scoped to the card, because the toggle is per slot — the same card can be
+   labelled on one screen and bare on another. */
+.card.panel.no-labels .home-table {
+	grid-template-columns: var(--home-key-w) var(--home-key-w);
+}
+.card.panel.no-labels .jog-table {
+	grid-template-columns: var(--jog-key-w) var(--jog-key-w);
+}

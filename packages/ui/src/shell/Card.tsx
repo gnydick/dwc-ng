@@ -19,6 +19,7 @@ export function Card(props: {
 	actions?: JSX.Element;
 	class?: string;
 	orientationToggle?: boolean;
+	labelsToggle?: boolean;
 	children: JSX.Element;
 }) {
 	return (
@@ -28,6 +29,7 @@ export function Card(props: {
 			ariaLabel={props.ariaLabel}
 			class={props.class}
 			orientationToggle={props.orientationToggle}
+			labelsToggle={props.labelsToggle}
 			title={props.title}
 			tip={props.tip}
 			actions={props.actions}

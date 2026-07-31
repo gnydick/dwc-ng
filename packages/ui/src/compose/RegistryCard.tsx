@@ -23,6 +23,7 @@ export function RegistryCard(props: { id: CardId; canvas: PanelCanvasController;
 			tip={def.tip !== undefined ? text(def.tip) : undefined}
 			class={def.class}
 			orientationToggle={def.orientationToggle}
+			labelsToggle={def.labelsToggle}
 			actions={render.actions?.(props.ctx)}
 		>
 			{render.body(props.ctx)}

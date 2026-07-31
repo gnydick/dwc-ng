@@ -122,6 +122,7 @@ export default function CardLab() {
 		...services,
 		connected,
 		orientation: () => canvas.orientationFor(id),
+		labels: () => canvas.labelsFor(id),
 		service,
 	});
 
