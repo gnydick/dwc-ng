@@ -1445,9 +1445,20 @@
 .thumb-img { width: 160px; height: 160px; object-fit: contain; image-rendering: auto; }
 .thumb-placeholder { color: var(--silk-dim); font-size: calc(12px + var(--fs-bump)); }
 
-.meta-grid { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 0; }
-.meta-grid dt { color: var(--silk-dim); font-size: calc(12px + var(--fs-bump)); text-transform: uppercase; letter-spacing: 0.03em; }
-.meta-grid dd { margin: 0; color: var(--silk); font-size: calc(14px + var(--fs-bump)); font-variant-numeric: tabular-nums; }
+/* minmax on the value track, and nowrap values — the pair is what stops this
+   card REFLOWING. As `auto 1fr` with wrapping values, narrowing the Job details
+   card re-broke "1h 37m", "12.3 m / 36 g", "PrusaSlicer 2.7.1" onto extra lines
+   and the block grew 198px to 256px between 460 and 340 wide, so the card
+   rearranged itself at every size.
+   A floor rather than min-width: 0, for the reason the file rows have one: at
+   zero the values would shrink to nothing and a metadata card whose metadata is
+   invisible is not a narrower card. 96px, then ellipsis. */
+.meta-grid { display: grid; grid-template-columns: auto minmax(96px, 1fr); gap: 6px 14px; margin: 0; }
+.meta-grid dt { color: var(--silk-dim); font-size: calc(12px + var(--fs-bump)); text-transform: uppercase; letter-spacing: 0.03em; white-space: nowrap; }
+.meta-grid dd {
+	margin: 0; color: var(--silk); font-size: calc(14px + var(--fs-bump)); font-variant-numeric: tabular-nums;
+	white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 
 /* flex-shrink:0 is load-bearing: in a card too short for its content the bar
    is the only child with no intrinsic text height, so it collapses to ~1px
@@ -3673,3 +3684,27 @@
 input[type="number"] { -moz-appearance: textfield; appearance: textfield; text-align: right; font-variant-numeric: tabular-nums; }
 input[type="number"]::-webkit-outer-spin-button,
 input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; appearance: none; margin: 0; }
+
+/* A saved-version row: stamp · label · Restore, on ONE line at any width.
+   As a wrapping flex row the label pushed Restore onto a second line as the
+   card narrowed — rows went 33px to 76px and the card rearranged itself at
+   every size. The label is the only elastic part, so it is the part that
+   truncates; the stamp and the button state their widths and keep them. */
+.saved-version { flex-wrap: nowrap; }
+.saved-version .stamp { flex: 0 0 auto; }
+.saved-version .hint { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.saved-version .link-btn { flex: 0 0 auto; }
+
+/* The Babystep row borrows .heater-ctl for its rhythm, but its cells are
+   nothing like a heater's. Under the heaters' scheme its `mm` field landed in
+   the fixed 78px STANDBY track — sized for a bare setpoint input, not for a
+   label plus an input — and once the type bump widened both, the input
+   overflowed its cell and ran 8px under the buttons beside it (measured
+   2026-07-30).
+
+   Its own tracks, sized to what is actually in them. max-content is safe here
+   in a way it is not on a heater row: every cell in this row always has
+   content, so none can collapse to zero and slide its neighbours left. */
+.heater-ctl.baby-row {
+	grid-template-columns: minmax(56px, 1fr) max-content max-content max-content;
+}

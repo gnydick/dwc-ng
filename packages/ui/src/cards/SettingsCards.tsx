@@ -10,7 +10,7 @@
  */
 import { For, Index, Show, createMemo, createSignal } from "solid-js";
 import { useApp } from "../shell/context.ts";
-import { CONFIG_FILE, MAX_LABEL_LEN, DEFAULT_THERMAL_COLORS, type ThermalColors } from "../config/types.ts";
+import { MAX_LABEL_LEN, DEFAULT_THERMAL_COLORS, type ThermalColors } from "../config/types.ts";
 import { heaterSeries } from "../om/heaterSeries.ts";
 import { nearestCollision, isHexColor } from "../util/colorDistance.ts";
 import { sensorRows } from "../om/sensorRows.ts";
@@ -300,15 +300,15 @@ export function SavedVersionsBody() {
 	const app = useApp();
 	return (
 		<>
-			<p class="hint">
-				Every save keeps a version here — experiment freely and go back with
-				one click. Settings live on the SD card ({CONFIG_FILE}), so they
-				follow the machine to any browser.
-			</p>
+			{/* The three-line paragraph that used to sit here was the card's biggest
+			    reflow source — 63px of prose at 600 wide, 126px at 240, so the card
+			    rearranged itself at every size. The one fact in it that was not
+			    already obvious from a list of dated rows with Restore buttons is
+			    WHERE the settings live, and that is what the card's tip is for. */}
 			<Show when={app.config.snapshots.length} fallback={<p class="job-empty">No saved versions</p>}>
 				<For each={app.config.snapshots}>
 					{(snap, index) => (
-						<div class="field">
+						<div class="field saved-version">
 							{/* Date AND time: a list of times alone cannot tell yesterday's
 							    backup from this morning's. Same format as the file
 							    browser's modified column. */}
