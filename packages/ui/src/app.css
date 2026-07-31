@@ -1649,7 +1649,19 @@
 	   collapse to the header. This one is not: it has a legend and a plot that
 	   both have real minimums, so it states the plot's own floor. */
 	flex: 1 1 0;
-	min-height: 120px;
+	/* max(), because this is a ROW: the legend sits BESIDE the plot, so the
+	   row's real minimum is whichever of the two is taller — not the plot's
+	   floor, which is all this used to declare. Measured 2026-07-30: the plot
+	   floor said 120px while the legend stood 149px, so the card could be
+	   dragged 29px into its own legend.
+
+	   The legend term is arithmetic over --legend-row-h, the SAME token the
+	   rows are sized by, so the floor cannot disagree with what is drawn. A
+	   literal would have been right for five heaters at today's type size and
+	   wrong at the first change to either. --legend-rows comes from the
+	   component, which is the only place the series count is known; the
+	   fallback is for a card rendered before it is set. */
+	min-height: max(120px, calc(var(--legend-rows, 5) * var(--legend-row-h)));
 }
 /* Only the DATA AREA scales. The legend keeps its natural height at the top of
    the row and never stretches with it. */
@@ -1684,6 +1696,12 @@
    the host's height comes from the card and nothing else. */
 .temp-chart-plot > .uplot { position: absolute; inset: 0; }
 .temp-chart .u-title { color: var(--silk); }
+/* The legend's geometry, declared rather than discovered. Both the rows and
+   the card's floor above read these two numbers, so the floor is exact by
+   construction instead of matching a measurement until something shifts.
+   28 + the bump is 30px at the default --fs-bump: 2px, which is what the rows
+   measured before they were pinned. */
+:root { --legend-row-h: calc(28px + var(--fs-bump)); }
 .temp-chart-legend .u-legend {
 	color: var(--silk-dim);
 	/* One step up the scale the rest of the app uses (12 -> 13, the size the
@@ -1694,7 +1712,11 @@
 	font-family: var(--font-display);
 	display: flex;
 	flex-direction: column;
-	gap: 4px;
+	/* No gap. uPlot's legend is a <table>, so this flex container's only child
+	   is the <tbody> — a gap here has one item to space and does nothing. It
+	   sat here reading like 4px of row spacing, and the card's floor was
+	   briefly computed as though those gaps existed (16px it did not have).
+	   The rows carry their own breathing room in --legend-row-h. */
 }
 /* The x-series row — uPlot's first legend row, which carries the timestamp at
    the cursor. Hidden: the chart's x axis already reads in time, so this row
@@ -1713,6 +1735,11 @@
 	grid-template-columns: 1fr max-content;
 	align-items: center;
 	gap: var(--ctl-gap);
+	/* Pinned, not left to uPlot's own padding. The card's floor is computed
+	   from this number, so a row that decided its own height would make the
+	   floor a guess again. Safe to fix: .u-label is nowrap and the row is one
+	   line by construction. */
+	height: var(--legend-row-h);
 }
 /* The marker and the name travel together in the first track. */
 .temp-chart-legend .u-legend th { display: flex; align-items: center; gap: 6px; }

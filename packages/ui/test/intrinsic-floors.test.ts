@@ -120,3 +120,40 @@ test("the Extruders value track is fixed and clears its widest occupant", () => 
 	assert.match(ruleBody(".filament-list"), /grid-template-columns:[^;]*var\(--fil-value-w\)/);
 	assert.match(ruleBody(".filament-row .filament-pick"), /max-width:\s*\d+px/);
 });
+
+/**
+ * The temperature card's floor is arithmetic over the legend, because the
+ * legend sits BESIDE the plot: the row's real minimum is the taller of the two,
+ * not the plot's. It used to declare only the plot's 120px while the legend
+ * stood 149px, so the card could be dragged 29px into its own legend.
+ *
+ * Three things have to stay wired for that arithmetic to be true, and none of
+ * them is visible from the others:
+ *   1. the floor multiplies --legend-rows by --legend-row-h,
+ *   2. the ROWS are sized by that same --legend-row-h (a row that picks its own
+ *      height makes the floor a guess again),
+ *   3. the component supplies --legend-rows from the series count.
+ */
+const chartTsx = readFileSync(
+	fileURLToPath(new URL("../src/charts/TemperatureChart.tsx", import.meta.url)), "utf8");
+
+test("the temp chart's floor covers the legend, not just the plot", () => {
+	const floor = /\.temp-chart\s*\{([^}]*)\}/.exec(appCss);
+	assert.ok(floor, "no .temp-chart rule");
+	const body = floor[1]!;
+	assert.match(body, /min-height:\s*max\(/, "floor must be a max() — the row's taller child wins");
+	assert.match(body, /var\(--legend-rows/, "floor does not account for the legend's row count");
+	assert.match(body, /var\(--legend-row-h\)/, "floor does not use the row height the rows are drawn at");
+});
+
+test("legend rows are sized by the token the floor computes from", () => {
+	const row = /\.temp-chart-legend \.u-legend tr\s*\{([^}]*)\}/.exec(appCss);
+	assert.ok(row, "no legend row rule");
+	assert.match(row[1]!, /(^|[;{\s])height:\s*var\(--legend-row-h\)/,
+		"rows must take --legend-row-h, or the floor's arithmetic describes nothing");
+});
+
+test("the chart component supplies --legend-rows from its series count", () => {
+	assert.match(chartTsx, /"--legend-rows":\s*String\(props\.series\.length\)/,
+		"without this the floor falls back to a fixed guess for every machine");
+});
