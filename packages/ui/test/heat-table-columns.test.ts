@@ -68,7 +68,12 @@ function columnWidths(css: string): Map<number, number> {
 	const widths = new Map<number, number>();
 	const rule = /\.heat-table th:nth-child\((\d+)\)[^{]*\{([^}]*)\}/g;
 	for (const [, index, body] of css.matchAll(rule)) {
-		const width = /(?:^|[;{\s])width:\s*(\d+)px/.exec(body!);
+		// Reads the BASE literal out of `calc(152px + var(--fs-col))`. Every
+		// column and the total carry the same per-column allowance, so checking
+		// the bases still proves the sum — and the allowance itself is pinned
+		// separately below, which is what makes the sum hold at any --fs-bump
+		// rather than only at zero.
+		const width = /(?:^|[;{\s])width:\s*(?:calc\()?(\d+)px/.exec(body!);
 		assert.ok(width, `.heat-table column ${index} rule declares no px width`);
 		widths.set(Number(index), Number(width[1]));
 	}
@@ -77,7 +82,7 @@ function columnWidths(css: string): Map<number, number> {
 
 /** The last `--heat-table-w` declared in a stretch of CSS. */
 function declaredTableWidth(css: string): number {
-	const all = [...css.matchAll(/--heat-table-w:\s*(\d+)px/g)];
+	const all = [...css.matchAll(/--heat-table-w:\s*(?:calc\()?(\d+)px/g)];
 	assert.ok(all.length > 0, "no --heat-table-w declaration");
 	return Number(all[all.length - 1]![1]);
 }
@@ -142,4 +147,21 @@ test("the Deselect row does NOT wrap — content inside a card must not move", (
 	const rule = /\.heat-deselect\s*\{([^}]*)\}/.exec(appCss);
 	assert.ok(rule, "no .heat-deselect rule");
 	assert.match(rule[1]!, /flex-wrap:\s*nowrap/);
+});
+
+/**
+ * The type bump widens every column by `--fs-col`, so the table total must
+ * carry exactly one allowance PER COLUMN. Checking the base literals sum
+ * correctly only proves the table at --fs-bump: 0; this is what makes it hold
+ * at every other value. A sixth column added without touching the multiplier
+ * would make the columns outgrow their own table at any non-zero bump — the
+ * same silent-overflow class the nth-child guard exists for.
+ */
+test("the table total carries one --fs-col allowance per column", () => {
+	const totals = [...appCss.matchAll(/--heat-table-w:\s*calc\(\d+px \+ (\d+) \* var\(--fs-col\)\)/g)];
+	assert.equal(totals.length, 2, "expected a base and a narrow-viewport total, both scaled");
+	for (const [, multiplier] of totals) {
+		assert.equal(Number(multiplier), COLUMN_COUNT,
+			`total scales by ${multiplier} but the table has ${COLUMN_COUNT} columns`);
+	}
 });

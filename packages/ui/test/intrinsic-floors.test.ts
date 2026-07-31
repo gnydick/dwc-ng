@@ -87,7 +87,9 @@ test("the DRO value track is fixed — a live reading cannot be in 1fr", () => {
 	assert.doesNotMatch(tracks[1]!, /\bfr\b|\d+fr/);
 	assert.match(tracks[1]!, /var\(--dro-val-w\)/);
 
-	const token = /--dro-val-w:\s*(\d+)px/.exec(appCss);
+	// Base literal out of `calc(100px + 2 * var(--fs-col))` — the track grows
+	// with the type bump, but the floor below is about the BASE face and size.
+	const token = /--dro-val-w:\s*(?:calc\()?(\d+)px/.exec(appCss);
 	assert.ok(token, "no --dro-val-w token");
 	// "-99999.99mm" measures 99px at .dro-val's face and size.
 	assert.ok(Number(token[1]) >= 99, `value track ${token[1]}px cannot hold a full reading`);

@@ -495,7 +495,7 @@
    as the reading crossed a digit or picked up a minus sign, moving all seven
    rows. 100px is measured — "-99999.99mm" renders 99px at this face and size,
    past anything a machine coordinate reaches. */
-:root { --dro-val-w: 100px; }
+:root { --dro-val-w: calc(100px + 2 * var(--fs-col)); }
 .dro-list {
 	display: grid;
 	/* axis (+ role) | reading | homed tag */
@@ -707,7 +707,15 @@
    No Filament column on either tool card: loading a material is the Extruders
    card's job — it owns the pickers, the macros and the All buttons — and a
    second picker here was the same control in two places. */
-:root { --heat-table-w: 492px; }
+:root {
+	/* Extra width per column at a given --fs-bump. 4x is the measured growth of
+	   a tabular-numeric field per px of type: the widest reading is 44px at
+	   12px text and 52px at 14px. Applied to all five columns AND to the total,
+	   so the sum invariant the test pins holds by construction rather than by
+	   two numbers happening to agree. */
+	--fs-col: calc(4 * var(--fs-bump));
+	--heat-table-w: calc(492px + 5 * var(--fs-col));
+}
 .heat-table {
 	width: 100%;
 	min-width: var(--heat-table-w);
@@ -718,21 +726,21 @@
 /* Every width below is FIXED, so the table is the same width whatever the card
    does and the card's stop is simply their sum. An elastic column meant the
    card's minimum and the column layout argued with each other. */
-.heat-table th:nth-child(1), .heat-table td:nth-child(1) { width: 152px; }
+.heat-table th:nth-child(1), .heat-table td:nth-child(1) { width: calc(152px + var(--fs-col)); }
 /* 56px, measured: .heat-input is 56px wide and these were once declared 54, so
    both setpoint fields overflowed their own column by 2px.
    Active carries 14px of LEFT gutter on top of that — the tool selector in
    column 1 fills its cell, so with bare columns the button's right edge met
    the first input's left edge exactly. The gutter is added to the width, not
    taken out of it (box-sizing is border-box), so the field is still 56. */
-.heat-table th:nth-child(2), .heat-table td:nth-child(2) { width: 70px; padding-left: 14px; }
-.heat-table th:nth-child(3), .heat-table td:nth-child(3) { width: 56px; }
+.heat-table th:nth-child(2), .heat-table td:nth-child(2) { width: calc(70px + var(--fs-col)); padding-left: 14px; }
+.heat-table th:nth-child(3), .heat-table td:nth-child(3) { width: calc(56px + var(--fs-col)); }
 /* Current: the padding is what keeps the reading off the first mode key —
    right-aligned in a bare cell, its right edge met the key exactly. 58px
    measured in the Card Lab (isolated, so no neighbour distorts it): the widest
    reading is 44px and this padding is 14. */
-.heat-table th:nth-child(4), .heat-table td:nth-child(4) { width: 58px; padding-right: 14px; }
-.heat-table th:nth-child(5), .heat-table td:nth-child(5) { width: 156px; }
+.heat-table th:nth-child(4), .heat-table td:nth-child(4) { width: calc(58px + var(--fs-col)); padding-right: 14px; }
+.heat-table th:nth-child(5), .heat-table td:nth-child(5) { width: calc(156px + var(--fs-col)); }
 /* The Tools card: the same table with the heater CONTROLS not rendered, so it
    is Heater | Current and nothing else. min-width directly rather than through
    --heat-table-w, so the token keeps meaning "the full table" and the
@@ -744,7 +752,9 @@
 	padding-right: 14px;
 }
 .heat-input {
-	width: 56px;
+	/* Tracks column 3, the cell it sits in. Declared apart once, and the
+	   field overflowed its own cell by 2px. */
+	width: calc(56px + var(--fs-col));
 	padding: var(--sp-chip-py) 6px;
 	background: var(--mask-900);
 	border: 1px solid var(--hairline);
@@ -1309,7 +1319,7 @@
 	   Only two columns are touched, because only two have slack: the picker
 	   measures 87 (min-width 88) inside 120, and the widest reading is 44
 	   inside 58. Heater/Active/Standby/Set are already at their contents. */
-	.heat-table { --heat-table-w: 484px; }
+	.heat-table { --heat-table-w: calc(484px + 5 * var(--fs-col)); }
 	/* Only Current has measured slack at this width; the setpoint fields are at
 	   their inputs and Set is at its three keys. 152 + 70 + 56 + 50 + 156 = 484. */
 	.heat-table th:nth-child(4), .heat-table td:nth-child(4) { width: 50px; padding-right: 6px; }

@@ -62,7 +62,7 @@
 	   SEVEN distinct control heights (25/27/30/31/32/46/60) - three of them
 	   coming from the same component depending on whether its stamp showed.
 	   The jog pad is the one deliberate exception, at exactly 2x. */
-	--ctl-h: 28px;
+	--ctl-h: calc(28px + var(--fs-bump));
 	--ctl-gap: 8px;
 
 	/* ---------- density: the baseline ("1.27 mm" lead pitch) ----------
@@ -116,7 +116,7 @@
 
 /* 0.80 mm — snug. About a quarter of the air. */
 :root[data-pitch="080"] {
-	--ctl-h: 24px; --ctl-gap: 6px;
+	--ctl-h: calc(24px + var(--fs-bump)); --ctl-gap: 6px;
 	--sp-card-x: 12px; --sp-card-t: 4px; --sp-card-b: 6px;
 	--sp-head-h: 28px; --sp-flow: 6px;
 	--sp-row: 5px; --sp-cell: 6px; --sp-list: 6px; --sp-field: 4px;
@@ -130,7 +130,7 @@
 
 /* 0.50 mm — dense. About half the air. */
 :root[data-pitch="050"] {
-	--ctl-h: 20px; --ctl-gap: 4px;
+	--ctl-h: calc(20px + var(--fs-bump)); --ctl-gap: 4px;
 	--sp-card-x: 10px; --sp-card-t: 2px; --sp-card-b: 4px;
 	--sp-head-h: 24px; --sp-flow: 4px;
 	--sp-row: 3px; --sp-cell: 4px; --sp-list: 4px; --sp-field: 3px;
@@ -145,7 +145,7 @@
 /* 0.40 mm — fine. The practical floor: below this the hairlines start
    touching the glyphs and the rows stop reading as rows. */
 :root[data-pitch="040"] {
-	--ctl-h: 20px; --ctl-gap: 4px;
+	--ctl-h: calc(20px + var(--fs-bump)); --ctl-gap: 4px;
 	--sp-card-x: 8px; --sp-card-t: 2px; --sp-card-b: 2px;
 	--sp-head-h: 20px; --sp-flow: 2px;
 	--sp-row: 2px; --sp-cell: 2px; --sp-list: 3px; --sp-field: 2px;
