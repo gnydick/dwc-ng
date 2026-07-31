@@ -46,9 +46,9 @@ the absent `sendCode` in the HeightMap plugin.
 - Hide the label column on cards whose controls already name themselves.
 - Reset one screen's layout without touching anything else.
 
-DWC has fixed panel positions and an FFF/CNC dashboard-mode switch. Its only
-layout-ish setting is `SettingsHideMenuItemsPanel.vue` - hiding whole menu
-items, not arranging anything.
+<sub>*Classic DWC: fixed panel positions and an FFF/CNC dashboard-mode
+switch. Its only layout-ish setting is `SettingsHideMenuItemsPanel.vue` -
+hiding whole menu items, not arranging anything.*</sub>
 
 ## 2. User-authored screens & cards
 
@@ -65,7 +65,8 @@ items, not arranging anything.
 - Shared files carry no executable code, and minted ids never travel - a
   foreign file cannot collide with or overwrite anything local.
 
-DWC's extension path is authoring a Vue plugin and rebuilding the app.
+<sub>*Classic DWC: the extension path is authoring a Vue plugin and
+rebuilding the app.*</sub>
 
 ## 3. Bed & probing
 
@@ -78,9 +79,10 @@ DWC's extension path is authoring a Vue plugin and rebuilding the app.
 - The probe command is a template the operator owns, so their own macro's
   preconditions apply rather than ours.
 
-DWC renders the height map read-only and scatters `G29` / `G29 S1` / `G32` as
-menu items under Movement (`MovementPanel.vue:44,51,59`) - the map and the act
-of fixing what the map shows live in two different places.
+<sub>*Classic DWC: renders the height map read-only and scatters `G29` /
+`G29 S1` / `G32` as menu items under Movement (`MovementPanel.vue:44,51,59`) -
+the map and the act of fixing what the map shows live in two different
+places.*</sub>
 
 ## 4. Per-machine naming & color
 
@@ -104,8 +106,8 @@ of fixing what the map shows live in two different places.
   device and never mark anything unsaved.
 - File browsers remember the folder you were in and where you'd scrolled to.
 
-DWC offers a factory reset and a local-vs-SD storage toggle
-(`SettingsGeneralPanel.vue:10,17`). No history, no per-setting reset.
+<sub>*Classic DWC: a factory reset and a local-vs-SD storage toggle
+(`SettingsGeneralPanel.vue:10,17`). No history, no per-setting reset.*</sub>
 
 ## 6. Safety & interaction
 
@@ -151,13 +153,16 @@ placeable on any screen rather than full-page plugins - but that is the layout
 advantage in §1, not a separate feature, and it is not counted twice.
 
 **Tool-change macros, specifically.** Easy to mistake for ours, so it is
-written down. DWC builds the same `P` bitmask from three checkboxes in
+written down.
+
+<sub>*Classic DWC: builds the same `P` bitmask from three checkboxes in
 Settings -> Machine (`SettingsMachinePanel.vue:86-94`), and applies it to
 deselect as well - `ToolRows.vue:309` sends `"T-1" + toolChangeParameter`.
 Its getter (`store/machine/settings.ts:309`) even collapses `P7` to an
-omitted `P`, which is the same "all three, no P" behavior ours has. The
-capability is therefore parity in full. What differs is only that DWC's lives
-once, globally, in Settings, so varying it for a single tool change means
+omitted `P`, which is the same "all three, no P" behavior ours has.*</sub>
+
+The capability is therefore parity in full. What differs is only that DWC's
+lives once, globally, in Settings, so varying it for a single tool change means
 leaving the tools screen and changing a machine-wide preference; ours is a
 field beside the tool, typed per command. That difference is the §6 bullet,
 and it is deliberately worded as placement rather than capability.
