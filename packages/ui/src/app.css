@@ -3413,8 +3413,17 @@
 .layer-chart { width: 100%; }
 
 /* ---------- layout audit (dev only) ---------- */
-.layout-audit { margin-top: var(--sp-flow); border-top: 1px solid var(--hairline); padding-top: var(--sp-flow); }
-.layout-audit-bar { display: flex; align-items: center; gap: var(--ctl-gap); }
+.layout-audit { margin-top: var(--sp-flow); }
+/* The rule sits UNDER the bar, not over it: the button and its count are the
+   heading for what follows, so the line belongs between them and the table
+   rather than above the control that produces it. */
+.layout-audit-bar {
+	display: flex;
+	align-items: center;
+	gap: var(--ctl-gap);
+	border-bottom: 1px solid var(--hairline);
+	padding-bottom: var(--sp-flow);
+}
 .layout-audit-grid {
 	display: grid;
 	grid-template-columns: max-content 1fr;
@@ -3492,11 +3501,10 @@
 	background-position: left center, right center;
 	background-repeat: no-repeat;
 }
-/* Bracketed rather than guessed: 0.28 was practically invisible, 0.55 (the
-   nub's own opacity) was too bright over text you are trying to read. This sits
-   between them — enough to find the strip, not enough to compete with the log
-   or the code under it. */
-[data-edge-scroll]:hover { --edge-ghost-a: 0.36; }
+/* 0.16, the operator's call after seeing 0.28, 0.55 and 0.36 on the machine.
+   It sits over text you are reading, so it only has to be findable, not
+   announced — the nub's 0.58 works because nothing is underneath it. */
+[data-edge-scroll]:hover { --edge-ghost-a: 0.16; }
 
 /* ---------- picked up: cards held for a group move (shell/panelCanvas.ts) ---------- */
 
@@ -3518,3 +3526,43 @@
 	/* No background or size change: the grip is a pointer target mid-gesture and
 	   must not move or grow under the cursor that is about to press it. */
 }
+
+/* ---------- Card Lab: the card list is a left rail (dev/CardLab.tsx) ---------- */
+
+/* Two columns, not a stack. Fifty cards in a wrapping bar across the top was a
+   block of text with no order to it, and it pushed the bench down the page. */
+.card-lab { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 16px; align-items: start; }
+.lab-rail {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	/* The bench canvas is 624 columns wide, so the view scrolls sideways. Pinned
+	   left so the list does not slide off with it, and given its own vertical
+	   scroll so a long list never stretches the page. */
+	position: sticky;
+	left: 0;
+	top: 0;
+	z-index: 2;
+	max-height: calc(100vh - 140px);
+	overflow-y: auto;
+	scrollbar-width: none;
+	background: var(--mask-900);
+	padding-right: 8px;
+}
+.lab-rail::-webkit-scrollbar { display: none; }
+.lab-main { display: flex; flex-direction: column; min-width: 0; }
+/* One per line, left-aligned: a column of centred labels of different widths
+   has no edge to run your eye down. */
+.lab-pills-rail { flex-direction: column; flex-wrap: nowrap; align-items: stretch; }
+.lab-pills-rail .lab-pill { text-align: left; }
+/* Left, not right. Scoped to the lab: .layout-toolbar is shared with
+   ComposedScreen, where the reset sits right for a reason (it is the last
+   thing on a full screen of cards). Here the eye is already down the left
+   edge on the card list, so the control that acts on the bench belongs
+   under it. */
+.card-lab .layout-toolbar { justify-content: flex-start; }
+/* The State and Audit bars go RIGHT, so the left edge at that height is
+   empty and the Reset link below them reads as belonging to the card it sits
+   on rather than to the row of controls above. */
+.lab-main .lab-bar,
+.lab-main .layout-audit-bar { justify-content: flex-end; }

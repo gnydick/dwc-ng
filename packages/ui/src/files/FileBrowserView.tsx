@@ -33,6 +33,22 @@ export function FileBrowserView(props: {
 	showMeta?: boolean;
 	/** Domain-specific extra action rendered at the end of a FILE row (never a directory). */
 	rowActions?: (entry: FileListEntry) => JSX.Element;
+	/**
+	 * Show the per-row Rename and Delete buttons. Default true.
+	 *
+	 * False makes the listing READ-ONLY: no per-row Rename or Delete, and no
+	 * + Folder / + File / ↑ Upload bar either. The Macros card runs macros and
+	 * should not offer to delete one mid-list, where the destructive button
+	 * sits a few pixels from ▶ Run. Managing the files is the macros-inventory
+	 * card's job, which renders this same view with them on.
+	 *
+	 * ONE flag rather than two: "this listing does not change the filesystem"
+	 * is a single idea, and splitting it would let a caller end up read-only in
+	 * the rows while still offering Upload.
+	 *
+	 * Navigation is untouched — breadcrumbs and opening a file are reads.
+	 */
+	manageActions?: boolean;
 }) {
 	// Which single row is mid-rename, and which is armed for delete. Held as
 	// paths (not entries) so a refreshed listing can't leave them pointing at a
@@ -221,6 +237,10 @@ export function FileBrowserView(props: {
 				</For>
 			</div>
 
+			{/* The whole create/upload bar, not just its buttons: an empty toolbar
+			    would still reserve its height and leave a strip of nothing under
+			    every read-only listing. */}
+			<Show when={props.manageActions !== false}>
 			<div class="fb-tools">
 				<Show
 					when={creating() !== null}
@@ -259,6 +279,7 @@ export function FileBrowserView(props: {
 					onChange={e => { const files = [...(e.currentTarget.files ?? [])]; e.currentTarget.value = ""; void uploadFiles(files); }}
 				/>
 			</div>
+			</Show>
 
 			<Show when={uploading()}>
 				{u => (
@@ -341,19 +362,22 @@ export function FileBrowserView(props: {
 										    would offer to M98 a directory. Enforced here rather than in each
 										    caller so no domain can reintroduce it. */}
 										<Show when={entry.type === "f"}>{props.rowActions?.(entry)}</Show>
-										<button class="fb-act" title={`Rename ${entry.name}`} onClick={() => startRename(entry)}>Rename</button>
-										<button
-											class="fb-act danger"
-											classList={{ armed: armed()?.path === props.browser.pathOf(entry) }}
-											title={entry.type === "d" ? `Delete ${entry.name} and its contents` : `Delete ${entry.name}`}
-											onClick={() =>
-												armed()?.path === props.browser.pathOf(entry)
-													? void fireDelete()
-													: void armDelete(entry)
-											}
-										>
-											{armed()?.path === props.browser.pathOf(entry) ? "Confirm" : "Delete"}
-										</button>
+										{/* Read-only listings stop here: no Rename, no Delete. */}
+										<Show when={props.manageActions !== false}>
+											<button class="fb-act" title={`Rename ${entry.name}`} onClick={() => startRename(entry)}>Rename</button>
+											<button
+												class="fb-act danger"
+												classList={{ armed: armed()?.path === props.browser.pathOf(entry) }}
+												title={entry.type === "d" ? `Delete ${entry.name} and its contents` : `Delete ${entry.name}`}
+												onClick={() =>
+													armed()?.path === props.browser.pathOf(entry)
+														? void fireDelete()
+														: void armDelete(entry)
+												}
+											>
+												{armed()?.path === props.browser.pathOf(entry) ? "Confirm" : "Delete"}
+											</button>
+										</Show>
 									</>
 								}
 							>

@@ -1,4 +1,4 @@
-import { For, Show, createEffect, createSignal } from "solid-js";
+import { For, Show, createEffect, createMemo, createSignal } from "solid-js";
 import { createStore, produce, reconcile } from "solid-js/store";
 import { AppContext, type AppServices, useApp } from "../shell/context.ts";
 import { createTemperatureHistory } from "../om/temperature.ts";
@@ -85,11 +85,35 @@ export default function CardLab() {
 		"dwc-ng.canvas.cardlab",
 		allCardIds().map(id => ({ id, col: 0, row: 0, ...CARD_DEFS[id].size })),
 		id => id === featured(),
+		// Device-only geometry: no markLayoutDirty.
+		undefined,
+		// A BENCH — one card at a time, all parked at the origin, overlaps
+		// intentional. Without this, reflow() scatters all fifty the first time
+		// anything grows their default size.
+		true,
 	);
 
 	// User-authored cards join the lab as they exist (incl. ones made HERE):
 	// adopt a slot for each at the custom default size.
 	const customIds = (): CustomCardId[] => customCardIds(outer.config.config);
+
+	/**
+	 * Every card, registry and custom together, in one alphabetical list.
+	 *
+	 * Sorted by the LABEL you read, not by id: the ids are kebab-case and often
+	 * differ from the title ("active-job-detailed" is "Printing · estimates"),
+	 * so sorting by id put the list in an order nothing on screen explained.
+	 * Registry and custom are interleaved rather than grouped, because when you
+	 * are hunting for a card by name its provenance is not what you remember —
+	 * the dashed border still says which is which.
+	 *
+	 * localeCompare so "·" and case sort the way a person expects.
+	 */
+	const pillEntries = createMemo(() => {
+		const registry = allCardIds().map(id => ({ id: id as SlotId, label: cardTitleOf(id), custom: false }));
+		const custom = customIds().map(id => ({ id: id as SlotId, label: outer.config.config.cards[id]!.name, custom: true }));
+		return [...registry, ...custom].sort((a, b) => a.label.localeCompare(b.label));
+	});
 	createEffect(() => {
 		for (const id of customIds()) canvas.ensureSlot(id, { col: 0, row: 0, colSpan: 12, rowSpan: 40 });
 	});
@@ -108,20 +132,21 @@ export default function CardLab() {
 
 	return (
 		<div class="card-lab">
-			<div class="lab-bar">
+			{/* Down the left edge, alphabetical: ~50 cards in a wrapping bar meant
+			    hunting a name in a block of text with no order to it. One column,
+			    one sort, and the pill you want is where the alphabet says. */}
+			<aside class="lab-rail">
 				<span class="lab-cap">Card</span>
-				<div class="lab-pills" role="group" aria-label="Card">
-					<For each={allCardIds()}>
-						{id => (
-							<button class="lab-pill" aria-pressed={featured() === id} onClick={() => setFeatured(id)}>
-								{cardTitleOf(id)}
-							</button>
-						)}
-					</For>
-					<For each={customIds()}>
-						{id => (
-							<button class="lab-pill lab-pill-custom" aria-pressed={featured() === id} onClick={() => setFeatured(id)}>
-								{outer.config.config.cards[id]!.name}
+				<div class="lab-pills lab-pills-rail" role="group" aria-label="Card">
+					<For each={pillEntries()}>
+						{entry => (
+							<button
+								class="lab-pill"
+								classList={{ "lab-pill-custom": entry.custom }}
+								aria-pressed={featured() === entry.id}
+								onClick={() => setFeatured(entry.id)}
+							>
+								{entry.label}
 							</button>
 						)}
 					</For>
@@ -132,7 +157,8 @@ export default function CardLab() {
 						)}
 					</Show>
 				</div>
-			</div>
+			</aside>
+			<div class="lab-main">
 			<div class="lab-bar">
 				<span class="lab-cap">State</span>
 				<div class="lab-pills" role="group" aria-label="Scenario">
@@ -147,34 +173,34 @@ export default function CardLab() {
 				<span class="lab-note">{SCENARIOS.find(s => s.id === scenario())?.note}</span>
 			</div>
 
-			{/* The bench card is draggable and resizable like any other, and it
-			    persists (dwc-ng.canvas.cardlab) — so without this there is no way
-			    back from a resize. Same markup as ComposedScreen's toolbar so it
-			    sits identically. There is deliberately no Compose button: compose
-			    adds and removes cards from a multi-card screen, and the bench
-			    features exactly one — the Card pills above ARE its equivalent. */}
+			{/* Always mounted: the sweep button lives in the audit's own bar
+			    beside this toggle, so neither appears nor disappears. Only the
+			    RESULTS collapse. */}
+			<LayoutAuditAll
+				ids={() => allCardIds()}
+				titleOf={id => cardTitleOf(id as CardId)}
+				feature={id => setFeatured(id as CardId)}
+				current={() => featured()}
+				benchEl={() => benchEl?.querySelector<HTMLElement>("[data-panel-id]") ?? null}
+				open={auditOpen}
+				toggle={
+					<button class="lab-pill" aria-pressed={auditOpen()} onClick={() => setAuditOpen(v => !v)}>
+						{auditOpen() ? "Hide results" : "Show results"}
+					</button>
+				}
+			/>
+
+			{/* Directly above the bench, and the last thing before it. Reset acts
+			    on the card you are looking at, so it belongs against the card
+			    rather than stranded at the top under the scenario switcher with
+			    the audit between them. The bars above are right-aligned to leave
+			    this the only thing on the left edge at this height. */}
 			<div class="layout-toolbar">
-				{/* Scoped to the card on the bench. reset() would restore all 36
-				    at once, which is never what "reset" means on a surface that
-				    shows one card at a time. */}
+				{/* Scoped to the card on the bench. reset() would restore all of
+				    them at once, which is never what "reset" means on a surface
+				    that shows one card at a time. */}
 				<button class="layout-reset" onClick={() => canvas.resetSlot(featured())}>↺ Reset card</button>
 			</div>
-			<div class="lab-bar">
-				<span class="lab-cap">Audit</span>
-				<button class="lab-pill" aria-pressed={auditOpen()} onClick={() => setAuditOpen(v => !v)}>
-					{auditOpen() ? "Hide layout audit" : "Show layout audit"}
-				</button>
-			</div>
-			<Show when={auditOpen()}>
-				<LayoutAuditAll
-					ids={() => allCardIds()}
-					titleOf={id => cardTitleOf(id as CardId)}
-					feature={id => setFeatured(id as CardId)}
-					current={() => featured()}
-					benchEl={() => benchEl?.querySelector<HTMLElement>("[data-panel-id]") ?? null}
-				/>
-			</Show>
-
 			<AppContext.Provider value={services}>
 				<div ref={benchEl}>
 				<PanelCanvas class="lab-canvas">
@@ -212,6 +238,7 @@ export default function CardLab() {
 					)}
 				</Show>
 			</AppContext.Provider>
+			</div>
 		</div>
 	);
 }

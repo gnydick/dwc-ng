@@ -1,3 +1,4 @@
+import type { JSX } from "solid-js";
 import { For, Match, Show, Switch, createSignal } from "solid-js";
 import {
 	AUDIT_HEADINGS, AXIS_COL_TAUTOLOGY, AXIS_PASS_LABEL, CHILD_COUNT_CHANGED,
@@ -315,6 +316,19 @@ export function LayoutAuditAll(props: {
 	feature: (id: string) => void;
 	current: () => string;
 	benchEl: () => HTMLElement | null;
+	/**
+	 * Whether the RESULTS are shown. The bar — sweep button and counts — always
+	 * renders, whatever this says.
+	 *
+	 * The sweep button used to live inside the collapsed region, so it appeared
+	 * and vanished with the table it fills. A control that is only reachable
+	 * once you have opened the thing it populates is a control you have to
+	 * discover twice.
+	 */
+	open: () => boolean;
+	/** Rendered at the head of the bar, so the lab's show/hide toggle sits
+	 *  BESIDE the sweep rather than on a line of its own above it. */
+	toggle?: JSX.Element;
 }) {
 	const [rows, setRows] = createSignal<SweepRow[]>([]);
 	const [busy, setBusy] = createSignal(false);
@@ -366,6 +380,7 @@ export function LayoutAuditAll(props: {
 	return (
 		<div class="layout-audit">
 			<div class="layout-audit-bar">
+				{props.toggle}
 				<button class="lab-pill" disabled={busy()} onClick={() => void sweep()}>
 					<Show when={busy()} fallback="Audit every card">Auditing…</Show>
 				</button>
@@ -379,7 +394,7 @@ export function LayoutAuditAll(props: {
 					</Show>
 				</span>
 			</div>
-			<Show when={rows().length > 0}>
+			<Show when={props.open() && rows().length > 0}>
 				<table class="layout-audit-table">
 					<thead>
 						<tr>
