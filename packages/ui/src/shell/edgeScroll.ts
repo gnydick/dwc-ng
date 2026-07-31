@@ -54,10 +54,26 @@ export function overCenter(width: number, offsetX: number): boolean {
 }
 
 /**
- * Only LARGE scrollers are governed. A dropdown, a 72px reply box or a short
- * popover list is small enough to aim around already, and stealing its wheel
- * would make it unusable — the rule exists for boxes big enough to be in the
- * way, not for every `overflow: auto` in the stylesheet.
+ * A surface OPTS IN by carrying this attribute (or living inside something
+ * that does). It is not inferred from size.
+ *
+ * The first version governed every scroller over 180x100, and that was wrong:
+ * it captured ordinary cards' `.panel-body` and their file lists, so the rule
+ * meant for two big text surfaces changed the feel of the whole canvas
+ * (reported 2026-07-30). Size cannot tell a console from a card that merely
+ * has a lot in it — only the component knows which it is, so the component
+ * says so.
+ *
+ * Marking the HOST rather than the scroller itself is deliberate: CodeMirror
+ * creates its own `.cm-scroller`, which no JSX can put an attribute on. The
+ * host is ours, the scroller is inside it, and the listener walks up.
+ */
+export const EDGE_SCROLL_HOST = "data-edge-scroll-host";
+
+/**
+ * ...and it must still be big enough to be worth the rule. A console collapsed
+ * to two lines is easy to aim around, and stealing its wheel would make it
+ * unusable. Opt-in says WHICH surfaces; this says WHEN.
  */
 export const MIN_GOVERNED_H = 100;
 export const MIN_GOVERNED_W = 180;
@@ -88,7 +104,10 @@ function scrollsVertically(el: HTMLElement): boolean {
  * the page scroller itself — that one IS the page and is never redirected.
  */
 function innerScroller(from: EventTarget | null, page: HTMLElement): HTMLElement | null {
-	let el = from instanceof Element ? from : null;
+	const start = from instanceof Element ? from : null;
+	// Opted in? Everything else on the canvas keeps native wheel behaviour.
+	if (start === null || start.closest(`[${EDGE_SCROLL_HOST}]`) === null) return null;
+	let el: Element | null = start;
 	while (el !== null && el !== page) {
 		if (el instanceof HTMLElement && scrollsVertically(el)) return el;
 		el = el.parentElement;

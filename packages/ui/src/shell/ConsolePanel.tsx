@@ -30,8 +30,11 @@ function ConsoleHistory() {
 		app.om.console.length; // track
 		el.scrollTop = el.scrollHeight;
 	});
+	// data-edge-scroll-host opts this into the edge-scroll rule: a wheel over the
+	// middle scrolls the PAGE, and only the left and right strips scroll the log.
+	// One of exactly two surfaces that opt in — see shell/edgeScroll.ts.
 	return (
-		<div class="console-history" ref={el}>
+		<div class="console-history" data-edge-scroll-host ref={el}>
 			<Show when={app.om.console.length} fallback={<p class="console-empty">No replies yet.</p>}>
 				<For each={app.om.console}>
 					{line => {
