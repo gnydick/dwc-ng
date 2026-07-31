@@ -2923,7 +2923,13 @@
    Scoped to this panel - Heaters and Fans keep their right-hand alignment. */
 [data-panel-id="tuning"] .ctl-name { min-width: 88px; }
 [data-panel-id="tuning"] .speed-row .ctl-name { order: -1; }
-[data-panel-id="tuning"] .heater-list { gap: 16px; }
+/* 16px -> 8px between Speed and Babystep. The heaters card earns 16 because
+   each of its rows is a separate heater; these two are one tuning group and
+   read as a pair at half that.
+   ONE declaration — a second copy was briefly added above this line and lost
+   silently to it on source order, which is the whole argument for editing the
+   existing rule rather than stacking another. */
+[data-panel-id="tuning"] .heater-list { gap: 8px; }
 [data-panel-id="tuning"] .heater-ctl .btn-cluster { margin-left: 0; }
 
 /* The firmware's accumulated babystep, mirrored live. Reserved width and
@@ -3004,7 +3010,11 @@
    dot owned that pixel and the thumb could never be grabbed at all. Two
    controls cannot share a point; they get separate rows. */
 .speed-track {
-	position: relative; flex: 1; min-width: 120px; height: var(--ctl-h);
+	/* 120 -> 168. The speed slider is the one control on this card you aim at
+	   rather than read, and it was the narrowest thing in the row. The extra
+	   48px comes out of the empty .speed-error reservation below, so the row's
+	   floor does not rise to pay for it. */
+	position: relative; flex: 1; min-width: 168px; height: var(--ctl-h);
 	display: flex; flex-direction: column; justify-content: flex-start;
 }
 
@@ -3254,7 +3264,14 @@
 .speed-error {
 	font: 600 calc(10px + var(--fs-bump))/1 var(--font-display); letter-spacing: 0.08em; text-transform: uppercase;
 	color: var(--fault);
-	min-width: 52px; text-align: right;
+	/* Was min-width: 52px, reserved so a failure could appear without moving the
+	   row. It still cannot move the row — `visibility: hidden` already keeps the
+	   slot laid out — but 52px of it was permanently empty in a row that had no
+	   spare width at all, which is why the slider was stuck at its 120px
+	   minimum. Shrinkable now, and the message truncates rather than pushing;
+	   the full text is on the title attribute. */
+	min-width: 0; text-align: right;
+	overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 	visibility: hidden;
 }
 .speed-error.show { visibility: visible; }

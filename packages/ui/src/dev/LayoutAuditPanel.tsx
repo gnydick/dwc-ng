@@ -171,21 +171,37 @@ export function auditCard(id: string, title: string, cardEl: HTMLElement): CardR
  * which axis, which number. "Extruders — row minimum moved 88 -> 180" is
  * actionable; "the line-box strut inflated the cell" is not.
  */
-export function LayoutAuditPanel(props: { cardEl: () => HTMLElement | null; id: () => string; title: () => string }) {
+export function LayoutAuditPanel(props: {
+	cardEl: () => HTMLElement | null;
+	id: () => string;
+	title: () => string;
+	/** Suppress this panel's own bar — the caller is putting the button in one
+	 *  it already has, so the audit controls end up on a single row. */
+	hideBar?: boolean;
+	/** Receives the run action, so the caller can drive it from that bar. */
+	registerRun?: (run: () => void) => void;
+}) {
 	const [report, setReport] = createSignal<CardReport | null>(null);
 	const run = (): void => {
 		const el = props.cardEl();
 		if (el === null) return;
 		setReport(auditCard(props.id(), props.title(), el));
 	};
+	// Hand the action to the caller so its BUTTON can live in someone else's
+	// bar. Two audit bars stacked one above the other read as two features; the
+	// lab puts every audit control on one row and keeps only the results here.
+	props.registerRun?.(run);
+
 	return (
 		<div class="layout-audit">
-			<div class="layout-audit-bar">
-				<button class="lab-pill" onClick={run}>Run layout audit</button>
-				<span class="lab-note">
-					row unit {rowUnitPx()}px · col unit {COL_UNIT_PX}px
-				</span>
-			</div>
+			<Show when={props.hideBar !== true}>
+				<div class="layout-audit-bar">
+					<button class="lab-pill" onClick={run}>Run layout audit</button>
+					<span class="lab-note">
+						row unit {rowUnitPx()}px · col unit {COL_UNIT_PX}px
+					</span>
+				</div>
+			</Show>
 			<Show when={report()}>
 				{r => (
 					<dl class="layout-audit-grid">
