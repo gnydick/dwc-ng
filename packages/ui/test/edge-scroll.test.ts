@@ -120,3 +120,31 @@ test("the ghost wears the same blue as the other scroll cue", () => {
 	assert.match(ghost, /rgba\(90,\s*169,\s*230,/, "the ghost is not --accent-blue's rgb");
 	assert.doesNotMatch(ghost, /rgba\(217,\s*133,\s*59/, "copper is for state, not for scroll hints");
 });
+
+/**
+ * THE REGRESSION, pinned. The first version governed any scroller over
+ * 180x100, which captured ordinary cards' `.panel-body` and their file lists —
+ * a rule meant for two big text surfaces changed the feel of the whole canvas.
+ * Size cannot tell a console from a card that merely has a lot in it.
+ *
+ * So the surfaces opt in, and this counts them. It is not a style assertion:
+ * it is a budget. Adding a third is a deliberate act that has to come here and
+ * say so, which is exactly the conversation that did not happen the first time.
+ */
+const HOSTS = ["shell/ConsolePanel.tsx", "editor/FileEditor.tsx"];
+
+test("only the declared text surfaces opt into edge-scroll", () => {
+	const src = (rel: string): string =>
+		readFileSync(fileURLToPath(new URL(`../src/${rel}`, import.meta.url)), "utf8");
+	for (const host of HOSTS) {
+		assert.match(src(host), /data-edge-scroll-host/, `${host} should opt in and does not`);
+	}
+});
+
+test("the wheel rule is opt-in, not inferred from size", () => {
+	const mod = readFileSync(
+		fileURLToPath(new URL("../src/shell/edgeScroll.ts", import.meta.url)), "utf8");
+	// innerScroller must bail before walking, on anything not inside a host.
+	assert.match(mod, /closest\(`\[\$\{EDGE_SCROLL_HOST\}\]`\)\s*===\s*null\)\s*return null/,
+		"a scroller outside a declared host must never be governed");
+});

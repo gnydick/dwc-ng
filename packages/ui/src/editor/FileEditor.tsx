@@ -101,7 +101,10 @@ export function FileEditorBody(props: {
 					<button class="btn" onClick={() => props.onClose?.()}>Close</button>
 				</Show>
 			</div>
-			<div class="editor-host">
+			{/* Opts into edge-scroll, on the HOST rather than the scroller:
+			    CodeMirror creates .cm-scroller itself, so no JSX can mark it.
+			    See shell/edgeScroll.ts. */}
+			<div class="editor-host" data-edge-scroll-host>
 				<div class="editor-mount" ref={host} />
 				<Show when={status() === "loading"}>
 					<div class="editor-overlay">Loading editor…</div>
