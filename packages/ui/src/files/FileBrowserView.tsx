@@ -31,6 +31,9 @@ export function FileBrowserView(props: {
 	emptyText: string;
 	/** Show each file's size and date (job listings; not useful for macros). */
 	showMeta?: boolean;
+	/** Show the modified date alongside the size. Default true, and only ever
+	 *  consulted when showMeta is on. */
+	showDate?: boolean;
 	/** Domain-specific extra action rendered at the end of a FILE row (never a directory). */
 	rowActions?: (entry: FileListEntry) => JSX.Element;
 	/**
@@ -355,7 +358,13 @@ export function FileBrowserView(props: {
 										</button>
 										<Show when={props.showMeta && entry.type === "f"}>
 											<span class="file-meta">{formatSize(entry.size)}</span>
-											<span class="file-meta file-date">{formatModified(entry.date)}</span>
+											{/* Separate from showMeta: the date is a fixed 120px cell — the
+											    widest thing in the row after the name — and the Jobs card is
+											    a pick-and-print list that does not need it. The inventory,
+											    which is where you go to sort out files, keeps it. */}
+											<Show when={props.showDate !== false}>
+												<span class="file-meta file-date">{formatModified(entry.date)}</span>
+											</Show>
 										</Show>
 										{/* Files only. A directory is a place to navigate to, never the
 										    target of a domain action — rendering Macros' ▶ Run on a folder

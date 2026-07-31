@@ -3636,6 +3636,10 @@
    Removing them also stops the arrows appearing on focus and reflowing the
    text inside the box, which is the kind of movement this UI is built to avoid.
    Both engines: WebKit/Blink use the pseudo-elements, Gecko needs the property. */
-input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
+/* Right-justified and tabular. A numeric field is read by its magnitude, and
+   left-aligned digits put the ones column somewhere different in every box, so
+   a column of setpoints could not be scanned. Tabular figures on top of that,
+   so the digits do not shift sideways as a live value changes width. */
+input[type="number"] { -moz-appearance: textfield; appearance: textfield; text-align: right; font-variant-numeric: tabular-nums; }
 input[type="number"]::-webkit-outer-spin-button,
 input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; appearance: none; margin: 0; }
