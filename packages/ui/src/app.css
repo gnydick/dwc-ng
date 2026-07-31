@@ -3460,11 +3460,47 @@
    --edge-w is set by edgeScroll.ts from the SAME edgeWidth() the wheel handler
    uses, so the lit area is exactly the area that responds. A literal here would
    be a second opinion about where the strip is. */
-[data-edge-scroll]:hover {
+/* --accent-blue and a 0.15s ease, the same as .panel-scroll-nub above: both are
+   scroll affordances that appear on hover, so they are the same cue and must
+   not read as two different ones. Copper is for state and for controls.
+
+   Registered so the alpha can ANIMATE. A bare custom property is a string to
+   the transition engine and would snap; @property types it as a number, and a
+   browser that does not support it simply shows the ghost without the fade. */
+@property --edge-ghost-a {
+	syntax: "<number>";
+	inherits: false;
+	initial-value: 0;
+}
+[data-edge-scroll] {
+	--edge-ghost-a: 0;
+	transition: --edge-ghost-a 0.15s ease;
 	background-image:
-		linear-gradient(to right, rgba(217, 133, 59, 0.16), rgba(217, 133, 59, 0) 100%),
-		linear-gradient(to left, rgba(217, 133, 59, 0.16), rgba(217, 133, 59, 0) 100%);
+		linear-gradient(to right, rgba(90, 169, 230, var(--edge-ghost-a)), rgba(90, 169, 230, 0) 100%),
+		linear-gradient(to left, rgba(90, 169, 230, var(--edge-ghost-a)), rgba(90, 169, 230, 0) 100%);
 	background-size: var(--edge-w, 0) 100%, var(--edge-w, 0) 100%;
 	background-position: left center, right center;
 	background-repeat: no-repeat;
+}
+[data-edge-scroll]:hover { --edge-ghost-a: 0.28; }
+
+/* ---------- picked up: cards held for a group move (shell/panelCanvas.ts) ---------- */
+
+/* A drag on any member carries all of them rigidly, so the set has to be
+   readable as a SET from across the canvas — otherwise you cannot tell what a
+   drag is about to move. Copper, not the scroll cue's blue: this is state, and
+   it is the same copper the armed-write and pressed-control states already
+   mean by it.
+
+   Outline rather than border or box-shadow: it is drawn outside the box and
+   takes no space, so picking a card up cannot move it or its neighbours by a
+   pixel. A border would resize every selected card the moment it was chosen. */
+.card.panel.picked {
+	outline: 1px solid var(--copper);
+	outline-offset: -1px;
+}
+.panel-grip.picked {
+	color: var(--copper-bright);
+	/* No background or size change: the grip is a pointer target mid-gesture and
+	   must not move or grow under the cursor that is about to press it. */
 }
