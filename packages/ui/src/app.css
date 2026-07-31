@@ -1705,9 +1705,28 @@
    it is the widest thing in the legend (a full date) setting that column's
    width for nothing. */
 .temp-chart-legend .u-legend tr:first-child { display: none; }
-.temp-chart-legend .u-legend tr { display: flex; align-items: center; }
+/* Two COLUMNS, not a flex run: names left, readings sharing one right edge.
+   As a flex row each value started wherever its own label happened to end, so
+   "Bed 21.0" and "T0 245.3" put their numbers in different places and the
+   column of live temperatures — the thing you actually scan — was ragged. The
+   value track is max-content so it is as wide as the widest reading and no
+   wider, and the label track takes the rest. */
+.temp-chart-legend .u-legend tr {
+	display: grid;
+	grid-template-columns: 1fr max-content;
+	align-items: center;
+	gap: var(--ctl-gap);
+}
+/* The marker and the name travel together in the first track. */
+.temp-chart-legend .u-legend th { display: flex; align-items: center; gap: 6px; }
 .temp-chart-legend .u-legend .u-label { color: var(--silk); white-space: nowrap; }
-.temp-chart-legend .u-legend .u-value { color: var(--silk); font-variant-numeric: tabular-nums; }
+/* Right-aligned AND tabular: without both, "9.9" and "245.3" still disagree
+   about where the decimal point sits. */
+.temp-chart-legend .u-legend .u-value {
+	color: var(--silk);
+	font-variant-numeric: tabular-nums;
+	text-align: right;
+}
 .temp-chart-legend .u-legend .u-marker { border-radius: 2px; }
 .temp-chart .u-select { background: rgba(217, 133, 59, 0.12); }
 
