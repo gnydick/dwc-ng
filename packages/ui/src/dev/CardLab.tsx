@@ -16,6 +16,7 @@ import { createServicePool } from "../compose/services.ts";
 import type { CardCtx } from "../compose/ctx.ts";
 import { SCENARIOS, scenarioModel, type ScenarioId } from "./cardScenarios.ts";
 import { createStubConnector } from "../connector/stubConnector.ts";
+import { LayoutAuditAll } from "./LayoutAuditPanel.tsx";
 
 /**
  * Card Lab (dev-only): render one REGISTRY card at a time against a synthetic
@@ -100,6 +101,11 @@ export default function CardLab() {
 		service,
 	});
 
+	// The bench element the audit measures. One card is mounted at a time, so
+	// one ref suffices; the sweep features each id and re-reads this.
+	let benchEl: HTMLDivElement | undefined;
+	const [auditOpen, setAuditOpen] = createSignal(false);
+
 	return (
 		<div class="card-lab">
 			<div class="lab-bar">
@@ -153,8 +159,24 @@ export default function CardLab() {
 				    shows one card at a time. */}
 				<button class="layout-reset" onClick={() => canvas.resetSlot(featured())}>↺ Reset card</button>
 			</div>
+			<div class="lab-bar">
+				<span class="lab-cap">Audit</span>
+				<button class="lab-pill" aria-pressed={auditOpen()} onClick={() => setAuditOpen(v => !v)}>
+					{auditOpen() ? "Hide layout audit" : "Show layout audit"}
+				</button>
+			</div>
+			<Show when={auditOpen()}>
+				<LayoutAuditAll
+					ids={() => allCardIds()}
+					titleOf={id => cardTitleOf(id as CardId)}
+					feature={id => setFeatured(id as CardId)}
+					current={() => featured()}
+					benchEl={() => benchEl?.querySelector<HTMLElement>("[data-panel-id]") ?? null}
+				/>
+			</Show>
 
 			<AppContext.Provider value={services}>
+				<div ref={benchEl}>
 				<PanelCanvas class="lab-canvas">
 					{/* Keyed remount on switch: a fresh card, no leaked internal state.
 					    visibleWhen is deliberately NOT applied here — the lab's job is
@@ -170,6 +192,7 @@ export default function CardLab() {
 						)}
 					</Show>
 				</PanelCanvas>
+				</div>
 				<Show when={studio()} keyed>
 					{s => (
 						<CardStudio

@@ -703,6 +703,17 @@
    brought its own bugs: containment silenced the table completely, and the
    horizontal layout then disagreed with the vertical about the minimum.
    152 + 120 + 56 + 56 + 58 + 156 = 598. */
+/* ONE declaration of the tool table's columns. Both tool cards render the same
+   table; Tools simply omits the control columns. Before this the two carried
+   separate numbers that agreed by coincidence, and stopped agreeing at a
+   different density. Subtraction cannot disagree. */
+:root {
+	--tool-col-heater: calc(152px + var(--fs-col));
+	--tool-col-active: calc(70px + var(--fs-col));
+	--tool-col-standby: calc(56px + var(--fs-col));
+	--tool-col-current: calc(58px + var(--fs-col));
+	--tool-col-set: calc(156px + var(--fs-col));
+}
 /* 152 + 70 + 56 + 58 + 156 = 492. Heater | Active | Standby | Current | Set.
    No Filament column on either tool card: loading a material is the Extruders
    card's job — it owns the pickers, the macros and the All buttons — and a
@@ -723,34 +734,19 @@
 	font-variant-numeric: tabular-nums;
 	table-layout: fixed;
 }
-/* Every width below is FIXED, so the table is the same width whatever the card
-   does and the card's stop is simply their sum. An elastic column meant the
-   card's minimum and the column layout argued with each other. */
-.heat-table th:nth-child(1), .heat-table td:nth-child(1) { width: calc(152px + var(--fs-col)); }
-/* 56px, measured: .heat-input is 56px wide and these were once declared 54, so
-   both setpoint fields overflowed their own column by 2px.
-   Active carries 14px of LEFT gutter on top of that — the tool selector in
-   column 1 fills its cell, so with bare columns the button's right edge met
-   the first input's left edge exactly. The gutter is added to the width, not
-   taken out of it (box-sizing is border-box), so the field is still 56. */
-.heat-table th:nth-child(2), .heat-table td:nth-child(2) { width: calc(70px + var(--fs-col)); padding-left: 14px; }
-.heat-table th:nth-child(3), .heat-table td:nth-child(3) { width: calc(56px + var(--fs-col)); }
-/* Current: the padding is what keeps the reading off the first mode key —
-   right-aligned in a bare cell, its right edge met the key exactly. 58px
-   measured in the Card Lab (isolated, so no neighbour distorts it): the widest
-   reading is 44px and this padding is 14. */
-.heat-table th:nth-child(4), .heat-table td:nth-child(4) { width: calc(58px + var(--fs-col)); padding-right: 14px; }
-.heat-table th:nth-child(5), .heat-table td:nth-child(5) { width: calc(156px + var(--fs-col)); }
-/* The Tools card: the same table with the heater CONTROLS not rendered, so it
-   is Heater | Current and nothing else. min-width directly rather than through
-   --heat-table-w, so the token keeps meaning "the full table" and the
-   column-sum test still has one number to check. 152 + 58 = 210. Current is
-   nth-child(2) here, so it would otherwise inherit Active's bare 56px. */
+/* Columns by ROLE, not by position. The width travels with the column, so
+   inserting or removing one shifts nothing — which is the entire content of
+   regression class (f). Sum: 152 + 70 + 56 + 58 + 156 = 492. */
+.heat-table .col-heater { width: var(--tool-col-heater); }
+.heat-table .col-active { width: var(--tool-col-active); padding-left: 14px; }
+.heat-table .col-standby { width: var(--tool-col-standby); }
+.heat-table .col-current { width: var(--tool-col-current); padding-right: 14px; }
+.heat-table .col-set { width: var(--tool-col-set); }
+/* The Tools card renders the same table without the control columns, so
+   Current is the second cell rather than the fourth. Under role classes that
+   fact needs no restatement of any OTHER column's width — which is what the
+   positional version got wrong. 152 + 58 = 210. */
 .heat-table.info-only { min-width: 210px; }
-.heat-table.info-only th:nth-child(2), .heat-table.info-only td:nth-child(2) {
-	width: 58px;
-	padding-right: 14px;
-}
 .heat-input {
 	/* Tracks column 3, the cell it sits in. Declared apart once, and the
 	   field overflowed its own cell by 2px. */
@@ -1321,11 +1317,12 @@
 	   inside 58. Heater/Active/Standby/Set are already at their contents. */
 	.heat-table { --heat-table-w: calc(484px + 5 * var(--fs-col)); }
 	/* Only Current has measured slack at this width; the setpoint fields are at
-	   their inputs and Set is at its three keys. 152 + 70 + 56 + 50 + 156 = 484. */
-	.heat-table th:nth-child(4), .heat-table td:nth-child(4) { width: 50px; padding-right: 6px; }
+	   their inputs and Set is at its three keys. Overriding the TOKEN keeps one
+	   declaration site — the rule above never changes. 152 + 70 + 56 + 50 + 156 = 484. */
+	.heat-table { --tool-col-current: calc(50px + var(--fs-col)); }
+	.heat-table .col-current { padding-right: 6px; }
 	/* Same two columns, narrow: 152 + 50 = 202. */
 	.heat-table.info-only { min-width: 202px; }
-	.heat-table.info-only th:nth-child(2), .heat-table.info-only td:nth-child(2) { width: 50px; padding-right: 6px; }
 	/* tighten headers so labels ("STANDBY") fit their narrower columns */
 	.heat-table th { font-size: calc(9.5px + var(--fs-bump)); letter-spacing: 0.05em; }
 }
@@ -2012,9 +2009,23 @@
 .heater-ctl > .ctl-name, .heater-ctl > .tool-select { grid-column: 1; }
 /* Pinned per column, so the bed — no standby field — leaves a HOLE instead of
    sliding its later cells left into the vacated track. Scoped to the heaters
-   card: the Tuning row shares .heater-ctl but not this column scheme. */
-.heat-rows > .heater-ctl > .temp-field:nth-of-type(1) { grid-column: 2; }
-.heat-rows > .heater-ctl > .temp-field:nth-of-type(2) { grid-column: 3; }
+   card: the Tuning row shares .heater-ctl but not this column scheme.
+
+   By ROLE, not by sibling index. These two were the last :nth-of-type() in the
+   stylesheet carrying a track number, and they are the same regression the
+   Tools & heaters table was converted out of: both setpoint cells are
+   .temp-field, so "the first one" and "the second one" was the only way to tell
+   them apart — and a row that renders only ONE of them (the bed has no standby)
+   would have had its Active field land in the Standby track. The names are the
+   same col-active / col-standby the table beside it uses, so the two cards name
+   their columns in one vocabulary.
+
+   NOTE, verified 2026-07-30: nothing in the app renders `.heat-rows` today —
+   the heaters card was converted to `.heat-table`, and this block matches no
+   element. It is left in place rather than deleted (out of scope for the audit
+   fix), but it is named correctly now, so reviving it cannot revive the bug. */
+.heat-rows > .heater-ctl > .temp-field.col-active { grid-column: 2; }
+.heat-rows > .heater-ctl > .temp-field.col-standby { grid-column: 3; }
 .heat-rows > .heater-ctl > .heat-read { grid-column: 4; }
 .heat-rows > .heater-ctl > .heat-modes { grid-column: 5; }
 /* Column headings. Same face, size and alignment as .heat-table th, because
@@ -3373,3 +3384,33 @@
 }
 .layer-summary b { color: var(--silk); font-weight: 600; }
 .layer-chart { width: 100%; }
+
+/* ---------- layout audit (dev only) ---------- */
+.layout-audit { margin-top: var(--sp-flow); border-top: 1px solid var(--hairline); padding-top: var(--sp-flow); }
+.layout-audit-bar { display: flex; align-items: center; gap: var(--ctl-gap); }
+.layout-audit-grid {
+	display: grid;
+	grid-template-columns: max-content 1fr;
+	gap: var(--sp-cell) var(--ctl-gap);
+	margin: var(--sp-flow) 0 0;
+	font: 400 12.5px/1.4 var(--font-body);
+}
+.layout-audit-grid dt { color: var(--silk-dim); }
+.layout-audit-grid dd { margin: 0; color: var(--silk); font-variant-numeric: tabular-nums; }
+.layout-audit-grid dd.bad { color: var(--fault); font-weight: 600; }
+.layout-audit-table { width: 100%; border-collapse: collapse; margin-top: var(--sp-flow); font: 400 12px/1.4 var(--font-body); }
+.layout-audit-table th {
+	font: 600 10.5px/1 var(--font-display); letter-spacing: 0.14em; text-transform: uppercase;
+	color: var(--silk-dim); text-align: left; padding: 0 var(--ctl-gap) var(--sp-cell) 0;
+}
+.layout-audit-table td { padding: var(--sp-cell) var(--ctl-gap) var(--sp-cell) 0; border-top: 1px solid var(--hairline); font-variant-numeric: tabular-nums; }
+.layout-audit-table td.bad { color: var(--fault); font-weight: 600; }
+/* A row the sweep could NOT measure. Whole-row, not one cell: there is no
+   verdict to colour, and a card that went unmeasured has to be as loud as one
+   that failed — the defect this replaces was such a card leaving no line at
+   all. */
+.layout-audit-table tr.bad td { color: var(--fault); font-weight: 600; }
+/* The scope note. Deliberately not small print: it is the sentence that stops a
+   column of passing verdicts being read as "this layout is sound". */
+.layout-audit-scope { margin: var(--sp-flow) 0 0; max-width: 78ch; line-height: 1.5; }
+.layout-audit-scope b { color: var(--silk); font-weight: 600; }
