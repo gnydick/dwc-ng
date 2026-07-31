@@ -1,10 +1,11 @@
-import { For, Match, Show, Suspense, Switch, createMemo, createSignal, lazy } from "solid-js";
+import { For, Match, Show, Suspense, Switch, createMemo, createSignal, lazy, onCleanup, onMount } from "solid-js";
 import { useApp } from "./context.ts";
 import { cmd } from "../control/commands.ts";
 import { createRouter, LAB_ROUTE } from "./router.ts";
 import { navHidden, setNavHidden } from "./navState.ts";
 import { PITCHES, pitch, setPitch } from "./density.ts";
 import { BUILD_ID } from "./buildId.ts";
+import { installEdgeScroll } from "./edgeScroll.ts";
 import {
 	BACKENDS, type Backend, rememberBackend,
 	writesArmed, setWritesArmed,
@@ -20,6 +21,12 @@ const CardLab = lazy(() => import("../dev/CardLab.tsx"));
 export default function Shell() {
 	const app = useApp();
 	const route = createRouter();
+	// A wheel over the middle of a tall inner scroller (console, editor, file
+	// list) scrolls THIS instead of the box, so a big passive readout stops
+	// being a hole in the page. Installed once, for every card there will ever
+	// be — see edgeScroll.ts.
+	let viewScrollEl: HTMLDivElement | undefined;
+	onMount(() => onCleanup(installEdgeScroll(() => viewScrollEl ?? null)));
 	// Nav, router, and renderer all read the ONE screen list (I9). An unknown
 	// (or just-hidden/deleted) route falls back to the first listed screen.
 	const screens = createMemo(() => screenList(app.config.config));
@@ -162,7 +169,9 @@ export default function Shell() {
 					</div>
 				</header>
 
-				<div class="view-scroll">
+				{/* The page scroller. Its ref feeds edgeScroll, which is what a
+				    wheel over the middle of a big inner scroller drives instead. */}
+				<div class="view-scroll" ref={viewScrollEl}>
 					<Switch>
 						<Match when={labActive()}>
 							<Suspense fallback={<p class="job-empty">Loading Card Lab…</p>}><CardLab /></Suspense>
