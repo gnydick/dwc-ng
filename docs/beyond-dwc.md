@@ -118,6 +118,11 @@ DWC offers a factory reset and a local-vs-SD storage toggle
 - Pinned commands: park a G-code that re-sends on an interval to override a
   running job.
 - Optional one-click macro run for operators who don't want the confirm step.
+- Choose which tool-change macros run - tfree, tpre, tpost - as a field on the
+  tool itself, per command, rather than as a machine-wide setting. The field
+  reads back in words ("tfree · tpost"), and blank is distinct from `P0`: blank
+  sends no P at all and lets the firmware run all three, `P0` suppresses them.
+  See the DWC note below - the capability is parity, only its placement is not.
 
 ## 7. Presentation
 
@@ -138,8 +143,21 @@ job list with run/simulate, three-source time estimates, pause/resume/cancel,
 object cancellation (M486), the file editor, macros, filament management,
 tools/heaters/fans/ATX, homing and jog, speed and extrusion factors,
 babystepping, console, temperature chart, layer-time chart, 3D toolpath
-viewer, object-model browser, webcam, firmware update.
+viewer, object-model browser, webcam, firmware update, **selectable
+tool-change macros**.
 
 The toolpath viewer and object-model browser exist in both. Ours are cards
 placeable on any screen rather than full-page plugins - but that is the layout
 advantage in §1, not a separate feature, and it is not counted twice.
+
+**Tool-change macros, specifically.** Easy to mistake for ours, so it is
+written down. DWC builds the same `P` bitmask from three checkboxes in
+Settings -> Machine (`SettingsMachinePanel.vue:86-94`), and applies it to
+deselect as well - `ToolRows.vue:309` sends `"T-1" + toolChangeParameter`.
+Its getter (`store/machine/settings.ts:309`) even collapses `P7` to an
+omitted `P`, which is the same "all three, no P" behavior ours has. The
+capability is therefore parity in full. What differs is only that DWC's lives
+once, globally, in Settings, so varying it for a single tool change means
+leaving the tools screen and changing a machine-wide preference; ours is a
+field beside the tool, typed per command. That difference is the §6 bullet,
+and it is deliberately worded as placement rather than capability.
