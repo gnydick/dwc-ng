@@ -26,7 +26,16 @@ import type { CardCtx } from "../compose/ctx.ts";
  * selection wiring stay maintained once.
  */
 function JobsListing(props: { ctx: CardCtx; service: "jobsBrowser" | "jobsInventoryBrowser"; manageActions: boolean }) {
+	const app = useApp();
 	const svc = props.ctx.service(props.service);
+	// The row action splits with the card. Jobs ACTS on a job — the button
+	// starts the print, the same M32 the Job details card sends, so the two
+	// cannot mean different things by "print". The inventory MANAGES files, and
+	// Download is a file operation, so it moved there with Rename and Delete
+	// rather than being deleted.
+	const startPrint = (path: string): void => {
+		void app.connector.sendCode(cmd.print(path)).catch(() => undefined);
+	};
 	return (
 		<Show when={props.ctx.connected()} fallback={<p class="job-empty">Not connected.</p>}>
 			<FileBrowserView
@@ -36,18 +45,31 @@ function JobsListing(props: { ctx: CardCtx; service: "jobsBrowser" | "jobsInvent
 				rootLabel="gcodes"
 				emptyText="Empty folder."
 				showMeta
+				// The date rides with the management actions: the inventory sorts
+				// files out and wants it, the Jobs list picks one to print and does
+				// not — and it was a fixed 120px, the widest cell after the name.
+				showDate={props.manageActions}
 				manageActions={props.manageActions}
 				rowActions={entry => {
 					const path = svc.browser.pathOf(entry);
 					return (
-						<button
-							class="fb-act"
-							title={`Download ${entry.name}`}
-							disabled={svc.downloading() !== null}
-							onClick={() => void svc.download(path, entry.name)}
+						<Show
+							when={props.manageActions}
+							fallback={
+								<button class="fb-act" title={cmd.print(path)} onClick={() => startPrint(path)}>
+									PRINT
+								</button>
+							}
 						>
-							{svc.downloading() === path ? "…" : "Download"}
-						</button>
+							<button
+								class="fb-act"
+								title={`Download ${entry.name}`}
+								disabled={svc.downloading() !== null}
+								onClick={() => void svc.download(path, entry.name)}
+							>
+								{svc.downloading() === path ? "…" : "Download"}
+							</button>
+						</Show>
 					);
 				}}
 			/>
