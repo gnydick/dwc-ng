@@ -291,7 +291,21 @@ function ComposeDrawer(props: { screenId: string; entry: ScreenEntry | null; com
 	};
 
 	return (
-		<div class="compose-wrap">
+		<div
+			class="compose-wrap"
+			onPointerLeave={e => {
+				// Mouse only. On touch, pointerleave fires as soon as the finger
+				// lifts, so the drawer would shut on the tap that opened it.
+				if (e.pointerType !== "mouse") return;
+				// Never yank it away mid-edit: the screen-name field lives in here,
+				// and a rename you were halfway through typing is not something a
+				// stray mouse movement gets to discard. Leaving the pointer is a
+				// hint that you are done; the keyboard being in the drawer says
+				// otherwise, and that wins.
+				if (e.currentTarget.contains(document.activeElement)) return;
+				setOpen(false);
+			}}
+		>
 			<button class="layout-reset" aria-pressed={open()} onClick={() => setOpen(v => !v)}>⊞ Compose</button>
 			<Show when={open()}>
 				<div class="compose-drawer">

@@ -137,6 +137,9 @@ function heightmapService(base: ServiceBaseCtx) {
  */
 export const SERVICES = {
 	jobsBrowser: (base: ServiceBaseCtx) => jobsBrowserService(base),
+	/** Same gcodes tree, SEPARATE navigation and selection — the inventory
+	 *  card must not move the Jobs card or change which job Job details shows. */
+	jobsInventoryBrowser: (base: ServiceBaseCtx) => jobsBrowserService(base),
 	macrosBrowser: (base: ServiceBaseCtx) => domainBrowser(base, "0:/macros"),
 	/** Same directory, SEPARATE navigation and selection: the inventory card and
 	 *  the Macros card can sit on one screen without moving each other. */

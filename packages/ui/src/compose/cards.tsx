@@ -24,7 +24,7 @@ import { PinnedCommandsBody } from "../cards/PinnedCommandsCard.tsx";
 import { ControlList } from "./controls/ControlList.tsx";
 import { HOMING_SPEC, MOVEMENT_SPEC } from "./controls/builtin.ts";
 import {
-	JobFilesBody, JobDetailsBody, MacrosBody, MacrosInventoryBody, SystemFilesBody, OmInspectorBody, MacrosEditorBody, SystemEditorBody,
+	JobFilesBody, JobsInventoryBody, JobDetailsBody, MacrosBody, MacrosInventoryBody, SystemFilesBody, OmInspectorBody, MacrosEditorBody, SystemEditorBody,
 } from "../cards/FileCards.tsx";
 import { HeightmapBody, ProbePointBody, MeshBody, BedTramBody } from "../cards/BedCards.tsx";
 import {
@@ -77,6 +77,7 @@ export const CARD_RENDER: Record<CardId, CardRender> = {
 	tuning: { body: () => <TuningBody /> },
 	"job-files": { body: ctx => <JobFilesBody ctx={ctx} /> },
 	"job-details": { body: ctx => <JobDetailsBody ctx={ctx} /> },
+	"jobs-inventory": { body: ctx => <JobsInventoryBody ctx={ctx} /> },
 	macros: { body: ctx => <MacrosBody ctx={ctx} /> },
 	"macros-inventory": { body: ctx => <MacrosInventoryBody ctx={ctx} /> },
 	"macros-editor": { body: ctx => <MacrosEditorBody ctx={ctx} /> },

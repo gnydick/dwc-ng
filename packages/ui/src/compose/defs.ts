@@ -268,6 +268,14 @@ export const CARD_DEFS = {
 		tip: "rr_fileinfo",
 		size: { colSpan: 156, rowSpan: 135 },
 	}),
+	/** The same job listing with Rename, Delete and the create/upload bar, on
+	 *  its own browser so it can sit beside the Jobs card without moving it. */
+	"jobs-inventory": defineCard({
+		title: "Jobs · inventory",
+		ariaLabel: "Jobs inventory",
+		tip: ctx => ctx.service("jobsInventoryBrowser").browser.dir(),
+		size: { colSpan: 156, rowSpan: 150 },
+	}),
 	/** Macro listing (0:/macros) with two-step Run. */
 	macros: defineCard({
 		title: "Macros",
