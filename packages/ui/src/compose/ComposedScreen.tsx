@@ -14,8 +14,10 @@
  *    rename, hide/delete, new screen;
  *  - the single <Card> wrapper per slot (compose/RegistryCard.tsx).
  */
-import { For, Show, createEffect, createMemo, createSignal, untrack } from "solid-js";
+import { For, Show, createEffect, createMemo, createSignal, onCleanup, untrack } from "solid-js";
+import { Portal } from "solid-js/web";
 import { useApp } from "../shell/context.ts";
+import { railSlot } from "../shell/railSlot.ts";
 import { PanelCanvas } from "../shell/PanelCanvas.tsx";
 import { canvasStorageKey, createPanelCanvas, type PanelCanvasController } from "../shell/panelCanvas.ts";
 import { CARD_DEFS, allCardIds, parseCardId, type CardId } from "./defs.ts";
@@ -113,10 +115,17 @@ export function ComposedScreen(props: { screenId: string }) {
 
 	return (
 		<>
-			<div class="layout-toolbar">
-				<ComposeDrawer screenId={props.screenId} entry={entry()} composition={composition()} previewCtx={ctxFor("console")} canvas={canvas} />
-				<button class="layout-reset" onClick={() => canvas.reset()}>↺ Reset layout</button>
-			</div>
+			{/* Into the RAIL, not above the canvas. The toolbar that used to live
+			    here cost 36px of full-width canvas height on every screen — nine
+			    row units off the top of every card — while the rail carried 812px
+			    of unused column. Portalled rather than hoisted: see railSlot.ts. */}
+			<Show when={railSlot()}>
+				{slot => (
+					<Portal mount={slot()}>
+						<ComposeDrawer screenId={props.screenId} entry={entry()} composition={composition()} previewCtx={ctxFor("console")} canvas={canvas} />
+					</Portal>
+				)}
+			</Show>
 			<PanelCanvas class={entry()?.def.class}>
 				<For each={slotIdList()}>
 					{id => (
@@ -147,6 +156,40 @@ export function ComposedScreen(props: { screenId: string }) {
  * keeps the user's creations — custom cards and screens die only by their
  * own explicit ✕/Delete.
  */
+/**
+ * An artist's palette, drawn rather than borrowed.
+ *
+ * Inline SVG and not an emoji: 🎨 renders in whatever colour and shape the
+ * platform's font decides, which is the one thing a UI built on solder-mask
+ * navy and copper cannot have — and it would be the only glyph in the rail we
+ * did not control. currentColor throughout, so it inherits the same
+ * dim → silk → copper treatment as every other rail control and needs no
+ * separate hover rule.
+ *
+ * Dabs at FULL currentColor, all four. They were drawn at descending opacity
+ * first, on the theory that a rarely-used control should stay quiet; magnified
+ * ten times it looked right and at its real 18px the two faintest dabs
+ * disappeared into the navy entirely, leaving a bean with two dots. Contrast a
+ * 1.1px-radius circle needs is not contrast a 200px preview shows.
+ */
+function PaletteIcon() {
+	return (
+		<svg class="palette-glyph" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+			<path
+				d="M12 3.2c-4.9 0-8.8 3.5-8.8 7.8 0 4.3 3.9 7.8 8.8 7.8a1.45 1.45 0 0 0 1.1-2.4 1.5 1.5 0 0 1 1.1-2.5h1.7c2.7 0 4.9-2.2 4.9-4.9 0-3.8-3.9-5.8-8.8-5.8Z"
+				fill="none"
+				stroke="currentColor"
+				stroke-width="1.5"
+				stroke-linejoin="round"
+			/>
+			<circle cx="7.4" cy="11.6" r="1.2" fill="currentColor" />
+			<circle cx="9.4" cy="7.9" r="1.2" fill="currentColor" />
+			<circle cx="13.6" cy="7.2" r="1.2" fill="currentColor" />
+			<circle cx="17.2" cy="9.4" r="1.2" fill="currentColor" />
+		</svg>
+	);
+}
+
 /** Case- and accent-insensitive compare, so the picker sorts "ATX" next to
  *  "atx-like" names naturally — "case doesn't matter". */
 const byName = (a: string, b: string): number => a.localeCompare(b, undefined, { sensitivity: "base" });
@@ -291,9 +334,32 @@ function ComposeDrawer(props: { screenId: string; entry: ScreenEntry | null; com
 		if (first !== undefined) window.location.hash = `#/${first.id}`;
 	};
 
+	// TAP OUTSIDE TO DISMISS, registered only while open.
+	//
+	// pointerleave is the desktop path and it is explicitly mouse-only — on
+	// touch it fires the instant the finger lifts, so the drawer would shut on
+	// the tap that opened it. That left touch with no dismissal at all except
+	// finding the palette again, and at narrow widths the drawer is a bottom
+	// sheet with the button up in the rail, so there is nothing to leave.
+	//
+	// pointerdown rather than click: a tap that starts outside should dismiss
+	// even if it turns into a drag, and click would let a press-and-drag on the
+	// canvas leave the sheet open over what is being dragged.
+	let wrapEl: HTMLDivElement | undefined;
+	createEffect(() => {
+		if (!open()) return;
+		const dismiss = (e: PointerEvent): void => {
+			if (wrapEl !== undefined && e.target instanceof Node && wrapEl.contains(e.target)) return;
+			setOpen(false);
+		};
+		document.addEventListener("pointerdown", dismiss);
+		onCleanup(() => document.removeEventListener("pointerdown", dismiss));
+	});
+
 	return (
 		<div
 			class="compose-wrap"
+			ref={wrapEl}
 			onPointerLeave={e => {
 				// Mouse only. On touch, pointerleave fires as soon as the finger
 				// lifts, so the drawer would shut on the tap that opened it.
@@ -313,7 +379,19 @@ function ComposeDrawer(props: { screenId: string; entry: ScreenEntry | null; com
 				setOpen(false);
 			}}
 		>
-			<button class="layout-reset" aria-pressed={open()} onClick={() => setOpen(v => !v)}>⊞ Compose</button>
+			{/* CLICK, not hover. Hover does not exist on touch, and this is the
+			    only way into composing a screen — a control you cannot open on a
+			    phone is a control the phone does not have. Closing stays on
+			    pointerleave (mouse only), which is the half touch can do without. */}
+			<button
+				class="rail-palette"
+				aria-pressed={open()}
+				aria-label="Compose this screen"
+				title="Compose this screen"
+				onClick={() => setOpen(v => !v)}
+			>
+				<PaletteIcon />
+			</button>
 			<Show when={open()}>
 				<div class="compose-drawer">
 					<div class="compose-row compose-screen">
@@ -434,6 +512,14 @@ function ComposeDrawer(props: { screenId: string; entry: ScreenEntry | null; com
 							onKeyDown={e => { if (e.key === "Enter") createScreen(); }}
 						/>
 						<button class="fb-act ok" disabled={newName().trim() === ""} onClick={createScreen}>+ New screen</button>
+					</div>
+					{/* Last, and set apart: everything above edits WHAT is on the
+					    screen, this throws away where the cards were put. It moved in
+					    here when the toolbar went into the rail — one entry was the
+					    ask, so the second button became a row rather than a second
+					    icon. */}
+					<div class="compose-row compose-reset">
+						<button class="layout-reset" onClick={() => props.canvas.reset()}>↺ Reset layout</button>
 					</div>
 				</div>
 			</Show>
