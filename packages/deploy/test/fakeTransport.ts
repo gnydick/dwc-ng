@@ -57,11 +57,21 @@ export function fakeTransport(opts: FakeOptions = {}): FakeTransport {
 				.map(k => k.slice(prefix.length))
 			return Promise.resolve(names)
 		},
-		remove(boardPath) {
-			files.delete(boardPath)
-			for (const key of [...files.keys()]) {
-				if (key.startsWith(`${boardPath}/`)) files.delete(key)
+		remove(boardPath, recursive) {
+			// Models what the real servers do, because the previous version did
+			// NOT and that is exactly how a broken uninstall shipped: this used to
+			// delete a directory's children unconditionally, so every test passed
+			// while the board answered HTTP 500 for `DELETE 0:/www/ng` and left
+			// the deployment half-removed. A fake that is more permissive than the
+			// thing it stands in for cannot fail on the bug it is there to catch.
+			const children = [...files.keys()].filter(k => k.startsWith(`${boardPath}/`))
+			if (children.length > 0 && recursive !== true) {
+				return Promise.reject(
+					new Error(`DELETE ${boardPath} failed: HTTP 500 (directory not empty)`),
+				)
 			}
+			files.delete(boardPath)
+			for (const key of children) files.delete(key)
 			return Promise.resolve()
 		},
 		fetchUrl(urlPath): Promise<FetchedResource> {

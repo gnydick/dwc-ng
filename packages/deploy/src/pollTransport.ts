@@ -50,8 +50,11 @@ export function pollTransport(baseUrl: string): Transport {
 			}
 		},
 
-		async remove(boardPath) {
-			const res = await fetch(`${base}/rr_delete?name=${encodeURIComponent(boardPath)}`)
+		async remove(boardPath, recursive) {
+			// RRF spells it `recursive=yes|no`, not `true|false` — the rr_ dialect
+			// differs from DSF's here (reference/connectors/src/PollConnector.ts:925).
+			const flag = recursive === true ? "&recursive=yes" : ""
+			const res = await fetch(`${base}/rr_delete?name=${encodeURIComponent(boardPath)}${flag}`)
 			if (!res.ok && res.status !== 404) {
 				throw new Error(`rr_delete ${boardPath} failed: HTTP ${res.status}`)
 			}

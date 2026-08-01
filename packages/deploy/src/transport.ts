@@ -86,7 +86,17 @@ export type Transport = {
 	read(boardPath: string): Promise<Uint8Array | null>
 	/** File names directly inside a board directory; empty when absent. */
 	list(boardDir: string): Promise<string[]>
-	remove(boardPath: string): Promise<void>
+	/**
+	 * Delete a file, or a directory when `recursive`.
+	 *
+	 * Both servers REFUSE to delete a non-empty directory otherwise — DSF
+	 * answers HTTP 500 — so an uninstall that does not ask for recursion removes
+	 * the entry document, fails on the directory, and leaves the deployment
+	 * half-gone (observed on the board 2026-07-31). Pruning passes it up: an
+	 * orphaned asset is a file, and a recursive delete of a file is the same
+	 * delete.
+	 */
+	remove(boardPath: string, recursive?: boolean): Promise<void>
 	/** Fetch by URL the way a browser would — this is what proves a deploy. */
 	fetchUrl(urlPath: string): Promise<FetchedResource>
 }

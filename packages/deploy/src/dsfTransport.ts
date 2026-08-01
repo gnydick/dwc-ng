@@ -38,8 +38,12 @@ export function dsfTransport(baseUrl: string): Transport {
 			return entries.filter(e => e.type === "f" && typeof e.name === "string").map(e => e.name as string)
 		},
 
-		async remove(boardPath) {
-			const res = await fetch(filesEndpoint(base, boardPath), { method: "DELETE" })
+		async remove(boardPath, recursive) {
+			// `?recursive=true` is the form DuetWebServer takes — same as the
+			// official connector (reference/connectors/src/RestConnector.ts:451).
+			// Without it a non-empty directory comes back HTTP 500.
+			const url = filesEndpoint(base, boardPath) + (recursive === true ? "?recursive=true" : "")
+			const res = await fetch(url, { method: "DELETE" })
 			// 404 means already gone, which is the state we wanted anyway.
 			if (!res.ok && res.status !== 404) {
 				throw new Error(`DELETE ${boardPath} failed: HTTP ${res.status}`)

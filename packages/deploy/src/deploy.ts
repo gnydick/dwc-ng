@@ -105,6 +105,10 @@ export async function uninstall(
 	opts: { readonly name: string; readonly wwwRoot?: string; readonly layout?: Layout },
 ): Promise<void> {
 	for (const path of ownedPaths(opts.name, opts.layout ?? "sidecar", opts.wwwRoot)) {
-		await transport.remove(path)
+		// Recursive, because every layout owns at least one DIRECTORY and both
+		// servers refuse to delete a non-empty one — DSF with an HTTP 500. It is
+		// safe precisely because the paths come from ownedPaths: a recursive
+		// delete can only ever be pointed at something this tool created.
+		await transport.remove(path, true)
 	}
 }
