@@ -1,14 +1,17 @@
 /**
  * The only place a file path is built from user input.
  *
- * The invariant: a name the operator typed can never reach outside the
- * directory it was typed into. This is enforced by construction rather than by
- * checking at each call site — `childPath` accepts only a `FileName`, and the
- * sole way to obtain a `FileName` is `parseFileName`, which returns null for
- * anything that could escape. A caller cannot forget the check, because
- * skipping it leaves them holding a `string`, which `childPath` will not take.
+ * @invariant path-escape
+ * @rung 7  sole-constructor type — `childPath` accepts only a `FileName`, and
+ *          the only way to obtain one is `parseFileName`, which returns null
+ *          for anything that could escape. Skipping the check leaves the caller
+ *          holding a `string`, which `childPath` will not take
+ * @why a name the operator typed must never reach outside the directory it was
+ *      typed into. On a board whose filesystem is the machine's configuration,
+ *      a traversing name overwrites config.g rather than a macro
  *
- * (Parse, don't validate: the unchecked value stops existing at the boundary.)
+ * (Parse, don't validate: the unchecked value stops existing at the boundary.
+ * A caller cannot forget the check, because there is no forgetting available.)
  */
 
 /**

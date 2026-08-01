@@ -13,9 +13,27 @@ nobody wrote down. A lint catches the syntactic tells ("callers must",
 "should", "by convention"); everything past that is human judgement. This
 register is exhaustive over what has been *declared*, not over what exists.
 
-**Totals:** 8 invariants · 2 at rung 6 or above · 6 below rung 6 (ceiling 6).
+**Totals:** 17 invariants · 10 at rung 6 or above · 7 below rung 6 (ceiling 7).
 
 ## config
+
+### `config/id-namespace` — rung 7
+
+**Mechanism.** the return type IS the proof — `${P}${string}` means a minted id carries its prefix in its TYPE, so a consumer expecting a UserScreenId cannot be handed a bare string and no cast appears at any call site
+
+**Why.** "u-" ids must never collide with built-in screen ids or the lab route, and "c-" ids never with registry CardIds. A collision would silently shadow a built-in screen with a user one, and the user could not delete what they had not created
+
+`packages/ui/src/config/store.ts:412`
+
+### `config/one-mutation-path` — rung 6
+
+**Mechanism.** choke-point over closure-private state — `overlay` is captured here and unreachable from outside createConfigStore, and this is the only function that assigns it; all 27 mutating store methods route through it
+
+**Why.** every edit must cache and mark itself unsaved, or it vanishes on reload — the 2026-07-25 report where imported, deleted and edited screens all came back as if nothing had happened. Making that a property of the ONE write path means a mutation added later gets it without its author knowing the rule exists
+
+**Debt — promotion.** the trusted core is small but not sealed: another function added inside this closure could assign `overlay` directly. Promote by moving the overlay into a tiny module whose only export is apply(), so "mutate without caching" has no encoding at all.
+
+`packages/ui/src/config/store.ts:172`
 
 ### `config/screen-layout-two-tier` — rung 5
 
@@ -26,6 +44,26 @@ register is exhaustive over what has been *declared*, not over what exists.
 **Debt — promotion.** remove updateScreenCards from the public ConfigStore interface and expose two named intents instead — updateScreenMembership(id, cards) for incremental changes, replaceScreenLayout(id, rects) for wholesale ones — so "write screen geometry without declaring which kind of change this is" has no encoding, and the operation's name carries the requirement. Scope: one interface change, four call sites.
 
 `packages/ui/src/config/store.ts:75`
+
+### `config/untrusted-overlay-boundary` — rung 6
+
+**Mechanism.** choke-point — this module is the only route from untrusted JSON to ConfigOverlay, rebuilding every section field by field rather than casting, and it is TOTAL: no input throws
+
+**Why.** the SD file and the localStorage cache are hand-editable JSON. Casting after a top-level shape check let well-formed but mis-typed input ({"screens": "x"}) reach typed code — and because the bad overlay was re-cached, it then crashed every subsequent boot, which is a bricked UI recoverable only by clearing storage
+
+**Debt — promotion.** promote by branding ConfigOverlay so the parsed shape and a hand-written object literal are different types, making a future cast at a new load site a compile error instead of merely absent.
+
+`packages/ui/src/config/parse.ts:13`
+
+### `config/whole-cache-write` — rung 6
+
+**Mechanism.** choke-point — the single call to writeCache, taking all three pieces of state together, inside a closure nothing outside can reach
+
+**Why.** the three are one fact about "what the user has unsaved". Persisting two and dropping the third is the dropped-snapshots bug: the overlay survived a reload while the history it belonged to did not, so revert offered nothing to revert to
+
+**Debt — promotion.** promote by making writeCache take one CacheRecord value assembled in one place, so a second call site physically cannot pass a subset.
+
+`packages/ui/src/config/store.ts:158`
 
 ## connector
 
@@ -98,3 +136,49 @@ register is exhaustive over what has been *declared*, not over what exists.
 **Debt — promotion.** return a branded QuotedParam instead of string, and have every builder taking operator text accept only that — then a raw interpolation into a command string stops compiling rather than merely being unusual.
 
 `packages/ui/src/control/commands.ts:25`
+
+## files
+
+### `files/delete-warning-matches-action` — rung 7
+
+**Mechanism.** sole-constructor type — `remove` accepts only a branded RemovePlan, never a bare entry, and `recursive` is DERIVED here rather than passed in. A hand-built plan is a compile error
+
+**Why.** the count the operator is shown and the flag sent to the board come from one object, so "delete 1 item?" cannot precede a recursive wipe of forty. A recursive delete cannot even be issued without having first listed the directory and learned what is inside it
+
+`packages/ui/src/files/browser.ts:95`
+
+### `files/listing-follows-mutation` — rung 7
+
+**Mechanism.** the refetch is applied by a MAP over the operation table, not by each operation — an entry added to OPS is wrapped by `withRefresh` on the way out, so a version of the function that skips it cannot be written
+
+**Why.** a listing that disagrees with the board is worse than no listing: the operator deletes what they believe is there and hits a file that is not, or re-uploads over something they think they removed
+
+`packages/ui/src/files/browser.ts:14`
+
+### `files/path-escape` — rung 7
+
+**Mechanism.** sole-constructor type — `childPath` accepts only a `FileName`, and the only way to obtain one is `parseFileName`, which returns null for anything that could escape. Skipping the check leaves the caller holding a `string`, which `childPath` will not take
+
+**Why.** a name the operator typed must never reach outside the directory it was typed into. On a board whose filesystem is the machine's configuration, a traversing name overwrites config.g rather than a macro (Parse, don't validate: the unchecked value stops existing at the boundary. A caller cannot forget the check, because there is no forgetting available.)
+
+`packages/ui/src/files/path.ts:4`
+
+### `files/remembered-dir-untrusted` — rung 3
+
+**Mechanism.** a test, plus the return type being plain `string` rather than a proven directory — the single consumer (createFileBrowser) does call dirUnderRoot, but nothing makes it
+
+**Why.** localStorage is operator-editable and survives a firmware change that moved or deleted the directory. A remembered path used as a real one lists outside the browser's root, or 404s the view into a dead end it cannot navigate out of
+
+**Debt — promotion.** return a branded `RememberedDir` that only `dirUnderRoot` can convert into the directory type createFileBrowser accepts, so a second consumer cannot use the raw string as a path — the same shape as files/path-escape, which already proves it works here.
+
+`packages/ui/src/files/browserMemory.ts:10`
+
+### `files/scroll-map-bounded` — rung 6
+
+**Mechanism.** choke-point — saveBrowserScroll is the only writer of the map and evicts on every insert past MAX_SCROLL_DIRS
+
+**Why.** an appliance's browsers see few directories, but "few" should be a guarantee rather than an assumption: unbounded growth in localStorage eventually throws on write, and the catch that hides it would take the dir memory down with it
+
+**Debt — promotion.** fold the cap into a small bounded-map type so a second writer cannot add a key without eviction.
+
+`packages/ui/src/files/browserMemory.ts:23`

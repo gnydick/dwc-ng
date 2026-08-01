@@ -8,7 +8,20 @@
  * parse-don't-validate: every section is rebuilt field by field against the
  * shape DEFAULT_CONFIG promises; anything mis-typed is DROPPED (that leaf
  * behaves as never-customized — the overlay philosophy), never trusted and
- * never fatal. Total: no input throws.
+ * never fatal.
+ *
+ * @invariant untrusted-overlay-boundary
+ * @rung 6  choke-point — this module is the only route from untrusted JSON to
+ *          ConfigOverlay, rebuilding every section field by field rather than
+ *          casting, and it is TOTAL: no input throws
+ * @why the SD file and the localStorage cache are hand-editable JSON. Casting
+ *      after a top-level shape check let well-formed but mis-typed input
+ *      ({"screens": "x"}) reach typed code — and because the bad overlay was
+ *      re-cached, it then crashed every subsequent boot, which is a bricked UI
+ *      recoverable only by clearing storage
+ * @debt promote by branding ConfigOverlay so the parsed shape and a
+ *       hand-written object literal are different types, making a future cast
+ *       at a new load site a compile error instead of merely absent.
  */
 import {
 	CONFIG_VERSION, isCustomCardId, isUserScreenId,

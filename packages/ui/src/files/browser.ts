@@ -4,19 +4,21 @@
  * different roots — so navigation and file operations exist once, not three
  * times, and cannot drift apart.
  *
- * Two invariants are structural here:
- *
- *  - **The listing matches the board after any mutation.** Every operation is
- *    built by mapping a raw implementation through `withRefresh` (see OPS
- *    below). A future operation added to that table gets the refetch applied by
- *    the map, not by whoever writes it — there is no version of the function
- *    that could forget.
- *  - **A typed name cannot escape its directory.** Paths are built only by
- *    `childPath`, which accepts only a parsed `FileName` (see ./path.ts).
- *
  * Mutations go through `app.connector`, which in dev is the write-guarded
  * connector — so the real board still fails closed unless writes are armed.
  * That guard is deliberately NOT re-implemented here.
+ *
+ * (A typed name cannot escape its directory either — but that invariant is
+ * `files/path-escape`, declared where its mechanism lives, in ./path.ts.)
+ *
+ * @invariant listing-follows-mutation
+ * @rung 7  the refetch is applied by a MAP over the operation table, not by
+ *          each operation — an entry added to OPS is wrapped by `withRefresh`
+ *          on the way out, so a version of the function that skips it cannot be
+ *          written
+ * @why a listing that disagrees with the board is worse than no listing: the
+ *      operator deletes what they believe is there and hits a file that is not,
+ *      or re-uploads over something they think they removed
  */
 import { createEffect, createMemo, createResource, createSignal, type Accessor } from "solid-js";
 import { FileNotFoundError, type Connector, type FileListEntry } from "../connector/types.ts";
@@ -90,11 +92,14 @@ export interface FileBrowser {
 /**
  * A checked intent to delete something, describing what would be lost.
  *
- * `remove` accepts only this — never a bare entry — so a recursive delete
- * cannot be issued without having first listed the directory and learned how
- * many items are inside. The count the operator is shown and the `recursive`
- * flag sent to the board come from the same object, so the warning cannot
- * disagree with the action. The brand makes a hand-built plan a compile error.
+ * @invariant delete-warning-matches-action
+ * @rung 7  sole-constructor type — `remove` accepts only a branded RemovePlan,
+ *          never a bare entry, and `recursive` is DERIVED here rather than
+ *          passed in. A hand-built plan is a compile error
+ * @why the count the operator is shown and the flag sent to the board come from
+ *      one object, so "delete 1 item?" cannot precede a recursive wipe of
+ *      forty. A recursive delete cannot even be issued without having first
+ *      listed the directory and learned what is inside it
  */
 export interface RemovePlan {
 	readonly path: string;

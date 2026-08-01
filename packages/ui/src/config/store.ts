@@ -154,11 +154,36 @@ export function createConfigStore(): ConfigStore {
 		snapshots: cached?.snapshots ?? [],
 	});
 
-	// One place that writes the whole cache — overlay, dirty flag AND the
-	// snapshot history — so no state change can persist two of the three and
-	// silently drop the rest (the dropped-snapshots bug).
+	/**
+	 * @invariant whole-cache-write
+	 * @rung 6  choke-point — the single call to writeCache, taking all three
+	 *          pieces of state together, inside a closure nothing outside can
+	 *          reach
+	 * @why the three are one fact about "what the user has unsaved". Persisting
+	 *      two and dropping the third is the dropped-snapshots bug: the overlay
+	 *      survived a reload while the history it belonged to did not, so revert
+	 *      offered nothing to revert to
+	 * @debt promote by making writeCache take one CacheRecord value assembled in
+	 *       one place, so a second call site physically cannot pass a subset.
+	 */
 	const persistCache = (): void => writeCache(overlay, meta.dirty, meta.snapshots);
 
+	/**
+	 * @invariant one-mutation-path
+	 * @rung 6  choke-point over closure-private state — `overlay` is captured
+	 *          here and unreachable from outside createConfigStore, and this is
+	 *          the only function that assigns it; all 27 mutating store methods
+	 *          route through it
+	 * @why every edit must cache and mark itself unsaved, or it vanishes on
+	 *      reload — the 2026-07-25 report where imported, deleted and edited
+	 *      screens all came back as if nothing had happened. Making that a
+	 *      property of the ONE write path means a mutation added later gets it
+	 *      without its author knowing the rule exists
+	 * @debt the trusted core is small but not sealed: another function added
+	 *       inside this closure could assign `overlay` directly. Promote by
+	 *       moving the overlay into a tiny module whose only export is
+	 *       apply(), so "mutate without caching" has no encoding at all.
+	 */
 	const apply = (mutate: (draft: ConfigOverlay) => void): void => {
 		const next = structuredClone(overlay);
 		mutate(next);
@@ -382,10 +407,16 @@ export function createConfigStore(): ConfigStore {
 }
 
 /**
- * The ONE id mint. The prefix IS the namespace guarantee: "u-" ids can never
- * collide with built-in screen ids or the lab route, "c-" ids can never
- * collide with registry CardIds — and the return type carries the proof, so
- * consumers hold a branded id without casting.
+ * The ONE id mint.
+ *
+ * @invariant id-namespace
+ * @rung 7  the return type IS the proof — `${P}${string}` means a minted id
+ *          carries its prefix in its TYPE, so a consumer expecting a UserScreenId
+ *          cannot be handed a bare string and no cast appears at any call site
+ * @why "u-" ids must never collide with built-in screen ids or the lab route,
+ *      and "c-" ids never with registry CardIds. A collision would silently
+ *      shadow a built-in screen with a user one, and the user could not delete
+ *      what they had not created
  */
 function mintId<P extends "u-" | "c-">(prefix: P): `${P}${string}` {
 	return `${prefix}${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;

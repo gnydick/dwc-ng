@@ -5,10 +5,30 @@
  * canvas layouts and config cache.
  *
  * Keyed by the browser's ROOT ("0:/gcodes" etc.), so each domain remembers
- * its own place. The stored directory is UNTRUSTED on the way back in — a
- * consumer must re-validate it against the root (files/path.ts dirUnderRoot)
- * before using it as a real directory; this module only stores and returns
- * strings.
+ * its own place.
+ *
+ * @invariant remembered-dir-untrusted
+ * @rung 3  a test, plus the return type being plain `string` rather than a
+ *          proven directory — the single consumer (createFileBrowser) does call
+ *          dirUnderRoot, but nothing makes it
+ * @why localStorage is operator-editable and survives a firmware change that
+ *      moved or deleted the directory. A remembered path used as a real one
+ *      lists outside the browser's root, or 404s the view into a dead end it
+ *      cannot navigate out of
+ * @debt return a branded `RememberedDir` that only `dirUnderRoot` can convert
+ *       into the directory type createFileBrowser accepts, so a second consumer
+ *       cannot use the raw string as a path — the same shape as
+ *       files/path-escape, which already proves it works here.
+ *
+ * @invariant scroll-map-bounded
+ * @rung 6  choke-point — saveBrowserScroll is the only writer of the map and
+ *          evicts on every insert past MAX_SCROLL_DIRS
+ * @why an appliance's browsers see few directories, but "few" should be a
+ *      guarantee rather than an assumption: unbounded growth in localStorage
+ *      eventually throws on write, and the catch that hides it would take the
+ *      dir memory down with it
+ * @debt fold the cap into a small bounded-map type so a second writer cannot
+ *       add a key without eviction.
  */
 import { isPlainObject, safeEntries } from "../util/safeObject.ts";
 
