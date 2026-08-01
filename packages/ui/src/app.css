@@ -43,8 +43,22 @@
 	box-shadow: inset 2px 0 0 var(--copper);
 }
 
+/* The slack lives BELOW the nav, not above the board identity.
+   `margin-top: auto` on .machine-id used to do this job, which worked only
+   while machine-id was the last thing in the rail — the tool section now sits
+   between them, and an auto margin there would have put the free space between
+   the tools and the identity instead of above both. Anchoring the slack to the
+   nav keeps every later addition to the rail bottom-aligned by default. */
+.rail nav { margin-bottom: auto; }
+
+/* The current screen's controls (compose/reset), portalled in by
+   ComposedScreen. Empty on routes that portal nothing — Card Lab, the editors
+   — and `:empty` removes it from the flex flow entirely so those routes do not
+   pay a rail gap for a section that is not there. */
+.rail-tools { display: flex; flex-direction: column; }
+.rail-tools:empty { display: none; }
+
 .rail .machine-id {
-	margin-top: auto;
 	font-size: calc(11.5px + var(--fs-bump));
 	color: var(--silk-dim);
 	padding-left: 10px;
@@ -1290,8 +1304,16 @@
 		padding: 12px 16px;
 		overflow-x: auto;
 	}
-	.rail nav { flex-direction: row; }
+	.rail nav { flex-direction: row; margin-bottom: 0; }
 	.rail .machine-id { display: none; }
+
+	/* The palette entry's narrow-width rules are NOT here — they live in a
+	   second max-width block directly after the desktop ones further down.
+	   A media query adds no specificity, so rules written here are simply
+	   overridden by same-specificity desktop rules that appear later in the
+	   file: the bottom sheet was measured at x=383 on a 390px viewport,
+	   off-screen and not hit-testable, because `left: calc(100% + 8px)` from
+	   line ~2760 won on source order alone. */
 
 	/* Narrow-viewport columns. Two rules this block has to obey, because the
 	   table is `table-layout: fixed` with `min-width: var(--heat-table-w)`:
@@ -2682,6 +2704,122 @@
 
 /* ---------- compose drawer (A8) ---------- */
 .compose-wrap { position: relative; display: inline-block; }
+
+/* ---------- the rail's palette entry, and its flyout ---------- */
+/* One entry, an icon, opening sideways. It sits in a 169px column, so the
+   340px drawer cannot drop BELOW the button the way it did above the canvas —
+   it opens across the canvas instead. */
+/* Styled as a NAV ENTRY, not a floating icon button: same 10px left padding as
+   `.rail nav a`, so the glyph's edge lands on the same line the screen names
+   run down, and the same full-width hover fill. It is one more thing in the
+   rail's single column — which is what "one entry" meant — and it inherits the
+   left edge automatically if the nav's padding ever changes. */
+.rail-palette {
+	display: flex;
+	align-items: center;
+	/* A <button> shrink-fits even as a block-level flex container, so `auto`
+	   leaves a 38px hover pill under a 169px column of nav links. Explicit. */
+	width: 100%;
+	padding: var(--sp-nav-py) 10px;
+	border-radius: var(--radius);
+	color: var(--silk-dim);
+}
+.rail-palette:hover { background: var(--mask-700); color: var(--silk); }
+/* Open reads exactly like aria-current does one group up — copper text and the
+   same inset rule — so the rail has one visual language for "this is the live
+   one" rather than two. */
+.rail-palette[aria-pressed="true"] {
+	background: var(--mask-700);
+	color: var(--copper);
+	box-shadow: inset 2px 0 0 var(--copper);
+}
+.palette-glyph { display: block; }
+
+/* Full rail width, so the entry behaves like the nav links above it: the hover
+   fill spans the column instead of hugging a 38px icon.
+   It also fixes where the flyout starts. `.compose-wrap` is `inline-block` (it
+   was an inline control in a toolbar), and Solid's <Portal> puts its own
+   container div between it and `.rail-tools` — so the wrap shrank to the icon
+   and `left: 100%` resolved to 46px, opening the drawer ON TOP of the rail.
+   Measured against the wrap's real width, the same declaration clears it. */
+.rail-tools .compose-wrap { display: block; }
+
+/* ANCHORED TO THE BOTTOM EDGE, not the top. The entry sits at the foot of the
+   rail, so a top-aligned flyout would hang off the bottom of the window; growing
+   upward from the button keeps a 340px-wide, up-to-full-height drawer on screen
+   without any measurement. */
+.rail-tools .compose-drawer {
+	left: calc(100% + 8px);
+	right: auto;
+	top: auto;
+	bottom: 0;
+}
+
+/* THE BRIDGE, turned through ninety degrees.
+   The drawer closes the moment the pointer leaves .compose-wrap, so the gap
+   between button and drawer has to belong to the wrap or the trip across it
+   shuts the thing you are reaching for. Above the canvas that gap was
+   horizontal ground under a button; in the rail it is a VERTICAL strip beside
+   one, and the original ::after (left:0;right:0;top:100%;height:8px) covers
+   empty floor while the real crossing is sideways. Same fix, rotated. */
+.rail-tools .compose-wrap::after {
+	left: 100%;
+	right: auto;
+	top: 0;
+	bottom: 0;
+	width: 8px;
+	height: auto;
+}
+
+/* Set apart from the membership editing above it: this discards geometry. */
+.compose-reset {
+	justify-content: flex-end;
+	border-top: 1px solid var(--hairline);
+	padding-top: 8px;
+}
+
+/* The palette at narrow widths — AFTER the desktop rules above, deliberately.
+   A media query contributes no specificity, so these have to come later in the
+   file to win; written up beside the rail's other narrow rules they lost on
+   source order and the sheet rendered off-screen.
+
+   The rail is a horizontal bar here, so every assumption above inverts:
+   - `width: 100%` on the entry would claim the whole row;
+   - and the flyout cannot be positioned inside the rail AT ALL, because
+     `overflow-x: auto` on .rail makes it a clipping context — an absolutely
+     positioned drawer is trapped inside a ~60px strip and cannot even be
+     hit-tested.
+   So the drawer leaves the flow and becomes a bottom sheet: fixed to the
+   viewport, no rail-height magic number to drift out of date, and the shape a
+   phone expects rather than a desktop dropdown in a phone's clothes. */
+@media (max-width: 900px) {
+	.rail-palette { width: auto; }
+	.rail-tools .compose-wrap { display: inline-block; }
+	/* PINNED to the right end of the scrolling bar. The rail scrolls
+	   horizontally here and the tools sit after every screen name, so on a
+	   390px phone the only way to compose was to scroll the nav to its end
+	   first — the control was reachable but not findable. Sticky keeps it on
+	   screen; the background stops nav links sliding out from under it. */
+	.rail-tools {
+		position: sticky;
+		right: 0;
+		flex: 0 0 auto;
+		background: var(--mask-900);
+		padding-left: 4px;
+	}
+	.rail-tools .compose-drawer {
+		position: fixed;
+		left: 8px;
+		right: 8px;
+		top: auto;
+		bottom: 8px;
+		width: auto;
+		max-height: 70vh;
+	}
+	/* No bridge: there is no gap to cross when the sheet is nowhere near the
+	   button. Dismissal here is the tap-outside handler, not pointerleave. */
+	.rail-tools .compose-wrap::after { content: none; }
+}
 .layout-toolbar { display: flex; gap: 10px; justify-content: flex-end; align-items: flex-start; }
 .compose-drawer {
 	position: absolute; right: 0; top: calc(100% + 6px); z-index: 40; width: 340px;

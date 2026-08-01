@@ -3,6 +3,7 @@ import { useApp } from "./context.ts";
 import { cmd } from "../control/commands.ts";
 import { createRouter, LAB_ROUTE } from "./router.ts";
 import { navHidden, setNavHidden } from "./navState.ts";
+import { setRailSlot } from "./railSlot.ts";
 import { PITCHES, pitch, setPitch } from "./density.ts";
 import { BUILD_ID } from "./buildId.ts";
 import { installEdgeScroll } from "./edgeScroll.ts";
@@ -79,6 +80,11 @@ export default function Shell() {
 					</For>
 					<a href={`#/${LAB_ROUTE}`} aria-current={labActive() ? "page" : undefined}>Card Lab</a>
 				</nav>
+				{/* The current screen's own controls, portalled in — see railSlot.ts.
+				    Always rendered so the mount point exists before any screen looks
+				    for it; `:empty` hides it entirely on routes that portal nothing,
+				    so a screen without tools costs no gap above the board identity. */}
+				<div class="rail-tools" ref={setRailSlot} />
 				<p class="machine-id">
 					<Show when={app.om.om.boards[0]}>
 						{board => <>{board().name}<br /></>}
