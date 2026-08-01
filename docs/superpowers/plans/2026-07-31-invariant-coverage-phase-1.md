@@ -667,7 +667,9 @@ EOF
 
 **Interfaces:**
 - Consumes: `parseDeclarations` (Task 2).
-- Produces: `scanTree(rootDir: string): RawDeclaration[]` — walks `<rootDir>/packages`, returns declarations in a **deterministic** order (files sorted by repo-relative path, declarations in file order). `repoRoot(): string` resolves the repo root from this module's location so the CLI and tests agree on one answer.
+- Produces: `scanTree(rootDir: string): RawDeclaration[]` — walks **`<rootDir>/packages/*/src` only**, returns declarations in a **deterministic** order (files sorted by repo-relative path, declarations in file order). `repoRoot(): string` resolves the repo root from this module's location so the CLI and tests agree on one answer.
+
+> **Deviation recorded during execution (2026-07-31).** The plan originally said "walks `<rootDir>/packages`". Running the first build against the real repo showed this package's own test fixtures being extracted as declarations: a fixture string containing literal `/* … */` text is indistinguishable from a comment to a regex over raw bytes. Narrowed to `packages/*/src`, which is the right rule on meaning anyway — a declaration belongs beside the mechanism, and a test is evidence *about* a mechanism, not one. Two extra tests pin it.
 
 - [ ] **Step 1: Write the failing test**
 
