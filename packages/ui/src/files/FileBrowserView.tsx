@@ -91,6 +91,24 @@ export function FileBrowserView(props: {
 	// applied once that directory's rows are in the DOM (entries() re-runs the
 	// effect), and only once, so a later create/delete refresh doesn't yank the
 	// list back under the operator.
+	/*
+	 * @invariant restore-lands-on-real-rows
+	 * @rung 1  convention — a closure-private `let` with one consumption site and
+	 *          a `loading()` early return above it. Nothing structural sequences
+	 *          the two: a future effect reading pendingRestore before that guard
+	 *          consumes it just as silently, and no test covers the ordering
+	 *          (browser-memory.test.ts exercises the STORAGE, not the timing)
+	 * @why the offset is applied by assigning scrollTop, and the browser CLAMPS
+	 *      that against current content — so restoring onto the empty loading
+	 *      list writes 0, and the one-shot token is spent. The memory was being
+	 *      written and read correctly the whole time and still did nothing, which
+	 *      is why it read as "scroll position is not restored" rather than as a
+	 *      timing bug
+	 * @debt promote by making the pending offset a value the restore FUNCTION
+	 *       consumes, taking the populated list as an argument — so "restore
+	 *       before the rows exist" has no expression rather than being one
+	 *       misplaced read away. Rung 6, and it deletes the early return.
+	 */
 	createEffect(on(() => props.browser.dir(), dir => {
 		pendingRestore = loadBrowserMemory(props.browser.root).scroll[dir] ?? 0;
 	}, { defer: true }));

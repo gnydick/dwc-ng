@@ -43,6 +43,24 @@ export function parseProbeReply(reply: string): ProbeResult | null {
  * subtraction preserves that regardless of where triggerHeight sits. Storing
  * the raw stop height instead would bake the whole trigger height (e.g. ~13mm)
  * into every cell.
+ *
+ * @invariant stop-height-is-not-a-map-value
+ * @rung 5  shared helper — the sole implementation of the conversion, and the
+ *          sole consumer (cards/BedCards.tsx:430) does call it. But both
+ *          quantities are `number`: setRawStop(stopHeight) and
+ *          setProbed(heightmapValue(...)) sit on ADJACENT lines taking the same
+ *          type, and store.edit accepts either
+ * @why they are different quantities in the same units. RRF reports the raw
+ *      machine Z of the trigger, which sits near the configured G31 Z (~-13 on
+ *      this machine), so storing it as measured put a ~13mm error into every
+ *      re-probed cell — a map that then drives live compensation on a bed the
+ *      probe has to survive
+ * @debt this is technique 7 (units as types) left undone. Promote by branding
+ *       both: parseProbeReply produces a StopHeight, this is the only
+ *       StopHeight -> MapValue, and heightmap/store.ts's edit() accepts only a
+ *       MapValue — then handing the raw reading to the map stops compiling
+ *       instead of merely looking wrong. nudge() composes because valueAt()
+ *       already returns a MapValue and the delta is an offset within it.
  */
 export function heightmapValue(stopHeight: number, triggerHeight: number): number {
 	return stopHeight - triggerHeight;

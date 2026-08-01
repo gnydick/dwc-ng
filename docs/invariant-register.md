@@ -21,7 +21,7 @@ and invariant claim mentions 13 -> 23, so no mechanism was deleted and no
 claim was lost in the gap. From here the ratchets make a dropped rung visible
 in the diff that drops it.
 
-**Totals:** 50 invariants · 33 at rung 6 or above · 17 below rung 6 (ceiling 17).
+**Totals:** 54 invariants · 35 at rung 6 or above · 19 below rung 6 (ceiling 19).
 
 ## compose
 
@@ -123,7 +123,17 @@ in the diff that drops it.
 
 **Why.** "u-" ids must never collide with built-in screen ids or the lab route, and "c-" ids never with registry CardIds. A collision would silently shadow a built-in screen with a user one, and the user could not delete what they had not created
 
-`packages/ui/src/config/store.ts:418`
+`packages/ui/src/config/store.ts:449`
+
+### `config/labels-never-travel` — rung 6
+
+**Mechanism.** choke-point plus a type with no room for it — the payload is assembled here and nowhere else, out of `overlay` alone, and ConfigOverlay has no label field for one to be written into. Labels live in `meta`, a separate store the upload never reads
+
+**Why.** a save name is about THIS browser's restore points. In the payload it becomes machine configuration: it rides to the SD card, comes back on every other browser that loads the file, and names a snapshot none of them took. A named save and an unnamed one must upload identical bytes
+
+**Debt — promotion.** the payload is a hand-built object literal, so a future field is one line away. Promote by giving ConfigOverlay a single serialize that returns a branded ConfigPayload upload accepts, so what travels is decided by the overlay's own type rather than here.
+
+`packages/ui/src/config/store.ts:394`
 
 ### `config/overlay-writes-persist` — rung 5
 
@@ -144,6 +154,16 @@ in the diff that drops it.
 **Debt — promotion.** remove updateScreenCards from the public ConfigStore interface and expose two named intents instead — updateScreenMembership(id, cards) for incremental changes, replaceScreenLayout(id, rects) for wholesale ones — so "write screen geometry without declaring which kind of change this is" has no encoding, and the operation's name carries the requirement. Scope: one interface change, four call sites.
 
 `packages/ui/src/config/store.ts:75`
+
+### `config/sole-snapshot-producer` — rung 6
+
+**Mechanism.** choke-point — the one place a ConfigSnapshot is appended, so trim / default-when-blank / cap and the MAX_SNAPSHOTS eviction are applied to every backup that exists. revert() only READS the array; saveToMachine takes its backup by calling this
+
+**Why.** a blank name renders as an unlabelled row in Saved versions, and the operator reverts by reading those names — ten rows of "saved" is the state this replaced. Uncapped, one pasted paragraph makes the list unreadable, and the label is the only thing distinguishing one restore point from another
+
+**Debt — promotion.** promote by making ConfigSnapshot's label a branded SnapshotLabel this function is the sole producer of, so a snapshot assembled elsewhere cannot be pushed at all rather than merely not being.
+
+`packages/ui/src/config/store.ts:352`
 
 ### `config/untrusted-overlay-boundary` — rung 6
 
@@ -371,6 +391,16 @@ in the diff that drops it.
 
 `packages/ui/src/files/browserMemory.ts:10`
 
+### `files/restore-lands-on-real-rows` — rung 1
+
+**Mechanism.** convention — a closure-private `let` with one consumption site and a `loading()` early return above it. Nothing structural sequences the two: a future effect reading pendingRestore before that guard consumes it just as silently, and no test covers the ordering (browser-memory.test.ts exercises the STORAGE, not the timing)
+
+**Why.** the offset is applied by assigning scrollTop, and the browser CLAMPS that against current content — so restoring onto the empty loading list writes 0, and the one-shot token is spent. The memory was being written and read correctly the whole time and still did nothing, which is why it read as "scroll position is not restored" rather than as a timing bug
+
+**Debt — promotion.** promote by making the pending offset a value the restore FUNCTION consumes, taking the populated list as an argument — so "restore before the rows exist" has no expression rather than being one misplaced read away. Rung 6, and it deletes the early return.
+
+`packages/ui/src/files/FileBrowserView.tsx:95`
+
 ### `files/scroll-map-bounded` — rung 6
 
 **Mechanism.** choke-point — saveBrowserScroll is the only writer of the map and evicts on every insert past MAX_SCROLL_DIRS
@@ -380,6 +410,18 @@ in the diff that drops it.
 **Debt — promotion.** fold the cap into a small bounded-map type so a second writer cannot add a key without eviction.
 
 `packages/ui/src/files/browserMemory.ts:23`
+
+## heightmap
+
+### `heightmap/stop-height-is-not-a-map-value` — rung 5
+
+**Mechanism.** shared helper — the sole implementation of the conversion, and the sole consumer (cards/BedCards.tsx:430) does call it. But both quantities are `number`: setRawStop(stopHeight) and setProbed(heightmapValue(...)) sit on ADJACENT lines taking the same type, and store.edit accepts either
+
+**Why.** they are different quantities in the same units. RRF reports the raw machine Z of the trigger, which sits near the configured G31 Z (~-13 on this machine), so storing it as measured put a ~13mm error into every re-probed cell — a map that then drives live compensation on a bed the probe has to survive
+
+**Debt — promotion.** this is technique 7 (units as types) left undone. Promote by branding both: parseProbeReply produces a StopHeight, this is the only StopHeight -> MapValue, and heightmap/store.ts's edit() accepts only a MapValue — then handing the raw reading to the map stops compiling instead of merely looking wrong. nudge() composes because valueAt() already returns a MapValue and the delta is an offset within it.
+
+`packages/ui/src/heightmap/probeReply.ts:47`
 
 ## mock-duet
 

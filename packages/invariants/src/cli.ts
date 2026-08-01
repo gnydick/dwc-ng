@@ -6,10 +6,11 @@
 import { readFileSync, writeFileSync, realpathSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { scanTree, scanBroken, repoRoot } from "./scan.ts";
+import { scanTree, scanBroken, scanFiles, repoRoot } from "./scan.ts";
 import { checkAll, type Declaration, type Problem } from "./check.ts";
 import { renderRegister } from "./render.ts";
 import { findRedFlags } from "./redFlags.ts";
+import { strayLeads } from "./blocks.ts";
 import { checkBroken, renderDebt, type RawBroken } from "./broken.ts";
 
 const REGISTER = ["docs", "invariant-register.md"];
@@ -72,6 +73,23 @@ function readDebtJson(root: string): RawBroken[] {
 	});
 }
 
+/**
+ * Declaration-shaped lines the block reader cannot see, reported as problems so
+ * `generate` refuses rather than quietly writing a register that omits them.
+ * Both tags, one walk — a stray `@broken` is the same mistake.
+ */
+export function scanStrays(root: string): Problem[] {
+	return scanFiles(root, (text, file) =>
+		(["invariant", "broken"] as const).flatMap(tag =>
+			strayLeads(text, tag).map(line => ({
+				file,
+				line,
+				message: `"@${tag}" outside a block comment — only /* … */ is scanned, so this declares nothing`,
+			})),
+		),
+	);
+}
+
 export function buildRegister(): {
 	markdown: string;
 	debtMarkdown: string;
@@ -87,7 +105,7 @@ export function buildRegister(): {
 		markdown: renderRegister(declarations, ceiling),
 		debtMarkdown: renderDebt(broken.entries),
 		declarations,
-		problems: [...problems, ...broken.problems],
+		problems: [...problems, ...broken.problems, ...scanStrays(root)],
 		ceiling,
 	};
 }

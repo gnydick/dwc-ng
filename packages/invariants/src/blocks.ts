@@ -51,6 +51,33 @@ export function blocksOf(text: string): RawBlock[] {
 	}));
 }
 
+/**
+ * Lines that LOOK like a declaration but sit outside every block comment — a
+ * `// @invariant …`, or one left in code after an edit ate the delimiters.
+ *
+ * Found the hard way: a `//`-style declaration written during the 2026-08-01
+ * incident pass produced no record, no error and no register row. A tool that
+ * silently ignores an attempt to use it is worse than one that has no feature
+ * at all, because the author believes the invariant is filed.
+ *
+ * Deliberately narrow — the tag must OPEN the line (after indent and an
+ * optional `//`) and be followed by one token, which is what a declaration
+ * looks like and what prose or a string literal mentioning the tag does not.
+ */
+export function strayLeads(text: string, leadTag: string): number[] {
+	const covered = new Set<number>();
+	for (const { text: blockText, startLine } of blocksOf(text)) {
+		const span = blockText.split("\n").length;
+		for (let i = 0; i < span; i++) covered.add(startLine + i);
+	}
+	const opener = new RegExp(`^\\s*(?://+\\s*)?@${leadTag}(?![\\w-])\\s*(\\S+)\\s*$`);
+	const out: number[] = [];
+	text.split("\n").forEach((line, i) => {
+		if (!covered.has(i + 1) && opener.test(line)) out.push(i + 1);
+	});
+	return out;
+}
+
 export function readRecords(text: string, leadTag: string, fieldTags: readonly string[]): TagRecord[] {
 	// (?![\w-]) not \b: with \b, "@why-not-higher" matches "@why" and silently
 	// OVERWRITES the real @why with "-not-higher …". A tag ends at the tag, and

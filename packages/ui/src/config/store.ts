@@ -348,6 +348,21 @@ export function createConfigStore(): ConfigStore {
 			});
 		},
 
+		/*
+		 * @invariant sole-snapshot-producer
+		 * @rung 6  choke-point — the one place a ConfigSnapshot is appended, so
+		 *          trim / default-when-blank / cap and the MAX_SNAPSHOTS eviction
+		 *          are applied to every backup that exists. revert() only READS
+		 *          the array; saveToMachine takes its backup by calling this
+		 * @why a blank name renders as an unlabelled row in Saved versions, and
+		 *      the operator reverts by reading those names — ten rows of "saved"
+		 *      is the state this replaced. Uncapped, one pasted paragraph makes
+		 *      the list unreadable, and the label is the only thing distinguishing
+		 *      one restore point from another
+		 * @debt promote by making ConfigSnapshot's label a branded SnapshotLabel
+		 *       this function is the sole producer of, so a snapshot assembled
+		 *       elsewhere cannot be pushed at all rather than merely not being.
+		 */
 		snapshot(label) {
 			// The sole place a snapshot is created, so the label rule lives here
 			// and nowhere else: trim, fall back when blank, cap the length. A
@@ -375,6 +390,22 @@ export function createConfigStore(): ConfigStore {
 			persistCache();
 		},
 
+		/*
+		 * @invariant labels-never-travel
+		 * @rung 6  choke-point plus a type with no room for it — the payload is
+		 *          assembled here and nowhere else, out of `overlay` alone, and
+		 *          ConfigOverlay has no label field for one to be written into.
+		 *          Labels live in `meta`, a separate store the upload never reads
+		 * @why a save name is about THIS browser's restore points. In the payload
+		 *      it becomes machine configuration: it rides to the SD card, comes
+		 *      back on every other browser that loads the file, and names a
+		 *      snapshot none of them took. A named save and an unnamed one must
+		 *      upload identical bytes
+		 * @debt the payload is a hand-built object literal, so a future field is
+		 *       one line away. Promote by giving ConfigOverlay a single serialize
+		 *       that returns a branded ConfigPayload upload accepts, so what
+		 *       travels is decided by the overlay's own type rather than here.
+		 */
 		async saveToMachine(connector, label) {
 			// The snapshot is taken from the overlay BEING saved, so the name
 			// describes exactly the state that went to the card. The label is
