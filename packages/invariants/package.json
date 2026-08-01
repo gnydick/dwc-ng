@@ -1,0 +1,17 @@
+{
+  "name": "@dwc-ng/invariants",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Extracts @invariant declarations from source into docs/invariant-register.md, and gates drift and debt (spec: docs/superpowers/specs/2026-07-31-invariant-coverage-design.md).",
+  "scripts": {
+    "generate": "node src/cli.ts generate",
+    "check": "node src/cli.ts check",
+    "test": "node --test",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.2",
+    "typescript": "~6.0.2"
+  }
+}

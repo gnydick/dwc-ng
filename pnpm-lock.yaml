@@ -17,6 +17,15 @@ importers:
         specifier: ~6.0.2
         version: 6.0.3
 
+  packages/invariants:
+    devDependencies:
+      '@types/node':
+        specifier: ^24.13.2
+        version: 24.13.2
+      typescript:
+        specifier: ~6.0.2
+        version: 6.0.3
+
   packages/mock-duet:
     devDependencies:
       '@types/node':
