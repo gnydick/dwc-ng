@@ -12,13 +12,20 @@
  * `files/path-escape`, declared where its mechanism lives, in ./path.ts.)
  *
  * @invariant listing-follows-mutation
- * @rung 7  the refetch is applied by a MAP over the operation table, not by
- *          each operation — an entry added to OPS is wrapped by `withRefresh`
- *          on the way out, so a version of the function that skips it cannot be
- *          written
+ * @rung 5  shared helper — all five mutating operations are individually
+ *          wrapped in `withRefresh` at their definition. A sixth can simply
+ *          not be
  * @why a listing that disagrees with the board is worse than no listing: the
  *      operator deletes what they believe is there and hits a file that is not,
  *      or re-uploads over something they think they removed
+ * @debt CORRECTED 2026-08-01. This was declared rung 7 — "the refetch is
+ *       applied by a MAP over the operation table, an entry added to OPS is
+ *       wrapped on the way out" — copied from this module's own header. There
+ *       is no OPS table and `git log -S` says there never was one: the header
+ *       described a design that was never built, and the sweep promoted that
+ *       aspiration to a mechanism claim. Promote for real by building the
+ *       operations from a table and mapping withRefresh over it, which is what
+ *       the original sentence meant and would make the rung-7 wording true.
  */
 import { createEffect, createMemo, createResource, createSignal, type Accessor } from "solid-js";
 import { FileNotFoundError, type Connector, type FileListEntry } from "../connector/types.ts";

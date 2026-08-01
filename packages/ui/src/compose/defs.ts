@@ -34,15 +34,21 @@
  *       predicate separately. Promote by exposing visibility only as a computed
  *       value both consumers must take, rather than a predicate they may call.
  *
- * @invariant natural-size-owned-here
- * @rung 6  choke-point — `size` on the def is the card's only statement of its
- *          natural geometry; screens carry placement, never dimensions of their
- *          own. Was design I4
- * @why a card redesigned taller must grow on every screen that holds it. When
- *      screens carried sizes, the 2026-07-24 case had position 95->103 and
- *      active-job 40->46 change nothing anywhere
- * @debt promote by making the screen's stored rect a position-plus-reference
- *       rather than a full rect, so a stored size has no encoding at all.
+ * @invariant redesigned-cards-grow
+ * @rung 6  choke-point — `size` here is the card's natural geometry, and
+ *          growToDefaults (shell/panelCanvas.ts) takes the LARGER of stored and
+ *          natural per axis at mount, so a card redesigned taller grows on
+ *          every screen that already held it. Was design I4
+ * @why the 2026-07-24 case: position 95->103 and active-job 40->46 changed
+ *      nothing anywhere, because a stored span won outright and the new content
+ *      rendered below the fold on every browser that had ever laid the screen out
+ * @debt RESTATED 2026-08-01. This was declared as "screens carry placement,
+ *       never dimensions of their own", which is simply false — a stored Slot
+ *       IS a PanelRect and parseComposition reads colSpan/rowSpan straight out
+ *       of it. The property that actually holds is the growth rule above, and
+ *       it holds by one function rather than by the storage shape. Promote by
+ *       storing position plus a size REFERENCE, so a stale span has no
+ *       encoding and growToDefaults becomes unnecessary rather than load-bearing.
  */
 import { baseName } from "../files/format.ts";
 import { CONFIG_FILE } from "../config/types.ts";

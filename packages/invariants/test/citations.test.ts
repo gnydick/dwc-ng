@@ -43,11 +43,24 @@ test("every backticked identifier a declaration cites actually exists in src", (
 	const dangling: string[] = [];
 
 	for (const d of declarations) {
-		// Backticked tokens in the mechanism text are citations of real code.
-		for (const cited of d.mechanism.matchAll(/`([A-Za-z_$][A-Za-z0-9_$.]*)`/g)) {
-			// Take the head of a dotted path: `cmd.emergencyStop` -> cmd.
-			const head = cited[1]!.split(".")[0]!;
-			if (!known.has(head)) dangling.push(`${d.id} (${d.file}:${d.line}) cites \`${cited[1]!}\``);
+		// BACKTICKED TOKENS ONLY, and that is a deliberate limit rather than an
+		// oversight. `listing-follows-mutation` cited a table called OPS that has
+		// never existed in any commit, and it escaped this check because it was
+		// written unquoted. Widening to ALL-CAPS tokens catches it — and also
+		// flags ONE, ONLY, BOTH and the historical I13/I14, because prose
+		// emphasis and code constants are lexically identical. Five false
+		// positives out of 42 declarations is a gate people learn to skip, which
+		// is worse than a narrow gate they trust.
+		//
+		// So the rule is a convention the format doc states: a name that refers
+		// to code goes in backticks. This check enforces it for everything that
+		// follows the convention, and is honest that it cannot see what doesn't.
+		const cites = [...d.mechanism.matchAll(/`([A-Za-z_$][A-Za-z0-9_$.]*)`/g)].map(m => m[1]!);
+
+		for (const cited of cites) {
+			// Take the head of a dotted path: cmd.emergencyStop -> cmd.
+			const head = cited.split(".")[0]!;
+			if (!known.has(head)) dangling.push(`${d.id} (${d.file}:${d.line}) cites "${cited}"`);
 		}
 	}
 

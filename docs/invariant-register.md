@@ -21,7 +21,7 @@ and invariant claim mentions 13 -> 23, so no mechanism was deleted and no
 claim was lost in the gap. From here the ratchets make a dropped rung visible
 in the diff that drops it.
 
-**Totals:** 42 invariants · 30 at rung 6 or above · 12 below rung 6 (ceiling 12).
+**Totals:** 42 invariants · 28 at rung 6 or above · 14 below rung 6 (ceiling 14).
 
 ## compose
 
@@ -79,16 +79,6 @@ in the diff that drops it.
 
 `packages/ui/src/compose/defs.ts:18`
 
-### `compose/natural-size-owned-here` — rung 6
-
-**Mechanism.** choke-point — `size` on the def is the card's only statement of its natural geometry; screens carry placement, never dimensions of their own. Was design I4
-
-**Why.** a card redesigned taller must grow on every screen that holds it. When screens carried sizes, the 2026-07-24 case had position 95->103 and active-job 40->46 change nothing anywhere
-
-**Debt — promotion.** promote by making the screen's stored rect a position-plus-reference rather than a full rect, so a stored size has no encoding at all.
-
-`packages/ui/src/compose/defs.ts:37`
-
 ### `compose/no-duplicate-card` — rung 8
 
 **Mechanism.** illegal state unrepresentable — a composition is Partial<Record<CardId, PanelRect>>, so a second copy of a card has nowhere to live. The picker and the import layer cannot express one even by trying. Was design I2
@@ -107,6 +97,16 @@ in the diff that drops it.
 
 `packages/ui/src/compose/defs.ts:26`
 
+### `compose/redesigned-cards-grow` — rung 6
+
+**Mechanism.** choke-point — `size` here is the card's natural geometry, and growToDefaults (shell/panelCanvas.ts) takes the LARGER of stored and natural per axis at mount, so a card redesigned taller grows on every screen that already held it. Was design I4
+
+**Why.** the 2026-07-24 case: position 95->103 and active-job 40->46 changed nothing anywhere, because a stored span won outright and the new content rendered below the fold on every browser that had ever laid the screen out
+
+**Debt — promotion.** RESTATED 2026-08-01. This was declared as "screens carry placement, never dimensions of their own", which is simply false — a stored Slot IS a PanelRect and parseComposition reads colSpan/rowSpan straight out of it. The property that actually holds is the growth rule above, and it holds by one function rather than by the storage shape. Promote by storing position plus a size REFERENCE, so a stale span has no encoding and growToDefaults becomes unnecessary rather than load-bearing.
+
+`packages/ui/src/compose/defs.ts:37`
+
 ### `compose/registered-card-ids` — rung 7
 
 **Mechanism.** `CardId = keyof typeof CARD_DEFS` — an unregistered id is a compile error in code, and a runtime string either passes parseCardId or ceases to exist. Was design I1
@@ -123,15 +123,15 @@ in the diff that drops it.
 
 **Why.** "u-" ids must never collide with built-in screen ids or the lab route, and "c-" ids never with registry CardIds. A collision would silently shadow a built-in screen with a user one, and the user could not delete what they had not created
 
-`packages/ui/src/config/store.ts:412`
+`packages/ui/src/config/store.ts:418`
 
-### `config/one-mutation-path` — rung 6
+### `config/overlay-writes-persist` — rung 5
 
-**Mechanism.** choke-point over closure-private state — `overlay` is captured here and unreachable from outside createConfigStore, and this is the only function that assigns it; all 27 mutating store methods route through it
+**Mechanism.** shared helper — persistCache is called by all THREE sites that assign `overlay` (this one, revert-to-snapshot, and loadFromMachine), each of which also repeats the same setConfig/reconcile and setMeta("dirty") lines. Corrected 2026-08-01: first declared rung 6 as "the only function that assigns it", which is false — there are three, and I checked the claim by reading the function rather than by searching for the assignment
 
-**Why.** every edit must cache and mark itself unsaved, or it vanishes on reload — the 2026-07-25 report where imported, deleted and edited screens all came back as if nothing had happened. Making that a property of the ONE write path means a mutation added later gets it without its author knowing the rule exists
+**Why.** every edit must cache and mark itself unsaved, or it vanishes on reload — the 2026-07-25 report where imported, deleted and edited screens all came back as if nothing had happened
 
-**Debt — promotion.** the trusted core is small but not sealed: another function added inside this closure could assign `overlay` directly. Promote by moving the overlay into a tiny module whose only export is apply(), so "mutate without caching" has no encoding at all.
+**Debt — promotion.** the property currently holds because three sites each remember four lines, which is the tripwire: a step duplicated at a second call site means the design is already wrong. Promote by giving the closure ONE `commit(next: ConfigOverlay, dirty: boolean)` that does the assign, the reconcile, the flag and the cache — the three sites differ only in the flag (revert marks dirty, loadFromMachine marks clean), so one parameter covers all of them and a fourth site cannot forget.
 
 `packages/ui/src/config/store.ts:172`
 
@@ -303,13 +303,15 @@ in the diff that drops it.
 
 **Why.** the count the operator is shown and the flag sent to the board come from one object, so "delete 1 item?" cannot precede a recursive wipe of forty. A recursive delete cannot even be issued without having first listed the directory and learned what is inside it
 
-`packages/ui/src/files/browser.ts:95`
+`packages/ui/src/files/browser.ts:102`
 
-### `files/listing-follows-mutation` — rung 7
+### `files/listing-follows-mutation` — rung 5
 
-**Mechanism.** the refetch is applied by a MAP over the operation table, not by each operation — an entry added to OPS is wrapped by `withRefresh` on the way out, so a version of the function that skips it cannot be written
+**Mechanism.** shared helper — all five mutating operations are individually wrapped in `withRefresh` at their definition. A sixth can simply not be
 
 **Why.** a listing that disagrees with the board is worse than no listing: the operator deletes what they believe is there and hits a file that is not, or re-uploads over something they think they removed
+
+**Debt — promotion.** CORRECTED 2026-08-01. This was declared rung 7 — "the refetch is applied by a MAP over the operation table, an entry added to OPS is wrapped on the way out" — copied from this module's own header. There is no OPS table and `git log -S` says there never was one: the header described a design that was never built, and the sweep promoted that aspiration to a mechanism claim. Promote for real by building the operations from a table and mapping withRefresh over it, which is what the original sentence meant and would make the rung-7 wording true.
 
 `packages/ui/src/files/browser.ts:14`
 

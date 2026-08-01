@@ -169,20 +169,26 @@ export function createConfigStore(): ConfigStore {
 	const persistCache = (): void => writeCache(overlay, meta.dirty, meta.snapshots);
 
 	/**
-	 * @invariant one-mutation-path
-	 * @rung 6  choke-point over closure-private state — `overlay` is captured
-	 *          here and unreachable from outside createConfigStore, and this is
-	 *          the only function that assigns it; all 27 mutating store methods
-	 *          route through it
+	 * @invariant overlay-writes-persist
+	 * @rung 5  shared helper — persistCache is called by all THREE sites that
+	 *          assign `overlay` (this one, revert-to-snapshot, and
+	 *          loadFromMachine), each of which also repeats the same
+	 *          setConfig/reconcile and setMeta("dirty") lines. Corrected
+	 *          2026-08-01: first declared rung 6 as "the only function that
+	 *          assigns it", which is false — there are three, and I checked the
+	 *          claim by reading the function rather than by searching for the
+	 *          assignment
 	 * @why every edit must cache and mark itself unsaved, or it vanishes on
 	 *      reload — the 2026-07-25 report where imported, deleted and edited
-	 *      screens all came back as if nothing had happened. Making that a
-	 *      property of the ONE write path means a mutation added later gets it
-	 *      without its author knowing the rule exists
-	 * @debt the trusted core is small but not sealed: another function added
-	 *       inside this closure could assign `overlay` directly. Promote by
-	 *       moving the overlay into a tiny module whose only export is
-	 *       apply(), so "mutate without caching" has no encoding at all.
+	 *      screens all came back as if nothing had happened
+	 * @debt the property currently holds because three sites each remember four
+	 *       lines, which is the tripwire: a step duplicated at a second call
+	 *       site means the design is already wrong. Promote by giving the
+	 *       closure ONE `commit(next: ConfigOverlay, dirty: boolean)` that does
+	 *       the assign, the reconcile, the flag and the cache — the three sites
+	 *       differ only in the flag (revert marks dirty, loadFromMachine marks
+	 *       clean), so one parameter covers all of them and a fourth site
+	 *       cannot forget.
 	 */
 	const apply = (mutate: (draft: ConfigOverlay) => void): void => {
 		const next = structuredClone(overlay);
