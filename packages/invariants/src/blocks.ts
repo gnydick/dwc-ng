@@ -52,7 +52,10 @@ export function blocksOf(text: string): RawBlock[] {
 }
 
 export function readRecords(text: string, leadTag: string, fieldTags: readonly string[]): TagRecord[] {
-	const tag = new RegExp(`^@(${[leadTag, ...fieldTags].join("|")})\\b\\s*(.*)$`);
+	// (?![\w-]) not \b: with \b, "@why-not-higher" matches "@why" and silently
+	// OVERWRITES the real @why with "-not-higher …". A tag ends at the tag, and
+	// an invented near-miss must not be mistaken for it.
+	const tag = new RegExp(`^@(${[leadTag, ...fieldTags].join("|")})(?![\\w-])\\s*(.*)$`);
 	const out: TagRecord[] = [];
 
 	for (const { text: blockText, startLine } of blocksOf(text)) {

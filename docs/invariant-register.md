@@ -13,7 +13,7 @@ nobody wrote down. A lint catches the syntactic tells ("callers must",
 "should", "by convention"); everything past that is human judgement. This
 register is exhaustive over what has been *declared*, not over what exists.
 
-**Totals:** 6 invariants · 2 at rung 6 or above · 4 below rung 6 (ceiling 4).
+**Totals:** 8 invariants · 2 at rung 6 or above · 6 below rung 6 (ceiling 6).
 
 ## config
 
@@ -76,3 +76,25 @@ register is exhaustive over what has been *declared*, not over what exists.
 **Why.** a transport that silently falls through would return undefined where the caller's type says Connector, and the failure would surface far from here as "the machine never connects"
 
 `packages/ui/src/connector/createConnector.ts:9`
+
+## control
+
+### `control/escape-disarms` — rung 5
+
+**Mechanism.** shared helper, optional use — createArmed registers every caller with ONE capture-phase listener, but arming with a plain createSignal still works and is not caught by anything
+
+**Why.** a control left saying "Confirm", whose next click moves the machine or flashes firmware, with no way back except toggling an unrelated setting, is the failure this module exists to delete. "There is always a way out" is only true if it holds for controls written by someone who never read this file
+
+**Debt — promotion.** this file used to claim exactly that, and it was FALSE: cards/FirmwareUpdateCard.tsx arms with a raw createSignal and Escape does not reach it (catalogued in DEBT.md as firmware-arm-bypasses-escape). Promote by converting that card, then making createArmed the sole route — a test walking src for `setArmed`/`armed` signals not produced by createArmed gets it to rung 4; a branded Armed<T> accessor that the two-step button components require gets it to 7.
+
+`packages/ui/src/control/armed.ts:17`
+
+### `control/gcode-quoting` — rung 5
+
+**Mechanism.** shared helper — the one quoting implementation, imported by messagebox/ack.ts rather than reimplemented, and pinned by test/control-commands.test.ts; nothing stops a new builder writing its own `"${value}"`
+
+**Why.** an unquoted operator filename reaching M98 was a real injection: a name containing a quote closed the parameter early and the remainder was parsed as further G-code parsed as further G-code. The builders below all call it, but that is inspection rather than mechanism, which is what keeps this at 5
+
+**Debt — promotion.** return a branded QuotedParam instead of string, and have every builder taking operator text accept only that — then a raw interpolation into a command string stops compiling rather than merely being unusual.
+
+`packages/ui/src/control/commands.ts:25`

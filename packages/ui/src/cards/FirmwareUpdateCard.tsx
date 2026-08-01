@@ -21,6 +21,21 @@ export function FirmwareBody() {
 
 	// Selected boards keyed by canAddress (unique on the bus).
 	const [selected, setSelected] = createSignal<Set<number>>(new Set());
+	/**
+	 * @broken firmware-arm-bypasses-escape
+	 * @status todo
+	 * @what This card arms with a raw createSignal instead of control/armed.ts's
+	 *       createArmed, so Escape does not disarm it — while armed.ts states
+	 *       that Escape disarms "EVERY armed control on the page, including ones
+	 *       written later by someone who never read this file". This card is that
+	 *       someone, and its next click sends M997: a firmware flash, the most
+	 *       destructive action in the app. A Cancel button exists, so there IS a
+	 *       way out, but not the universal one the module promises.
+	 * @fix   replace with `const [armed, setArmed] = createArmed<true>()`, which
+	 *        registers with the single capture listener. That also promotes
+	 *        control/escape-disarms from rung 5 to 6, since createArmed becomes
+	 *        the only route to an armed control.
+	 */
 	const [armed, setArmed] = createSignal(false);
 
 	const toggle = (addr: number): void => {

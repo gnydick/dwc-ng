@@ -18,3 +18,8 @@ test("a well-formed record is unaffected", () => {
 	assert.equal(found[0]?.lead, "real-defect");
 	assert.equal(found[0]?.fields["what"], "it is wrong");
 });
+
+test("a near-miss tag does not silently overwrite the real one", () => {
+	const text = "/**\n * @broken x\n * @what the real text\n * @whatever invented tag\n */";
+	assert.equal(readRecords(text, "broken", ["what"])[0]?.fields["what"], "the real text @whatever invented tag");
+});

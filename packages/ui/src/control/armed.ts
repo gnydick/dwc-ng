@@ -10,13 +10,27 @@ import { createSignal, onCleanup, type Accessor } from "solid-js";
  * starts a macro, with no way back except toggling an unrelated setting, is the
  * worst of the three, and it is the one nobody noticed.
  *
- * So arming goes through here. Escape disarms EVERY armed control on the page,
- * including ones written later by someone who never read this file — which is
- * the only version of "there is always a way out" that stays true.
+ * So arming goes through here. One listener, one set — deliberately NOT a
+ * per-component listener, since N listeners racing to handle one Escape is how
+ * you get a keypress that disarms some controls and not others.
  *
- * Deliberately NOT a per-component listener: N listeners racing to handle one
- * Escape is how you get a keypress that disarms some controls and not others.
- * One listener, one set.
+ * @invariant escape-disarms
+ * @rung 5  shared helper, optional use — createArmed registers every caller
+ *          with ONE capture-phase listener, but arming with a plain
+ *          createSignal still works and is not caught by anything
+ * @why a control left saying "Confirm", whose next click moves the machine or
+ *      flashes firmware, with no way back except toggling an unrelated setting,
+ *      is the failure this module exists to delete. "There is always a way out"
+ *      is only true if it holds for controls written by someone who never read
+ *      this file
+ * @debt this file used to claim exactly that, and it was FALSE:
+ *       cards/FirmwareUpdateCard.tsx arms with a raw createSignal and Escape
+ *       does not reach it (catalogued in DEBT.md as
+ *       firmware-arm-bypasses-escape). Promote by converting that card, then
+ *       making createArmed the sole route — a test walking src for
+ *       `setArmed`/`armed` signals not produced by createArmed gets it to rung
+ *       4; a branded Armed<T> accessor that the two-step button components
+ *       require gets it to 7.
  */
 const disarmers = new Set<() => void>();
 

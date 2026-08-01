@@ -9,7 +9,7 @@ Everything found broken and not fixed on the spot. Same badges and columns as
 `USER_AUDIT.md`, which catalogues what the *operator* reported; this one
 catalogues what the *code* turned out to be doing.
 
-**1 catalogued · 1 still open.**
+**2 catalogued · 2 still open.**
 
 | Badge | Meaning |
 |:------|:--------|
@@ -21,4 +21,5 @@ catalogues what the *code* turned out to be doing.
 
 | Status | Bug | Fix |
 |--------|-----|-----|
+| ❌ | **`firmware-arm-bypasses-escape`** — This card arms with a raw createSignal instead of control/armed.ts's createArmed, so Escape does not disarm it — while armed.ts states that Escape disarms "EVERY armed control on the page, including ones written later by someone who never read this file". This card is that someone, and its next click sends M997: a firmware flash, the most destructive action in the app. A Cancel button exists, so there IS a way out, but not the universal one the module promises. <br>`packages/ui/src/cards/FirmwareUpdateCard.tsx:25` | replace with `const [armed, setArmed] = createArmed<true>()`, which registers with the single capture listener. That also promotes control/escape-disarms from rung 5 to 6, since createArmed becomes the only route to an armed control. |
 | ❌ | **`mock-duet-seqs-optional`** — `pnpm typecheck` fails at the workspace level: four TS18048 errors, `'machine.seqs.move' is possibly 'undefined'` and the same for the `before`/`afterLoad` locals, under `noUncheckedIndexedAccess`. Pre-existing — confirmed by checking out `main` and running it there, where it fails identically. Found 2026-07-31 while verifying the invariants package, which typechecks clean itself. <br>`packages/mock-duet/test/simulation.test.ts:141,145` | — |

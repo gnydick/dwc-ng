@@ -20,7 +20,21 @@ const n = (v: number): string => String(v);
  * lowercase-next flag) doubles likewise — an unescaped quote from a
  * filename or an operator's free text would otherwise produce a malformed
  * command. Verified against reference/duet-gcode.md (M98 notes, Quoted
- * Strings). THE one quoting implementation — messagebox/ack.ts imports it.
+ * Strings).
+ *
+ * @invariant gcode-quoting
+ * @rung 5  shared helper — the one quoting implementation, imported by
+ *          messagebox/ack.ts rather than reimplemented, and pinned by
+ *          test/control-commands.test.ts; nothing stops a new builder writing
+ *          its own `"${value}"`
+ * @why an unquoted operator filename reaching M98 was a real injection: a name
+ *      containing a quote closed the parameter early and the remainder was
+ *      parsed as further G-code
+ *      parsed as further G-code. The builders below all call it, but that is
+ *      inspection rather than mechanism, which is what keeps this at 5
+ * @debt return a branded QuotedParam instead of string, and have every builder
+ *       taking operator text accept only that — then a raw interpolation into a
+ *       command string stops compiling rather than merely being unusual.
  */
 export const gcodeQuote = (value: string): string =>
 	`"${value.replace(/"/g, '""').replace(/'/g, "''")}"`;
