@@ -91,6 +91,24 @@ export function ActiveJobBody(props: { detailed?: boolean }) {
 									{h => <Fact label="Remaining">{fmtDuration(h().seconds)}</Fact>}
 								</Show>
 							</div>
+							{/*
+							  * @broken job-buttons-swallow-failures
+							  * @status todo
+							  * @what Pause, Resume and Cancel are raw <button>s calling `void
+							  *       app.connector.sendCode(...)` with no catch and no
+							  *       acknowledgement, so a rejected code or a blocking write
+							  *       guard leaves the operator believing a running print was
+							  *       paused or cancelled when nothing was sent. GcodeButton
+							  *       exists for exactly this and says so in its own header: "a
+							  *       click that reports success while the command never left
+							  *       would be worse than no feedback at all". These are the last
+							  *       three buttons the 2026-07-22 audit left on raw elements,
+							  *       still unconverted 136 commits later.
+							  * @fix   convert to GcodeButton, whose acknowledgement follows the
+							  *       connector's promise rather than the click. Keep the
+							  *       job-toggle width reservation — it is what stops Cancel
+							  *       sliding under the pointer on a state change.
+							  */}
 							<div class="btn-row job-actions">
 								{/* job-toggle reserves the wider label's width so Cancel can't
 								    slide under the pointer when the job changes state. */}

@@ -1,11 +1,18 @@
 /**
- * Zero-dependency RFC 6455 WebSocket layer for the DSF endpoint (design
- * D11, invariant C13): this module is mock-duet's ONLY byte-level WS
- * code. TEXT frames only, strict: fragmentation, RSV bits, unmasked
- * client frames, binary and oversized frames all die with a NAMED close
- * code. The parser's only outcomes are frame / need-more / fail, so
- * malformed input can never hang a connection. Connections exist solely
- * through attachWebSocket's handshake — no other constructor is exported.
+ * Zero-dependency RFC 6455 WebSocket layer for the DSF endpoint (design D11).
+ *
+ * @invariant sole-frame-parser
+ * @rung 7  choke-point behind a sole constructor — this is the ONLY byte-level
+ *          WS code here, and a connection exists solely through
+ *          attachWebSocket's handshake; no other constructor is exported. The
+ *          parser's outcomes are a closed sum of frame / need-more / fail, so
+ *          "malformed input hangs the connection" has no encoding
+ * @why a second hand-rolled framer is how a mock stops being a faithful stand-in
+ *      for the board: the connector under test would be exercised against two
+ *      slightly different dialects and pass both. Strict on purpose —
+ *      fragmentation, RSV bits, unmasked client frames, binary and oversized
+ *      frames each die with a NAMED close code, so a connector bug surfaces as
+ *      a diagnosis rather than a hang
  */
 import { createHash } from "node:crypto";
 import { Buffer } from "node:buffer";

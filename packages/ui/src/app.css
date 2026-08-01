@@ -756,7 +756,24 @@
 .heat-table .col-standby { width: var(--tool-col-standby); }
 .heat-table .col-current { width: var(--tool-col-current); padding-right: 14px; }
 .heat-table .col-set { width: var(--tool-col-set); }
-/* The Tools card renders the same table without the control columns, so
+/* @invariant column-width-by-role
+   @rung 4  static analysis — test/heat-table-columns.test.ts parses this file
+            and rejects any load-bearing layout property carried by a
+            positional selector, checks every rendered column has a role class
+            with a width, and checks both the base and narrow width lists sum
+            to the --heat-table-w in scope
+   @why nth-child ties a width to a POSITION, and positions move. The narrow
+        block was written for the five-column table; Filament arrived later as
+        column 2 and slid every index left, so Filament took the 48px meant for
+        Active (overflowing its own 88px picker) and Current took the 196px
+        meant for Set. --heat-table-w stayed 598, so below 900px this card's
+        minimum went UP, 598 -> 656: the one card whose own narrow rules made
+        it wider
+   @debt the test reads the stylesheet as text. Rung 6 is emitting these
+        widths from the same table definition the component renders from, so
+        a column and its width are one fact rather than two that agree.
+
+   The Tools card renders the same table without the control columns, so
    Current is the second cell rather than the fourth. Under role classes that
    fact needs no restatement of any OTHER column's width — which is what the
    positional version got wrong. 152 + 58 = 210. */
@@ -1307,13 +1324,26 @@
 	.rail nav { flex-direction: row; margin-bottom: 0; }
 	.rail .machine-id { display: none; }
 
-	/* The palette entry's narrow-width rules are NOT here — they live in a
-	   second max-width block directly after the desktop ones further down.
-	   A media query adds no specificity, so rules written here are simply
-	   overridden by same-specificity desktop rules that appear later in the
-	   file: the bottom sheet was measured at x=383 on a 390px viewport,
-	   off-screen and not hit-testable, because `left: calc(100% + 8px)` from
-	   line ~2760 won on source order alone. */
+	/* @invariant narrow-rules-come-after-desktop
+	   @rung 0  a comment. Nothing checks the ORDER of the blocks in this file
+	            — the fix was to move a block, and moving it back would be
+	            silent
+	   @why a media query adds NO specificity, so a narrow rule written earlier
+	        in the file is simply overridden by a same-specificity desktop rule
+	        that appears later. Measured: the palette's bottom sheet sat at
+	        x=383 on a 390px viewport — off-screen and not hit-testable —
+	        because `left: calc(100% + 8px)` won on source order alone. Every
+	        desktop-width measurement is above the breakpoint, so this class of
+	        bug reads as "fine on the dev server, broken on the printer" and
+	        cost four wrong diagnoses before the cause was found
+	   @debt a test can catch it: parse this file, and for each selector that
+	        appears in BOTH a max-width block and an unqualified rule, assert
+	        the max-width block comes later. That is rung 4 and cheap. Rung 6
+	        is generating the breakpoint blocks from one typed source so
+	        ordering is not something an author controls at all.
+
+	   (The palette entry's narrow-width rules are NOT here — they live in a
+	   second max-width block directly after the desktop ones further down.) */
 
 	/* Narrow-viewport columns. Two rules this block has to obey, because the
 	   table is `table-layout: fixed` with `min-width: var(--heat-table-w)`:

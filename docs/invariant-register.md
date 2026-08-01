@@ -13,7 +13,7 @@ nobody wrote down. A lint catches the syntactic tells ("callers must",
 "should", "by convention"); everything past that is human judgement. This
 register is exhaustive over what has been *declared*, not over what exists.
 
-**Totals:** 37 invariants · 26 at rung 6 or above · 11 below rung 6 (ceiling 11).
+**Totals:** 42 invariants · 29 at rung 6 or above · 13 below rung 6 (ceiling 13).
 
 ## compose
 
@@ -231,6 +231,26 @@ register is exhaustive over what has been *declared*, not over what exists.
 
 `packages/ui/src/control/commands.ts:25`
 
+## deploy
+
+### `deploy/compression-follows-the-server` — rung 8
+
+**Mechanism.** illegal state unrepresentable — this is the one place the mapping exists, it takes no boolean, and CompressionMode's brand means "Kestrel, gzipped" is not a value any caller can construct: not by passing a wrong argument, not by building the literal, not by pairing a transport with a mode that disagrees with it. Total over ServingStack, so a third stack stops compiling until its answer is written down
+
+**Why.** compression depends on which SERVER will answer the browser, never on the transport that wrote the files. Verified on hardware 2026-07-24: DuetWebServer (Kestrel) neither compresses on the fly nor serves .gz transparently, so a gzipped deploy 404s EVERY asset — a bricked UI, from one boolean set by the wrong thing. Re-seated 2026-07-31 so one protocol (FTP) can serve either mode
+
+`packages/deploy/src/transport.ts:45`
+
+### `deploy/uninstall-owns-only-its-own` — rung 6
+
+**Mechanism.** choke-point — the single authority on what a deployment may delete, derived from the same layout and root the manifest was written with rather than restated at the call site
+
+**Why.** the board's filesystem IS the machine's configuration. Sidecar mode shares 0:/www with stock DWC, so an uninstall handed the shared root would delete the operator's working UI along with ours — and there is no undo on an SD card
+
+**Debt — promotion.** promote by returning a branded OwnedPath that the transport's delete is the only consumer of, so removing a path this function did not produce stops compiling.
+
+`packages/deploy/src/manifest.ts:188`
+
 ## dev
 
 ### `dev/card-floor-independent-of-size` — rung 4
@@ -317,6 +337,16 @@ register is exhaustive over what has been *declared*, not over what exists.
 
 `packages/ui/src/files/browserMemory.ts:23`
 
+## mock-duet
+
+### `mock-duet/sole-frame-parser` — rung 7
+
+**Mechanism.** choke-point behind a sole constructor — this is the ONLY byte-level WS code here, and a connection exists solely through attachWebSocket's handshake; no other constructor is exported. The parser's outcomes are a closed sum of frame / need-more / fail, so "malformed input hangs the connection" has no encoding
+
+**Why.** a second hand-rolled framer is how a mock stops being a faithful stand-in for the board: the connector under test would be exercised against two slightly different dialects and pass both. Strict on purpose — fragmentation, RSV bits, unmasked client frames, binary and oversized frames each die with a NAMED close code, so a connector bug surfaces as a diagnosis rather than a hang
+
+`packages/mock-duet/src/ws.ts:4`
+
 ## om
 
 ### `om/headline-estimate-precedence` — rung 6
@@ -376,3 +406,25 @@ register is exhaustive over what has been *declared*, not over what exists.
 **Debt — promotion.** make the loop consume a bounded, strictly-increasing cursor rather than mutating a candidate in place — then "a push that advances nothing" has no encoding and the argument stops needing to be believed.
 
 `packages/ui/src/shell/panelCanvas.ts:916`
+
+## ui
+
+### `ui/column-width-by-role` — rung 4
+
+**Mechanism.** static analysis — test/heat-table-columns.test.ts parses this file and rejects any load-bearing layout property carried by a positional selector, checks every rendered column has a role class with a width, and checks both the base and narrow width lists sum to the --heat-table-w in scope
+
+**Why.** nth-child ties a width to a POSITION, and positions move. The narrow block was written for the five-column table; Filament arrived later as column 2 and slid every index left, so Filament took the 48px meant for Active (overflowing its own 88px picker) and Current took the 196px meant for Set. --heat-table-w stayed 598, so below 900px this card's minimum went UP, 598 -> 656: the one card whose own narrow rules made it wider
+
+**Debt — promotion.** the test reads the stylesheet as text. Rung 6 is emitting these widths from the same table definition the component renders from, so a column and its width are one fact rather than two that agree. The Tools card renders the same table without the control columns, so Current is the second cell rather than the fourth. Under role classes that fact needs no restatement of any OTHER column's width — which is what the positional version got wrong. 152 + 58 = 210.
+
+`packages/ui/src/app.css:759`
+
+### `ui/narrow-rules-come-after-desktop` — rung 0
+
+**Mechanism.** a comment. Nothing checks the ORDER of the blocks in this file — the fix was to move a block, and moving it back would be silent
+
+**Why.** a media query adds NO specificity, so a narrow rule written earlier in the file is simply overridden by a same-specificity desktop rule that appears later. Measured: the palette's bottom sheet sat at x=383 on a 390px viewport — off-screen and not hit-testable — because `left: calc(100% + 8px)` won on source order alone. Every desktop-width measurement is above the breakpoint, so this class of bug reads as "fine on the dev server, broken on the printer" and cost four wrong diagnoses before the cause was found
+
+**Debt — promotion.** a test can catch it: parse this file, and for each selector that appears in BOTH a max-width block and an unqualified rule, assert the max-width block comes later. That is rung 4 and cheap. Rung 6 is generating the breakpoint blocks from one typed source so ordering is not something an author controls at all. (The palette entry's narrow-width rules are NOT here — they live in a second max-width block directly after the desktop ones further down.)
+
+`packages/ui/src/app.css:1327`

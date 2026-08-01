@@ -42,13 +42,20 @@ export type CompressionMode = {
 }
 
 /**
- * The ONE place the stack -> compression mapping exists.
- *
- * Total over ServingStack and it takes no boolean, so "Kestrel, gzipped" is not
- * a value any caller can construct — not by passing the wrong argument, not by
- * building the object literal, not by pairing a transport with a mode that
- * disagrees with it. Adding a third stack stops compiling here until its answer
- * is written down.
+ * @invariant compression-follows-the-server
+ * @rung 8  illegal state unrepresentable — this is the one place the mapping
+ *          exists, it takes no boolean, and CompressionMode's brand means
+ *          "Kestrel, gzipped" is not a value any caller can construct: not by
+ *          passing a wrong argument, not by building the literal, not by
+ *          pairing a transport with a mode that disagrees with it. Total over
+ *          ServingStack, so a third stack stops compiling until its answer is
+ *          written down
+ * @why compression depends on which SERVER will answer the browser, never on
+ *      the transport that wrote the files. Verified on hardware 2026-07-24:
+ *      DuetWebServer (Kestrel) neither compresses on the fly nor serves .gz
+ *      transparently, so a gzipped deploy 404s EVERY asset — a bricked UI, from
+ *      one boolean set by the wrong thing. Re-seated 2026-07-31 so one protocol
+ *      (FTP) can serve either mode
  */
 export function compressionFor(stack: ServingStack): CompressionMode {
 	switch (stack) {

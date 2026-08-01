@@ -182,7 +182,21 @@ export const entryUrl = (name: string, layout: Layout = "sidecar"): string =>
 export const assetDir = (name: string, layout: Layout, wwwRoot?: string): string =>
 	`${wwwRoot ?? defaultWwwRoot(layout)}${layout === "root" ? "" : `/${name}`}/assets`
 
-/** Every board path a deployment owns, for uninstall. */
+/**
+ * Every board path a deployment owns, for uninstall.
+ *
+ * @invariant uninstall-owns-only-its-own
+ * @rung 6  choke-point — the single authority on what a deployment may delete,
+ *          derived from the same layout and root the manifest was written with
+ *          rather than restated at the call site
+ * @why the board's filesystem IS the machine's configuration. Sidecar mode
+ *      shares 0:/www with stock DWC, so an uninstall handed the shared root
+ *      would delete the operator's working UI along with ours — and there is no
+ *      undo on an SD card
+ * @debt promote by returning a branded OwnedPath that the transport's delete is
+ *       the only consumer of, so removing a path this function did not produce
+ *       stops compiling.
+ */
 export const ownedPaths = (name: string, layout: Layout, wwwRoot?: string): string[] => {
 	const root = wwwRoot ?? defaultWwwRoot(layout)
 	// Root mode owns its whole directory; sidecar owns exactly two entries and

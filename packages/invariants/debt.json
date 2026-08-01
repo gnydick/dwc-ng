@@ -7,6 +7,34 @@
 			"where": "packages/mock-duet/test/simulation.test.ts:141,145",
 			"what": "`pnpm typecheck` fails at the workspace level: four TS18048 errors, `'machine.seqs.move' is possibly 'undefined'` and the same for the `before`/`afterLoad` locals, under `noUncheckedIndexedAccess`. Pre-existing — confirmed by checking out `main` and running it there, where it fails identically. Found 2026-07-31 while verifying the invariants package, which typechecks clean itself.",
 			"fix": ""
+		},
+		{
+			"slug": "card-lab-state-pills-inert",
+			"status": "todo",
+			"where": "packages/ui/src/dev/LayoutAuditPanel.tsx",
+			"what": "Card Lab's state pills do not change the bench, so the layout audit measures ten cards EMPTY. Their real content — the case where a floor is most likely to be wrong — is never audited, while the sweep reports on all 43 as though coverage were uniform. Measured 2026-07-31 across the four-pitch sweep. This is what keeps `dev/card-floor-independent-of-size` at rung 4 rather than merely the sweep being manual.",
+			"fix": ""
+		},
+		{
+			"slug": "invariant-b-names-positions-not-culprits",
+			"status": "partial",
+			"where": "packages/ui/src/dev/layoutAudit.ts:152",
+			"what": "Invariant B reports drift by POSITION, so the audit panel gives a count of drifting descendants rather than naming which element moved. A reader has to hunt for the culprit, which in practice means the finding is noted and not acted on.",
+			"fix": "Mitigated only in that the count is at least correct and ranks violations first. Real fix: report a stable path to the drifting node."
+		},
+		{
+			"slug": "layout-audit-single-viewport",
+			"status": "todo",
+			"where": "packages/ui/src/dev/LayoutAuditPanel.tsx",
+			"what": "The layout sweep runs at one viewport width. Media queries add no specificity and every desktop-width measurement sits above the breakpoints, so the entire class of narrow-viewport bugs — the one that produced 'fine on the dev server, broken on the printer' and cost four wrong diagnoses — is invisible to it by construction.",
+			"fix": ""
+		},
+		{
+			"slug": "declared-vs-measured-oracle-missing",
+			"status": "todo",
+			"where": "packages/ui/src/dev/layoutAudit.ts",
+			"what": "There is no oracle comparing a card's DECLARED natural size against its MEASURED floor. Invariants A and B both ask whether geometry is stable, and neither asks whether it is correct: a card whose declared size cannot contain its own content passes both while rendering clipped.",
+			"fix": ""
 		}
 	]
 }
