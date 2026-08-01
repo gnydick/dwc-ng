@@ -13,6 +13,14 @@ nobody wrote down. A lint catches the syntactic tells ("callers must",
 "should", "by convention"); everything past that is human judgement. This
 register is exhaustive over what has been *declared*, not over what exists.
 
+**This describes HEAD, not history.** Declarations began at the 2026-07-31
+sweep; the register carries no record of what a rung used to be. For the 138
+commits between the old hand-kept ledger's last update and that sweep, two
+things were checked rather than assumed: branded types in `src` went 5 -> 5
+and invariant claim mentions 13 -> 23, so no mechanism was deleted and no
+claim was lost in the gap. From here the ratchets make a dropped rung visible
+in the diff that drops it.
+
 **Totals:** 42 invariants · 32 at rung 6 or above · 10 below rung 6 (ceiling 10).
 
 ## compose
