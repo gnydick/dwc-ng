@@ -65,22 +65,48 @@ export function parentDir(dir: string, root: string): string {
 }
 
 /**
- * Reconstruct a REMEMBERED directory (restored from localStorage — untrusted)
- * as a proven descendant of `root`, or fall back to `root`. Every segment
- * below the root is re-parsed through `parseFileName` and re-joined through
+ * Rebuild a REMEMBERED path (restored from localStorage — untrusted) as a
+ * proven descendant of `root`, or null if it cannot be one. Every segment below
+ * the root is re-parsed through `parseFileName` and re-joined through
  * `childPath`, so the result is built only from safe segments: a stored value
  * carrying "..", an absolute path, a foreign root, or any forbidden character
- * cannot point the browser outside its domain. Parse, don't validate — the
- * unchecked string never becomes a dir.
+ * cannot point outside its domain. Parse, don't validate — the unchecked string
+ * never becomes a path.
+ *
+ * The ONE segment walk behind both public forms below. They differ only in what
+ * an unusable value means — a directory falls back to the root, an open file
+ * falls back to nothing — and that is the only thing either is allowed to add.
+ * Two copies of this loop would be two chances to get traversal wrong.
  */
-export function dirUnderRoot(root: string, raw: unknown): string {
-	if (typeof raw !== "string" || raw === root) return root;
-	if (!raw.startsWith(`${root}/`)) return root;
-	let dir = root;
+function pathUnderRoot(root: string, raw: unknown): string | null {
+	if (typeof raw !== "string") return null;
+	if (raw === root) return root;
+	if (!raw.startsWith(`${root}/`)) return null;
+	let path = root;
 	for (const segment of raw.slice(root.length + 1).split("/")) {
 		const name = parseFileName(segment);
-		if (name === null) return root; // any unsafe/empty segment rejects the whole path
-		dir = childPath(dir, name);
+		if (name === null) return null; // any unsafe/empty segment rejects the whole path
+		path = childPath(path, name);
 	}
-	return dir;
+	return path;
+}
+
+/**
+ * A remembered DIRECTORY, or `root` when the stored value is unusable. The
+ * browser always has a directory to show, so there is no "no directory" state
+ * to represent.
+ */
+export function dirUnderRoot(root: string, raw: unknown): string {
+	return pathUnderRoot(root, raw) ?? root;
+}
+
+/**
+ * A remembered open FILE, or null when the stored value is unusable — "nothing
+ * is open" is a real state here, so this cannot fall back the way a directory
+ * does. The root itself is rejected: it is a directory, and an editor holding a
+ * directory is not a state that exists.
+ */
+export function fileUnderRoot(root: string, raw: unknown): string | null {
+	const path = pathUnderRoot(root, raw);
+	return path === null || path === root ? null : path;
 }
