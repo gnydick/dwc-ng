@@ -501,9 +501,25 @@ export function ProbePointBody(props: { ctx: CardCtx }) {
 									{" = "}{probed()!.toFixed(3)} mm
 								</p>
 							</Show>
-							{/* The machine's own words, kept beside the number taken from
-							    them: a probe that landed on swarf or failed to trigger
-							    cleanly should be visible before it enters the map. */}
+							{/*
+							  * @invariant a-reading-is-shown-with-its-source
+							  * @rung 5  one render path — Accept is only reachable inside
+							  *          this block, so the raw reply and the subtraction that
+							  *          produced the value are on screen whenever the button
+							  *          is. But it is a JSX arrangement: a second accept
+							  *          route, or moving the button out of this Show, drops
+							  *          the evidence without dropping the action
+							  * @why the number is INFERRED from the machine's words
+							  *      (raw − trigger), and the operator is the only check on a
+							  *      probe that landed on swarf or failed to trigger cleanly.
+							  *      Accepting writes it into the map that then drives live
+							  *      compensation, so a plausible-looking wrong value is the
+							  *      one thing this step exists to catch
+							  * @debt promote by making the accept action take the reading
+							  *       and its provenance as one value, rendered by one
+							  *       component — so "offer to accept a number without
+							  *       showing where it came from" has no expression.
+							  */}
 							<pre class="hm-reply">{reply()}</pre>
 							<div class="hm-actions">
 								<button class="fb-tool ok" onClick={accept}>Accept</button>

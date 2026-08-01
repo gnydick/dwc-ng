@@ -8,6 +8,16 @@ import { RAMP_STOPS, gridExtent, renderSurface } from "./surface.ts";
  * Derived rather than written out so adding or moving a stop updates the
  * legend automatically — a hand-maintained gradient would silently start
  * describing a surface it no longer matches. t runs -1..1, CSS wants 0..100%.
+ *
+ * @invariant legend-cannot-describe-a-different-surface
+ * @rung 7  generated, not mirrored — the gradient is computed FROM RAMP_STOPS
+ *          at module load, the same array renderSurface interpolates. There is
+ *          no second colour list to keep in step, so the two facts are one and
+ *          the drift has no encoding rather than being caught by a test
+ * @why the legend is the only thing that turns a colour into a number. A
+ *      legend that disagrees with the surface does not look broken — it looks
+ *      like a bed that is out by an amount it is not, and the operator shims or
+ *      re-trams against it. Getting a wrong scale is worse than getting none
  */
 const RAMP_GRADIENT = `linear-gradient(to right, ${RAMP_STOPS
 	.map(s => `rgb(${s.color.r}, ${s.color.g}, ${s.color.b}) ${((s.t + 1) / 2) * 100}%`)

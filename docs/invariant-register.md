@@ -21,7 +21,7 @@ and invariant claim mentions 13 -> 23, so no mechanism was deleted and no
 claim was lost in the gap. From here the ratchets make a dropped rung visible
 in the diff that drops it.
 
-**Totals:** 68 invariants · 43 at rung 6 or above · 25 below rung 6 (ceiling 25).
+**Totals:** 70 invariants · 44 at rung 6 or above · 26 below rung 6 (ceiling 26).
 
 ## bed
 
@@ -54,6 +54,18 @@ in the diff that drops it.
 **Debt — promotion.** an import scan sees the obvious route, not a value handed in at a call site. Promote by giving the fit a branded TramSample its parser is the sole producer of, so map-derived numbers have no way to be passed in at all and the walk becomes unnecessary. bed.g (via G30 ... S<n>) makes RRF report one summary line per tram, e.g. Leadscrew adjustments made: 0.086 0.082 0.090, points used 3, (mean, deviation) before (0.086, 0.003) after (-0.000, 0.000) That single line carries everything a leadscrew-geometry fit needs: how far each screw was driven, how many points the fit used, and the flatness before and after. Captured over several trams it becomes an over-determined system for where the pivots ACTUALLY are (M671), which is the point of keeping it. Parsing is deliberately strict and returns null rather than guessing. RRF emits other shapes for the same command — manual-adjustment prompts on a screw-levelled bed, delta calibration summaries, plain errors — and a half-understood line silently entering a geometry fit is worse than no sample at all. The number of adjustments is NOT assumed to be three: M671 accepts 2 to 4 pivot points, and this machine's count must come from the line itself. ── A sample is only usable well ABOVE one full motor step. ────────────────── Measured on this machine: Z/U/V/W run 6400 steps/mm at 64x microstepping, non-interpolated, so one FULL step is 10um. Every correction in the trams captured on 2026-07-23 was a fraction of that (0.1 to 0.7 of a step), and below a full step a loaded leadscrew does not move proportionally to command — detent torque and stiction dominate, so the bed can move further than asked, or not at all, with unpredictable sign. Residual scatter of ~5um, half a full step, is consistent with that rather than with probe noise. The consequence for any geometry fit: corrections at this amplitude carry ACTUATOR behaviour, not pivot geometry, and cannot confirm or refute M671. Usable samples need differential motion of many full steps (~0.2mm = 20 steps), which means deliberate single-screw excitation — bounded by the probe-damage limit, so predict the far-side lift before moving. ─────────────────────────────────────────────────────────────────────────────
 
 `packages/ui/src/bed/tramReply.ts:16`
+
+## cards
+
+### `cards/a-reading-is-shown-with-its-source` — rung 5
+
+**Mechanism.** one render path — Accept is only reachable inside this block, so the raw reply and the subtraction that produced the value are on screen whenever the button is. But it is a JSX arrangement: a second accept route, or moving the button out of this Show, drops the evidence without dropping the action
+
+**Why.** the number is INFERRED from the machine's words (raw − trigger), and the operator is the only check on a probe that landed on swarf or failed to trigger cleanly. Accepting writes it into the map that then drives live compensation, so a plausible-looking wrong value is the one thing this step exists to catch
+
+**Debt — promotion.** promote by making the accept action take the reading and its provenance as one value, rendered by one component — so "offer to accept a number without showing where it came from" has no expression.
+
+`packages/ui/src/cards/BedCards.tsx:505`
 
 ## compose
 
@@ -486,6 +498,14 @@ in the diff that drops it.
 `packages/ui/src/gcode/segmentWidth.ts:27`
 
 ## heightmap
+
+### `heightmap/legend-cannot-describe-a-different-surface` — rung 7
+
+**Mechanism.** generated, not mirrored — the gradient is computed FROM RAMP_STOPS at module load, the same array renderSurface interpolates. There is no second colour list to keep in step, so the two facts are one and the drift has no encoding rather than being caught by a test
+
+**Why.** the legend is the only thing that turns a colour into a number. A legend that disagrees with the surface does not look broken — it looks like a bed that is out by an amount it is not, and the operator shims or re-trams against it. Getting a wrong scale is worse than getting none
+
+`packages/ui/src/heightmap/HeightMapGrid.tsx:12`
 
 ### `heightmap/map-statistics-cannot-go-stale` — rung 8
 
