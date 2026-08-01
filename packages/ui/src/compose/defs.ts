@@ -1,18 +1,48 @@
 /**
  * Card definitions — the data half of the registry, and the source of CardId.
  *
- * Design: docs/composable-cards-design.md. Invariants owned here:
- *  - I1  `CardId = keyof typeof CARD_DEFS`: an unregistered id is a compile
- *        error in code; runtime strings pass parseCardId() or cease to exist.
- *  - I3  `visibleWhen` is the ONE visibility predicate — ComposedView derives
- *        BOTH the JSX mount and the canvas isActive cell-release from it.
- *  - I4  `size` is THE natural geometry; screens only place cards.
+ * Design: docs/composable-cards-design.md (its I-numbers are superseded by the
+ * ids below — see docs/invariant-register.md).
  *
- * Bodies (JSX) live in ./cards.tsx as a Record<CardId, body> — the compiler
- * makes the two halves total over each other in both directions: a def
- * without a body, or a body without a def, is a type error, not a review
- * item. Kept apart so this module stays pure and node-testable (type
- * stripping cannot load JSX).
+ * Kept apart from ./cards.tsx so this module stays pure and node-testable:
+ * type stripping cannot load JSX.
+ *
+ * @invariant registered-card-ids
+ * @rung 7  `CardId = keyof typeof CARD_DEFS` — an unregistered id is a compile
+ *          error in code, and a runtime string either passes parseCardId or
+ *          ceases to exist. Was design I1
+ * @why a screen holding an id nothing renders is a hole the user cannot fill or
+ *      remove; deriving the type from the registry means the set of legal ids
+ *      and the set of rendered cards are ONE fact
+ *
+ * @invariant def-body-totality
+ * @rung 7  ./cards.tsx is a Record<CardId, body>, so the compiler makes the two
+ *          halves total over each other in BOTH directions — a def with no
+ *          body, or a body with no def, is a type error rather than a review
+ *          item
+ * @why the halves are deliberately split for testability, and two artifacts
+ *      that must agree need a mechanism rather than diligence
+ *
+ * @invariant one-visibility-predicate
+ * @rung 6  choke-point — `visibleWhen` is the single predicate, and ComposedView
+ *          derives BOTH the JSX mount and the canvas isActive cell-release from
+ *          that one call. Was design I3
+ * @why a card mounted but still holding its cells, or released but still
+ *      rendered, is the unpinned-camera bug in both directions. One predicate
+ *      means the two answers cannot disagree
+ * @debt the derivation is one call site today; a second consumer could read the
+ *       predicate separately. Promote by exposing visibility only as a computed
+ *       value both consumers must take, rather than a predicate they may call.
+ *
+ * @invariant natural-size-owned-here
+ * @rung 6  choke-point — `size` on the def is the card's only statement of its
+ *          natural geometry; screens carry placement, never dimensions of their
+ *          own. Was design I4
+ * @why a card redesigned taller must grow on every screen that holds it. When
+ *      screens carried sizes, the 2026-07-24 case had position 95->103 and
+ *      active-job 40->46 change nothing anywhere
+ * @debt promote by making the screen's stored rect a position-plus-reference
+ *       rather than a full rect, so a stored size has no encoding at all.
  */
 import { baseName } from "../files/format.ts";
 import { CONFIG_FILE } from "../config/types.ts";

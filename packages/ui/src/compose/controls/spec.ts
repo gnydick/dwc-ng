@@ -84,6 +84,15 @@ export type CompiledControlSpec = {
  * template/selector/input reference — built-in specs run this at module load
  * (fail fast, pinned by tests); imported specs (phase B2) will route the same
  * call through a catching parse.
+ *
+ * @invariant spec-compiles-whole
+ * @rung 7  sole-constructor type — this is the only producer of the branded
+ *          CompiledControlSpec, and it throws on the first bad reference rather
+ *          than returning a partial spec, so nothing downstream can render a
+ *          control whose bindings were never resolved
+ * @why a half-compiled spec renders controls that look operable and send
+ *      nothing, or send the wrong thing. Built-in specs run this at module
+ *      load, so a broken one fails the build rather than the machine
  */
 export function compileControlSpec(spec: ControlSpec): CompiledControlSpec {
 	const inputNames = new Set(Object.keys(spec.inputs));

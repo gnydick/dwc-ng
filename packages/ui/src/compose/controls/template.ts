@@ -1,10 +1,16 @@
 /**
  * G-code templates for data-defined controls.
  *
- * A template is literal text with `{...}` placeholders. compileTemplate is the
- * boundary (parse, don't validate): each placeholder becomes a typed token or
- * the whole template fails to compile — an unresolvable name cannot survive
- * into a renderable control (I13/I14). Placeholder forms:
+ * @invariant template-compiles-whole
+ * @rung 7  sole-constructor type — compileTemplate is the only producer of the
+ *          branded CompiledTemplate and returns null on the first unresolvable
+ *          name, so a partially-valid template cannot survive into a renderable
+ *          control. Was design I13
+ * @why a placeholder that silently rendered as its own source text would send
+ *      literal "{input.step}" to the board as G-code. Compiling whole-or-not-at
+ *      -all means the failure is at authoring time, not at the machine
+ *
+ * A template is literal text with `{...}` placeholders. Placeholder forms:
  *
  *   {input.step}          a card input's live value
  *   {om:heat.heaters[0].active}   an OM read (selector grammar, I14)

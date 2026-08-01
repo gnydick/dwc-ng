@@ -1,9 +1,19 @@
 /**
  * The OM selector language — how data-defined controls read the object model.
  *
- * Design invariant I14: bindings are SELECTORS, never executable. The grammar
- * below has no call, eval, or computed form — a selector is dot-separated
- * identifiers, each optionally qualified by ONE bracket:
+ * @invariant bindings-are-not-executable
+ * @rung 8  illegal state unrepresentable — the grammar has no call, eval or
+ *          computed form to express, and parseOmSelector is the sole
+ *          constructor of the branded OmSelector, so anything outside the
+ *          grammar yields null and cannot exist past the boundary. Evaluation
+ *          is total and read-only. Was design I14
+ * @why user-authored cards carry bindings that are stored, shared and imported
+ *      from other people's machines. If a binding could execute, importing a
+ *      screen would be running a stranger's code against a machine with
+ *      heaters. Injection here is unrepresentable rather than filtered
+ *
+ * The grammar: a selector is dot-separated identifiers, each optionally
+ * qualified by ONE bracket:
  *
  *   move.axes            plain path
  *   move.axes[3]         index

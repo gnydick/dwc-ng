@@ -1,20 +1,38 @@
 /**
  * Screen compositions — which cards a screen holds and where they sit.
  *
- * Design: docs/composable-cards-design.md. Invariants owned here:
- *  - I2  no duplicate card on a screen: a composition is
- *        Partial<Record<CardId, PanelRect>> — a second copy of a card has no
- *        encoding, so the picker/import layer cannot express one.
- *  - I1  (boundary half) parseComposition turns untrusted stored/imported
- *        data into slots keyed by REAL CardIds; unknown ids and malformed
- *        rects are dropped per-slot, never the whole screen — unlike
- *        mergeCanvas's discard-everything-on-collision, a user's composition
- *        degrades by at most the bad slot.
+ * Design: docs/composable-cards-design.md (its I-numbers are superseded by the
+ * ids below — see docs/invariant-register.md).
  *
- * autoPlace replaces "reject/discard" with "find room": adding a card scans
- * for the first free position at the card's natural size. Adding a card can
- * therefore never wipe or shuffle an existing layout — placement is additive
- * by construction.
+ * @invariant no-duplicate-card
+ * @rung 8  illegal state unrepresentable — a composition is
+ *          Partial<Record<CardId, PanelRect>>, so a second copy of a card has
+ *          nowhere to live. The picker and the import layer cannot express one
+ *          even by trying. Was design I2
+ * @why two copies of a card would each poll, each subscribe, and each claim
+ *      cells, and the operator could delete only whichever one the DOM handed
+ *      the click to
+ *
+ * @invariant composition-degrades-per-slot
+ * @rung 6  choke-point — parseComposition is the only route from stored or
+ *          imported data into slots, and it drops per-slot: an unknown id or a
+ *          malformed rect costs that slot and nothing else. Was design I1's
+ *          boundary half
+ * @why the alternative is on record as a bug. mergeCanvas used to discard
+ *      everything on collision, which erased whole user layouts on reload;
+ *      a screen should degrade by at most the bad slot
+ * @debt promote by branding the parsed composition so a stored blob cannot be
+ *       cast into slot position at a future load site.
+ *
+ * @invariant additive-placement
+ * @rung 6  choke-point — autoPlace scans for the first free position at the
+ *          card's natural size, and it is the only way a card enters a screen.
+ *          There is no reject-or-discard branch to reach
+ * @why adding a card must never wipe or shuffle what is already placed. The
+ *      operator's layout is their work, and losing it to an unrelated action is
+ *      the failure they will not forgive
+ * @debt promote by returning a placement that carries proof it collided with
+ *       nothing, so a caller cannot write a rect it did not obtain from here.
  */
 import { clampRect, findFreePosition, type PanelRect } from "../shell/panelCanvas.ts";
 import { CARD_DEFS, parseCardId, type CardId } from "./defs.ts";

@@ -13,7 +13,101 @@ nobody wrote down. A lint catches the syntactic tells ("callers must",
 "should", "by convention"); everything past that is human judgement. This
 register is exhaustive over what has been *declared*, not over what exists.
 
-**Totals:** 17 invariants · 10 at rung 6 or above · 7 below rung 6 (ceiling 7).
+**Totals:** 27 invariants · 20 at rung 6 or above · 7 below rung 6 (ceiling 7).
+
+## compose
+
+### `compose/additive-placement` — rung 6
+
+**Mechanism.** choke-point — autoPlace scans for the first free position at the card's natural size, and it is the only way a card enters a screen. There is no reject-or-discard branch to reach
+
+**Why.** adding a card must never wipe or shuffle what is already placed. The operator's layout is their work, and losing it to an unrelated action is the failure they will not forgive
+
+**Debt — promotion.** promote by returning a placement that carries proof it collided with nothing, so a caller cannot write a rect it did not obtain from here.
+
+`packages/ui/src/compose/composition.ts:27`
+
+### `compose/composition-degrades-per-slot` — rung 6
+
+**Mechanism.** choke-point — parseComposition is the only route from stored or imported data into slots, and it drops per-slot: an unknown id or a malformed rect costs that slot and nothing else. Was design I1's boundary half
+
+**Why.** the alternative is on record as a bug. mergeCanvas used to discard everything on collision, which erased whole user layouts on reload; a screen should degrade by at most the bad slot
+
+**Debt — promotion.** promote by branding the parsed composition so a stored blob cannot be cast into slot position at a future load site.
+
+`packages/ui/src/compose/composition.ts:16`
+
+## compose/controls
+
+### `compose/controls/bindings-are-not-executable` — rung 8
+
+**Mechanism.** illegal state unrepresentable — the grammar has no call, eval or computed form to express, and parseOmSelector is the sole constructor of the branded OmSelector, so anything outside the grammar yields null and cannot exist past the boundary. Evaluation is total and read-only. Was design I14
+
+**Why.** user-authored cards carry bindings that are stored, shared and imported from other people's machines. If a binding could execute, importing a screen would be running a stranger's code against a machine with heaters. Injection here is unrepresentable rather than filtered The grammar: a selector is dot-separated identifiers, each optionally qualified by ONE bracket: move.axes            plain path move.axes[3]         index move.axes[visible]   filter: keep items whose named property is truthy move.axes[letter=C]  filter: keep items whose property equals the literal heat.heaters[2].active parseOmSelector is the sole constructor of the branded OmSelector (parse, don't validate): anything outside the grammar yields null and cannot exist past the boundary. Evaluation is total and read-only — a missing field reads as undefined (the OM's "tolerate missing fields" rule), never a throw. Injection is unrepresentable, not filtered.
+
+`packages/ui/src/compose/controls/omSelector.ts:4`
+
+### `compose/controls/spec-compiles-whole` — rung 7
+
+**Mechanism.** sole-constructor type — this is the only producer of the branded CompiledControlSpec, and it throws on the first bad reference rather than returning a partial spec, so nothing downstream can render a control whose bindings were never resolved
+
+**Why.** a half-compiled spec renders controls that look operable and send nothing, or send the wrong thing. Built-in specs run this at module load, so a broken one fails the build rather than the machine
+
+`packages/ui/src/compose/controls/spec.ts:88`
+
+### `compose/controls/template-compiles-whole` — rung 7
+
+**Mechanism.** sole-constructor type — compileTemplate is the only producer of the branded CompiledTemplate and returns null on the first unresolvable name, so a partially-valid template cannot survive into a renderable control. Was design I13
+
+**Why.** a placeholder that silently rendered as its own source text would send literal "{input.step}" to the board as G-code. Compiling whole-or-not-at -all means the failure is at authoring time, not at the machine A template is literal text with `{...}` placeholders. Placeholder forms: {input.step}          a card input's live value {om:heat.heaters[0].active}   an OM read (selector grammar, I14) {axis.letter}         a forEach loop variable's property Resolution is total: a missing value renders as "" — the control's stamp (I15) makes an unresolved placeholder VISIBLE as a gap in the shown code rather than hiding it behind an error.
+
+`packages/ui/src/compose/controls/template.ts:4`
+
+## compose
+
+### `compose/def-body-totality` — rung 7
+
+**Mechanism.** ./cards.tsx is a Record<CardId, body>, so the compiler makes the two halves total over each other in BOTH directions — a def with no body, or a body with no def, is a type error rather than a review item
+
+**Why.** the halves are deliberately split for testability, and two artifacts that must agree need a mechanism rather than diligence
+
+`packages/ui/src/compose/defs.ts:18`
+
+### `compose/natural-size-owned-here` — rung 6
+
+**Mechanism.** choke-point — `size` on the def is the card's only statement of its natural geometry; screens carry placement, never dimensions of their own. Was design I4
+
+**Why.** a card redesigned taller must grow on every screen that holds it. When screens carried sizes, the 2026-07-24 case had position 95->103 and active-job 40->46 change nothing anywhere
+
+**Debt — promotion.** promote by making the screen's stored rect a position-plus-reference rather than a full rect, so a stored size has no encoding at all.
+
+`packages/ui/src/compose/defs.ts:37`
+
+### `compose/no-duplicate-card` — rung 8
+
+**Mechanism.** illegal state unrepresentable — a composition is Partial<Record<CardId, PanelRect>>, so a second copy of a card has nowhere to live. The picker and the import layer cannot express one even by trying. Was design I2
+
+**Why.** two copies of a card would each poll, each subscribe, and each claim cells, and the operator could delete only whichever one the DOM handed the click to
+
+`packages/ui/src/compose/composition.ts:7`
+
+### `compose/one-visibility-predicate` — rung 6
+
+**Mechanism.** choke-point — `visibleWhen` is the single predicate, and ComposedView derives BOTH the JSX mount and the canvas isActive cell-release from that one call. Was design I3
+
+**Why.** a card mounted but still holding its cells, or released but still rendered, is the unpinned-camera bug in both directions. One predicate means the two answers cannot disagree
+
+**Debt — promotion.** the derivation is one call site today; a second consumer could read the predicate separately. Promote by exposing visibility only as a computed value both consumers must take, rather than a predicate they may call.
+
+`packages/ui/src/compose/defs.ts:26`
+
+### `compose/registered-card-ids` — rung 7
+
+**Mechanism.** `CardId = keyof typeof CARD_DEFS` — an unregistered id is a compile error in code, and a runtime string either passes parseCardId or ceases to exist. Was design I1
+
+**Why.** a screen holding an id nothing renders is a hole the user cannot fill or remove; deriving the type from the registry means the set of legal ids and the set of rendered cards are ONE fact
+
+`packages/ui/src/compose/defs.ts:10`
 
 ## config
 
