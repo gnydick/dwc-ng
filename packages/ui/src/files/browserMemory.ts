@@ -15,24 +15,35 @@ import { isPlainObject, safeEntries } from "../util/safeObject.ts";
 export interface BrowserMemory {
 	/** The directory last shown; undefined when nothing is remembered. */
 	dir: string | undefined;
+	/**
+	 * The file left open in this domain's editor; undefined when none was.
+	 * Restoring it is what lets you leave a screen mid-edit and come back to
+	 * the file still loaded. Untrusted on the way back in like `dir` — a
+	 * consumer re-proves it with files/path.ts `fileUnderRoot`.
+	 */
+	file: string | undefined;
 	/** Scroll offset of the file list, keyed by directory. */
 	scroll: Record<string, number>;
 }
 
 const keyOf = (root: string): string => `dwc-ng.browser.${root}`;
 
+/** Remembering nothing, in one place — so a field added above cannot be
+ *  omitted from one of the several ways a read gives up. */
+const empty = (): BrowserMemory => ({ dir: undefined, file: undefined, scroll: {} });
+
 /** Tolerant read: anything missing or malformed yields empty memory. */
 export function loadBrowserMemory(root: string): BrowserMemory {
-	if (typeof localStorage === "undefined") return { dir: undefined, scroll: {} };
+	if (typeof localStorage === "undefined") return empty();
 	const raw = localStorage.getItem(keyOf(root));
-	if (raw === null) return { dir: undefined, scroll: {} };
+	if (raw === null) return empty();
 	let parsed: unknown;
 	try {
 		parsed = JSON.parse(raw);
 	} catch {
-		return { dir: undefined, scroll: {} };
+		return empty();
 	}
-	if (!isPlainObject(parsed)) return { dir: undefined, scroll: {} };
+	if (!isPlainObject(parsed)) return empty();
 	const scroll: Record<string, number> = {};
 	if (isPlainObject(parsed["scroll"])) {
 		for (const [dir, value] of safeEntries(parsed["scroll"])) {
@@ -41,6 +52,7 @@ export function loadBrowserMemory(root: string): BrowserMemory {
 	}
 	return {
 		dir: typeof parsed["dir"] === "string" ? parsed["dir"] : undefined,
+		file: typeof parsed["file"] === "string" ? parsed["file"] : undefined,
 		scroll,
 	};
 }
@@ -58,6 +70,22 @@ export function saveBrowserDir(root: string, dir: string): void {
 	const memory = loadBrowserMemory(root);
 	if (memory.dir === dir) return;
 	memory.dir = dir;
+	write(root, memory);
+}
+
+/**
+ * Remember (or forget, with null) the file open in this domain's editor.
+ *
+ * Closing has to be storable, which is why this takes null rather than only a
+ * path: "no file is open" is a state the operator can reach on purpose, and a
+ * setter that could only record a file would leave a closed editor reopening
+ * itself on the next visit.
+ */
+export function saveBrowserFile(root: string, file: string | null): void {
+	const memory = loadBrowserMemory(root);
+	const next = file ?? undefined;
+	if (memory.file === next) return;
+	memory.file = next;
 	write(root, memory);
 }
 

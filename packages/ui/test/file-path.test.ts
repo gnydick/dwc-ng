@@ -127,3 +127,31 @@ test("dirUnderRoot tolerates non-string input", async () => {
 	assert.equal(dirUnderRoot("0:/macros", undefined), "0:/macros");
 	assert.equal(dirUnderRoot("0:/macros", 42), "0:/macros");
 });
+
+// --- fileUnderRoot: a REMEMBERED open file, or nothing ---
+
+test("fileUnderRoot reconstructs a genuine descendant", async () => {
+	const { fileUnderRoot } = await import("../src/files/path.ts");
+	assert.equal(fileUnderRoot("0:/sys", "0:/sys/config.g"), "0:/sys/config.g");
+	assert.equal(fileUnderRoot("0:/macros", "0:/macros/tools/park.g"), "0:/macros/tools/park.g");
+});
+
+test("fileUnderRoot yields NOTHING where dirUnderRoot falls back to the root", async () => {
+	// The two differ only here, and it matters: falling back would put the
+	// domain's root directory into an editor that can only hold a file.
+	const { fileUnderRoot, dirUnderRoot } = await import("../src/files/path.ts");
+	const root = "0:/gcodes";
+	for (const hostile of [
+		"0:/gcodes/../../sys",
+		"0:/sys/config.g",
+		"0:/gcodes/a//b",
+		"0:/gcodesevil/x",
+		"relative/path",
+		null,
+		42,
+		root, // the root itself is a directory, never an open file
+	]) {
+		assert.equal(fileUnderRoot(root, hostile), null, `must be nothing: ${String(hostile)}`);
+		assert.equal(dirUnderRoot(root, hostile), root, `dir form still falls back: ${String(hostile)}`);
+	}
+});
