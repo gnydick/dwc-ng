@@ -12,14 +12,22 @@
  *  - "needed but not provisioned" has no representable state — access IS
  *    provisioning (I5 by elimination rather than by declaration);
  *  - services die with their screen (the pool runs factories under the
- *    screen's reactive owner, so resources/effects dispose on unmount —
- *    selection resets on navigation exactly as the bespoke views did).
+ *    screen's reactive owner, so resources/effects dispose on unmount).
+ *
+ * A service dying is about RESOURCES, not about what the operator was doing.
+ * The file-domain selection used to die with it too, which meant navigating
+ * away closed the file you had open; it is now remembered per root in
+ * browserMemory (see domainBrowser) and restored when the service is rebuilt.
+ * Anything else a screen should not forget belongs there for the same reason —
+ * the pool's lifetime is an implementation detail of the composer.
  *
  * Factories may use signals/resources/effects: they run under the screen's
  * owner via runWithOwner.
  */
 import { createEffect, createResource, createSignal, getOwner, onCleanup, runWithOwner } from "solid-js";
 import { createFileBrowser } from "../files/browser.ts";
+import { loadBrowserMemory, saveBrowserFile } from "../files/browserMemory.ts";
+import { fileUnderRoot } from "../files/path.ts";
 import { createHeightMapStore } from "../heightmap/store.ts";
 import { cellPosition } from "../heightmap/parse.ts";
 import type { AppServices } from "../shell/context.ts";
@@ -29,10 +37,35 @@ export interface ServiceBaseCtx extends AppServices {
 	connected: () => boolean;
 }
 
-/** Browser + selection for a file domain — the shape Jobs/Macros/System share. */
+/**
+ * Browser + selection for a file domain — the shape Jobs/Macros/System share.
+ *
+ * The selection OUTLIVES the screen. Services die on navigation (see the module
+ * header), so a signal alone reset the editor to "no selection" every time you
+ * stepped away — you came back to the hint text and had to find your file
+ * again. It is remembered per root in browserMemory, beside the directory and
+ * scroll offset that already survive for the same reason, so leaving a screen
+ * mid-edit and returning puts you back on the file you were editing.
+ *
+ * The remembered value is UNTRUSTED (localStorage): `fileUnderRoot` re-proves
+ * it as a descendant of this root and yields null for anything it cannot
+ * rebuild from safe segments, so a hand-edited entry cannot point one domain's
+ * editor at another domain's file.
+ *
+ * Writing goes through this ONE setter rather than at the call sites that
+ * select, so a card cannot change the selection without the change being
+ * remembered — including `setSelected(null)`, which is how Close records that
+ * nothing should reopen.
+ */
 function domainBrowser(base: ServiceBaseCtx, root: string, sort?: "recent") {
 	const browser = createFileBrowser(root, base.connected, base.connector, sort);
-	const [selected, setSelected] = createSignal<string | null>(null);
+	const [selected, setSelectedNow] = createSignal<string | null>(
+		fileUnderRoot(root, loadBrowserMemory(root).file),
+	);
+	const setSelected = (path: string | null): void => {
+		setSelectedNow(path);
+		saveBrowserFile(root, path);
+	};
 	return { browser, selected, setSelected };
 }
 
