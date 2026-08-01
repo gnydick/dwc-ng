@@ -25,14 +25,20 @@
  *       cast into slot position at a future load site.
  *
  * @invariant additive-placement
- * @rung 6  choke-point — autoPlace scans for the first free position at the
- *          card's natural size, and it is the only way a card enters a screen.
- *          There is no reject-or-discard branch to reach
+ * @rung 7  a pure function over an immutable value — addCard returns
+ *          `{ ...composition, [id]: … }`, so the existing slots are copied
+ *          unchanged and "adding a card moved another one" is not something the
+ *          function can express. findFreePosition picks the spot; there is no
+ *          reject-or-discard branch to reach
  * @why adding a card must never wipe or shuffle what is already placed. The
  *      operator's layout is their work, and losing it to an unrelated action is
  *      the failure they will not forgive
- * @debt promote by returning a placement that carries proof it collided with
- *       nothing, so a caller cannot write a rect it did not obtain from here.
+ *
+ * NAME CORRECTED 2026-08-01. This was declared against `autoPlace`, which has
+ * not existed since 89e43fb — the name survived in this header's prose and the
+ * sweep copied it into the register, turning stale text into an authoritative
+ * rung claim about a function nobody could call. The mechanism was real; the
+ * citation was not.
  */
 import { clampRect, findFreePosition, type PanelRect } from "../shell/panelCanvas.ts";
 import { CARD_DEFS, parseCardId, type CardId } from "./defs.ts";

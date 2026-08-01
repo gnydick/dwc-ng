@@ -21,17 +21,15 @@ and invariant claim mentions 13 -> 23, so no mechanism was deleted and no
 claim was lost in the gap. From here the ratchets make a dropped rung visible
 in the diff that drops it.
 
-**Totals:** 42 invariants · 32 at rung 6 or above · 10 below rung 6 (ceiling 10).
+**Totals:** 42 invariants · 30 at rung 6 or above · 12 below rung 6 (ceiling 12).
 
 ## compose
 
-### `compose/additive-placement` — rung 6
+### `compose/additive-placement` — rung 7
 
-**Mechanism.** choke-point — autoPlace scans for the first free position at the card's natural size, and it is the only way a card enters a screen. There is no reject-or-discard branch to reach
+**Mechanism.** a pure function over an immutable value — addCard returns `{ ...composition, [id]: … }`, so the existing slots are copied unchanged and "adding a card moved another one" is not something the function can express. findFreePosition picks the spot; there is no reject-or-discard branch to reach
 
-**Why.** adding a card must never wipe or shuffle what is already placed. The operator's layout is their work, and losing it to an unrelated action is the failure they will not forgive
-
-**Debt — promotion.** promote by returning a placement that carries proof it collided with nothing, so a caller cannot write a rect it did not obtain from here.
+**Why.** adding a card must never wipe or shuffle what is already placed. The operator's layout is their work, and losing it to an unrelated action is the failure they will not forgive NAME CORRECTED 2026-08-01. This was declared against `autoPlace`, which has not existed since 89e43fb — the name survived in this header's prose and the sweep copied it into the register, turning stale text into an authoritative rung claim about a function nobody could call. The mechanism was real; the citation was not.
 
 `packages/ui/src/compose/composition.ts:27`
 
@@ -247,13 +245,13 @@ in the diff that drops it.
 
 `packages/deploy/src/transport.ts:45`
 
-### `deploy/uninstall-owns-only-its-own` — rung 6
+### `deploy/uninstall-owns-only-its-own` — rung 5
 
-**Mechanism.** choke-point — the single authority on what a deployment may delete, derived from the same layout and root the manifest was written with rather than restated at the call site
+**Mechanism.** shared helper on ONE of two delete paths — uninstall derives every path from here, but the redeploy orphan prune (deploy.ts:86) deletes `${assetDir}/${name}` directly. That one is confined to the asset directory the manifest just wrote, so it is not loose, but it does not come from here. Corrected 2026-08-01: first declared rung 6 as "the single authority", which the prune contradicts
 
 **Why.** the board's filesystem IS the machine's configuration. Sidecar mode shares 0:/www with stock DWC, so an uninstall handed the shared root would delete the operator's working UI along with ours — and there is no undo on an SD card
 
-**Debt — promotion.** promote by returning a branded OwnedPath that the transport's delete is the only consumer of, so removing a path this function did not produce stops compiling.
+**Debt — promotion.** promote by returning a branded OwnedPath that transport.remove is the only consumer of, and having assetDir produce one too — then BOTH delete paths carry proof of ownership and a hand-built path stops compiling, rather than one path being trusted because it looks careful.
 
 `packages/deploy/src/manifest.ts:188`
 
@@ -373,13 +371,13 @@ in the diff that drops it.
 
 `packages/ui/src/om/heaterSeries.ts:4`
 
-### `om/om-entry-shape-gate` — rung 6
+### `om/om-entry-shape-gate` — rung 5
 
-**Mechanism.** choke-point — every object-model key enters the store through this one function, which rejects an unusable shape and conforms a sparse one, so no consumer downstream needs a defensive check of its own
+**Mechanism.** shared helper on ONE of two ingress routes — onModelKey (store.ts:75) passes every key through this, but the live d99fn patch route (onModelPatch, store.ts:90) deep-merges into the store WITHOUT it. Corrected 2026-08-01: this was first declared as a rung-6 choke-point, which was wrong — the second route is documented four lines below and I read past it
 
 **Why.** the board is the untrusted party here, not the user: firmware versions differ in which fields they serve, and a machine that legitimately omits job.layers must not have its whole job update rejected. Conform rather than refuse — that was the layerStats incident's lesson
 
-**Debt — promotion.** promote by branding the conformed value so setModelKey accepts only what this produced, making a raw board payload reaching the store a compile error rather than a path nobody currently takes.
+**Debt — promotion.** two routes in means the gate is not a gate. The patch route is deliberately cheap (it runs on every poll), and om/speeds.ts re-parses currentMove at the point of DISPLAY to cover it — which is a second mechanism for the same property, i.e. the drift hazard. Promote by routing both through one entry that brands what it produces, so setOm accepts only conformed values and neither route can skip it.
 
 `packages/ui/src/om/types.ts:349`
 

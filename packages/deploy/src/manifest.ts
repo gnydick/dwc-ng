@@ -186,16 +186,20 @@ export const assetDir = (name: string, layout: Layout, wwwRoot?: string): string
  * Every board path a deployment owns, for uninstall.
  *
  * @invariant uninstall-owns-only-its-own
- * @rung 6  choke-point — the single authority on what a deployment may delete,
- *          derived from the same layout and root the manifest was written with
- *          rather than restated at the call site
+ * @rung 5  shared helper on ONE of two delete paths — uninstall derives every
+ *          path from here, but the redeploy orphan prune (deploy.ts:86) deletes
+ *          `${assetDir}/${name}` directly. That one is confined to the asset
+ *          directory the manifest just wrote, so it is not loose, but it does
+ *          not come from here. Corrected 2026-08-01: first declared rung 6 as
+ *          "the single authority", which the prune contradicts
  * @why the board's filesystem IS the machine's configuration. Sidecar mode
  *      shares 0:/www with stock DWC, so an uninstall handed the shared root
  *      would delete the operator's working UI along with ours — and there is no
  *      undo on an SD card
- * @debt promote by returning a branded OwnedPath that the transport's delete is
- *       the only consumer of, so removing a path this function did not produce
- *       stops compiling.
+ * @debt promote by returning a branded OwnedPath that transport.remove is the
+ *       only consumer of, and having assetDir produce one too — then BOTH
+ *       delete paths carry proof of ownership and a hand-built path stops
+ *       compiling, rather than one path being trusted because it looks careful.
  */
 export const ownedPaths = (name: string, layout: Layout, wwwRoot?: string): string[] => {
 	const root = wwwRoot ?? defaultWwwRoot(layout)

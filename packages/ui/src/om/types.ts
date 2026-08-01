@@ -347,16 +347,22 @@ const conformCurrentMove = (value: unknown): CurrentMove => {
  *   inspector renders whatever the board serves).
  *
  * @invariant om-entry-shape-gate
- * @rung 6  choke-point — every object-model key enters the store through this
- *          one function, which rejects an unusable shape and conforms a sparse
- *          one, so no consumer downstream needs a defensive check of its own
+ * @rung 5  shared helper on ONE of two ingress routes — onModelKey
+ *          (store.ts:75) passes every key through this, but the live d99fn
+ *          patch route (onModelPatch, store.ts:90) deep-merges into the store
+ *          WITHOUT it. Corrected 2026-08-01: this was first declared as a rung-6
+ *          choke-point, which was wrong — the second route is documented four
+ *          lines below and I read past it
  * @why the board is the untrusted party here, not the user: firmware versions
  *      differ in which fields they serve, and a machine that legitimately omits
  *      job.layers must not have its whole job update rejected. Conform rather
  *      than refuse — that was the layerStats incident's lesson
- * @debt promote by branding the conformed value so setModelKey accepts only
- *       what this produced, making a raw board payload reaching the store a
- *       compile error rather than a path nobody currently takes.
+ * @debt two routes in means the gate is not a gate. The patch route is
+ *       deliberately cheap (it runs on every poll), and om/speeds.ts re-parses
+ *       currentMove at the point of DISPLAY to cover it — which is a second
+ *       mechanism for the same property, i.e. the drift hazard. Promote by
+ *       routing both through one entry that brands what it produces, so
+ *       setOm accepts only conformed values and neither route can skip it.
  */
 export function conformModelKey(key: string, value: unknown): { ok: true; value: unknown } | { ok: false } {
 	const isObject = (v: unknown): v is Record<string, unknown> =>
