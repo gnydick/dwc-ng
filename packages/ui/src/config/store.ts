@@ -72,12 +72,22 @@ export interface ConfigStore {
 	 * Replacing a whole layout (import, preset, restore) MUST go through
 	 * `replaceScreenLayout` in compose/screens.ts, which writes both tiers.
 	 *
-	 * LEDGER — invariant at rung 5 (see docs/invariant-ledger.md): this method
-	 * being public is the bypass. Promotion is to split it into
-	 * `updateScreenMembership` and `replaceScreenLayout` so that "write screen
-	 * geometry without declaring which kind of change this is" has no
-	 * encoding. Until then this comment is the only thing standing between a
-	 * new caller and the bug — which is precisely why it is debt.
+	 * @invariant screen-layout-two-tier
+	 * @rung 5  shared helper — replaceScreenLayout (compose/screens.ts) writes
+	 *          both tiers, but this method stays public with four direct
+	 *          callers, every one of them correct only by inspection
+	 * @why a screen's geometry lives in two deliberate tiers and mergeCanvas
+	 *      assembles what renders CARD BY CARD, so a wholesale replacement that
+	 *      writes one tier alone delivers a shredded layout — reported
+	 *      2026-07-24 as "machine import didn't work", where the outcome was
+	 *      decided by how much the file and the browser happened to overlap
+	 * @debt remove updateScreenCards from the public ConfigStore interface and
+	 *       expose two named intents instead — updateScreenMembership(id, cards)
+	 *       for incremental changes, replaceScreenLayout(id, rects) for
+	 *       wholesale ones — so "write screen geometry without declaring which
+	 *       kind of change this is" has no encoding, and the operation's name
+	 *       carries the requirement. Scope: one interface change, four call
+	 *       sites.
 	 */
 	updateScreenCards(id: string, cards: Record<string, SlotRect>): void;
 

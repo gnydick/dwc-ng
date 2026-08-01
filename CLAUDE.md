@@ -74,6 +74,12 @@ with no rework above the connector abstraction.
   reference (mark excluded from builds). Its PollConnector encodes years
   of edge cases (M409 retry logic, upload verification, firmware version
   workarounds). Read it before reimplementing any rr_ interaction.
+- Scaling features should work universally. Interface cards should
+  not need resizing or layout updated.
+- Unique desktop and mobile profiles for both portrait and landscape should be
+  saved, so 4 layouts per machine
+- Mobile version of UI should be mobile first, not copying desktop
+  paradigms by default. Desktop paradigms are not rules out.
 
 ## Solid-specific rules (I will be reviewing for these)
 

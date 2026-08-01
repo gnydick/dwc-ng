@@ -4,9 +4,9 @@
  * other defect we decide not to fix on the spot.
  *
  * Generated into DEBT.md, in USER_AUDIT.md's format, for the same reason the
- * register is generated: docs/invariant-ledger.md was hand-maintained, went 136
- * commits stale and silently lost three of its four rows. A catalogue nothing
- * regenerates is a catalogue that decays.
+ * register is generated: its predecessor docs/invariant-ledger.md (deleted
+ * 2026-07-31) was kept by hand, went 136 commits stale and silently lost three
+ * of its four rows. A catalogue nothing regenerates is a catalogue that decays.
  *
  * Two inputs, one output. A defect with a code home is declared beside the
  * broken code, so deleting the code deletes the entry; a defect with no code

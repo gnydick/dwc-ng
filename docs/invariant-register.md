@@ -13,4 +13,16 @@ nobody wrote down. A lint catches the syntactic tells ("callers must",
 "should", "by convention"); everything past that is human judgement. This
 register is exhaustive over what has been *declared*, not over what exists.
 
-**Totals:** 0 invariants · 0 at rung 6 or above · 0 below rung 6 (ceiling 0).
+**Totals:** 1 invariants · 0 at rung 6 or above · 1 below rung 6 (ceiling 1).
+
+## config
+
+### `config/screen-layout-two-tier` — rung 5
+
+**Mechanism.** shared helper — replaceScreenLayout (compose/screens.ts) writes both tiers, but this method stays public with four direct callers, every one of them correct only by inspection
+
+**Why.** a screen's geometry lives in two deliberate tiers and mergeCanvas assembles what renders CARD BY CARD, so a wholesale replacement that writes one tier alone delivers a shredded layout — reported 2026-07-24 as "machine import didn't work", where the outcome was decided by how much the file and the browser happened to overlap
+
+**Debt — promotion.** remove updateScreenCards from the public ConfigStore interface and expose two named intents instead — updateScreenMembership(id, cards) for incremental changes, replaceScreenLayout(id, rects) for wholesale ones — so "write screen geometry without declaring which kind of change this is" has no encoding, and the operation's name carries the requirement. Scope: one interface change, four call sites.
+
+`packages/ui/src/config/store.ts:75`
