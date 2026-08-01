@@ -112,6 +112,35 @@ test("the history is capped, keeping the RECENT past", () => {
 	assert.equal(s.at, MAX_ENTRIES - 1);
 });
 
+test("a CRLF file from the board does not read as edited", () => {
+	// CodeMirror hands text back with LF endings whatever it was given, so an
+	// untouched CRLF file would otherwise look changed the instant the first
+	// tick compared them.
+	const s = beginSession(CFG, "M115\r\nG28\r\n");
+	assert.equal(isDirty(s), false);
+	assert.equal(checkpoint(s, "M115\nG28\n"), s, "the view's own text is not a change");
+	assert.equal(isStale(s, "M115\r\nG28\r\n"), false, "nor did the board's copy move");
+});
+
+test("stepping back and forward through a CRLF file KEEPS the newer revision", () => {
+	// The real-board bug: entries[0] came from a CRLF download, stepping back
+	// put it in the view, the view handed back LF, checkpoint read that as an
+	// edit, truncated the branch and destroyed the newer revision. Observed on
+	// duet3 as lens=[115,126] becoming lens=[115,111].
+	let s = beginSession(CFG, "M115\r\nG28\r\n");
+	s = checkpoint(s, "M115\nG28\nG1 X1\n"); // typed, arriving LF from the view
+	assert.equal(s.entries.length, 2);
+
+	s = stepTo(s, 0);
+	// What the view would hand back after being given entries[0]:
+	s = checkpoint(s, s.entries[0]!);
+	assert.equal(s.entries.length, 2, "stepping back must not truncate anything");
+	assert.equal(s.at, 0, "nor move the position");
+
+	s = stepTo(s, 1);
+	assert.ok(currentText(s).includes("G1 X1"), "the newer revision survived the round trip");
+});
+
 test("a board copy that moved under the draft is detectable", () => {
 	const s = checkpoint(beginSession(CFG, "a"), "ab");
 	assert.equal(isStale(s, "a"), false);
