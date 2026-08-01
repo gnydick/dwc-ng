@@ -1,13 +1,15 @@
 /**
  * Chart series (label + colour) for the heaters, derived from the object model.
  *
- * The invariant this module exists to hold: **no two heater lines on the chart
- * are perceptually confusable**, and in particular no tool ever draws in the
- * bed's colour.
- *
- * That is enforced by construction rather than by picking colours carefully:
- * the bed's and chamber's colours are simply not members of TOOL_COLORS, so a
- * tool cannot be assigned one. (The previous version indexed TOOL_COLORS by
+ * @invariant no-confusable-heater-lines
+ * @rung 8  illegal state unrepresentable — the bed's and chamber's colours are
+ *          not members of TOOL_COLORS, so "a tool drawing in the bed's colour"
+ *          has no way to be produced. Not achieved by choosing colours
+ *          carefully, which would be rung 1
+ * @why the chart is how the operator tells a runaway tool from a heating bed at
+ *      a glance. The previous version indexed TOOL_COLORS by HEATER index,
+ *      which on a bed-at-0 machine pushed the fourth tool onto a gold measuring
+ *      dE 9.4 from the bed — indistinguishable in a moving line (The previous version indexed TOOL_COLORS by
  * HEATER index, which on a bed-at-0 machine both wasted the palette's first
  * colour and pushed the fourth tool onto a gold measuring ΔE 9.4 from the bed —
  * indistinguishable on screen. Tools are now indexed densely by their position

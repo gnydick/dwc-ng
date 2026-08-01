@@ -13,7 +13,7 @@ nobody wrote down. A lint catches the syntactic tells ("callers must",
 "should", "by convention"); everything past that is human judgement. This
 register is exhaustive over what has been *declared*, not over what exists.
 
-**Totals:** 27 invariants · 20 at rung 6 or above · 7 below rung 6 (ceiling 7).
+**Totals:** 37 invariants · 26 at rung 6 or above · 11 below rung 6 (ceiling 11).
 
 ## compose
 
@@ -231,6 +231,46 @@ register is exhaustive over what has been *declared*, not over what exists.
 
 `packages/ui/src/control/commands.ts:25`
 
+## dev
+
+### `dev/card-floor-independent-of-size` — rung 4
+
+**Mechanism.** static analysis, run on demand — the audit panel measures every registry card in a real browser and ranks violations first. It is a measurement rather than a test: nothing in CI runs it, and nothing stops a card shipping with a moving floor
+
+**Why.** a floor that moves with the card is layout hysteresis: dragging a card smaller ratchets its minimum down, so its own contents decide how small it can get and the size the operator set does not survive a resize
+
+**Debt — promotion.** two gaps, and the second is the larger. (1) The sweep is manual, so promote by running it headless over the registry in CI — the CDP driver already exists. (2) Card Lab's state pills do not change the bench, so ten cards are measured EMPTY and their real content is never audited; that is catalogued separately in DEBT.md. CSS Sizing 3 defines min-content as the size the box would have "if its containing block was zero-sized in that axis" — the actual container is not an input by construction. A minimum that moves with the card means the measurement is reading post-layout geometry, which is a different quantity; Chromium calls the resulting ratchet "hysteresis". WHAT THIS DOES NOT ESTABLISH, and the panel must not imply that it does: judgeAxis is handed only the sequence of REPORTED values. No ground truth is in scope, by signature — so a floor that is uniformly and grossly WRONG is the cleanest possible pass. A passing verdict says the measurement is self-consistent, never that the number is right. That is why the passing label below is a description and not "ok", and why judgeFloor exists.
+
+`packages/ui/src/dev/layoutAudit.ts:34`
+
+### `dev/guard-follows-the-declaration` — rung 7
+
+**Mechanism.** totality over an interface — `const writes: ConnectorWrites = {…}` must be COMPLETE, so a method added to ConnectorWrites fails to compile until it is guarded here, and it cannot be smuggled into the pass-through block, which accepts only ConnectorReads members. WHERE a method is declared IS its classification
+
+**Why.** the alternative is a hand-maintained list of dangerous methods, which goes stale the first time someone adds one in a hurry — and the failure mode is an unguarded write reaching real hardware, discovered by it happening
+
+`packages/ui/src/dev/writeGuard.ts:39`
+
+### `dev/no-child-drift-on-resize` — rung 4
+
+**Mechanism.** static analysis, run on demand — the same audit sweep, comparing descendant positions before and after a cross-axis resize
+
+**Why.** this is the project's positional-stability requirement, not a discovered property: a live-updating machine UI whose contents shift under the pointer is one you cannot operate confidently. There is no component-level analogue to Cumulative Layout Shift to borrow
+
+**Debt — promotion.** violations are reported by POSITION, so the panel gives counts rather than naming the culprit element — a reader still has to hunt. Promote by reporting a stable path to the drifting node, and by running the sweep headless in CI as with card-floor-independent-of-size. FALSE BY CONSTRUCTION for a slot containing wrapping text, so cards that legitimately reflow are excluded BY NAME rather than by fudging the comparison — an exclusion list is debt, and is filed as such. NOT a discovered property — there is no prior art naming it and no component-level analogue to Cumulative Layout Shift, which is page-level and time-windowed. It is this project's positional-stability requirement, expressed as something checkable. It is FALSE BY CONSTRUCTION for a slot containing wrapping text, so cards that legitimately reflow must be excluded by name rather than by fudging the comparison.
+
+`packages/ui/src/dev/layoutAudit.ts:169`
+
+### `dev/write-guard-is-dev-only` — rung 0
+
+**Mechanism.** a comment, and deliberately so — this wrapper is applied only in the dev harness. In a production build there is NO write guard: the operator is expected to be operating their own machine, and the board's own protections are the authority
+
+**Why.** stating the profile is the point (the guard reads like a safety mechanism and would be trusted as one). It exists so a DEVELOPER pointing a dev server at a real printer does not move it by accident; it is not, and must not be read as, a safety interlock
+
+**Debt — promotion.** this is documented-not-a-gap rather than debt to pay, and the ratchet counts it regardless — which is correct: a rung-0 entry should stay visible. Promotion, if it is ever wanted, is to make the production build's connector a distinct type that simply has no guard slot, so "is the guard on in production?" stops being a question one can ask.
+
+`packages/ui/src/dev/writeGuard.ts:50`
+
 ## files
 
 ### `files/delete-warning-matches-action` — rung 7
@@ -276,3 +316,63 @@ register is exhaustive over what has been *declared*, not over what exists.
 **Debt — promotion.** fold the cap into a small bounded-map type so a second writer cannot add a key without eviction.
 
 `packages/ui/src/files/browserMemory.ts:23`
+
+## om
+
+### `om/headline-estimate-precedence` — rung 6
+
+**Mechanism.** choke-point — "most trustworthy AVAILABLE source" is one pure function, the only place the precedence exists, rather than a chain of Show/ternaries in JSX
+
+**Why.** the headline is the number the operator plans around. Spread across JSX, a fourth source or a reordering changes the answer silently, and the breakdown below it would disagree with the headline above
+
+**Debt — promotion.** promote by returning a sum type carrying the chosen source, so a consumer cannot render a headline without naming which source it came from and the two cannot drift.
+
+`packages/ui/src/om/estimates.ts:11`
+
+### `om/no-confusable-heater-lines` — rung 8
+
+**Mechanism.** illegal state unrepresentable — the bed's and chamber's colours are not members of TOOL_COLORS, so "a tool drawing in the bed's colour" has no way to be produced. Not achieved by choosing colours carefully, which would be rung 1
+
+**Why.** the chart is how the operator tells a runaway tool from a heating bed at a glance. The previous version indexed TOOL_COLORS by HEATER index, which on a bed-at-0 machine pushed the fourth tool onto a gold measuring dE 9.4 from the bed — indistinguishable in a moving line (The previous version indexed TOOL_COLORS by HEATER index, which on a bed-at-0 machine both wasted the palette's first colour and pushed the fourth tool onto a gold measuring ΔE 9.4 from the bed — indistinguishable on screen. Tools are now indexed densely by their position among non-bed, non-chamber heaters, so where the bed sits cannot shift them.)
+
+`packages/ui/src/om/heaterSeries.ts:4`
+
+### `om/om-entry-shape-gate` — rung 6
+
+**Mechanism.** choke-point — every object-model key enters the store through this one function, which rejects an unusable shape and conforms a sparse one, so no consumer downstream needs a defensive check of its own
+
+**Why.** the board is the untrusted party here, not the user: firmware versions differ in which fields they serve, and a machine that legitimately omits job.layers must not have its whole job update rejected. Conform rather than refuse — that was the layerStats incident's lesson
+
+**Debt — promotion.** promote by branding the conformed value so setModelKey accepts only what this produced, making a raw board payload reaching the store a compile error rather than a path nobody currently takes.
+
+`packages/ui/src/om/types.ts:349`
+
+## shell
+
+### `shell/grid-metrics-single-source` — rung 7
+
+**Mechanism.** generated, not mirrored — PanelCanvas.tsx emits `repeat(${GRID_COLS}, ${COL_UNIT_PX}px)` from these constants, so the stylesheet has no column figures of its own to disagree with. app.css declares only `display: grid`
+
+**Why.** the geometry engine computes spans in cells while the browser lays them out in pixels. When those were two facts, a card's computed position and its painted position could differ by a whole column with nothing failing — and the arithmetic looks right in both places
+
+`packages/ui/src/shell/panelCanvas.ts:97`
+
+### `shell/reflow-preserves-reading-order` — rung 6
+
+**Mechanism.** choke-point over a total order — cards are placed in reading order (row, then col, then id for determinism), so the topmost-leftmost card cannot be displaced and a card whose span just grew keeps its spot while neighbours yield. That FALLS OUT of the ordering; there is no "the grown one wins" branch to get wrong
+
+**Why.** the operator's layout is their work. A redesign that shuffles everything because one card got taller reads as the app having lost their screen
+
+**Debt — promotion.** promote by making the placement order a value produced once and consumed by the loop, so a future caller cannot iterate the state directly and place out of order.
+
+`packages/ui/src/shell/panelCanvas.ts:904`
+
+### `shell/reflow-terminates` — rung 3
+
+**Mechanism.** tests — the argument is sound (every push strictly increases col or row; col is bounded by GRID_COLS and forces the down branch once a rightward push no longer fits; a row below every placed rect is always free), and idempotence follows from the output being collision-free. But it is an argument in prose over a `for(;;)` loop: nothing STRUCTURAL stops an edit from making a push that advances neither axis
+
+**Why.** this runs at mount on every screen. A non-terminating pass is not a wrong layout, it is a browser tab that never paints again
+
+**Debt — promotion.** make the loop consume a bounded, strictly-increasing cursor rather than mutating a candidate in place — then "a push that advances nothing" has no encoding and the argument stops needing to be believed.
+
+`packages/ui/src/shell/panelCanvas.ts:916`

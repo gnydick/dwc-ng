@@ -89,10 +89,21 @@ export function rowUnitPx(): number {
 }
 /** Both gutters now live on the card, not on the grid — see GRID_COLS. */
 export const GAP_PX = 0;
-/** Fixed column width (matches app.css's .panel-canvas grid-template-columns)
- *  — columns don't scale with viewport width, so a card's pixel size only
- *  ever depends on its own colSpan. A narrower window scrolls horizontally
- *  instead of shrinking every card to fit. */
+/**
+ * Fixed column width. Columns don't scale with viewport width, so a card's
+ * pixel size only ever depends on its own colSpan; a narrower window scrolls
+ * horizontally instead of shrinking every card to fit.
+ *
+ * @invariant grid-metrics-single-source
+ * @rung 7  generated, not mirrored — PanelCanvas.tsx emits
+ *          `repeat(${GRID_COLS}, ${COL_UNIT_PX}px)` from these constants, so
+ *          the stylesheet has no column figures of its own to disagree with.
+ *          app.css declares only `display: grid`
+ * @why the geometry engine computes spans in cells while the browser lays them
+ *      out in pixels. When those were two facts, a card's computed position and
+ *      its painted position could differ by a whole column with nothing failing
+ *      — and the arithmetic looks right in both places
+ */
 export const COL_UNIT_PX = 4;
 
 export interface PanelRect {
@@ -890,11 +901,31 @@ export function growToDefaults(
  * screen). Ties go right, the bounded axis, keeping the layout compact while
  * the unbounded one stays available.
  *
- * Terminates: every push strictly increases col or row; col is bounded by
- * GRID_COLS and forces the down branch once a rightward push no longer fits,
- * and a row below every placed rect is always free — the same argument
- * slideDownToFree rests on. Idempotent: the output is collision-free, so a
- * second pass never enters the push loop.
+ * @invariant reflow-preserves-reading-order
+ * @rung 6  choke-point over a total order — cards are placed in reading order
+ *          (row, then col, then id for determinism), so the topmost-leftmost
+ *          card cannot be displaced and a card whose span just grew keeps its
+ *          spot while neighbours yield. That FALLS OUT of the ordering; there
+ *          is no "the grown one wins" branch to get wrong
+ * @why the operator's layout is their work. A redesign that shuffles everything
+ *      because one card got taller reads as the app having lost their screen
+ * @debt promote by making the placement order a value produced once and
+ *       consumed by the loop, so a future caller cannot iterate the state
+ *       directly and place out of order.
+ *
+ * @invariant reflow-terminates
+ * @rung 3  tests — the argument is sound (every push strictly increases col or
+ *          row; col is bounded by GRID_COLS and forces the down branch once a
+ *          rightward push no longer fits; a row below every placed rect is
+ *          always free), and idempotence follows from the output being
+ *          collision-free. But it is an argument in prose over a `for(;;)`
+ *          loop: nothing STRUCTURAL stops an edit from making a push that
+ *          advances neither axis
+ * @why this runs at mount on every screen. A non-terminating pass is not a
+ *      wrong layout, it is a browser tab that never paints again
+ * @debt make the loop consume a bounded, strictly-increasing cursor rather than
+ *       mutating a candidate in place — then "a push that advances nothing" has
+ *       no encoding and the argument stops needing to be believed.
  */
 export function reflow(state: CanvasState): CanvasState {
 	const order = Object.keys(state).sort((x, y) => {

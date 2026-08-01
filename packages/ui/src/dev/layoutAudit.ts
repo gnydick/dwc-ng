@@ -31,6 +31,20 @@ export const AXIS_TOLERANCE = 1;
  * INVARIANT A: a card's reported minimum along an axis must be independent of
  * its own used size along that axis.
  *
+ * @invariant card-floor-independent-of-size
+ * @rung 4  static analysis, run on demand — the audit panel measures every
+ *          registry card in a real browser and ranks violations first. It is a
+ *          measurement rather than a test: nothing in CI runs it, and nothing
+ *          stops a card shipping with a moving floor
+ * @why a floor that moves with the card is layout hysteresis: dragging a card
+ *      smaller ratchets its minimum down, so its own contents decide how small
+ *      it can get and the size the operator set does not survive a resize
+ * @debt two gaps, and the second is the larger. (1) The sweep is manual, so
+ *       promote by running it headless over the registry in CI — the CDP
+ *       driver already exists. (2) Card Lab's state pills do not change the
+ *       bench, so ten cards are measured EMPTY and their real content is never
+ *       audited; that is catalogued separately in DEBT.md.
+ *
  * CSS Sizing 3 defines min-content as the size the box would have "if its
  * containing block was zero-sized in that axis" — the actual container is not
  * an input by construction. A minimum that moves with the card means the
@@ -151,6 +165,22 @@ export interface DriftSample {
 /**
  * INVARIANT B: no descendant changes position when the container resizes along
  * the OTHER axis.
+ *
+ * @invariant no-child-drift-on-resize
+ * @rung 4  static analysis, run on demand — the same audit sweep, comparing
+ *          descendant positions before and after a cross-axis resize
+ * @why this is the project's positional-stability requirement, not a
+ *      discovered property: a live-updating machine UI whose contents shift
+ *      under the pointer is one you cannot operate confidently. There is no
+ *      component-level analogue to Cumulative Layout Shift to borrow
+ * @debt violations are reported by POSITION, so the panel gives counts rather
+ *       than naming the culprit element — a reader still has to hunt. Promote
+ *       by reporting a stable path to the drifting node, and by running the
+ *       sweep headless in CI as with card-floor-independent-of-size.
+ *
+ * FALSE BY CONSTRUCTION for a slot containing wrapping text, so cards that
+ * legitimately reflow are excluded BY NAME rather than by fudging the
+ * comparison — an exclusion list is debt, and is filed as such.
  *
  * NOT a discovered property — there is no prior art naming it and no
  * component-level analogue to Cumulative Layout Shift, which is page-level and

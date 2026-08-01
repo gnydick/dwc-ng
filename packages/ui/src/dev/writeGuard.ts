@@ -34,13 +34,33 @@ export interface GuardOptions {
 }
 
 /**
- * Wrap a connector so mutating calls fail closed on the real board. The
- * read/write classification is the INTERFACE's (ConnectorReads /
- * ConnectorWrites in connector/types.ts, audit M5): the two typed halves
- * below must each be complete for their interface, so a method added to
- * ConnectorWrites fails to compile until it is guarded here — and cannot
- * be smuggled into the pass-through block, which only accepts
- * ConnectorReads members.
+ * Wrap a connector so mutating calls fail closed on the real board.
+ *
+ * @invariant guard-follows-the-declaration
+ * @rung 7  totality over an interface — `const writes: ConnectorWrites = {…}`
+ *          must be COMPLETE, so a method added to ConnectorWrites fails to
+ *          compile until it is guarded here, and it cannot be smuggled into the
+ *          pass-through block, which accepts only ConnectorReads members. WHERE
+ *          a method is declared IS its classification
+ * @why the alternative is a hand-maintained list of dangerous methods, which
+ *      goes stale the first time someone adds one in a hurry — and the failure
+ *      mode is an unguarded write reaching real hardware, discovered by it
+ *      happening
+ *
+ * @invariant write-guard-is-dev-only
+ * @rung 0  a comment, and deliberately so — this wrapper is applied only in the
+ *          dev harness. In a production build there is NO write guard: the
+ *          operator is expected to be operating their own machine, and the
+ *          board's own protections are the authority
+ * @why stating the profile is the point (the guard reads like a safety
+ *      mechanism and would be trusted as one). It exists so a DEVELOPER
+ *      pointing a dev server at a real printer does not move it by accident;
+ *      it is not, and must not be read as, a safety interlock
+ * @debt this is documented-not-a-gap rather than debt to pay, and the ratchet
+ *       counts it regardless — which is correct: a rung-0 entry should stay
+ *       visible. Promotion, if it is ever wanted, is to make the production
+ *       build's connector a distinct type that simply has no guard slot, so
+ *       "is the guard on in production?" stops being a question one can ask.
  */
 export function guardWrites(inner: Connector, opts: GuardOptions): Connector {
 	const blocked = (): boolean => opts.isReal() && !opts.isArmed();

@@ -345,6 +345,18 @@ const conformCurrentMove = (value: unknown): CurrentMove => {
  *   rejected — the incident's lesson — so fill, don't refuse;
  * - unknown keys pass through untouched (the model is open; the OM
  *   inspector renders whatever the board serves).
+ *
+ * @invariant om-entry-shape-gate
+ * @rung 6  choke-point — every object-model key enters the store through this
+ *          one function, which rejects an unusable shape and conforms a sparse
+ *          one, so no consumer downstream needs a defensive check of its own
+ * @why the board is the untrusted party here, not the user: firmware versions
+ *      differ in which fields they serve, and a machine that legitimately omits
+ *      job.layers must not have its whole job update rejected. Conform rather
+ *      than refuse — that was the layerStats incident's lesson
+ * @debt promote by branding the conformed value so setModelKey accepts only
+ *       what this produced, making a raw board payload reaching the store a
+ *       compile error rather than a path nobody currently takes.
  */
 export function conformModelKey(key: string, value: unknown): { ok: true; value: unknown } | { ok: false } {
 	const isObject = (v: unknown): v is Record<string, unknown> =>

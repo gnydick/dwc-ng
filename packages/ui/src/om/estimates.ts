@@ -8,10 +8,16 @@ import type { Job } from "./types.ts";
  * is fixed, filament-based tracks the actual extruded length — and any of them
  * can be absent (null) at a given moment.
  *
- * The UI shows one headline number plus the full breakdown. Choosing the
- * headline is an invariant ("most trustworthy AVAILABLE source"), so it lives
- * here as one pure function rather than as a chain of Show/ternaries in JSX
- * where a fourth source or a reordering could quietly change the answer.
+ * @invariant headline-estimate-precedence
+ * @rung 6  choke-point — "most trustworthy AVAILABLE source" is one pure
+ *          function, the only place the precedence exists, rather than a chain
+ *          of Show/ternaries in JSX
+ * @why the headline is the number the operator plans around. Spread across JSX,
+ *      a fourth source or a reordering changes the answer silently, and the
+ *      breakdown below it would disagree with the headline above
+ * @debt promote by returning a sum type carrying the chosen source, so a
+ *       consumer cannot render a headline without naming which source it came
+ *       from and the two cannot drift.
  */
 export type EstimateSource = "filament" | "file" | "slicer";
 
