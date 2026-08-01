@@ -7,6 +7,7 @@ import { readdirSync, readFileSync, existsSync } from "node:fs";
 import { join, relative, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseDeclarations, type RawDeclaration } from "./parse.ts";
+import { parseBroken, type RawBroken } from "./broken.ts";
 
 const EXTENSIONS = [".ts", ".tsx", ".css"];
 const SKIP = new Set(["node_modules", "dist", ".git", "captures"]);
@@ -37,6 +38,20 @@ function walk(dir: string, out: string[]): void {
  * fixtures show up as declarations with newline escapes inside their slugs.
  */
 export function scanTree(rootDir: string): RawDeclaration[] {
+	return collect(rootDir, parseDeclarations);
+}
+
+/** The same walk, for @broken blocks. Defects that live in code are declared beside it. */
+export function scanBroken(rootDir: string): RawBroken[] {
+	return collect(rootDir, parseBroken);
+}
+
+/**
+ * One walk, parameterised by what to read out of each file — so adding a second
+ * kind of declaration does not add a second traversal that could disagree with
+ * the first about which files exist.
+ */
+function collect<T>(rootDir: string, read: (text: string, file: string) => T[]): T[] {
 	const files: string[] = [];
 	const packages = join(rootDir, "packages");
 	for (const pkg of readdirSync(packages, { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : 1))) {
@@ -45,10 +60,10 @@ export function scanTree(rootDir: string): RawDeclaration[] {
 		if (!existsSync(src)) continue;
 		walk(src, files);
 	}
-	const out: RawDeclaration[] = [];
+	const out: T[] = [];
 	for (const full of files.sort()) {
 		const rel = relative(rootDir, full).replaceAll("\\", "/");
-		out.push(...parseDeclarations(readFileSync(full, "utf8"), rel));
+		out.push(...read(readFileSync(full, "utf8"), rel));
 	}
 	return out;
 }

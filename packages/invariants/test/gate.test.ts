@@ -21,6 +21,16 @@ test("DRIFT: the committed register matches what the generator produces", () => 
 	);
 });
 
+test("DRIFT: the committed DEBT.md matches what the generator produces", () => {
+	const { debtMarkdown } = buildRegister();
+	const committed = readFileSync(join(repoRoot(), "DEBT.md"), "utf8");
+	assert.equal(
+		committed,
+		debtMarkdown,
+		"DEBT.md is stale — run `pnpm --filter @dwc-ng/invariants generate`",
+	);
+});
+
 test("RATCHET: the debt count never exceeds the committed ceiling", () => {
 	const { declarations, ceiling } = buildRegister();
 	const debts = declarations.filter(d => d.rung < MIN_RUNG);

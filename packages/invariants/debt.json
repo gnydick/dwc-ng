@@ -1,0 +1,12 @@
+{
+	"_comment": "Defects with no code home — tooling, environment, or a fault in a test file, which src-only scanning cannot see. A defect that DOES have a code home is declared with an @broken block beside the broken code instead, so deleting the code deletes the entry. Rendered into DEBT.md; do not edit that file.",
+	"entries": [
+		{
+			"slug": "mock-duet-seqs-optional",
+			"status": "todo",
+			"where": "packages/mock-duet/test/simulation.test.ts:141,145",
+			"what": "`pnpm typecheck` fails at the workspace level: four TS18048 errors, `'machine.seqs.move' is possibly 'undefined'` and the same for the `before`/`afterLoad` locals, under `noUncheckedIndexedAccess`. Pre-existing — confirmed by checking out `main` and running it there, where it fails identically. Found 2026-07-31 while verifying the invariants package, which typechecks clean itself.",
+			"fix": ""
+		}
+	]
+}
