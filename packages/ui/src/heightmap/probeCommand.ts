@@ -1,3 +1,6 @@
+import { operatorTyped } from "../control/commands.ts";
+import type { GcodeCommand } from "../connector/types.ts";
+
 /**
  * The probe command is a template the operator owns, not motion this UI
  * composes.
@@ -17,6 +20,11 @@
  */
 const coord = (v: number): string => String(Number(v.toFixed(3)));
 
-export function buildProbeCommand(template: string, x: number, y: number): string {
-	return template.split("{x}").join(coord(x)).split("{y}").join(coord(y));
+/**
+ * The template is config the operator wrote, so this goes through the one named
+ * escape hatch rather than pretending to be a builder's output. Only the
+ * coordinates are ours; the command shape is theirs.
+ */
+export function buildProbeCommand(template: string, x: number, y: number): GcodeCommand {
+	return operatorTyped(template.split("{x}").join(coord(x)).split("{y}").join(coord(y)));
 }

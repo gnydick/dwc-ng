@@ -1325,9 +1325,10 @@
 	.rail .machine-id { display: none; }
 
 	/* @invariant narrow-rules-come-after-desktop
-	   @rung 0  a comment. Nothing checks the ORDER of the blocks in this file
-	            — the fix was to move a block, and moving it back would be
-	            silent
+	   @rung 4  static analysis — test/css-media-order.test.ts scans this file
+	            and, for every selector declared in BOTH a max-width block and
+	            an unqualified rule, fails when the narrow one comes first,
+	            naming the selector and both line numbers
 	   @why a media query adds NO specificity, so a narrow rule written earlier
 	        in the file is simply overridden by a same-specificity desktop rule
 	        that appears later. Measured: the palette's bottom sheet sat at
@@ -1336,11 +1337,11 @@
 	        desktop-width measurement is above the breakpoint, so this class of
 	        bug reads as "fine on the dev server, broken on the printer" and
 	        cost four wrong diagnoses before the cause was found
-	   @debt a test can catch it: parse this file, and for each selector that
-	        appears in BOTH a max-width block and an unqualified rule, assert
-	        the max-width block comes later. That is rung 4 and cheap. Rung 6
-	        is generating the breakpoint blocks from one typed source so
-	        ordering is not something an author controls at all.
+	   @debt the scan is a brace walker over text, so it sees source order but
+	        not cascade subtleties (:is(), layers, differing specificity within
+	        a selector list). Rung 6 is generating the breakpoint blocks from
+	        one typed source, so ordering stops being something an author
+	        controls at all.
 
 	   (The palette entry's narrow-width rules are NOT here — they live in a
 	   second max-width block directly after the desktop ones further down.) */

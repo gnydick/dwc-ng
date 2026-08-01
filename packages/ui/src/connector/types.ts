@@ -97,6 +97,28 @@ export interface GcodeFileInfo {
 	thumbnails: ThumbnailInfo[];
 }
 
+declare const gcode: unique symbol;
+
+/**
+ * A G/M/T-code that came from a sanctioned producer.
+ *
+ * @invariant gcode-producers
+ * @rung 7  branded type — `sendCode` accepts only this, and the brand is
+ *          unforgeable outside its producers: the `cmd.*` builders (rebranded
+ *          wholesale by a mapped type in control/commands.ts), messagebox
+ *          ack.ts, the data-defined controls' resolveTemplate, and ONE named
+ *          escape hatch, `operatorTyped`, for text a human actually typed. A
+ *          hand-assembled string no longer compiles
+ * @why an unquoted operator filename reaching M98 was a real injection: a name
+ *      containing a quote closed the parameter early and the rest was parsed as
+ *      further G-code. Routing every producer through gcodeQuote fixed that
+ *      instance; the parameter's TYPE is what stops the next one arriving by a
+ *      different route. This is the promotion the 2026-07-22 audit committed to
+ *      and did not make — unrecorded for 136 commits, which is why the register
+ *      now generates itself
+ */
+export type GcodeCommand = string & { readonly [gcode]: true };
+
 /**
  * The read half: observing the machine and its files. The dev write guard
  * passes everything here through unconditionally, so WHERE a method is
@@ -127,24 +149,8 @@ export interface ConnectorReads {
  * exception).
  */
 export interface ConnectorWrites {
-	/**
-	 * Execute a G/M/T-code; resolves with its reply text ("" if none came).
-	 *
-	 * @invariant gcode-producers
-	 * @rung 3  tests — every G-code the UI sends is built by control/commands.ts
-	 *          or ack.ts and pinned there; nothing in the TYPE stops a caller
-	 *          passing a hand-assembled string, because the parameter is `string`
-	 * @why an unquoted operator filename reaching M98 was a real injection, fixed
-	 *      by routing every producer through gcodeQuote; the parameter's type is
-	 *      what would stop the next one arriving by a different route
-	 * @debt brand it — `sendCode(code: GcodeCommand)` where GcodeCommand's only
-	 *       producers are commands.ts, ack.ts, resolveTemplate, the operator-owned
-	 *       probe template, and ONE named console escape hatch. This is the
-	 *       promotion the 2026-07-22 audit committed to and never made; it went
-	 *       136 commits unrecorded, which is why the register now generates
-	 *       itself.
-	 */
-	sendCode(code: string): Promise<string>;
+	/** Execute a G/M/T-code; resolves with its reply text ("" if none came). */
+	sendCode(code: GcodeCommand): Promise<string>;
 	/**
 	 * Upload a file, verified as strongly as the transport allows: rr_ carries
 	 * a CRC32 the board checks; DSF's PUT has no integrity mechanism (success

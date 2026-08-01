@@ -8,18 +8,19 @@
  * would have made the guard block the STOP button with nothing failing.
  *
  * @invariant estop-vocabulary
- * @rung 5  shared helper — one exported payload and one matcher, welded by
- *          test/emergency-stop.test.ts, which asserts that what the STOP button
+ * @rung 6  choke-point — one exported payload, one matcher, and since
+ *          connector/gcode-producers was branded there is no longer any route
+ *          by which a party can send its own "M112" literal: reaching sendCode
+ *          at all means coming from cmd.emergencyStop (which returns THIS
+ *          constant) or the one named escape hatch. Welded by
+ *          test/emergency-stop.test.ts, which asserts what the STOP button
  *          sends is exactly what the guard lets through
  * @why a guard that swallows an emergency stop is more dangerous than the thing
  *      it guards; the four independent literals this replaced could drift apart
  *      with nothing failing until someone needed the button on real hardware
- * @debt the constant and the matcher are still two facts that must agree, and a
- *       new party can write its own "M112" literal without touching either.
- *       Promote by deriving the matcher FROM the payload — parse EMERGENCY_STOP
- *       once into the accepted line set — so there is one fact rather than two,
- *       and by branding the send path so an unbranded literal cannot reach it
- *       (see connector/gcode-producers, whose promotion subsumes this).
+ * @debt the constant and the matcher remain two facts that must agree. Promote
+ *       to 7 by deriving the matcher FROM the payload — parse EMERGENCY_STOP
+ *       once into the accepted line set — so there is one fact rather than two.
  */
 
 /**

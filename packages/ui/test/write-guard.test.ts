@@ -1,3 +1,4 @@
+import { operatorTyped } from "../src/control/commands.ts";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { guardWrites, isEmergencyStop, RealWriteBlockedError } from "../src/dev/writeGuard.ts";
@@ -30,14 +31,14 @@ const guard = (opts: { real: boolean; armed: boolean }) => {
 
 test("mock backend: writes pass straight through", async () => {
 	const { c, seen } = guard({ real: false, armed: false });
-	await c.sendCode("G28");
+	await c.sendCode(operatorTyped("G28"));
 	await c.upload("0:/sys/config.g", "M83");
 	assert.deepEqual(seen, ["sendCode:G28", "upload:0:/sys/config.g"]);
 });
 
 test("real + unarmed: sendCode is blocked and never reaches the board", async () => {
 	const { c, seen } = guard({ real: true, armed: false });
-	await assert.rejects(() => c.sendCode('M32 "benchy.gcode"'), RealWriteBlockedError);
+	await assert.rejects(() => c.sendCode(operatorTyped('M32 "benchy.gcode"')), RealWriteBlockedError);
 	assert.deepEqual(seen, [], "nothing reached the board");
 });
 
@@ -62,14 +63,14 @@ test("real + unarmed: reads still work — the guard only stops mutations", asyn
 
 test("real + armed: writes are allowed through", async () => {
 	const { c, seen } = guard({ real: true, armed: true });
-	await c.sendCode("G28");
+	await c.sendCode(operatorTyped("G28"));
 	await c.upload("0:/sys/config.g", "M83");
 	assert.deepEqual(seen, ["sendCode:G28", "upload:0:/sys/config.g"]);
 });
 
 test("real + unarmed: M112 always passes — never block an e-stop", async () => {
 	const { c, seen } = guard({ real: true, armed: false });
-	await c.sendCode("M112");
+	await c.sendCode(operatorTyped("M112"));
 	assert.deepEqual(seen, ["sendCode:M112"]);
 });
 
@@ -105,7 +106,7 @@ test("isEmergencyStop still refuses anything smuggled alongside the pair", () =>
 
 test("real + unarmed: the M112+M999 pair passes — the STOP button must work", async () => {
 	const { c, seen } = guard({ real: true, armed: false });
-	await c.sendCode("M112\nM999");
+	await c.sendCode(operatorTyped("M112\nM999"));
 	assert.deepEqual(seen, ["sendCode:M112\nM999"]);
 });
 

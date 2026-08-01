@@ -16,6 +16,8 @@
  * write guard still gates it — unarmed, each tick's send simply rejects locally
  * and is swallowed, never reaching the network.
  */
+import { operatorTyped } from "./commands.ts";
+import type { GcodeCommand } from "../connector/types.ts";
 import type { PinnedCommand } from "../config/types.ts";
 
 export const PIN_INTERVAL_MS = 500;
@@ -26,7 +28,7 @@ export interface PinSenderDeps {
 	/** True when it is worth sending at all (connected). */
 	canSend: () => boolean;
 	/** The guarded connector's sendCode. */
-	sendCode: (code: string) => Promise<unknown>;
+	sendCode: (code: GcodeCommand) => Promise<unknown>;
 	/** Override the interval (tests). */
 	intervalMs?: number;
 }
@@ -52,14 +54,17 @@ export function startPinSender(deps: PinSenderDeps): () => void {
 }
 
 /**
- * The single G-code string for one tick, or null when there is nothing to send.
+ * The single G-code for one tick, or null when there is nothing to send.
  *
  * Pure and exported so the batching — which enabled pins fire, in what order,
  * joined how — is testable without timers or a connector.
+ *
+ * A pin's text is the OPERATOR's, typed into Settings, so it enters through the
+ * one named escape hatch rather than pretending to be a builder's output.
  */
-export function batchPins(pins: readonly PinnedCommand[]): string | null {
+export function batchPins(pins: readonly PinnedCommand[]): GcodeCommand | null {
 	const commands = pins
 		.filter(p => p.enabled && p.command.trim() !== "")
 		.map(p => p.command.trim());
-	return commands.length > 0 ? commands.join("\n") : null;
+	return commands.length > 0 ? operatorTyped(commands.join("\n")) : null;
 }

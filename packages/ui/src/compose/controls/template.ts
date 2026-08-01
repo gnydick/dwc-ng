@@ -20,6 +20,7 @@
  * (I15) makes an unresolved placeholder VISIBLE as a gap in the shown code
  * rather than hiding it behind an error.
  */
+import type { GcodeCommand } from "../../connector/types.ts";
 import { parseOmSelector, readOm, type OmSelector } from "./omSelector.ts";
 
 type Token =
@@ -94,7 +95,7 @@ export function omReadsOf(template: CompiledTemplate): string[] {
 }
 
 /** Total resolution — every input has a defined (possibly "") rendering. */
-export function resolveTemplate(template: CompiledTemplate, scope: TemplateScope): string {
+export function resolveTemplate(template: CompiledTemplate, scope: TemplateScope): GcodeCommand {
 	let out = "";
 	for (const token of template.tokens) {
 		switch (token.kind) {
@@ -114,5 +115,7 @@ export function resolveTemplate(template: CompiledTemplate, scope: TemplateScope
 			}
 		}
 	}
-	return out;
+	// The template is a compiled, non-executable selector grammar (see
+	// omSelector.ts); resolving one IS producing a sanctioned command.
+	return out as GcodeCommand;
 }

@@ -11,7 +11,7 @@
  * caller gates it behind import.meta.env.DEV) and it gates nothing on machine
  * state. The firmware remains the only authority over what the machine will do.
  */
-import type { Connector, ConnectorReads, ConnectorWrites } from "../connector/types.ts";
+import type { Connector, ConnectorReads, ConnectorWrites, GcodeCommand } from "../connector/types.ts";
 import { isEmergencyStop } from "../connector/emergency.ts";
 
 export { isEmergencyStop };
@@ -67,7 +67,7 @@ export function guardWrites(inner: Connector, opts: GuardOptions): Connector {
 
 	// Mutations: fail closed on real unless armed.
 	const writes: ConnectorWrites = {
-		sendCode: async (code: string) => {
+		sendCode: async (code: GcodeCommand) => {
 			if (!isEmergencyStop(code) && blocked()) {
 				throw new RealWriteBlockedError(code.split("\n")[0] ?? code);
 			}

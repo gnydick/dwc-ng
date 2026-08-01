@@ -11,8 +11,9 @@
  * (reference/dwc/src/components/dialogs/MessageBoxDialog.vue) and the object
  * model (reference/objectmodel/src/state/MessageBox.ts) — not from memory.
  */
+import type { GcodeCommand } from "../connector/types.ts";
 import type { MessageBox } from "../om/types.ts";
-import { gcodeQuote } from "../control/commands.ts";
+import { cmd } from "../control/commands.ts";
 
 /** reference/objectmodel/src/state/MessageBox.ts (MessageBoxMode) — order is the wire value. */
 export const MessageBoxMode = {
@@ -83,25 +84,27 @@ export function axisControlIndices(box: MessageBox): number[] {
  * press. Tool-change macros that raise several boxes in a row make that a real
  * race, not a theoretical one.
  */
-export function ackCommand(box: MessageBox, input: AckInput | null): string | null {
+export function ackCommand(box: MessageBox, input: AckInput | null): GcodeCommand | null {
 	if (box.mode === MessageBoxMode.noButtons) return null;
 
 	// Cancel is a distinct answer (P1), never "OK with an empty value".
-	if (input?.cancelled === true) return `M292 P1 S${box.seq}`;
+	if (input?.cancelled === true) return cmd.ackCancel(box.seq);
 
+	// The M292 forms live in control/commands.ts with every other G-code form —
+	// this module decides WHICH answer a mode takes, not how one is spelled.
 	switch (box.mode) {
 		case MessageBoxMode.closeOnly:
 		case MessageBoxMode.okOnly:
 		case MessageBoxMode.okCancel:
-			return `M292 S${box.seq}`;
+			return cmd.ackOk(box.seq);
 		case MessageBoxMode.multipleChoice:
 		case MessageBoxMode.intInput:
 		case MessageBoxMode.floatInput:
-			return `M292 R{${Number(input?.value ?? 0)}} S${box.seq}`;
+			return cmd.ackNumber(box.seq, Number(input?.value ?? 0));
 		case MessageBoxMode.stringInput:
-			return `M292 R{${gcodeQuote(String(input?.value ?? ""))}} S${box.seq}`;
+			return cmd.ackText(box.seq, String(input?.value ?? ""));
 		default:
 			// An unknown future mode still needs answering, or the machine hangs.
-			return `M292 S${box.seq}`;
+			return cmd.ackOk(box.seq);
 	}
 }

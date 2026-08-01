@@ -10,6 +10,7 @@
  */
 import { For, Show, createMemo, createSignal } from "solid-js";
 import { useApp } from "../shell/context.ts";
+import type { GcodeCommand } from "../connector/types.ts";
 import { cmd } from "../control/commands.ts";
 import { GcodeButton } from "../control/GcodeButton.tsx";
 import { SpeedSlider } from "../control/SpeedSlider.tsx";
@@ -105,7 +106,7 @@ function FanControl(props: { label: string; index: number; actual: number; reque
 	const [pct, setPct] = createSignal(Math.round((props.requested ?? 0) * 100));
 	const key = `fan:${props.index}`;
 
-	const pinCommand = (): string => cmd.fan(props.index, pct());
+	const pinCommand = (): GcodeCommand => cmd.fan(props.index, pct());
 	const pinned = (): boolean => app.config.config.pins.some(p => p.key === key && p.enabled);
 	const togglePin = (): void => {
 		if (pinned()) app.config.removeKeyedPin(key);

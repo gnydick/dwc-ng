@@ -1,6 +1,7 @@
 import { For, Show, createEffect, createMemo, createSignal } from "solid-js";
 import { commitPhase, clickSendsSetpoint, staysArmed, thermalMark, type CommitPhase } from "../control/setpointCommit.ts";
 import { useApp } from "../shell/context.ts";
+import type { GcodeCommand } from "../connector/types.ts";
 import { cmd } from "../control/commands.ts";
 import { GcodeButton } from "../control/GcodeButton.tsx";
 import type { Heater } from "../om/types.ts";
@@ -293,13 +294,13 @@ function HeaterCells(props: { heater: Heater; index: number; kind: "tool" | "bed
 	// write the setpoint, a matching field makes it set the mode. The pulsing
 	// dot says which. The bed has no mode parameter, so its Active is always
 	// the single M140 that both sets and turns on.
-	const activeCmd = (): string =>
+	const activeCmd = (): GcodeCommand =>
 		isBed()
 			? cmd.bedActive(props.num, active())
 			: clickSendsSetpoint(armedActive())
 				? cmd.toolActiveSetpoint(props.num, active())
 				: cmd.toolActive(props.num);
-	const standbyCmd = (): string =>
+	const standbyCmd = (): GcodeCommand =>
 		clickSendsSetpoint(armedStandby())
 			? cmd.toolStandbySetpoint(props.num, standby())
 			: cmd.toolStandby(props.num);

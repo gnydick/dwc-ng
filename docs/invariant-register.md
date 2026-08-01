@@ -13,7 +13,7 @@ nobody wrote down. A lint catches the syntactic tells ("callers must",
 "should", "by convention"); everything past that is human judgement. This
 register is exhaustive over what has been *declared*, not over what exists.
 
-**Totals:** 42 invariants · 30 at rung 6 or above · 12 below rung 6 (ceiling 12).
+**Totals:** 42 invariants · 32 at rung 6 or above · 10 below rung 6 (ceiling 10).
 
 ## compose
 
@@ -161,25 +161,23 @@ register is exhaustive over what has been *declared*, not over what exists.
 
 ## connector
 
-### `connector/estop-vocabulary` — rung 5
+### `connector/estop-vocabulary` — rung 6
 
-**Mechanism.** shared helper — one exported payload and one matcher, welded by test/emergency-stop.test.ts, which asserts that what the STOP button sends is exactly what the guard lets through
+**Mechanism.** choke-point — one exported payload, one matcher, and since connector/gcode-producers was branded there is no longer any route by which a party can send its own "M112" literal: reaching sendCode at all means coming from cmd.emergencyStop (which returns THIS constant) or the one named escape hatch. Welded by test/emergency-stop.test.ts, which asserts what the STOP button sends is exactly what the guard lets through
 
 **Why.** a guard that swallows an emergency stop is more dangerous than the thing it guards; the four independent literals this replaced could drift apart with nothing failing until someone needed the button on real hardware
 
-**Debt — promotion.** the constant and the matcher are still two facts that must agree, and a new party can write its own "M112" literal without touching either. Promote by deriving the matcher FROM the payload — parse EMERGENCY_STOP once into the accepted line set — so there is one fact rather than two, and by branding the send path so an unbranded literal cannot reach it (see connector/gcode-producers, whose promotion subsumes this).
+**Debt — promotion.** the constant and the matcher remain two facts that must agree. Promote to 7 by deriving the matcher FROM the payload — parse EMERGENCY_STOP once into the accepted line set — so there is one fact rather than two.
 
 `packages/ui/src/connector/emergency.ts:10`
 
-### `connector/gcode-producers` — rung 3
+### `connector/gcode-producers` — rung 7
 
-**Mechanism.** tests — every G-code the UI sends is built by control/commands.ts or ack.ts and pinned there; nothing in the TYPE stops a caller passing a hand-assembled string, because the parameter is `string`
+**Mechanism.** branded type — `sendCode` accepts only this, and the brand is unforgeable outside its producers: the `cmd.*` builders (rebranded wholesale by a mapped type in control/commands.ts), messagebox ack.ts, the data-defined controls' resolveTemplate, and ONE named escape hatch, `operatorTyped`, for text a human actually typed. A hand-assembled string no longer compiles
 
-**Why.** an unquoted operator filename reaching M98 was a real injection, fixed by routing every producer through gcodeQuote; the parameter's type is what would stop the next one arriving by a different route
+**Why.** an unquoted operator filename reaching M98 was a real injection: a name containing a quote closed the parameter early and the rest was parsed as further G-code. Routing every producer through gcodeQuote fixed that instance; the parameter's TYPE is what stops the next one arriving by a different route. This is the promotion the 2026-07-22 audit committed to and did not make — unrecorded for 136 commits, which is why the register now generates itself
 
-**Debt — promotion.** brand it — `sendCode(code: GcodeCommand)` where GcodeCommand's only producers are commands.ts, ack.ts, resolveTemplate, the operator-owned probe template, and ONE named console escape hatch. This is the promotion the 2026-07-22 audit committed to and never made; it went 136 commits unrecorded, which is why the register now generates itself.
-
-`packages/ui/src/connector/types.ts:133`
+`packages/ui/src/connector/types.ts:105`
 
 ### `connector/raw-transport-fence` — rung 3
 
@@ -225,11 +223,11 @@ register is exhaustive over what has been *declared*, not over what exists.
 
 **Mechanism.** shared helper — the one quoting implementation, imported by messagebox/ack.ts rather than reimplemented, and pinned by test/control-commands.test.ts; nothing stops a new builder writing its own `"${value}"`
 
-**Why.** an unquoted operator filename reaching M98 was a real injection: a name containing a quote closed the parameter early and the remainder was parsed as further G-code parsed as further G-code. The builders below all call it, but that is inspection rather than mechanism, which is what keeps this at 5
+**Why.** an unquoted operator filename reaching M98 was a real injection: a name containing a quote closed the parameter early and the remainder was parsed as further G-code. The builders below all call it, but that is inspection rather than mechanism, which is what keeps this at 5
 
 **Debt — promotion.** return a branded QuotedParam instead of string, and have every builder taking operator text accept only that — then a raw interpolation into a command string stops compiling rather than merely being unusual.
 
-`packages/ui/src/control/commands.ts:25`
+`packages/ui/src/control/commands.ts:26`
 
 ## deploy
 
@@ -419,12 +417,12 @@ register is exhaustive over what has been *declared*, not over what exists.
 
 `packages/ui/src/app.css:759`
 
-### `ui/narrow-rules-come-after-desktop` — rung 0
+### `ui/narrow-rules-come-after-desktop` — rung 4
 
-**Mechanism.** a comment. Nothing checks the ORDER of the blocks in this file — the fix was to move a block, and moving it back would be silent
+**Mechanism.** static analysis — test/css-media-order.test.ts scans this file and, for every selector declared in BOTH a max-width block and an unqualified rule, fails when the narrow one comes first, naming the selector and both line numbers
 
 **Why.** a media query adds NO specificity, so a narrow rule written earlier in the file is simply overridden by a same-specificity desktop rule that appears later. Measured: the palette's bottom sheet sat at x=383 on a 390px viewport — off-screen and not hit-testable — because `left: calc(100% + 8px)` won on source order alone. Every desktop-width measurement is above the breakpoint, so this class of bug reads as "fine on the dev server, broken on the printer" and cost four wrong diagnoses before the cause was found
 
-**Debt — promotion.** a test can catch it: parse this file, and for each selector that appears in BOTH a max-width block and an unqualified rule, assert the max-width block comes later. That is rung 4 and cheap. Rung 6 is generating the breakpoint blocks from one typed source so ordering is not something an author controls at all. (The palette entry's narrow-width rules are NOT here — they live in a second max-width block directly after the desktop ones further down.)
+**Debt — promotion.** the scan is a brace walker over text, so it sees source order but not cascade subtleties (:is(), layers, differing specificity within a selector list). Rung 6 is generating the breakpoint blocks from one typed source, so ordering stops being something an author controls at all. (The palette entry's narrow-width rules are NOT here — they live in a second max-width block directly after the desktop ones further down.)
 
 `packages/ui/src/app.css:1327`

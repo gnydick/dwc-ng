@@ -1,5 +1,6 @@
 import { For, Show, createEffect, createSignal } from "solid-js";
 import { useApp } from "./context.ts";
+import { operatorTyped } from "../control/commands.ts";
 import { classifyReply } from "../om/consoleLog.ts";
 import { loadCommandHistory, pushCommand, saveCommandHistory } from "../om/commandHistory.ts";
 
@@ -85,7 +86,7 @@ function ConsoleForm() {
 		cursor = null;
 		draft = "";
 		setCode("");
-		void app.connector.sendCode(value).catch(() => undefined);
+		void app.connector.sendCode(operatorTyped(value)).catch(() => undefined);
 	};
 
 	const recall = (event: KeyboardEvent): void => {

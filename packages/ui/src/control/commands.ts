@@ -10,6 +10,7 @@
  */
 
 import { EMERGENCY_STOP } from "../connector/emergency.ts";
+import type { GcodeCommand } from "../connector/types.ts";
 
 /** Trim a number to a compact G-code literal (no trailing ".00"). */
 const n = (v: number): string => String(v);
@@ -29,7 +30,6 @@ const n = (v: number): string => String(v);
  *          its own `"${value}"`
  * @why an unquoted operator filename reaching M98 was a real injection: a name
  *      containing a quote closed the parameter early and the remainder was
- *      parsed as further G-code
  *      parsed as further G-code. The builders below all call it, but that is
  *      inspection rather than mechanism, which is what keeps this at 5
  * @debt return a branded QuotedParam instead of string, and have every builder
@@ -69,7 +69,7 @@ const withTool = (tool: number | undefined, code: string): string =>
 	tool === undefined ? code : `T${tool}
 ${code}`;
 
-export const cmd = {
+const rawCmd = {
 	/**
 	 * The STOP button's payload (M112 halt + M999 reset), from the one
 	 * definition the write guard and the connector's unblockable path also
@@ -264,4 +264,49 @@ M703`,
 	/** Clear accumulated babystepping — the reference's own example form
 	 *  (reference/duet-gcode.md M290: "M290 R0 S0 ; clear babystepping"). */
 	babystepZero: (): string => "M290 R0 S0",
+
+	// --- message-box replies (M292) ---
+	/**
+	 * Answer a MessageBox. RRF matches the reply to the prompt by SEQ, so a stale
+	 * answer to a box that has already gone cannot be mistaken for a fresh one.
+	 * P1 is a distinct answer (cancelled), never "OK with an empty value".
+	 */
+	ackOk: (seq: number): string => `M292 S${n(seq)}`,
+	ackCancel: (seq: number): string => `M292 P1 S${n(seq)}`,
+	ackNumber: (seq: number, value: number): string => `M292 R{${n(value)}} S${n(seq)}`,
+	/** Operator free text — quoted, because it is the operator's. */
+	ackText: (seq: number, text: string): string => `M292 R{${gcodeQuote(text)}} S${n(seq)}`,
 };
+
+/**
+ * Rebrand every builder's return in one place. Each function above still writes
+ * a plain string — adding a builder needs no ceremony and cannot forget the
+ * brand, because the brand is applied by the TYPE rather than by the author.
+ */
+type GcodeBuilders<T> = {
+	[K in keyof T]: T[K] extends (...args: infer A) => string ? (...args: A) => GcodeCommand : T[K];
+};
+
+export const cmd = rawCmd as GcodeBuilders<typeof rawCmd>;
+
+/**
+ * The ONE escape hatch: G-code a human actually typed — the console, or a pin
+ * the operator authored themselves. Named, exported from here, and greppable,
+ * so "where can an unbuilt command enter?" has a one-line answer.
+ *
+ * Everything else must come from a builder. If you are reaching for this from a
+ * card, the card wants a builder instead.
+ */
+export const operatorTyped = (text: string): GcodeCommand => text as GcodeCommand;
+
+/**
+ * Join built commands into one payload — the convenience compound the project
+ * rule allows (a fixed multi-command bundle in one action, no conditionals).
+ *
+ * Takes GcodeCommand and returns GcodeCommand, so a compound is still made
+ * only of sanctioned parts: `[...].join("\n")` would silently drop the brand
+ * and force whoever hit it to cast, which is the hole this whole type exists
+ * to close.
+ */
+export const joinCommands = (parts: readonly GcodeCommand[]): GcodeCommand =>
+	parts.join("\n") as GcodeCommand;

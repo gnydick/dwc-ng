@@ -1,6 +1,7 @@
 import { For, Show, createMemo, createResource, createSignal } from "solid-js";
 import { useApp } from "../shell/context.ts";
-import { cmd } from "./commands.ts";
+import { cmd, joinCommands } from "./commands.ts";
+import type { GcodeCommand } from "../connector/types.ts";
 import { GcodeButton } from "./GcodeButton.tsx";
 import { describeToolP, parseToolP } from "./toolP.ts";
 import type { Tool } from "../om/types.ts";
@@ -73,14 +74,10 @@ export function FilamentCard(props: { tools: (Tool | null)[] }) {
 	// would load T0's filament twice. Naming each tool cannot go wrong.
 	const loadable = createMemo(() => feeders().filter(t => selected(t) !== ""));
 	const unloadable = createMemo(() => feeders().filter(t => loaded(t) !== ""));
-	const loadAll = (): string =>
-		loadable()
-			.map(t => cmd.loadFilament(selected(t), { selectTool: t.number, runMacros: runMacros() }))
-			.join("\n");
-	const unloadAll = (): string =>
-		unloadable()
-			.map(t => cmd.unloadFilament({ selectTool: t.number, runMacros: runMacros() }))
-			.join("\n");
+	const loadAll = (): GcodeCommand =>
+		joinCommands(loadable().map(t => cmd.loadFilament(selected(t), { selectTool: t.number, runMacros: runMacros() })));
+	const unloadAll = (): GcodeCommand =>
+		joinCommands(unloadable().map(t => cmd.unloadFilament({ selectTool: t.number, runMacros: runMacros() })));
 
 	return (
 		<Show
