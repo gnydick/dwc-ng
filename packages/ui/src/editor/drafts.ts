@@ -66,9 +66,29 @@ const MAX_SESSIONS = 12;
  */
 const MAX_STORE_BYTES = 512 * 1024;
 
+/**
+ * The canonical form of a document: LF line endings.
+ *
+ * CodeMirror normalizes line endings when it takes a document, so text read
+ * back out of the view is NEVER byte-identical to a CRLF file from the board.
+ * Left alone, that difference is indistinguishable from an edit: stepping back
+ * to a CRLF revision and forward again made `checkpoint` see a change nobody
+ * typed, truncate the forward history as a new branch, and DESTROY the newer
+ * revision — observed on the real board, where sys files are CRLF and the
+ * mock's are not. It would also have marked every CRLF file dirty on the first
+ * tick.
+ *
+ * Applied at every entry point below rather than at the call sites, so every
+ * string inside an EditSession is canonical by construction and no caller has
+ * to know this is a problem. Saving uploads the view's text, which was already
+ * LF before any of this existed — so what lands on the board is unchanged.
+ */
+export const normalizeDoc = (text: string): string => text.replace(/\r\n?/g, "\n");
+
 /** Open a file for editing: one checkpoint, holding the board's copy. */
 export function beginSession(path: string, baseline: string): EditSession {
-	return { path, baseline, entries: [baseline], at: 0 };
+	const canonical = normalizeDoc(baseline);
+	return { path, baseline: canonical, entries: [canonical], at: 0 };
 }
 
 /** The text the document currently shows. */
@@ -90,7 +110,8 @@ export function isDirty(session: EditSession): boolean {
  * undo-branch rule: those describe a future that no longer happened, and
  * keeping them would let ▶ walk forward into text the operator never typed.
  */
-export function checkpoint(session: EditSession, text: string): EditSession {
+export function checkpoint(session: EditSession, rawText: string): EditSession {
+	const text = normalizeDoc(rawText);
 	if (text === currentText(session)) return session;
 	const kept = session.entries.slice(0, session.at + 1);
 	kept.push(text);
@@ -115,7 +136,7 @@ export function stepTo(session: EditSession, index: number): EditSession {
  * save must not cost you the ability to step back past it.
  */
 export function markSaved(session: EditSession, text: string): EditSession {
-	return { ...checkpoint(session, text), baseline: text };
+	return { ...checkpoint(session, text), baseline: normalizeDoc(text) };
 }
 
 /**
@@ -125,7 +146,9 @@ export function markSaved(session: EditSession, text: string): EditSession {
  * instead, because saving would overwrite whatever arrived.
  */
 export function isStale(session: EditSession, boardText: string): boolean {
-	return session.baseline !== boardText;
+	// Normalized both sides: a CRLF file is not "changed on the board" merely
+	// for having come back with the line endings it always had.
+	return session.baseline !== normalizeDoc(boardText);
 }
 
 // ---- persistence ----
@@ -177,8 +200,11 @@ function reviveSession(path: string, value: unknown): EditSession | null {
 	// and `at` moves with the window. Trimming the other end would silently
 	// re-point the position at a different snapshot than the one stored.
 	const dropped = Math.max(0, all.length - MAX_ENTRIES);
-	const entries = all.slice(dropped);
-	return { path, baseline, entries, at: Math.max(0, rawAt - dropped) };
+	// Normalized here too, so the "every string in a session is canonical"
+	// invariant holds for a record that came from storage rather than a
+	// constructor — the one route into a session that skips them.
+	const entries = all.slice(dropped).map(normalizeDoc);
+	return { path, baseline: normalizeDoc(baseline), entries, at: Math.max(0, rawAt - dropped) };
 }
 
 function writeStore(store: Store): void {
