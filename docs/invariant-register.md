@@ -21,7 +21,7 @@ and invariant claim mentions 13 -> 23, so no mechanism was deleted and no
 claim was lost in the gap. From here the ratchets make a dropped rung visible
 in the diff that drops it.
 
-**Totals:** 42 invariants · 28 at rung 6 or above · 14 below rung 6 (ceiling 14).
+**Totals:** 50 invariants · 33 at rung 6 or above · 17 below rung 6 (ceiling 17).
 
 ## compose
 
@@ -167,6 +167,34 @@ in the diff that drops it.
 
 ## connector
 
+### `connector/backoff-outside-the-slot` — rung 0
+
+**Mechanism.** a sentence, and it says "callers must" — which by this project's own rule means this module has no mechanism for it at all. A caller that sleeps while holding a slot starves every other request, and nothing here can observe that it happened
+
+**Why.** one retrying request holding its slot through the backoff is indistinguishable, from inside the queue, from one request that is merely slow — so the queue drains to nothing while appearing healthy
+
+**Debt — promotion.** this is a caller precondition in prose (the anti-pattern), and it was caught by this repo's own red-flag lint rather than by review. Promote by having enqueue hand the callback a token it must return to retry — `retry()` re-enqueues and releases — so "sleep while holding the slot" has no expression, rather than being merely discouraged.
+
+`packages/ui/src/connector/requestQueue.ts:23`
+
+### `connector/bulk-io-yields-to-the-heartbeat` — rung 6
+
+**Mechanism.** choke-point — one queue, one ORDER map, and a concurrency cap that no caller can raise per-request. Priority defaults to "normal", so a new request cannot accidentally outrank the poll; it can only under-rank itself by asking for "low"
+
+**Why.** CLAUDE.md's first hard constraint: the board tolerates very few concurrent connections and each request is expensive. Strict FIFO put a thumbnail chunk loop and filelist pagination AHEAD of the poll heartbeat, so opening a file browser froze the live view
+
+`packages/ui/src/connector/requestQueue.ts:13`
+
+### `connector/estop-is-never-queued` — rung 6
+
+**Mechanism.** choke-point — this is the one send path that does not go through `requests.enqueue`, reached only via `isEmergencyStop`, and its re-auth is unqueued too so a culled session cannot park the stop behind a slot either. Verified by search: five raw fetch sites in this file, and the other two are the XHR-less upload fallback and the shared rr_connect form
+
+**Why.** every other request waits for a slot, and a slot can be held by a multi-megabyte upload. An emergency stop that queues behind one is an emergency stop that does not happen — the operator presses it, the button reports nothing, and the machine keeps going
+
+**Debt — promotion.** the bypass is chosen by inspecting the code string. Promote by giving the e-stop its own method on the transport so "send this without a slot" is a distinct operation rather than a branch inside the general one, and cannot be reached by any other payload. One transparent re-auth on a culled session (also unqueued), then re-fire; any other failure surfaces to the button, which honestly reports "failed" rather than pretending.
+
+`packages/ui/src/connector/PollConnector.ts:297`
+
 ### `connector/estop-vocabulary` — rung 6
 
 **Mechanism.** choke-point — one exported payload, one matcher, and since connector/gcode-producers was branded there is no longer any route by which a party can send its own "M112" literal: reaching sendCode at all means coming from cmd.emergencyStop (which returns THIS constant) or the one named escape hatch. Welded by test/emergency-stop.test.ts, which asserts what the STOP button sends is exactly what the guard lets through
@@ -204,6 +232,16 @@ in the diff that drops it.
 **Debt — promotion.** stop re-exporting the classes from connector/index.ts and make them module-private, so a second construction site is a compile error rather than merely absent. Blocked only by the tests, which construct PollConnector directly against mock-duet (test/config.test.ts, test/connector.test.ts) — they would take a test-only factory.
 
 `packages/ui/src/connector/createConnector.ts:17`
+
+### `connector/synthesized-layers-have-one-producer` — rung 6
+
+**Mechanism.** choke-point — the only place layer statistics are synthesized; verified by search, the connector computes them nowhere else. Pure, so the same observations always give the same history and a second consumer cannot get a different answer by asking differently
+
+**Why.** RRF does not keep per-layer statistics, so every number here is INFERRED from observed poll data. Two inference sites would disagree the moment one of them missed a poll, and the operator would have no way to tell which figure was the honest one
+
+**Debt — promotion.** promote by branding the produced Layer[] so the store accepts only what this module made, putting a hand-built layer array out of reach rather than merely out of fashion.
+
+`packages/ui/src/connector/layerHistory.ts:24`
 
 ### `connector/transport-exhaustive` — rung 7
 
@@ -355,6 +393,16 @@ in the diff that drops it.
 
 ## om
 
+### `om/console-log-is-bounded` — rung 5
+
+**Mechanism.** one shared constant, TWO enforcement sites — om/store.ts:100 splices the live store in place, and capLines below slices on the way to localStorage. The number is a single fact; the capping is not
+
+**Why.** the console takes every reply the board sends, and a long print sends a lot. Unbounded, it grows until the tab is slow and the localStorage write throws — and the catch that hides that write failure would take the whole persisted log with it
+
+**Debt — promotion.** the tripwire: the same processing step at a second call site. Promote by making the log a small bounded type whose push caps, so both the live store and the save path get the bound from the value rather than each applying it, and a third consumer cannot forget.
+
+`packages/ui/src/om/consoleLog.ts:38`
+
 ### `om/headline-estimate-precedence` — rung 6
 
 **Mechanism.** choke-point — "most trustworthy AVAILABLE source" is one pure function, the only place the precedence exists, rather than a chain of Show/ternaries in JSX
@@ -385,6 +433,26 @@ in the diff that drops it.
 
 ## shell
 
+### `shell/copy-failure-is-observable` — rung 6
+
+**Mechanism.** choke-point — this module is the only place in src that touches navigator.clipboard or execCommand (verified by search, not by claim), and it returns a boolean rather than void, so a caller holding the result has to decide what to do with false
+
+**Why.** navigator.clipboard is [SecureContext] and simply UNDEFINED on any origin that is not HTTPS or localhost — which is exactly this appliance, served from the Duet's SD card over RRF's TLS-less HTTP server. The previous version swallowed every failure into a bare catch, making a dead clipboard indistinguishable from a dead click, and the whole feature was silently broken on the actual target
+
+**Debt — promotion.** a caller can still ignore the returned boolean. Promote by returning a result type the caller must narrow before it can carry on, so "copied, probably" has no encoding.
+
+`packages/ui/src/shell/copyText.ts:19`
+
+### `shell/edge-scroll-is-opt-in` — rung 4
+
+**Mechanism.** static analysis — a surface opts in by carrying EDGE_SCROLL_HOST, and test/edge-scroll.test.ts counts the opt-ins, so a third is a deliberate act rather than a side effect. Verified: exactly two, the console history and the editor host
+
+**Why.** a first pass inferred this from SIZE — any scroller over 180x100 — and that was wrong: it captured ordinary cards' .panel-body and their file lists, so a rule meant for two surfaces changed the feel of the whole canvas. Size cannot tell a console from a card that merely has a lot in it, so the component says which it is
+
+**Debt — promotion.** the opt-in is a DOM attribute, so a typo in the string silently means "not a host". Promote by exposing a component or ref helper that applies the attribute, making the attribute name unwritable by hand. The geometry is pure and lives here so it can be tested without a DOM, and so there is exactly one definition of "the middle" for every scroller in the app rather than a copy per card.
+
+`packages/ui/src/shell/edgeScroll.ts:14`
+
 ### `shell/grid-metrics-single-source` — rung 7
 
 **Mechanism.** generated, not mirrored — PanelCanvas.tsx emits `repeat(${GRID_COLS}, ${COL_UNIT_PX}px)` from these constants, so the stylesheet has no column figures of its own to disagree with. app.css declares only `display: grid`
@@ -412,6 +480,14 @@ in the diff that drops it.
 **Debt — promotion.** make the loop consume a bounded, strictly-increasing cursor rather than mutating a candidate in place — then "a push that advances nothing" has no encoding and the argument stops needing to be believed.
 
 `packages/ui/src/shell/panelCanvas.ts:916`
+
+### `shell/stream-dies-with-its-element` — rung 7
+
+**Mechanism.** RAII — the `onCleanup` that aborts the stream is registered inside the same component that owns the `<img>`, so a stream cannot be mounted without the thing that ends it. Tied to the ELEMENT's lifetime rather than the panel's, so it also fires when the URL is cleared in Settings while the panel stays mounted
+
+**Why.** removing an `<img>` from the DOM does NOT close a `multipart/x-mixed-replace` connection. Measured on the real board 2026-07-24: pin -> unpin -> pin toggled the element in and out of the DOM while resource timing showed exactly ONE entry with `responseEnd === 0`. A hidden camera streamed continuously for as long as the tab was open, against a board whose first constraint is that requests are expensive
+
+`packages/ui/src/shell/CameraPanel.tsx:28`
 
 ## ui
 

@@ -24,6 +24,19 @@ const BLANK_PIXEL = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAAL
  * hidden camera streamed continuously for as long as the tab was open.
  *
  * Pointing src at a data URI before the element goes away is what ends it.
+ *
+ * @invariant stream-dies-with-its-element
+ * @rung 7  RAII — the `onCleanup` that aborts the stream is registered inside
+ *          the same component that owns the `<img>`, so a stream cannot be
+ *          mounted without the thing that ends it. Tied to the ELEMENT's
+ *          lifetime rather than the panel's, so it also fires when the URL is
+ *          cleared in Settings while the panel stays mounted
+ * @why removing an `<img>` from the DOM does NOT close a
+ *      `multipart/x-mixed-replace` connection. Measured on the real board
+ *      2026-07-24: pin -> unpin -> pin toggled the element in and out of the DOM
+ *      while resource timing showed exactly ONE entry with `responseEnd === 0`.
+ *      A hidden camera streamed continuously for as long as the tab was open,
+ *      against a board whose first constraint is that requests are expensive
  */
 function StreamImage(props: {
 	src: string;

@@ -32,7 +32,22 @@ export function classifyReply(text: string): ReplySeverity {
 	return "normal";
 }
 
-/** Deep enough to scroll back through a long macro run. */
+/**
+ * Deep enough to scroll back through a long macro run.
+ *
+ * @invariant console-log-is-bounded
+ * @rung 5  one shared constant, TWO enforcement sites — om/store.ts:100 splices
+ *          the live store in place, and capLines below slices on the way to
+ *          localStorage. The number is a single fact; the capping is not
+ * @why the console takes every reply the board sends, and a long print sends a
+ *      lot. Unbounded, it grows until the tab is slow and the localStorage
+ *      write throws — and the catch that hides that write failure would take
+ *      the whole persisted log with it
+ * @debt the tripwire: the same processing step at a second call site. Promote
+ *       by making the log a small bounded type whose push caps, so both the
+ *       live store and the save path get the bound from the value rather than
+ *       each applying it, and a third consumer cannot forget.
+ */
 export const CONSOLE_LIMIT = 1000;
 
 const STORAGE_KEY = "dwc-ng.console";

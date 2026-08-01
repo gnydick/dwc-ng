@@ -292,9 +292,27 @@ export class PollConnector implements Connector {
 	 * Fire the e-stop straight at the board: no queue, no status gate, no
 	 * backoff ladder. RRF tolerates the extra concurrent connection, and
 	 * this is exactly the moment to spend it — M112 kills whatever the held
-	 * slot was doing anyway. One transparent re-auth on a culled session
-	 * (also unqueued), then re-fire; any other failure surfaces to the
-	 * button, which honestly reports "failed" rather than pretending.
+	 * slot was doing anyway.
+	 *
+	 * @invariant estop-is-never-queued
+	 * @rung 6  choke-point — this is the one send path that does not go through
+	 *          `requests.enqueue`, reached only via `isEmergencyStop`, and its
+	 *          re-auth is unqueued too so a culled session cannot park the stop
+	 *          behind a slot either. Verified by search: five raw fetch sites in
+	 *          this file, and the other two are the XHR-less upload fallback and
+	 *          the shared rr_connect form
+	 * @why every other request waits for a slot, and a slot can be held by a
+	 *      multi-megabyte upload. An emergency stop that queues behind one is an
+	 *      emergency stop that does not happen — the operator presses it, the
+	 *      button reports nothing, and the machine keeps going
+	 * @debt the bypass is chosen by inspecting the code string. Promote by
+	 *       giving the e-stop its own method on the transport so "send this
+	 *       without a slot" is a distinct operation rather than a branch inside
+	 *       the general one, and cannot be reached by any other payload.
+	 *
+	 * One transparent re-auth on a culled session (also unqueued), then
+	 * re-fire; any other failure surfaces to the button, which honestly reports
+	 * "failed" rather than pretending.
 	 */
 	private async sendEmergencyStop(code: string, retried: boolean): Promise<void> {
 		const res = await fetch(`${this.base}/rr_gcode?gcode=${encodeURIComponent(code)}`, {

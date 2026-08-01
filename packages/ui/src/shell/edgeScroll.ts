@@ -11,6 +11,20 @@
  * readout almost always means. The strips are invisible by request — no cue,
  * no border; they are muscle memory, not a control.
  *
+ * @invariant edge-scroll-is-opt-in
+ * @rung 4  static analysis — a surface opts in by carrying EDGE_SCROLL_HOST,
+ *          and test/edge-scroll.test.ts counts the opt-ins, so a third is a
+ *          deliberate act rather than a side effect. Verified: exactly two,
+ *          the console history and the editor host
+ * @why a first pass inferred this from SIZE — any scroller over 180x100 — and
+ *      that was wrong: it captured ordinary cards' .panel-body and their file
+ *      lists, so a rule meant for two surfaces changed the feel of the whole
+ *      canvas. Size cannot tell a console from a card that merely has a lot in
+ *      it, so the component says which it is
+ * @debt the opt-in is a DOM attribute, so a typo in the string silently means
+ *       "not a host". Promote by exposing a component or ref helper that
+ *       applies the attribute, making the attribute name unwritable by hand.
+ *
  * The geometry is pure and lives here so it can be tested without a DOM, and
  * so there is exactly one definition of "the middle" for every scroller in the
  * app rather than a copy per card.

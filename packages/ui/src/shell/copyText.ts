@@ -16,10 +16,20 @@
  * every browser this appliance targets. execCommand("copy") is deprecated, not
  * removed, and no standards-track replacement works without a secure context.
  *
- * Returns whether the text actually made it. It never throws and never reports
- * success it did not observe — the previous implementation swallowed every
- * failure into a bare catch, which made a dead clipboard indistinguishable from
- * a dead click and cost a long investigation to pin down.
+ * @invariant copy-failure-is-observable
+ * @rung 6  choke-point — this module is the only place in src that touches
+ *          navigator.clipboard or execCommand (verified by search, not by
+ *          claim), and it returns a boolean rather than void, so a caller
+ *          holding the result has to decide what to do with false
+ * @why navigator.clipboard is [SecureContext] and simply UNDEFINED on any
+ *      origin that is not HTTPS or localhost — which is exactly this appliance,
+ *      served from the Duet's SD card over RRF's TLS-less HTTP server. The
+ *      previous version swallowed every failure into a bare catch, making a
+ *      dead clipboard indistinguishable from a dead click, and the whole
+ *      feature was silently broken on the actual target
+ * @debt a caller can still ignore the returned boolean. Promote by returning a
+ *       result type the caller must narrow before it can carry on, so
+ *       "copied, probably" has no encoding.
  */
 
 /**

@@ -9,8 +9,30 @@
  *
  * So: still at most `concurrency` in flight, but ordered. The poll is the
  * heartbeat and user commands must feel immediate; file I/O is bulk and yields.
- * Callers must also keep retry backoff OUTSIDE a slot (re-enqueue instead of
- * sleeping while holding it), or one retrying request starves everything.
+ *
+ * @invariant bulk-io-yields-to-the-heartbeat
+ * @rung 6  choke-point — one queue, one ORDER map, and a concurrency cap that
+ *          no caller can raise per-request. Priority defaults to "normal", so
+ *          a new request cannot accidentally outrank the poll; it can only
+ *          under-rank itself by asking for "low"
+ * @why CLAUDE.md's first hard constraint: the board tolerates very few
+ *      concurrent connections and each request is expensive. Strict FIFO put a
+ *      thumbnail chunk loop and filelist pagination AHEAD of the poll
+ *      heartbeat, so opening a file browser froze the live view
+ *
+ * @invariant backoff-outside-the-slot
+ * @rung 0  a sentence, and it says "callers must" — which by this project's own
+ *          rule means this module has no mechanism for it at all. A caller that
+ *          sleeps while holding a slot starves every other request, and nothing
+ *          here can observe that it happened
+ * @why one retrying request holding its slot through the backoff is
+ *      indistinguishable, from inside the queue, from one request that is
+ *      merely slow — so the queue drains to nothing while appearing healthy
+ * @debt this is a caller precondition in prose (the anti-pattern), and it was
+ *       caught by this repo's own red-flag lint rather than by review. Promote
+ *       by having enqueue hand the callback a token it must return to retry —
+ *       `retry()` re-enqueues and releases — so "sleep while holding the slot"
+ *       has no expression, rather than being merely discouraged.
  */
 
 /** high: user commands · normal: the poll heartbeat · low: bulk file I/O. */

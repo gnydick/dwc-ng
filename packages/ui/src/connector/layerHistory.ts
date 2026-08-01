@@ -19,8 +19,20 @@
  *
  * Pure and connector-agnostic: feed it whatever job/move/heat data each
  * poll produced; it answers with the full layers array when it changed,
- * null otherwise. It is the ONE producer of synthesized layers — the
- * connector never computes layer stats anywhere else.
+ * null otherwise.
+ *
+ * @invariant synthesized-layers-have-one-producer
+ * @rung 6  choke-point — the only place layer statistics are synthesized;
+ *          verified by search, the connector computes them nowhere else. Pure,
+ *          so the same observations always give the same history and a second
+ *          consumer cannot get a different answer by asking differently
+ * @why RRF does not keep per-layer statistics, so every number here is INFERRED
+ *      from observed poll data. Two inference sites would disagree the moment
+ *      one of them missed a poll, and the operator would have no way to tell
+ *      which figure was the honest one
+ * @debt promote by branding the produced Layer[] so the store accepts only what
+ *       this module made, putting a hand-built layer array out of reach rather
+ *       than merely out of fashion.
  */
 import type { Layer } from "../om/types.ts";
 
