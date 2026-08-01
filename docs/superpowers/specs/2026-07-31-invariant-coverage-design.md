@@ -259,7 +259,7 @@ and fixed on its own merits rather than declared at a flattering rung.
 
 ---
 
-## 9. Open decision for review
+## 9. Continuous review — decided: deferred
 
 **Continuous review** (skill §6 — offer, do not assume): a background agent could
 watch the diff since the last register update, report *mechanism* changes ("rung 3
@@ -267,6 +267,11 @@ watch the diff since the last register update, report *mechanism* changes ("rung
 a sole-constructor type gaining a public field, a choke-point gaining a second
 caller — immediately rather than in batches. It proposes; it never promotes.
 
-Recommendation: **defer**. The ratchet plus the drift test already catch the
-failure mode that actually occurred here. Add continuous review only if Phase 2
-shows rungs dropping between audits. Gabe's call.
+**Decided 2026-07-31 (Gabe delegated the call): defer.** The ratchet and the
+drift test already catch the failure mode that actually occurred here, and a
+watcher would be built for one we have not observed. Revisit only if Phase 2
+shows rungs dropping *between* audits — that is the signal that would justify it.
+
+The §6 rung-4 label likewise stands as written. The remedy for weak discovery is
+a wider sweep rather than a more confident word, and Phase 1 is already the wide
+sweep: all 247 source files, not a sample.
