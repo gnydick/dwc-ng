@@ -5,6 +5,8 @@ import { join } from "node:path";
 import { buildRegister } from "../src/cli.ts";
 import { repoRoot } from "../src/scan.ts";
 import { MIN_RUNG } from "../src/check.ts";
+import { findRedFlags } from "../src/redFlags.ts";
+import { redFlagCeiling } from "../src/cli.ts";
 
 test("every declaration in the repo is valid", () => {
 	const { problems } = buildRegister();
@@ -39,5 +41,17 @@ test("RATCHET: the debt count never exceeds the committed ceiling", () => {
 		`${debts.length} invariants sit below rung ${MIN_RUNG} but the ceiling is ${ceiling}. ` +
 			`Promote one, or raise the ceiling in packages/invariants/debt-ceiling.json as a deliberate act: ` +
 			debts.map(d => d.id).join(", "),
+	);
+});
+
+test("RATCHET: red-flag phrases never exceed their committed ceiling", () => {
+	const flags = findRedFlags(repoRoot());
+	const ceiling = redFlagCeiling();
+	assert.ok(
+		flags.length <= ceiling,
+		`${flags.length} red-flag phrases without a declaration but the ceiling is ${ceiling}. ` +
+			`Declare the invariant, or raise the ceiling in packages/invariants/debt-ceiling.json ` +
+			`as a deliberate act:\n  ` +
+			flags.map(f => `${f.file}:${f.line} ${f.message}`).join("\n  "),
 	);
 });

@@ -275,3 +275,51 @@ shows rungs dropping *between* audits — that is the signal that would justify 
 The §6 rung-4 label likewise stands as written. The remedy for weak discovery is
 a wider sweep rather than a more confident word, and Phase 1 is already the wide
 sweep: all 247 source files, not a sample.
+
+---
+
+## Phase 1 outcome — measured 2026-07-31
+
+**42 invariants declared. 29 at rung 6 or above. 13 below.**
+
+| Rung | Count | What sits there |
+|---|---|---|
+| 8 — illegal state unrepresentable | 4 | `compose/no-duplicate-card`, `compose/controls/bindings-are-not-executable`, `om/no-confusable-heater-lines`, `deploy/compression-follows-the-server` |
+| 7 — sole-constructor type | 12 | the `FileName` and `RemovePlan` brands, `files/listing-follows-mutation`, `dev/guard-follows-the-declaration`, `config/id-namespace`, `shell/grid-metrics-single-source`, both compile boundaries, and the rest |
+| 6 — choke-point | 13 | `connector/sole-construction`, the config write paths, `compose/additive-placement`, `deploy/uninstall-owns-only-its-own` |
+| 5 and below | 13 | the debt, each with a written promotion |
+
+**Opening ceilings:** `ceiling: 13`, `redFlagCeiling: 8`.
+
+### Claimed but not enforced — the two the sweep was for
+
+Both are the 2026-07-22 audit's own unkept promises, unrecorded for 136 commits:
+
+1. **`firmware-arm-bypasses-escape`.** `control/armed.ts` stated that Escape
+   disarms "EVERY armed control on the page, including ones written later by
+   someone who never read this file". `cards/FirmwareUpdateCard.tsx` is that
+   someone: it arms with a raw `createSignal`, and its next click sends M997.
+2. **`job-buttons-swallow-failures`.** ActiveJobCard's Pause/Resume/Cancel are
+   raw `<button>`s with no catch and no acknowledgement, so a blocked or
+   rejected code leaves the operator believing a running print was cancelled.
+
+Neither was fixed during the sweep, deliberately: a sweep that also fixes things
+cannot be reviewed as a sweep. Both are early Phase 2 work, and each also
+promotes an invariant when done.
+
+### What the numbers do not say
+
+`DEBT.md` carries **7 entries**, five of which bound the *audit's own* coverage —
+Card Lab's state pills are inert so ten cards are measured empty; Invariant B
+names positions rather than culprits; the sweep runs at one viewport; there is
+no declared-vs-measured oracle. The register is exhaustive over what has been
+*declared*, and discovery remains rung 4. That is stated in the register's
+preamble rather than implied away.
+
+### Phase 2 scope, now measured rather than guessed
+
+Thirteen promotions, each with its design already written in its `@debt` line.
+The cheapest first: `narrow-rules-come-after-desktop` is rung **0** — held by
+nothing — and a stylesheet-parsing test takes it to 4 in an afternoon. The most
+valuable is `connector/gcode-producers`: branding `sendCode` retires
+`estop-vocabulary`'s debt at the same time.

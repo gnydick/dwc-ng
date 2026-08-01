@@ -17,16 +17,30 @@ const DEBT = ["DEBT.md"];
 const CEILING = ["packages", "invariants", "debt-ceiling.json"];
 const DEBT_JSON = ["packages", "invariants", "debt.json"];
 
-function readCeiling(root: string): number {
+/**
+ * The two ratchets, read the same way and validated the same way — a missing
+ * or malformed ceiling is an error rather than a permissive default, because a
+ * ceiling that silently reads as Infinity is worse than no gate at all.
+ */
+function readCeilings(root: string): { ceiling: number; redFlagCeiling: number } {
 	const parsed: unknown = JSON.parse(readFileSync(join(root, ...CEILING), "utf8"));
-	if (typeof parsed !== "object" || parsed === null || !("ceiling" in parsed)) {
-		throw new Error('debt-ceiling.json must be { "ceiling": <integer> }');
+	if (typeof parsed !== "object" || parsed === null) {
+		throw new Error('debt-ceiling.json must be { "ceiling": <int>, "redFlagCeiling": <int> }');
 	}
-	const value = (parsed as { ceiling: unknown }).ceiling;
-	if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
-		throw new Error(`debt-ceiling.json has a non-integer ceiling: ${String(value)}`);
-	}
-	return value;
+	const record = parsed as Record<string, unknown>;
+	const readOne = (name: string): number => {
+		const value = record[name];
+		if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
+			throw new Error(`debt-ceiling.json: "${name}" must be a non-negative integer, got ${String(value)}`);
+		}
+		return value;
+	};
+	return { ceiling: readOne("ceiling"), redFlagCeiling: readOne("redFlagCeiling") };
+}
+
+/** The committed red-flag ceiling, for the gate test. */
+export function redFlagCeiling(): number {
+	return readCeilings(repoRoot()).redFlagCeiling;
 }
 
 /**
@@ -66,7 +80,7 @@ export function buildRegister(): {
 	ceiling: number;
 } {
 	const root = repoRoot();
-	const ceiling = readCeiling(root);
+	const { ceiling } = readCeilings(root);
 	const { declarations, problems } = checkAll(scanTree(root));
 	const broken = checkBroken([...scanBroken(root), ...readDebtJson(root)]);
 	return {
