@@ -93,8 +93,13 @@ export function checkAll(raw: readonly RawDeclaration[]): {
 			fail(`"${id}" sits at rung ${rung} with no @debt naming the promotion that would close it`);
 			continue;
 		}
-		if (rung >= MIN_RUNG && debt !== undefined) {
-			fail(`"${id}" is at rung ${rung} and carries @debt — at or above rung ${MIN_RUNG} there is nothing to promote`);
+		// Rung 6 is the accepted floor but not the target: a choke-point still
+		// has a promotion to a sole-constructor type, and recording it is what
+		// the rule means by "the weakest acceptable interim, and only with a row
+		// naming the promotion". So @debt is REQUIRED below 6, OPTIONAL at 6,
+		// and meaningless at 7-8 where there is nothing left to promote.
+		if (rung > MIN_RUNG && debt !== undefined) {
+			fail(`"${id}" is at rung ${rung} and carries @debt — above rung ${MIN_RUNG} there is nothing to promote`);
 			continue;
 		}
 

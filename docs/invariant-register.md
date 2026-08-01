@@ -13,7 +13,7 @@ nobody wrote down. A lint catches the syntactic tells ("callers must",
 "should", "by convention"); everything past that is human judgement. This
 register is exhaustive over what has been *declared*, not over what exists.
 
-**Totals:** 1 invariants · 0 at rung 6 or above · 1 below rung 6 (ceiling 1).
+**Totals:** 6 invariants · 2 at rung 6 or above · 4 below rung 6 (ceiling 4).
 
 ## config
 
@@ -26,3 +26,53 @@ register is exhaustive over what has been *declared*, not over what exists.
 **Debt — promotion.** remove updateScreenCards from the public ConfigStore interface and expose two named intents instead — updateScreenMembership(id, cards) for incremental changes, replaceScreenLayout(id, rects) for wholesale ones — so "write screen geometry without declaring which kind of change this is" has no encoding, and the operation's name carries the requirement. Scope: one interface change, four call sites.
 
 `packages/ui/src/config/store.ts:75`
+
+## connector
+
+### `connector/estop-vocabulary` — rung 5
+
+**Mechanism.** shared helper — one exported payload and one matcher, welded by test/emergency-stop.test.ts, which asserts that what the STOP button sends is exactly what the guard lets through
+
+**Why.** a guard that swallows an emergency stop is more dangerous than the thing it guards; the four independent literals this replaced could drift apart with nothing failing until someone needed the button on real hardware
+
+**Debt — promotion.** the constant and the matcher are still two facts that must agree, and a new party can write its own "M112" literal without touching either. Promote by deriving the matcher FROM the payload — parse EMERGENCY_STOP once into the accepted line set — so there is one fact rather than two, and by branding the send path so an unbranded literal cannot reach it (see connector/gcode-producers, whose promotion subsumes this).
+
+`packages/ui/src/connector/emergency.ts:10`
+
+### `connector/gcode-producers` — rung 3
+
+**Mechanism.** tests — every G-code the UI sends is built by control/commands.ts or ack.ts and pinned there; nothing in the TYPE stops a caller passing a hand-assembled string, because the parameter is `string`
+
+**Why.** an unquoted operator filename reaching M98 was a real injection, fixed by routing every producer through gcodeQuote; the parameter's type is what would stop the next one arriving by a different route
+
+**Debt — promotion.** brand it — `sendCode(code: GcodeCommand)` where GcodeCommand's only producers are commands.ts, ack.ts, resolveTemplate, the operator-owned probe template, and ONE named console escape hatch. This is the promotion the 2026-07-22 audit committed to and never made; it went 136 commits unrecorded, which is why the register now generates itself.
+
+`packages/ui/src/connector/types.ts:133`
+
+### `connector/raw-transport-fence` — rung 3
+
+**Mechanism.** a test — test/no-raw-transport.test.ts walks src and fails on any `fetch(`/XMLHttpRequest outside src/connector/, naming file and line. Declared here rather than on the test because the test file is not scanned: a declaration belongs at the boundary it protects
+
+**Why.** board traffic that bypasses the connector also bypasses the session handling, the 503 retry ladder, the request queue and the dev write guard — every one of which exists because the board's HTTP server is weak enough to fall over without them
+
+**Debt — promotion.** a test reports the violation after it is written. Promote by moving this module into its own workspace package, then shadowing the global in @dwc-ng/ui with a `globals.d.ts` declaring `fetch: never`, so a raw call outside the connector package stops compiling. Rung 7, and no new dependency — the alternative, ESLint, is one.
+
+`packages/ui/src/connector/index.ts:4`
+
+### `connector/sole-construction` — rung 6
+
+**Mechanism.** choke-point — createConnector is the only construction site in src; nothing else calls `new PollConnector` or `new DsfConnector`
+
+**Why.** exactly one transport may drive the store per session, and two connectors racing to write the same object model would interleave subtree replacements with no way to tell which won
+
+**Debt — promotion.** stop re-exporting the classes from connector/index.ts and make them module-private, so a second construction site is a compile error rather than merely absent. Blocked only by the tests, which construct PollConnector directly against mock-duet (test/config.test.ts, test/connector.test.ts) — they would take a test-only factory.
+
+`packages/ui/src/connector/createConnector.ts:17`
+
+### `connector/transport-exhaustive` — rung 7
+
+**Mechanism.** closed union plus a switch with NO default arm — adding a member to `Transport` makes this function fail to compile until it is handled, so the compiler writes the TODO list
+
+**Why.** a transport that silently falls through would return undefined where the caller's type says Connector, and the failure would surface far from here as "the machine never connects"
+
+`packages/ui/src/connector/createConnector.ts:9`

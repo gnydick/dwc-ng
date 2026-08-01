@@ -1,14 +1,30 @@
 /**
- * The ONE place a connector is constructed (design D9, invariant C1).
+ * The ONE place a connector is constructed (design D9).
  *
  * Two transports now speak to a machine — rr_ (RRF standalone, and DSF's
  * rr_ emulation) and DSF's native /machine API — and exactly one may drive
- * the store per session. That is enforced by construction rather than by
- * discipline: `Transport` is a closed union, this switch over it is
- * exhaustive with no default arm (adding a transport makes every
- * un-updated site a compile error), and no other module constructs a
- * connector. A caller holds a `Connector`; which transport it is cannot
- * leak into the UI, which is the whole point of the abstraction.
+ * the store per session. A caller holds a `Connector`; which transport it is
+ * cannot leak into the UI, which is the whole point of the abstraction.
+ *
+ * @invariant transport-exhaustive
+ * @rung 7  closed union plus a switch with NO default arm — adding a member to
+ *          `Transport` makes this function fail to compile until it is handled,
+ *          so the compiler writes the TODO list
+ * @why a transport that silently falls through would return undefined where the
+ *      caller's type says Connector, and the failure would surface far from
+ *      here as "the machine never connects"
+ *
+ * @invariant sole-construction
+ * @rung 6  choke-point — createConnector is the only construction site in src;
+ *          nothing else calls `new PollConnector` or `new DsfConnector`
+ * @why exactly one transport may drive the store per session, and two
+ *      connectors racing to write the same object model would interleave
+ *      subtree replacements with no way to tell which won
+ * @debt stop re-exporting the classes from connector/index.ts and make them
+ *       module-private, so a second construction site is a compile error rather
+ *       than merely absent. Blocked only by the tests, which construct
+ *       PollConnector directly against mock-duet (test/config.test.ts,
+ *       test/connector.test.ts) — they would take a test-only factory.
  */
 import type { Connector, ConnectorEvents } from "./types.ts";
 import { PollConnector } from "./PollConnector.ts";

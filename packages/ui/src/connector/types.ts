@@ -127,7 +127,23 @@ export interface ConnectorReads {
  * exception).
  */
 export interface ConnectorWrites {
-	/** Execute a G/M/T-code; resolves with its reply text ("" if none came). */
+	/**
+	 * Execute a G/M/T-code; resolves with its reply text ("" if none came).
+	 *
+	 * @invariant gcode-producers
+	 * @rung 3  tests — every G-code the UI sends is built by control/commands.ts
+	 *          or ack.ts and pinned there; nothing in the TYPE stops a caller
+	 *          passing a hand-assembled string, because the parameter is `string`
+	 * @why an unquoted operator filename reaching M98 was a real injection, fixed
+	 *      by routing every producer through gcodeQuote; the parameter's type is
+	 *      what would stop the next one arriving by a different route
+	 * @debt brand it — `sendCode(code: GcodeCommand)` where GcodeCommand's only
+	 *       producers are commands.ts, ack.ts, resolveTemplate, the operator-owned
+	 *       probe template, and ONE named console escape hatch. This is the
+	 *       promotion the 2026-07-22 audit committed to and never made; it went
+	 *       136 commits unrecorded, which is why the register now generates
+	 *       itself.
+	 */
 	sendCode(code: string): Promise<string>;
 	/**
 	 * Upload a file, verified as strongly as the transport allows: rr_ carries

@@ -61,8 +61,20 @@ test("rung below 6 WITH a promotion is accepted as filed debt", () => {
 	assert.equal(checkAll([debt]).declarations[0]?.debt, "brand the parameter so a bypass is a compile error");
 });
 
-test("@debt on a rung >= 6 declaration is rejected — there is nothing to promote", () => {
+test("@debt above rung 6 is rejected — there is nothing left to promote", () => {
 	assert.match(messages([raw({ debt: "tidy this up sometime" })]).join(), /rung 6/);
+});
+
+test("@debt AT rung 6 is allowed — a choke-point still has a promotion to a type", () => {
+	const at6 = raw({ rung: "6  choke-point — the one construction site", debt: "make the classes module-private" });
+	assert.deepEqual(checkAll([at6]).problems, []);
+	assert.equal(checkAll([at6]).declarations[0]?.debt, "make the classes module-private");
+});
+
+test("a rung-6 declaration is NOT debt — it meets the floor and costs no ceiling", () => {
+	const at6 = raw({ rung: "6  choke-point", debt: "promote to a sole-constructor type" });
+	const { declarations } = checkAll([at6]);
+	assert.equal(declarations.filter(d => d.rung < 6).length, 0);
 });
 
 test("an empty @debt is not a promotion", () => {
