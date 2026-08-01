@@ -21,7 +21,7 @@ and invariant claim mentions 13 -> 23, so no mechanism was deleted and no
 claim was lost in the gap. From here the ratchets make a dropped rung visible
 in the diff that drops it.
 
-**Totals:** 64 invariants · 41 at rung 6 or above · 23 below rung 6 (ceiling 23).
+**Totals:** 68 invariants · 43 at rung 6 or above · 25 below rung 6 (ceiling 25).
 
 ## bed
 
@@ -442,6 +442,48 @@ in the diff that drops it.
 **Debt — promotion.** fold the cap into a small bounded-map type so a second writer cannot add a key without eviction.
 
 `packages/ui/src/files/browserMemory.ts:23`
+
+## gcode
+
+### `gcode/ghost-density-does-not-change-its-colour` — rung 6
+
+**Mechanism.** choke-point — one ghost material, created here, and the pre-pass is set on it rather than being a property of any mesh or draw call. Every ghost segment renders through this material, so there is no second path with different blending
+
+**Why.** without it, real alpha compounds in submission order: the buffers are built bottom-to-top in gcode order, fixed regardless of camera angle, so overlapping ghost fragments blend repeatedly and 0.65^10 leaves ~1% of the colour. The ghost went SOLID within ~10-15 overlapping layers, as a band that moved with the reveal boundary — which reads as the model having extra printed layers exactly where the operator is looking. A preview whose apparent opacity tracks geometry density is not showing the job, it is showing itself
+
+**Debt — promotion.** the property is one assignment away from being lost, and nothing renders wrong enough to fail a test — it just looks solid. Promote by building the ghost mesh through a factory that owns the material and returns a mesh already bound to it, so a ghost mesh cannot be created with anything else.
+
+`packages/ui/src/gcode/scene.ts:443`
+
+### `gcode/one-coordinate-convention-at-the-boundary` — rung 1
+
+**Mechanism.** convention — TWO swap sites, toBabylon() and writeBoxMatrix's inline `bsy = sz, bsz = sy`, agreeing by inspection. Nothing types a gcode-space triple differently from a Babylon-space one, so passing an unswapped position anywhere compiles
+
+**Why.** a swap applied twice, or not at all, does not error — it renders. The toolpath appears lying on its side, or the live tool marker tracks a point the machine is not at, and both look like plausible pictures. There is no exception and no wrong number to notice
+
+**Debt — promotion.** promote by branding the two spaces — a Vec3Gcode and a Vec3Babylon with toBabylon as the sole conversion — so writeBoxMatrix must take the converted form and the inline swap has nowhere to live. Rung 7, and it collapses the two sites into one by construction rather than by someone noticing they disagree. Opaque (already-printed/in-focus) and ghost (translucent preview) segments are rendered as SEPARATE meshes. The ghost material carries REAL GPU alpha (GHOST_ALPHA) plus a depth PRE-PASS, so each pixel is one blend of the nearest ghost surface however many layers stack behind it. CORRECTED 2026-08-01: the text here described a different design — both meshes fully opaque, translucency faked by lerping each colour toward the background on the CPU "(see ghostColor())". There is no ghostColor(), and the code sets `ghostMaterial.alpha = GHOST_ALPHA` with `needDepthPrePass = true`. The CPU-lerp approach was tried and reverted, for the reason spelled out at the material itself: a baked fade on opaque geometry can only ever look like a desaturated SOLID, because the nearest surface wins and nothing behind it shows through — which loses the point of the ghost, seeing all the layers. Why a pre-pass rather than plain blending: real alpha alone compounds. Fragments would have to arrive in strict front-to-back order for the CURRENT camera angle, and the thin-instance buffers are built in gcode order (bottom to top), fixed regardless of where the camera is. So at most angles a later fragment still passes its depth test against whatever was drawn before it and blends again — 0.65^10 leaves ~1% of the original colour, and the ghost went solid within ~10-15 overlapping layers as a band that tracked the reveal boundary. The pre-pass fixes the ordering problem instead of avoiding transparency. renderModes.ts guarantees the opaque/ghost classification is always a contiguous segment range, but travel (non-extruding) moves are scattered throughout every range, not contiguous — so opaque/ghost mesh building filters each range down to extruding-only segments (an actual copy, not a zero-copy subarray) rather than relying on range slicing alone. Travel moves get their own separate mesh, built once at load (their geometry never changes tick to tick) with a fixed uniform color rather than the active color mode's hue, and hidden by default — not part of the opaque/ghost pass at all, toggled independently via setTravelVisible.
+
+`packages/ui/src/gcode/scene.ts:32`
+
+### `gcode/segments-stay-in-file-order` — rung 3
+
+**Mechanism.** a test — parse-gcode.test.ts asserts byteOffset is non-decreasing across a parse. layerIndex's monotonicity is only exercised by example, and NEITHER array's type says anything about order, so a future producer or a transform that reorders segments compiles fine
+
+**Why.** two consumers depend on the order and neither can detect losing it. findSegmentIndex.ts BINARY SEARCHES byteOffset for the live playback position — over an unordered array that returns a plausible wrong segment, silently, so the print head marker sits somewhere the machine is not. renderModes.ts slices contiguous RANGES on layerIndex and hands them to scene.ts as the opaque/ghost meshes, so a single out-of-order entry does not drop a segment, it mis-classifies every segment after it
+
+**Debt — promotion.** "by construction" is doing the work in three files' prose, which is the phrase this project treats as an admission. Promote by returning the two arrays as a branded Monotonic<T> that only this parser produces and findSegmentIndex accepts — a reordering transform then has to say so — and extend the parse test to layerIndex, which is one loop.
+
+`packages/ui/src/gcode/parseGcode.ts:21`
+
+### `gcode/width-is-never-divided-by-a-length-too-short-to-trust` — rung 6
+
+**Mechanism.** choke-point — one width function, one threshold, and the division is unreachable below it: the short-segment branch returns the last stable width without evaluating the formula. Travel moves take the hairline before the division too, so the zero case has no path to it
+
+**Why.** width is INVERSELY proportional to segment length, and real G-code rounds E to a few decimals — so on a segment a hundredth of a mm long (curve tessellation, corner rounding) the rounding error is a large fraction of deltaE and the computed width blows up rather than staying proportionally small. Confirmed against a real file: one pathological segment rendered as a blob that swallowed the surrounding lines, turning the preview into solid colour blocks with none of a slicer's gaps. The viewer is how the operator checks a job BEFORE committing filament and hours to it, so a preview that hides the pattern defeats its purpose
+
+**Debt — promotion.** the threshold is a module constant and the substitute is "the previous segment's width", which is a good estimate precisely because a short segment continues the same bead — but nothing states that adjacency requirement, so a future caller computing widths out of order would get a stable-looking number from an unrelated bead. Promote by having the function take the run it is walking rather than raw arrays, so "previous" is defined by the value instead of by call order.
+
+`packages/ui/src/gcode/segmentWidth.ts:27`
 
 ## heightmap
 

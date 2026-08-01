@@ -23,6 +23,29 @@
 
 export const TRAVEL_WIDTH_MM = 0.1;
 const DEFAULT_LAYER_HEIGHT_MM = 0.2;
+/**
+ * @invariant width-is-never-divided-by-a-length-too-short-to-trust
+ * @rung 6  choke-point — one width function, one threshold, and the division
+ *          is unreachable below it: the short-segment branch returns the last
+ *          stable width without evaluating the formula. Travel moves take the
+ *          hairline before the division too, so the zero case has no path to it
+ * @why width is INVERSELY proportional to segment length, and real G-code
+ *      rounds E to a few decimals — so on a segment a hundredth of a mm long
+ *      (curve tessellation, corner rounding) the rounding error is a large
+ *      fraction of deltaE and the computed width blows up rather than staying
+ *      proportionally small. Confirmed against a real file: one pathological
+ *      segment rendered as a blob that swallowed the surrounding lines, turning
+ *      the preview into solid colour blocks with none of a slicer's gaps. The
+ *      viewer is how the operator checks a job BEFORE committing filament and
+ *      hours to it, so a preview that hides the pattern defeats its purpose
+ * @debt the threshold is a module constant and the substitute is "the previous
+ *       segment's width", which is a good estimate precisely because a short
+ *       segment continues the same bead — but nothing states that adjacency
+ *       requirement, so a future caller computing widths out of order would get
+ *       a stable-looking number from an unrelated bead. Promote by having the
+ *       function take the run it is walking rather than raw arrays, so
+ *       "previous" is defined by the value instead of by call order.
+ */
 const MIN_SEGMENT_LENGTH_MM = 0.05;
 
 export function computeSegmentWidths(

@@ -17,9 +17,30 @@
 
 import { mapLabelToFeatureType } from "./featureTypes.ts";
 
+/**
+ * @invariant segments-stay-in-file-order
+ * @rung 3  a test — parse-gcode.test.ts asserts byteOffset is non-decreasing
+ *          across a parse. layerIndex's monotonicity is only exercised by
+ *          example, and NEITHER array's type says anything about order, so a
+ *          future producer or a transform that reorders segments compiles fine
+ * @why two consumers depend on the order and neither can detect losing it.
+ *      findSegmentIndex.ts BINARY SEARCHES byteOffset for the live playback
+ *      position — over an unordered array that returns a plausible wrong
+ *      segment, silently, so the print head marker sits somewhere the machine
+ *      is not. renderModes.ts slices contiguous RANGES on layerIndex and hands
+ *      them to scene.ts as the opaque/ghost meshes, so a single out-of-order
+ *      entry does not drop a segment, it mis-classifies every segment after it
+ * @debt "by construction" is doing the work in three files' prose, which is the
+ *       phrase this project treats as an admission. Promote by returning the
+ *       two arrays as a branded Monotonic<T> that only this parser produces and
+ *       findSegmentIndex accepts — a reordering transform then has to say so —
+ *       and extend the parse test to layerIndex, which is one loop.
+ */
 export interface ParsedToolpath {
 	positions: Float32Array;
+	/** Non-decreasing — see segments-stay-in-file-order. */
 	layerIndex: Uint16Array;
+	/** Non-decreasing — see segments-stay-in-file-order. */
 	byteOffset: Float64Array;
 	extruding: Uint8Array;
 	segmentCount: number;

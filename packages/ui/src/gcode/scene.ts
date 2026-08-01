@@ -18,35 +18,56 @@
  *
  * Coordinate convention: gcode/RRF space is Z-up ((x, y, z) with z the
  * build height); Babylon's camera/orbit math (ArcRotateCamera) assumes
- * Y-up. Rather than fight that assumption, every position this file hands
- * to Babylon goes through toBabylon(), which swaps y/z once at the
- * boundary — internally everything after that point is ordinary Babylon
- * Y-up space.
+ * Y-up, so the two are swapped at the boundary and everything past it is
+ * ordinary Babylon Y-up space.
+ *
+ * CORRECTED 2026-08-01: this paragraph used to say every position goes
+ * through toBabylon(). It does not. toBabylon() takes the camera target
+ * and the tool marker — two call sites — while the bulk of the geometry,
+ * every thin-instance matrix, is swapped inline in writeBoxMatrix
+ * (`bsy = sz, bsz = sy`). The convention is applied twice, which is the
+ * tripwire this project names, and the comment asserted the choke-point
+ * that was never built.
+ *
+ * @invariant one-coordinate-convention-at-the-boundary
+ * @rung 1  convention — TWO swap sites, toBabylon() and writeBoxMatrix's
+ *          inline `bsy = sz, bsz = sy`, agreeing by inspection. Nothing
+ *          types a gcode-space triple differently from a Babylon-space one,
+ *          so passing an unswapped position anywhere compiles
+ * @why a swap applied twice, or not at all, does not error — it renders. The
+ *      toolpath appears lying on its side, or the live tool marker tracks a
+ *      point the machine is not at, and both look like plausible pictures.
+ *      There is no exception and no wrong number to notice
+ * @debt promote by branding the two spaces — a Vec3Gcode and a Vec3Babylon
+ *       with toBabylon as the sole conversion — so writeBoxMatrix must take
+ *       the converted form and the inline swap has nowhere to live. Rung 7,
+ *       and it collapses the two sites into one by construction rather than
+ *       by someone noticing they disagree.
  *
  * Opaque (already-printed/in-focus) and ghost (translucent preview)
- * segments are rendered as SEPARATE meshes, but BOTH are fully opaque
- * (non-blended) materials — ghost's "translucency" is faked by lerping
- * each segment's own color toward the scene's background color on the
- * CPU (see ghostColor()) rather than using real GPU alpha blending.
+ * segments are rendered as SEPARATE meshes. The ghost material carries REAL
+ * GPU alpha (GHOST_ALPHA) plus a depth PRE-PASS, so each pixel is one blend
+ * of the nearest ghost surface however many layers stack behind it.
  *
- * This replaces an earlier attempt at real alpha blending + forceDepthWrite
- * (write real depth from a transparent material so the GPU's depth test
- * keeps only the nearest ghost fragment, preventing N-overlapping-layers
- * alpha compounding toward full opacity). That only works if fragments are
- * submitted in strict front-to-back order for the CURRENT camera angle;
- * our thin-instance buffers are built in gcode/segment order (bottom to
- * top), which is fixed regardless of viewing angle, so for most camera
- * angles a later (not-yet-known-to-be-nearer) fragment still passes its
- * depth test against whatever was drawn immediately before it and blends
- * again — compounding across however many instances happen to look
- * progressively nearer in submission order, not just once. Visually this
- * showed up as the ghost preview looking solid/opaque within the first
- * ~10-15 overlapping layers (0.65^10 ≈ 1% of the original color left) —
- * a band that appeared to "print" extra layers, tracking wherever the
- * reveal boundary currently was. Baking the fade into the color itself
- * sidesteps the whole problem: both meshes render fully opaque, so a
- * plain depth test (no blending, no ordering sensitivity) resolves
- * occlusion correctly regardless of instance submission order.
+ * CORRECTED 2026-08-01: the text here described a different design — both
+ * meshes fully opaque, translucency faked by lerping each colour toward the
+ * background on the CPU "(see ghostColor())". There is no ghostColor(), and
+ * the code sets `ghostMaterial.alpha = GHOST_ALPHA` with
+ * `needDepthPrePass = true`. The CPU-lerp approach was tried and reverted,
+ * for the reason spelled out at the material itself: a baked fade on opaque
+ * geometry can only ever look like a desaturated SOLID, because the nearest
+ * surface wins and nothing behind it shows through — which loses the point
+ * of the ghost, seeing all the layers.
+ *
+ * Why a pre-pass rather than plain blending: real alpha alone compounds.
+ * Fragments would have to arrive in strict front-to-back order for the
+ * CURRENT camera angle, and the thin-instance buffers are built in gcode
+ * order (bottom to top), fixed regardless of where the camera is. So at most
+ * angles a later fragment still passes its depth test against whatever was
+ * drawn before it and blends again — 0.65^10 leaves ~1% of the original
+ * colour, and the ghost went solid within ~10-15 overlapping layers as a
+ * band that tracked the reveal boundary. The pre-pass fixes the ordering
+ * problem instead of avoiding transparency.
  *
  * renderModes.ts guarantees the opaque/ghost classification is always a
  * contiguous segment range, but travel (non-extruding) moves are scattered
@@ -417,6 +438,27 @@ export function createScene(
 	// second (depth-only) draw of this mesh, but keeps the translucency
 	// honest instead of density-dependent. It still depth-tests against the
 	// already-printed opaque, so the ghost stays physically ordered in space.
+	//
+	/*
+	 * @invariant ghost-density-does-not-change-its-colour
+	 * @rung 6  choke-point — one ghost material, created here, and the pre-pass
+	 *          is set on it rather than being a property of any mesh or draw
+	 *          call. Every ghost segment renders through this material, so
+	 *          there is no second path with different blending
+	 * @why without it, real alpha compounds in submission order: the buffers
+	 *      are built bottom-to-top in gcode order, fixed regardless of camera
+	 *      angle, so overlapping ghost fragments blend repeatedly and 0.65^10
+	 *      leaves ~1% of the colour. The ghost went SOLID within ~10-15
+	 *      overlapping layers, as a band that moved with the reveal boundary —
+	 *      which reads as the model having extra printed layers exactly where
+	 *      the operator is looking. A preview whose apparent opacity tracks
+	 *      geometry density is not showing the job, it is showing itself
+	 * @debt the property is one assignment away from being lost, and nothing
+	 *       renders wrong enough to fail a test — it just looks solid. Promote
+	 *       by building the ghost mesh through a factory that owns the material
+	 *       and returns a mesh already bound to it, so a ghost mesh cannot be
+	 *       created with anything else.
+	 */
 	ghostMaterial.needDepthPrePass = true;
 	// Travel moves: a real solid pass (same depth semantics as opaque) but
 	// its own fixed color, independent of whatever hue the active color
