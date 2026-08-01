@@ -2755,22 +2755,6 @@
 	bottom: 0;
 }
 
-/* THE BRIDGE, turned through ninety degrees.
-   The drawer closes the moment the pointer leaves .compose-wrap, so the gap
-   between button and drawer has to belong to the wrap or the trip across it
-   shuts the thing you are reaching for. Above the canvas that gap was
-   horizontal ground under a button; in the rail it is a VERTICAL strip beside
-   one, and the original ::after (left:0;right:0;top:100%;height:8px) covers
-   empty floor while the real crossing is sideways. Same fix, rotated. */
-.rail-tools .compose-wrap::after {
-	left: 100%;
-	right: auto;
-	top: 0;
-	bottom: 0;
-	width: 8px;
-	height: auto;
-}
-
 /* Set apart from the membership editing above it: this discards geometry. */
 .compose-reset {
 	justify-content: flex-end;
@@ -2806,6 +2790,14 @@
 		flex: 0 0 auto;
 		background: var(--mask-900);
 		padding-left: 4px;
+		/* `position: sticky` creates a stacking context WHATEVER its z-index, so
+		   without this the sheet's own `z-index: 40` was being resolved inside
+		   this box and the canvas cards painted straight over it — the sheet
+		   rendered but could not be touched (elementFromPoint at its centre
+		   returned a DRO row). The context has to out-rank the canvas itself;
+		   40 is the sheet's value within it, and this is the rail's value
+		   against the page. */
+		z-index: 50;
 	}
 	.rail-tools .compose-drawer {
 		position: fixed;
@@ -2816,9 +2808,6 @@
 		width: auto;
 		max-height: 70vh;
 	}
-	/* No bridge: there is no gap to cross when the sheet is nowhere near the
-	   button. Dismissal here is the tap-outside handler, not pointerleave. */
-	.rail-tools .compose-wrap::after { content: none; }
 }
 .layout-toolbar { display: flex; gap: 10px; justify-content: flex-end; align-items: flex-start; }
 .compose-drawer {
@@ -2832,23 +2821,13 @@
 	overflow-y: auto; scrollbar-width: none;
 }
 .compose-drawer::-webkit-scrollbar { width: 0; }
-/* Bridges the 6px between the button and the drawer.
-   The drawer closes the moment the pointer leaves .compose-wrap, and that gap
-   belonged to NEITHER — so travelling from the button down to the menu crossed
-   open ground and shut it every time, which made the menu unreachable.
-
-   On the WRAP, not on the drawer: the drawer is `overflow-y: auto`, and a
-   scroll container clips its own absolutely-positioned children, so a ::before
-   hanging above it was clipped away and hit-tested as nothing. Verified by
-   walking elementFromPoint down the gap a pixel at a time.
-
-   Always present, which costs nothing: with the drawer closed it is 8px of
-   invisible strip under a button, and there is no menu for it to hold open. */
-.compose-wrap::after {
-	content: "";
-	position: absolute;
-	left: 0; right: 0; top: 100%; height: 8px;
-}
+/* THE BRIDGE IS GONE, and so is the reason for it.
+   It was an 8px strip of .compose-wrap covering the gap between button and
+   drawer, because leaving the WRAP closed the drawer and that gap belonged to
+   neither. The close now lives on the DRAWER, so nothing shuts while you are
+   travelling toward it and there is no gap left to cover — including the
+   L-shaped one the rail's tall flyout created, which a strip could never have
+   covered anyway. */
 .compose-row { display: flex; align-items: center; gap: 8px; }
 .compose-row .fb-input { flex: 1; }
 .compose-cards {
