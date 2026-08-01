@@ -35,6 +35,20 @@
 			"where": "packages/ui/src/dev/layoutAudit.ts",
 			"what": "There is no oracle comparing a card's DECLARED natural size against its MEASURED floor. Invariants A and B both ask whether geometry is stable, and neither asks whether it is correct: a card whose declared size cannot contain its own content passes both while rendering clipped.",
 			"fix": ""
+		},
+		{
+			"slug": "firmware-arm-bypasses-escape",
+			"status": "fixed",
+			"where": "packages/ui/src/cards/FirmwareUpdateCard.tsx and four others",
+			"what": "Five two-step controls armed with a raw createSignal instead of createArmed, so Escape reached none of them — firmware flash (M997), heater-fault reset, per-object cancel, filament delete, and save-to-machine. control/armed.ts meanwhile stated that Escape disarms EVERY armed control \"including ones written later by someone who never read this file\". Reading the code during the 2026-07-31 sweep found ONE of the five; the walking test found all five.",
+			"fix": "All five converted to createArmed. test/armed.test.ts now walks src and rejects any [armed, …] signal not produced by createArmed, naming file and line — red-checked, it failed on all five before the fix. Promotes control/escape-disarms from rung 5 to 6."
+		},
+		{
+			"slug": "job-buttons-swallow-failures",
+			"status": "fixed",
+			"where": "packages/ui/src/cards/ActiveJobCard.tsx",
+			"what": "Pause, Resume and Cancel were raw <button>s calling void sendCode(...) with no catch and no acknowledgement, so a rejected code or a blocking write guard left the operator believing a running print was paused or cancelled when nothing was sent. The last three buttons the 2026-07-22 audit left on raw elements, still unconverted 136 commits later.",
+			"fix": "Converted to GcodeButton, whose acknowledgement follows the connector PROMISE rather than the click. The job-toggle width reservation is kept, so Cancel still cannot slide under the pointer on a state change."
 		}
 	]
 }

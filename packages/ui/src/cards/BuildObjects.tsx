@@ -1,4 +1,5 @@
-import { For, Show, createMemo, createSignal } from "solid-js";
+import { For, Show, createMemo } from "solid-js";
+import { createArmed } from "../control/armed.ts";
 import { useApp } from "../shell/context.ts";
 import { cmd } from "../control/commands.ts";
 import type { BuildObject } from "../om/types.ts";
@@ -18,7 +19,7 @@ import type { BuildObject } from "../om/types.ts";
  */
 export function BuildObjects() {
 	const app = useApp();
-	const [armed, setArmed] = createSignal<number | null>(null);
+	const [armed, setArmed] = createArmed<number>();
 
 	const objects = createMemo(() => app.om.om.job.build?.objects ?? []);
 	const currentObject = createMemo(() => app.om.om.job.build?.currentObject ?? -1);

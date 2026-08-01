@@ -1,6 +1,7 @@
 import { Show, Switch, Match, For, createMemo } from "solid-js";
 import { useApp } from "../shell/context.ts";
 import { cmd } from "../control/commands.ts";
+import { GcodeButton } from "../control/GcodeButton.tsx";
 import { headlineRemaining, estimateSources } from "../om/estimates.ts";
 import { isJobActive, jobFileOf } from "../om/job.ts";
 import { baseName, fmtDuration } from "../files/format.ts";
@@ -91,36 +92,22 @@ export function ActiveJobBody(props: { detailed?: boolean }) {
 									{h => <Fact label="Remaining">{fmtDuration(h().seconds)}</Fact>}
 								</Show>
 							</div>
-							{/*
-							  * @broken job-buttons-swallow-failures
-							  * @status todo
-							  * @what Pause, Resume and Cancel are raw <button>s calling `void
-							  *       app.connector.sendCode(...)` with no catch and no
-							  *       acknowledgement, so a rejected code or a blocking write
-							  *       guard leaves the operator believing a running print was
-							  *       paused or cancelled when nothing was sent. GcodeButton
-							  *       exists for exactly this and says so in its own header: "a
-							  *       click that reports success while the command never left
-							  *       would be worse than no feedback at all". These are the last
-							  *       three buttons the 2026-07-22 audit left on raw elements,
-							  *       still unconverted 136 commits later.
-							  * @fix   convert to GcodeButton, whose acknowledgement follows the
-							  *       connector's promise rather than the click. Keep the
-							  *       job-toggle width reservation — it is what stops Cancel
-							  *       sliding under the pointer on a state change.
-							  */}
 							<div class="btn-row job-actions">
-								{/* job-toggle reserves the wider label's width so Cancel can't
-								    slide under the pointer when the job changes state. */}
+								{/* GcodeButton, not raw <button>: its acknowledgement follows the
+								    connector's PROMISE rather than the click, so a rejected code
+								    or a blocking write guard cannot leave the operator believing a
+								    running print was paused or cancelled when nothing was sent.
+								    job-toggle still reserves the wider label's width so Cancel
+								    can't slide under the pointer when the job changes state. */}
 								<Switch>
 									<Match when={app.om.om.state.status === "paused"}>
-										<button class="btn job-toggle" title={cmd.resumePrint()} onClick={() => void app.connector.sendCode(cmd.resumePrint())}>Resume</button>
+										<GcodeButton label="Resume" command={cmd.resumePrint()} class="job-toggle" stamp={false} />
 									</Match>
 									<Match when={true}>
-										<button class="btn job-toggle" title={cmd.pausePrint()} onClick={() => void app.connector.sendCode(cmd.pausePrint())}>Pause</button>
+										<GcodeButton label="Pause" command={cmd.pausePrint()} class="job-toggle" stamp={false} />
 									</Match>
 								</Switch>
-								<button class="btn btn-danger" title={cmd.cancelPrint()} onClick={() => void app.connector.sendCode(cmd.cancelPrint())}>Cancel</button>
+								<GcodeButton label="Cancel" command={cmd.cancelPrint()} variant="danger" stamp={false} />
 							</div>
 						</div>
 						{/* All RRF estimate sources, subordinate to the headline. Only

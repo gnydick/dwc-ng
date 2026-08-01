@@ -13,7 +13,7 @@ nobody wrote down. A lint catches the syntactic tells ("callers must",
 "should", "by convention"); everything past that is human judgement. This
 register is exhaustive over what has been *declared*, not over what exists.
 
-**Totals:** 42 invariants · 29 at rung 6 or above · 13 below rung 6 (ceiling 13).
+**Totals:** 42 invariants · 30 at rung 6 or above · 12 below rung 6 (ceiling 12).
 
 ## compose
 
@@ -211,13 +211,13 @@ register is exhaustive over what has been *declared*, not over what exists.
 
 ## control
 
-### `control/escape-disarms` — rung 5
+### `control/escape-disarms` — rung 6
 
-**Mechanism.** shared helper, optional use — createArmed registers every caller with ONE capture-phase listener, but arming with a plain createSignal still works and is not caught by anything
+**Mechanism.** choke-point — createArmed is the only route to an armed control, and test/armed.test.ts walks src rejecting any `[armed, …]` signal not produced by it, so a new two-step control Escape cannot reach fails the suite by file and line
 
 **Why.** a control left saying "Confirm", whose next click moves the machine or flashes firmware, with no way back except toggling an unrelated setting, is the failure this module exists to delete. "There is always a way out" is only true if it holds for controls written by someone who never read this file
 
-**Debt — promotion.** this file used to claim exactly that, and it was FALSE: cards/FirmwareUpdateCard.tsx arms with a raw createSignal and Escape does not reach it (catalogued in DEBT.md as firmware-arm-bypasses-escape). Promote by converting that card, then making createArmed the sole route — a test walking src for `setArmed`/`armed` signals not produced by createArmed gets it to rung 4; a branded Armed<T> accessor that the two-step button components require gets it to 7.
+**Debt — promotion.** this file claimed exactly that while it was FALSE, and the 2026-07-31 sweep found FIVE controls arming with a raw signal — firmware flash, heater-fault reset, per-object cancel, filament delete, save-to-machine. Reading the code found one of the five; the walking test found all of them, which is why the test exists rather than a note. Promote to 7 with a branded Armed<T> that the two-step button components require, making the walk unnecessary.
 
 `packages/ui/src/control/armed.ts:17`
 

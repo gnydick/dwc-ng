@@ -1,4 +1,5 @@
-import { Show, createSignal } from "solid-js";
+import { Show } from "solid-js";
+import { createArmed } from "../control/armed.ts";
 import { useApp } from "../shell/context.ts";
 import { cmd } from "../control/commands.ts";
 import type { Heater } from "../om/types.ts";
@@ -38,14 +39,14 @@ export function isModalState(state: string): boolean {
  */
 export function HeaterState(props: { heater: Heater; index: number }) {
 	const app = useApp();
-	const [armed, setArmed] = createSignal(false);
+	const [armed, setArmed] = createArmed<true>();
 
 	const reset = (): void => {
 		if (!armed()) {
 			setArmed(true);
 			return;
 		}
-		setArmed(false);
+		setArmed(null);
 		void app.connector.sendCode(cmd.resetHeaterFault(props.index)).catch(() => undefined);
 	};
 
@@ -57,10 +58,10 @@ export function HeaterState(props: { heater: Heater; index: number }) {
 			>
 				<button
 					class="heat-state fault heat-reset"
-					classList={{ armed: armed() }}
+					classList={{ armed: armed() !== null }}
 					title={`Clear the fault on heater ${props.index} (M562 P${props.index})`}
 					onClick={reset}
-					onBlur={() => setArmed(false)}
+					onBlur={() => setArmed(null)}
 				>
 					{armed() ? "confirm" : "fault"}
 				</button>

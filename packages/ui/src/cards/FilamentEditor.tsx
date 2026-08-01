@@ -1,4 +1,5 @@
 import { For, Show, createEffect, createMemo, createResource, createSignal } from "solid-js";
+import { createArmed } from "../control/armed.ts";
 import { useApp } from "../shell/context.ts";
 import { FileEditorBody } from "../editor/FileEditor.tsx";
 import { parseFileName } from "../files/path.ts";
@@ -54,7 +55,7 @@ export function FilamentEditorBody() {
 	const [creating, setCreating] = createSignal(false);
 	const [renaming, setRenaming] = createSignal<string | null>(null);
 	const [draft, setDraft] = createSignal("");
-	const [armed, setArmed] = createSignal<string | null>(null);
+	const [armed, setArmed] = createArmed<string>();
 	const [busy, setBusy] = createSignal(false);
 	const [message, setMessage] = createSignal("");
 
@@ -221,7 +222,7 @@ export function FilamentEditorBody() {
 									disabled={isLoaded(name) || busy()}
 									title={isLoaded(name) ? "Loaded on an extruder" : `Delete ${name} and its macros`}
 									onClick={() => (armed() === name ? void remove(name) : setArmed(name))}
-									onBlur={() => setArmed(a => (a === name ? null : a))}
+									onBlur={() => { if (armed() === name) setArmed(null); }}
 								>
 									{armed() === name ? "Confirm" : "Delete"}
 								</button>

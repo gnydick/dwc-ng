@@ -9,6 +9,7 @@
  * Extracted from views/Settings.tsx in the A6 conversion.
  */
 import { For, Index, Show, createMemo, createSignal } from "solid-js";
+import { createArmed } from "../control/armed.ts";
 import { useApp } from "../shell/context.ts";
 import { MAX_LABEL_LEN, DEFAULT_THERMAL_COLORS, type ThermalColors } from "../config/types.ts";
 import { heaterSeries } from "../om/heaterSeries.ts";
@@ -333,11 +334,11 @@ export function ConfigSaveBody() {
 	// writes. Same two-step shape as the file browser's rename and armed
 	// delete, which is this app's convention for a single text field — there
 	// is no modal for one input anywhere in the UI.
-	const [armed, setArmed] = createSignal(false);
+	const [armed, setArmed] = createArmed<true>();
 	const [label, setLabel] = createSignal("");
 
 	const disarm = (): void => {
-		setArmed(false);
+		setArmed(null);
 		setLabel("");
 	};
 

@@ -1,4 +1,5 @@
 import { For, Show, createMemo, createSignal } from "solid-js";
+import { createArmed } from "../control/armed.ts";
 import { useApp } from "../shell/context.ts";
 import { cmd } from "../control/commands.ts";
 import type { Board } from "../om/types.ts";
@@ -21,25 +22,11 @@ export function FirmwareBody() {
 
 	// Selected boards keyed by canAddress (unique on the bus).
 	const [selected, setSelected] = createSignal<Set<number>>(new Set());
-	/**
-	 * @broken firmware-arm-bypasses-escape
-	 * @status todo
-	 * @what This card arms with a raw createSignal instead of control/armed.ts's
-	 *       createArmed, so Escape does not disarm it — while armed.ts states
-	 *       that Escape disarms "EVERY armed control on the page, including ones
-	 *       written later by someone who never read this file". This card is that
-	 *       someone, and its next click sends M997: a firmware flash, the most
-	 *       destructive action in the app. A Cancel button exists, so there IS a
-	 *       way out, but not the universal one the module promises.
-	 * @fix   replace with `const [armed, setArmed] = createArmed<true>()`, which
-	 *        registers with the single capture listener. That also promotes
-	 *        control/escape-disarms from rung 5 to 6, since createArmed becomes
-	 *        the only route to an armed control.
-	 */
-	const [armed, setArmed] = createSignal(false);
+	// Escape disarms this like every other two-step control — see control/armed.ts.
+	const [armed, setArmed] = createArmed<true>();
 
 	const toggle = (addr: number): void => {
-		setArmed(false);
+		setArmed(null);
 		setSelected(prev => {
 			const next = new Set(prev);
 			if (next.has(addr)) next.delete(addr);
@@ -54,7 +41,7 @@ export function FirmwareBody() {
 		const targets = selectedBoards();
 		if (targets.length === 0) return;
 		if (!armed()) { setArmed(true); return; } // two-step confirm
-		setArmed(false);
+		setArmed(null);
 		// Expansion/tool boards first, main board LAST: flashing the main board
 		// resets it and drops this session, after which the others are
 		// unreachable. (Behavioural — the M997 entry prescribes no board order.)
@@ -121,14 +108,14 @@ export function FirmwareBody() {
 				<div class="btn-row fw-actions">
 					<button
 						class="btn btn-danger"
-						classList={{ armed: armed() }}
+						classList={{ armed: armed() !== null }}
 						disabled={count() === 0}
 						onClick={submit}
 					>
 						{armed() ? `Confirm — flash ${count()} board${count() === 1 ? "" : "s"}` : "Update firmware"}
 					</button>
 					<Show when={armed()}>
-						<button class="btn" onClick={() => setArmed(false)}>Cancel</button>
+						<button class="btn" onClick={() => setArmed(null)}>Cancel</button>
 					</Show>
 				</div>
 			</Show>
