@@ -13,6 +13,23 @@
  * heightmap.csv.
  * ─────────────────────────────────────────────────────────────────────────────
  *
+ * @invariant tram-fit-never-reads-the-map
+ * @rung 4  static analysis — test/tram-fence.test.ts walks src/bed and fails on
+ *          any import naming heightmap, by file and line. It fences the bed/
+ *          modules only, not their UI consumers: BedCards legitimately renders
+ *          the map and the tram controls on one screen, and what must never
+ *          happen is map data reaching the fit's INPUT
+ * @why the map is probed AFTER tramming and re-homing, so it measures the bed
+ *      SURFACE — warp, texture, the plate — on an already-levelled machine.
+ *      That is a different physical quantity from gantry tilt and is downstream
+ *      of the correction being solved for. Mixing them does not fail: it yields
+ *      plausible pivot positions the operator would enter as M671, and every
+ *      tram after that is wrong with nothing to point at
+ * @debt an import scan sees the obvious route, not a value handed in at a call
+ *       site. Promote by giving the fit a branded TramSample its parser is the
+ *       sole producer of, so map-derived numbers have no way to be passed in at
+ *       all and the walk becomes unnecessary.
+ *
  * bed.g (via G30 ... S<n>) makes RRF report one summary line per tram, e.g.
  *
  *   Leadscrew adjustments made: 0.086 0.082 0.090, points used 3,

@@ -11,6 +11,22 @@
  * disagree. Neither half failing may report success — a failed reload leaves
  * the file on the card but the machine still on the old map, which is exactly
  * the state an operator must not be told is "saved".
+ *
+ * @invariant saving-a-map-changes-file-and-machine-together
+ * @rung 6  choke-point — one save(), both halves inside one try, and the
+ *          reload names the SAME path that was just written rather than
+ *          defaulting to heightmap.csv. There is no "upload only" entry point
+ *          for a caller to reach for
+ * @why RRF keeps compensating with the map it loaded at BOOT. Uploading alone
+ *      changes the card and not the machine, so the file the operator is
+ *      looking at and the compensation actually being applied disagree with
+ *      nothing on screen to say so — and the way that surfaces is a print
+ *      whose first layer is wrong for reasons the map appears to rule out
+ * @debt the two halves are sequenced by await, so a caller could still be
+ *       written that uploads through the connector directly. Promote by making
+ *       the connector's upload of a map file unreachable except through this
+ *       function — a branded MapWrite the transport is the sole consumer of —
+ *       so "write the file without reloading it" has no expression.
  */
 import { createMemo, createSignal, type Accessor } from "solid-js";
 import type { Connector } from "../connector/types.ts";

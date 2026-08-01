@@ -14,6 +14,19 @@
  * with its own contents. Making them derived removes that possibility rather
  * than relying on someone remembering to update them.
  *
+ * @invariant map-statistics-cannot-go-stale
+ * @rung 8  illegal state unrepresentable — HeightMapMeta has NO field for min,
+ *          max, mean or deviation, so a parsed map cannot carry them and
+ *          serializeHeightMap computes all four from map.rows at the moment it
+ *          writes. There is no stale value to forget to update, because there
+ *          is nowhere to put one. Not achieved by recomputing carefully, which
+ *          would be rung 5
+ * @why the summary line is what a human reads to decide whether a bed is worth
+ *      re-probing, and what tooling reads instead of scanning the grid. A file
+ *      whose banner says "deviation 0.003" over cells that now say otherwise is
+ *      not a wrong number in the UI, it is a wrong number on the SD card,
+ *      outliving the session that wrote it
+ *
  * Geometry (lines 2 and 3) passes through unmodified — this edits values, it
  * does not redefine the mesh. That is `M557`/`M558`'s job.
  */

@@ -12,9 +12,20 @@ export function Thumbnail(props: { bytes: Uint8Array; format: string; alt: strin
 	let canvas: HTMLCanvasElement | undefined;
 
 	// QOI: decode to RGBA and blit. Re-runs if bytes/format change.
+	//
+	// A damaged thumbnail leaves the canvas blank instead of throwing out of the
+	// effect: the bytes come off the SD card, a preview is decoration, and the
+	// listing around it is not. decodeQoi refuses a header the stream cannot
+	// possibly contain (see qoi.ts), which is the case that used to be an
+	// out-of-memory rather than an exception.
 	createEffect(() => {
 		if (props.format !== "qoi" || canvas === undefined) return;
-		const img = decodeQoi(props.bytes);
+		let img;
+		try {
+			img = decodeQoi(props.bytes);
+		} catch {
+			return;
+		}
 		canvas.width = img.width;
 		canvas.height = img.height;
 		const ctx = canvas.getContext("2d");

@@ -26,9 +26,29 @@ const hash = (r: number, g: number, b: number, a: number) =>
 	(r * 3 + g * 5 + b * 7 + a * 11) & 63;
 
 /**
- * Decode a QOI byte stream to RGBA. Throws on a missing `qoif` magic; a
- * truncated stream decodes as if zero-padded (every read past the end is 0),
- * so malformed input can only yield wrong pixels, never NaN or a crash.
+ * The most pixels a QOI body can encode, per byte after the 14-byte header.
+ * QOI_OP_RUN carries a run of up to 62 pixels in ONE byte, and no opcode
+ * encodes more, so this is the true ceiling rather than a guess.
+ */
+const MAX_PIXELS_PER_BYTE = 62;
+
+/**
+ * Decode a QOI byte stream to RGBA. Throws on a header that is not a QOI image
+ * this stream could actually contain; past that, a truncated body decodes as if
+ * zero-padded (every read past the end is 0), so a short stream yields wrong
+ * pixels rather than NaN or a crash.
+ *
+ * @invariant decode-allocates-only-what-the-stream-could-hold
+ * @rung 6  choke-point — the only allocation is sized from pixelCount, and
+ *          pixelCount is checked HERE against what the remaining bytes can
+ *          physically encode before that line is reached. There is one decoder
+ *          and one allocation in it
+ * @why the header's dimensions are BOARD-supplied and 32 bits each. Measured
+ *      2026-08-01, before this check existed: a width whose high bit was set
+ *      read NEGATIVE (`<< 24` is signed) and threw RangeError, and a 0x7Fxxxxxx
+ *      width allocated an 8.6 GB Uint8ClampedArray — from a corrupt or
+ *      truncated thumbnail, which is decoration. A job listing must not be able
+ *      to take the tab out because one preview was damaged on the SD card
  */
 export function decodeQoi(bytes: Uint8Array): DecodedImage {
 	// Total read: out-of-bounds is 0 by definition, not undefined.
@@ -43,11 +63,20 @@ export function decodeQoi(bytes: Uint8Array): DecodedImage {
 		throw new Error("not a QOI image (missing 'qoif' magic)");
 	}
 
-	const width = (u8(4) << 24) | (u8(5) << 16) | (u8(6) << 8) | u8(7);
-	const height = (u8(8) << 24) | (u8(9) << 16) | (u8(10) << 8) | u8(11);
+	// >>> 0 makes these UNSIGNED: `<< 24` is signed in JS, so a width of
+	// 0xFF______ read as negative and turned the allocation below into a
+	// RangeError instead of an image.
+	const width = ((u8(4) << 24) | (u8(5) << 16) | (u8(6) << 8) | u8(7)) >>> 0;
+	const height = ((u8(8) << 24) | (u8(9) << 16) | (u8(10) << 8) | u8(11)) >>> 0;
 	// bytes[12] = channels, bytes[13] = colorspace — not needed to decode.
 
 	const pixelCount = width * height;
+	// A body of N bytes cannot describe more than N * 62 pixels. Refusing here
+	// means a corrupt header asks for an image the stream could not contain,
+	// rather than for eight gigabytes of memory.
+	if (pixelCount > (bytes.length - 14) * MAX_PIXELS_PER_BYTE) {
+		throw new Error(`QOI header claims ${width}x${height}, more than ${bytes.length} bytes can encode`);
+	}
 	const data = new Uint8ClampedArray(pixelCount * 4);
 
 	// Running per-slot index cache, seeded to zero (QOI spec).

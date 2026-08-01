@@ -21,7 +21,39 @@ and invariant claim mentions 13 -> 23, so no mechanism was deleted and no
 claim was lost in the gap. From here the ratchets make a dropped rung visible
 in the diff that drops it.
 
-**Totals:** 54 invariants · 35 at rung 6 or above · 19 below rung 6 (ceiling 19).
+**Totals:** 64 invariants · 41 at rung 6 or above · 23 below rung 6 (ceiling 23).
+
+## bed
+
+### `bed/drive-direction-is-observed-never-assumed` — rung 0
+
+**Mechanism.** the type pins the MAGNITUDE and nothing pins the SIGN. "Must be established by observation" is a caller precondition in prose — the anti-pattern — and this module cannot check it: a wrong sign produces a perfectly well-formed plan
+
+**Why.** the sign decides which way every correction goes, so getting it backwards does not level slowly or badly, it drives the bed INTO the probe on the FIRST move, and each round makes the error larger. There is no reading that looks wrong first
+
+**Debt — promotion.** this is the one place in the levelling path where being wrong costs hardware and nothing in the code can tell. Promote by making the first move of a session a deliberate probe of the sign — move one axis by a known small step, re-probe, and require the reading to have changed in the predicted direction before any further move is planned. That turns an assumption into a measurement, and it is what a supervised first run does by hand today.
+
+`packages/ui/src/bed/levelPlan.ts:108`
+
+### `bed/no-single-step-over-tilts-the-bed` — rung 5
+
+**Mechanism.** the clamp sits in planLevel, which is the sole producer of a LevelMove — but the BOUND is this parameter, so the safety limit is whatever the caller passed. DEFAULT_LEVEL_OPTIONS holds the measured-safe 0.5mm; nothing stops a caller supplying 100
+
+**Why.** a mis-seated probe or a bad tap reports a reading in METRES, and the correction is ~1:1 with the reading. Uncapped, one bad sample drives a screw its whole travel in a single move and the far side of the bed lifts into the probe. The failure is mechanical damage, not a wrong number, and it happens before anyone can read the plan
+
+**Debt — promotion.** the bound and the clamp are two facts a caller can separate. Promote by making the cap a module constant rather than an option — nothing has ever needed to raise it, and "how far may one step tilt the bed" is a property of THIS machine's probe, not of a call site. Rung 7 is a branded SafeStep that only the clamp can produce and the sender will only accept.
+
+`packages/ui/src/bed/levelPlan.ts:84`
+
+### `bed/tram-fit-never-reads-the-map` — rung 4
+
+**Mechanism.** static analysis — test/tram-fence.test.ts walks src/bed and fails on any import naming heightmap, by file and line. It fences the bed/ modules only, not their UI consumers: BedCards legitimately renders the map and the tram controls on one screen, and what must never happen is map data reaching the fit's INPUT
+
+**Why.** the map is probed AFTER tramming and re-homing, so it measures the bed SURFACE — warp, texture, the plate — on an already-levelled machine. That is a different physical quantity from gantry tilt and is downstream of the correction being solved for. Mixing them does not fail: it yields plausible pivot positions the operator would enter as M671, and every tram after that is wrong with nothing to point at
+
+**Debt — promotion.** an import scan sees the obvious route, not a value handed in at a call site. Promote by giving the fit a branded TramSample its parser is the sole producer of, so map-derived numbers have no way to be passed in at all and the walk becomes unnecessary. bed.g (via G30 ... S<n>) makes RRF report one summary line per tram, e.g. Leadscrew adjustments made: 0.086 0.082 0.090, points used 3, (mean, deviation) before (0.086, 0.003) after (-0.000, 0.000) That single line carries everything a leadscrew-geometry fit needs: how far each screw was driven, how many points the fit used, and the flatness before and after. Captured over several trams it becomes an over-determined system for where the pivots ACTUALLY are (M671), which is the point of keeping it. Parsing is deliberately strict and returns null rather than guessing. RRF emits other shapes for the same command — manual-adjustment prompts on a screw-levelled bed, delta calibration summaries, plain errors — and a half-understood line silently entering a geometry fit is worse than no sample at all. The number of adjustments is NOT assumed to be three: M671 accepts 2 to 4 pivot points, and this machine's count must come from the line itself. ── A sample is only usable well ABOVE one full motor step. ────────────────── Measured on this machine: Z/U/V/W run 6400 steps/mm at 64x microstepping, non-interpolated, so one FULL step is 10um. Every correction in the trams captured on 2026-07-23 was a fraction of that (0.1 to 0.7 of a step), and below a full step a loaded leadscrew does not move proportionally to command — detent torque and stiction dominate, so the bed can move further than asked, or not at all, with unpredictable sign. Residual scatter of ~5um, half a full step, is consistent with that rather than with probe noise. The consequence for any geometry fit: corrections at this amplitude carry ACTUATOR behaviour, not pivot geometry, and cannot confirm or refute M671. Usable samples need differential motion of many full steps (~0.2mm = 20 steps), which means deliberate single-screw excitation — bounded by the probe-damage limit, so predict the far-side lift before moving. ─────────────────────────────────────────────────────────────────────────────
+
+`packages/ui/src/bed/tramReply.ts:16`
 
 ## compose
 
@@ -413,6 +445,24 @@ in the diff that drops it.
 
 ## heightmap
 
+### `heightmap/map-statistics-cannot-go-stale` — rung 8
+
+**Mechanism.** illegal state unrepresentable — HeightMapMeta has NO field for min, max, mean or deviation, so a parsed map cannot carry them and serializeHeightMap computes all four from map.rows at the moment it writes. There is no stale value to forget to update, because there is nowhere to put one. Not achieved by recomputing carefully, which would be rung 5
+
+**Why.** the summary line is what a human reads to decide whether a bed is worth re-probing, and what tooling reads instead of scanning the grid. A file whose banner says "deviation 0.003" over cells that now say otherwise is not a wrong number in the UI, it is a wrong number on the SD card, outliving the session that wrote it Geometry (lines 2 and 3) passes through unmodified — this edits values, it does not redefine the mesh. That is `M557`/`M558`'s job.
+
+`packages/ui/src/heightmap/parse.ts:17`
+
+### `heightmap/saving-a-map-changes-file-and-machine-together` — rung 6
+
+**Mechanism.** choke-point — one save(), both halves inside one try, and the reload names the SAME path that was just written rather than defaulting to heightmap.csv. There is no "upload only" entry point for a caller to reach for
+
+**Why.** RRF keeps compensating with the map it loaded at BOOT. Uploading alone changes the card and not the machine, so the file the operator is looking at and the compensation actually being applied disagree with nothing on screen to say so — and the way that surfaces is a print whose first layer is wrong for reasons the map appears to rule out
+
+**Debt — promotion.** the two halves are sequenced by await, so a caller could still be written that uploads through the connector directly. Promote by making the connector's upload of a map file unreachable except through this function — a branded MapWrite the transport is the sole consumer of — so "write the file without reloading it" has no expression.
+
+`packages/ui/src/heightmap/store.ts:15`
+
 ### `heightmap/stop-height-is-not-a-map-value` — rung 5
 
 **Mechanism.** shared helper — the sole implementation of the conversion, and the sole consumer (cards/BedCards.tsx:430) does call it. But both quantities are `number`: setRawStop(stopHeight) and setProbed(heightmapValue(...)) sit on ADJACENT lines taking the same type, and store.edit accepts either
@@ -422,6 +472,28 @@ in the diff that drops it.
 **Debt — promotion.** this is technique 7 (units as types) left undone. Promote by branding both: parseProbeReply produces a StopHeight, this is the only StopHeight -> MapValue, and heightmap/store.ts's edit() accepts only a MapValue — then handing the raw reading to the map stops compiling instead of merely looking wrong. nudge() composes because valueAt() already returns a MapValue and the delta is an offset within it.
 
 `packages/ui/src/heightmap/probeReply.ts:47`
+
+## messagebox
+
+### `messagebox/ack-answers-the-box-it-was-shown` — rung 6
+
+**Mechanism.** choke-point over four signatures that already require it — every M292 builder takes `seq` as its first mandatory parameter, so an unsequenced ack does not compile, and this function is their SOLE caller (verified by search), reading seq from the box it was handed
+
+**Why.** RRF ignores an M292 whose seq does not match the box it currently has open. A toolchange macro raises several boxes in a row, so the operator can press OK on a box that was replaced between render and click — without the echo that press answers the NEW box, agreeing to something never read, and the machine acts on it
+
+**Debt — promotion.** the seq is a bare number, so the builders would accept any. Promote by making it a branded BoxSeq obtainable only from a MessageBox, which also removes the need for this function to be the sole caller.
+
+`packages/ui/src/messagebox/ack.ts:87`
+
+### `messagebox/every-blocking-box-has-an-answer` — rung 6
+
+**Mechanism.** choke-point with a deliberate default — this is the only function producing an M292, and it returns null for exactly one mode (noButtons, which RRF does not block on). Every other input, including a mode this build has never heard of, leaves here with a command
+
+**Why.** the union is OPEN: MessageBoxMode is firmware's, and a future RRF may add a mode. Exhaustiveness is the wrong tool here — the cost of not answering is not a missing feature but a machine stopped mid-job, blocking on an M292 no button can send, with the job still loaded and the heaters still on
+
+**Debt — promotion.** a default arm is normally the anti-pattern (technique 9), and it is chosen here because the failure is asymmetric. What it cannot do is TELL anyone: an unknown mode is answered OK and looks identical to a known one. Promote by returning the answer alongside whether the mode was recognised, so the prompt can say "this firmware asked something this UI does not understand" rather than silently agreeing on the operator's behalf.
+
+`packages/ui/src/messagebox/ack.ts:121`
 
 ## mock-duet
 
@@ -531,6 +603,16 @@ in the diff that drops it.
 
 `packages/ui/src/shell/CameraPanel.tsx:28`
 
+## thumbnails
+
+### `thumbnails/decode-allocates-only-what-the-stream-could-hold` — rung 6
+
+**Mechanism.** choke-point — the only allocation is sized from pixelCount, and pixelCount is checked HERE against what the remaining bytes can physically encode before that line is reached. There is one decoder and one allocation in it
+
+**Why.** the header's dimensions are BOARD-supplied and 32 bits each. Measured 2026-08-01, before this check existed: a width whose high bit was set read NEGATIVE (`<< 24` is signed) and threw RangeError, and a 0x7Fxxxxxx width allocated an 8.6 GB Uint8ClampedArray — from a corrupt or truncated thumbnail, which is decoration. A job listing must not be able to take the tab out because one preview was damaged on the SD card
+
+`packages/ui/src/thumbnails/qoi.ts:41`
+
 ## ui
 
 ### `ui/column-width-by-role` — rung 4
@@ -552,3 +634,23 @@ in the diff that drops it.
 **Debt — promotion.** the scan is a brace walker over text, so it sees source order but not cascade subtleties (:is(), layers, differing specificity within a selector list). Rung 6 is generating the breakpoint blocks from one typed source, so ordering stops being something an author controls at all. (The palette entry's narrow-width rules are NOT here — they live in a second max-width block directly after the desktop ones further down.)
 
 `packages/ui/src/app.css:1327`
+
+## util
+
+### `util/closed-unions-stay-total` — rung 7
+
+**Mechanism.** the SIGNATURE is the mechanism — the parameter is `never`, so a switch that stops covering its union no longer narrows and the call fails to compile. Not a convention about writing default arms: the type does the work, at all seven call sites and any future one
+
+**Why.** a silent default arm is how a new union member ships as "nothing happened". These unions are transports, render modes and control kinds — adding one and having the old code quietly ignore it means a machine that never connects, or a control that renders and sends nothing. The runtime throw is the backstop for values that bypassed the type system entirely (parsed JSON cast into a union), and is deliberately loud rather than a silent fallback
+
+`packages/ui/src/util/unreachable.ts:9`
+
+### `util/untrusted-walks-cannot-reach-the-prototype` — rung 3
+
+**Mechanism.** tests over the KNOWN boundaries — test/proto-pollution.test.ts feeds a "__proto__" payload through the six named ingress points (config store, OM merge, share import, control spec, orientation state) and asserts Object.prototype is untouched. The helper itself is rung 5, but which walks use it is not enforced: 24 raw Object.entries remain in src, correct only because each happens to be over trusted data
+
+**Why.** JSON.parse creates "__proto__" as an OWN property — CreateDataProperty bypasses the setter — so a naive walk that reads base[key] gets Object.prototype and merging into THAT poisons every object in the app. The inputs are the SD card, localStorage, the board and other people's share files, none of which this app authored
+
+**Debt — promotion.** this sentence says "must", which is the caller-precondition anti-pattern: the rule lives in prose and the tests cover only the boundaries that existed when they were written. Cheap promotion to 4 is the shape files/raw-transport-fence already uses — walk src and reject Object.entries inside the parse/ingress modules by path, so a NEW boundary is caught by construction rather than by someone remembering to extend the fixture. Rung 7 is having the parse boundaries return an Untrusted<T> whose only iterator is safeEntries.
+
+`packages/ui/src/util/safeObject.ts:18`

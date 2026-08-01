@@ -83,6 +83,20 @@ export function axisControlIndices(box: MessageBox): number[] {
  * from acknowledging a DIFFERENT box that replaced this one between render and
  * press. Tool-change macros that raise several boxes in a row make that a real
  * race, not a theoretical one.
+ *
+ * @invariant ack-answers-the-box-it-was-shown
+ * @rung 6  choke-point over four signatures that already require it — every
+ *          M292 builder takes `seq` as its first mandatory parameter, so an
+ *          unsequenced ack does not compile, and this function is their SOLE
+ *          caller (verified by search), reading seq from the box it was handed
+ * @why RRF ignores an M292 whose seq does not match the box it currently has
+ *      open. A toolchange macro raises several boxes in a row, so the operator
+ *      can press OK on a box that was replaced between render and click —
+ *      without the echo that press answers the NEW box, agreeing to something
+ *      never read, and the machine acts on it
+ * @debt the seq is a bare number, so the builders would accept any. Promote by
+ *       making it a branded BoxSeq obtainable only from a MessageBox, which
+ *       also removes the need for this function to be the sole caller.
  */
 export function ackCommand(box: MessageBox, input: AckInput | null): GcodeCommand | null {
 	if (box.mode === MessageBoxMode.noButtons) return null;
@@ -103,6 +117,26 @@ export function ackCommand(box: MessageBox, input: AckInput | null): GcodeComman
 			return cmd.ackNumber(box.seq, Number(input?.value ?? 0));
 		case MessageBoxMode.stringInput:
 			return cmd.ackText(box.seq, String(input?.value ?? ""));
+		/*
+		 * @invariant every-blocking-box-has-an-answer
+		 * @rung 6  choke-point with a deliberate default — this is the only
+		 *          function producing an M292, and it returns null for exactly
+		 *          one mode (noButtons, which RRF does not block on). Every
+		 *          other input, including a mode this build has never heard of,
+		 *          leaves here with a command
+		 * @why the union is OPEN: MessageBoxMode is firmware's, and a future RRF
+		 *      may add a mode. Exhaustiveness is the wrong tool here — the cost
+		 *      of not answering is not a missing feature but a machine stopped
+		 *      mid-job, blocking on an M292 no button can send, with the job
+		 *      still loaded and the heaters still on
+		 * @debt a default arm is normally the anti-pattern (technique 9), and it
+		 *       is chosen here because the failure is asymmetric. What it cannot
+		 *       do is TELL anyone: an unknown mode is answered OK and looks
+		 *       identical to a known one. Promote by returning the answer
+		 *       alongside whether the mode was recognised, so the prompt can say
+		 *       "this firmware asked something this UI does not understand"
+		 *       rather than silently agreeing on the operator's behalf.
+		 */
 		default:
 			// An unknown future mode still needs answering, or the machine hangs.
 			return cmd.ackOk(box.seq);

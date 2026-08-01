@@ -50,3 +50,30 @@ test("decodeQoi rejects data without the qoif magic", () => {
 	const bogus = new Uint8Array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]);
 	assert.throws(() => decodeQoi(bogus), /qoif|magic/i);
 });
+
+// A corrupt header is board data, not a programming error. Measured 2026-08-01
+// before the bound existed: 0xFF____ read NEGATIVE ("<< 24" is signed) and threw
+// RangeError, and 0x7Fffffff allocated an 8.6 GB array — a tab crash from one
+// damaged thumbnail on the SD card.
+function headerWithWidth(w: number[]): Uint8Array {
+	const b = new Uint8Array(20);
+	b.set([0x71, 0x6f, 0x69, 0x66]);
+	b.set(w, 4);
+	b.set([0, 0, 0, 1], 8);
+	return b;
+}
+
+test("a header whose width has the high bit set is refused, not read as negative", () => {
+	assert.throws(() => decodeQoi(headerWithWidth([0xff, 0, 0, 0])), /more than 20 bytes can encode/);
+});
+
+test("a header claiming more pixels than the body could encode is refused", () => {
+	assert.throws(() => decodeQoi(headerWithWidth([0x7f, 0xff, 0xff, 0xff])), /more than 20 bytes can encode/);
+});
+
+test("the bound admits a real image — 62 pixels per body byte is the true ceiling", () => {
+	// 6 body bytes, so up to 372 pixels are encodable; 20x1 must pass.
+	const img = decodeQoi(headerWithWidth([0, 0, 0, 20]));
+	assert.equal(img.width, 20);
+	assert.equal(img.data.length, 80);
+});

@@ -80,6 +80,23 @@ export interface LevelOptions {
 	 * Hard cap on a single axis move, mm. THE safety limit: over-tilting the bed
 	 * damages the probe, so no single step may tilt it far, however large the
 	 * measured error is (a mis-seated probe or a bad tap can report metres).
+	 *
+	 * @invariant no-single-step-over-tilts-the-bed
+	 * @rung 5  the clamp sits in planLevel, which is the sole producer of a
+	 *          LevelMove — but the BOUND is this parameter, so the safety limit
+	 *          is whatever the caller passed. DEFAULT_LEVEL_OPTIONS holds the
+	 *          measured-safe 0.5mm; nothing stops a caller supplying 100
+	 * @why a mis-seated probe or a bad tap reports a reading in METRES, and the
+	 *      correction is ~1:1 with the reading. Uncapped, one bad sample drives a
+	 *      screw its whole travel in a single move and the far side of the bed
+	 *      lifts into the probe. The failure is mechanical damage, not a wrong
+	 *      number, and it happens before anyone can read the plan
+	 * @debt the bound and the clamp are two facts a caller can separate. Promote
+	 *       by making the cap a module constant rather than an option — nothing
+	 *       has ever needed to raise it, and "how far may one step tilt the bed"
+	 *       is a property of THIS machine's probe, not of a call site. Rung 7 is
+	 *       a branded SafeStep that only the clamp can produce and the sender
+	 *       will only accept.
 	 */
 	maxStep: number;
 	/**
@@ -87,6 +104,23 @@ export interface LevelOptions {
 	 * distance), -1 when it raises it. Not assumed: it depends on the machine's
 	 * drive directions, and guessing it wrong drives the bed INTO the probe.
 	 * Must be established by observation before the first unattended run.
+	 *
+	 * @invariant drive-direction-is-observed-never-assumed
+	 * @rung 0  the type pins the MAGNITUDE and nothing pins the SIGN. "Must be
+	 *          established by observation" is a caller precondition in prose —
+	 *          the anti-pattern — and this module cannot check it: a wrong sign
+	 *          produces a perfectly well-formed plan
+	 * @why the sign decides which way every correction goes, so getting it
+	 *      backwards does not level slowly or badly, it drives the bed INTO the
+	 *      probe on the FIRST move, and each round makes the error larger. There
+	 *      is no reading that looks wrong first
+	 * @debt this is the one place in the levelling path where being wrong costs
+	 *       hardware and nothing in the code can tell. Promote by making the
+	 *       first move of a session a deliberate probe of the sign — move one
+	 *       axis by a known small step, re-probe, and require the reading to
+	 *       have changed in the predicted direction before any further move is
+	 *       planned. That turns an assumption into a measurement, and it is what
+	 *       a supervised first run does by hand today.
 	 */
 	direction: 1 | -1;
 }
