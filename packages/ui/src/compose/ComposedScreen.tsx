@@ -357,32 +357,10 @@ function ComposeDrawer(props: { screenId: string; entry: ScreenEntry | null; com
 	});
 
 	return (
-		<div
-			class="compose-wrap"
-			ref={wrapEl}
-			onPointerLeave={e => {
-				// Mouse only. On touch, pointerleave fires as soon as the finger
-				// lifts, so the drawer would shut on the tap that opened it.
-				if (e.pointerType !== "mouse") return;
-				// Closes the FIRST time the pointer leaves, with no other condition.
-				//
-				// There was a guard here that kept the drawer open while focus was
-				// inside it, meant to protect a half-typed screen rename. It made
-				// the control unpredictable instead: clicking any button in the
-				// drawer focuses that button, so from then on leaving did nothing
-				// and the drawer stayed until you clicked Compose again. A close
-				// that happens only sometimes is worse than one that always does.
-				//
-				// And it was guarding a loss that cannot happen: the name field
-				// commits on `change`, which fires on blur, so closing the drawer
-				// SAVES the rename rather than discarding it.
-				setOpen(false);
-			}}
-		>
+		<div class="compose-wrap" ref={wrapEl}>
 			{/* CLICK, not hover. Hover does not exist on touch, and this is the
 			    only way into composing a screen — a control you cannot open on a
-			    phone is a control the phone does not have. Closing stays on
-			    pointerleave (mouse only), which is the half touch can do without. */}
+			    phone is a control the phone does not have. */}
 			<button
 				class="rail-palette"
 				aria-pressed={open()}
@@ -393,7 +371,35 @@ function ComposeDrawer(props: { screenId: string; entry: ScreenEntry | null; com
 				<PaletteIcon />
 			</button>
 			<Show when={open()}>
-				<div class="compose-drawer">
+				<div
+					class="compose-drawer"
+					onPointerLeave={e => {
+						// ON THE DRAWER, NOT THE PALETTE ROW.
+						//
+						// It used to close when the pointer left `.compose-wrap` — a
+						// 169x34 band at the foot of the rail — while the drawer is a
+						// 340x501 rectangle standing mostly ABOVE it. Every natural
+						// route from the button to a card checkbox therefore left the
+						// band while still in open ground, and the drawer vanished in
+						// flight: measured leaving at (123, 1137), six pixels above the
+						// button and still sixty-six short of the drawer's edge. An 8px
+						// bridge beside the button could not help, because the gap is
+						// L-shaped, not a strip.
+						//
+						// Binding the close to the DRAWER removes the dead ground and
+						// the arming problem in one move: pointerleave here cannot fire
+						// before pointerenter here, so "only after the card grid has
+						// been hovered" is true by construction rather than by a flag
+						// someone has to remember to set. Getting to the drawer is now
+						// unconditional — take any path, as slowly as you like.
+						//
+						// Mouse only. On touch pointerleave fires the moment the finger
+						// lifts, so tapping a checkbox would dismiss the drawer; touch
+						// dismisses by tapping outside instead (see above).
+						if (e.pointerType !== "mouse") return;
+						setOpen(false);
+					}}
+				>
 					<div class="compose-row compose-screen">
 						<input
 							class="fb-input"
