@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 import { scanTree, scanBroken, repoRoot } from "./scan.ts";
 import { checkAll, type Declaration, type Problem } from "./check.ts";
 import { renderRegister } from "./render.ts";
+import { findRedFlags } from "./redFlags.ts";
 import { checkBroken, renderDebt, type RawBroken } from "./broken.ts";
 
 const REGISTER = ["docs", "invariant-register.md"];
@@ -79,6 +80,12 @@ export function buildRegister(): {
 
 function main(): void {
 	const command = process.argv[2] ?? "check";
+	if (command === "flags") {
+		const flags = findRedFlags(repoRoot());
+		for (const f of flags) console.error(`${f.file}:${f.line}  ${f.message}`);
+		console.log(`${flags.length} red-flag phrases without a declaration.`);
+		return;
+	}
 	const { markdown, debtMarkdown, problems } = buildRegister();
 	for (const p of problems) console.error(`${p.file}:${p.line}  ${p.message}`);
 	if (command === "generate") {

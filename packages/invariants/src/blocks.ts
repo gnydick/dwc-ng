@@ -36,16 +36,30 @@ function stripGutter(line: string): string {
  * Every record in `text` whose lead tag is `leadTag`. A second lead tag ends
  * the previous record, so one comment may carry several.
  */
+export interface RawBlock {
+	/** The block's full text, delimiters included. */
+	readonly text: string;
+	/** 1-based line the block starts on. */
+	readonly startLine: number;
+}
+
+/** Every block comment in `text`. The one place the comment shape is known. */
+export function blocksOf(text: string): RawBlock[] {
+	return [...text.matchAll(BLOCK)].map(m => ({
+		text: m[0],
+		startLine: text.slice(0, m.index).split("\n").length,
+	}));
+}
+
 export function readRecords(text: string, leadTag: string, fieldTags: readonly string[]): TagRecord[] {
 	const tag = new RegExp(`^@(${[leadTag, ...fieldTags].join("|")})\\b\\s*(.*)$`);
 	const out: TagRecord[] = [];
 
-	for (const block of text.matchAll(BLOCK)) {
-		const startLine = text.slice(0, block.index).split("\n").length;
+	for (const { text: blockText, startLine } of blocksOf(text)) {
 		// Drop the "/*" and "*/" delimiters before anything else. CSS writes the
 		// first tag on the SAME line as the opener, so a gutter-stripper alone
 		// never sees it; neither delimiter spans a newline, so line numbers hold.
-		const lines = block[0].slice(2, -2).split("\n");
+		const lines = blockText.slice(2, -2).split("\n");
 
 		let lead: string | null = null;
 		let fields: Record<string, string> = {};
