@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { capLines, parseConsole, serializeConsole, classifyReply, CONSOLE_LIMIT } from "../src/om/consoleLog.ts";
+import { appendCapped, capLines, parseConsole, serializeConsole, classifyReply, CONSOLE_LIMIT, type ConsoleLine } from "../src/om/consoleLog.ts";
 
 const line = (n: number) => ({ receivedAt: 1000 + n, text: `msg ${n}` });
 
@@ -56,4 +56,22 @@ test("classifyReply is exact — a mention of an error is not an error line", ()
 	assert.equal(classifyReply("No errors found"), "normal");
 	assert.equal(classifyReply("error: lowercase is not the RRF prefix"), "normal");
 	assert.equal(classifyReply("Errors: 0"), "normal");
+});
+
+// appendCapped is the only sanctioned way to grow the live log — om/store.ts no
+// longer applies the bound itself. It mutates in place because the live console
+// is a Solid store array written through produce().
+test("appendCapped evicts the oldest and never exceeds the bound", () => {
+	const lines: ConsoleLine[] = [];
+	for (let i = 0; i < CONSOLE_LIMIT + 25; i++) appendCapped(lines, line(i));
+	assert.equal(lines.length, CONSOLE_LIMIT, "bounded however many arrive");
+	assert.equal(lines.at(-1)!.text, `msg ${CONSOLE_LIMIT + 24}`, "keeps the newest");
+	assert.equal(lines[0]!.text, `msg 25`, "drops the oldest, in order");
+});
+
+test("appendCapped mutates in place — produce() hands it a draft to write", () => {
+	const lines: ConsoleLine[] = [];
+	const same = lines;
+	appendCapped(lines, line(1));
+	assert.equal(same.length, 1, "the caller's array is the one that grew");
 });

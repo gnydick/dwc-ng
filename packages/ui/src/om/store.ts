@@ -1,7 +1,7 @@
 import { createStore, reconcile, produce, type SetStoreFunction } from "solid-js/store";
 import type { ConnectorEvents, ConnectionStatus, ConnectorTransport } from "../connector/types.ts";
 import { conformModelKey, emptyModel, type ObjectModel } from "./types.ts";
-import { CONSOLE_LIMIT, loadConsole, saveConsole, type ConsoleLine } from "./consoleLog.ts";
+import { appendCapped, loadConsole, saveConsole, type ConsoleLine } from "./consoleLog.ts";
 import { isPlainObject, isSafeKey, safeEntries } from "../util/safeObject.ts";
 
 /**
@@ -95,10 +95,9 @@ export function createOmStore(): OmStore {
 			setOm("job", "layers", reconcile(layers as never));
 		},
 		onReply(text) {
-			setConsoleLines(produce(lines => {
-				lines.push({ receivedAt: Date.now(), text });
-				if (lines.length > CONSOLE_LIMIT) lines.splice(0, lines.length - CONSOLE_LIMIT);
-			}));
+			// The bound lives in consoleLog.ts; this module no longer knows what
+			// it is, so it cannot append past it.
+			setConsoleLines(produce(lines => appendCapped(lines, { receivedAt: Date.now(), text })));
 			persistSoon();
 		},
 		onStatusChange(status, detail) {

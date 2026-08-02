@@ -21,7 +21,7 @@ and invariant claim mentions 13 -> 23, so no mechanism was deleted and no
 claim was lost in the gap. From here the ratchets make a dropped rung visible
 in the diff that drops it.
 
-**Totals:** 74 invariants · 48 at rung 6 or above · 26 below rung 6 (ceiling 26).
+**Totals:** 74 invariants · 50 at rung 6 or above · 24 below rung 6 (ceiling 24).
 
 ## bed
 
@@ -187,7 +187,7 @@ in the diff that drops it.
 
 **Why.** "u-" ids must never collide with built-in screen ids or the lab route, and "c-" ids never with registry CardIds. A collision would silently shadow a built-in screen with a user one, and the user could not delete what they had not created
 
-`packages/ui/src/config/store.ts:449`
+`packages/ui/src/config/store.ts:457`
 
 ### `config/labels-never-travel` — rung 6
 
@@ -197,15 +197,15 @@ in the diff that drops it.
 
 **Debt — promotion.** the payload is a hand-built object literal, so a future field is one line away. Promote by giving ConfigOverlay a single serialize that returns a branded ConfigPayload upload accepts, so what travels is decided by the overlay's own type rather than here.
 
-`packages/ui/src/config/store.ts:394`
+`packages/ui/src/config/store.ts:406`
 
-### `config/overlay-writes-persist` — rung 5
+### `config/overlay-writes-persist` — rung 6
 
-**Mechanism.** shared helper — persistCache is called by all THREE sites that assign `overlay` (this one, revert-to-snapshot, and loadFromMachine), each of which also repeats the same setConfig/reconcile and setMeta("dirty") lines. Corrected 2026-08-01: first declared rung 6 as "the only function that assigns it", which is false — there are three, and I checked the claim by reading the function rather than by searching for the assignment
+**Mechanism.** choke-point — `commit` below is the only place `overlay` is assigned, and it does all four steps together: assign, re-derive the effective config, set the flag, cache. A fourth writer gets them by having nowhere else to go. Promoted 2026-08-01 from a rung 5 where three sites each repeated the same four lines — and before that from a rung-6 claim that was simply FALSE, made by reading the function instead of searching for the assignment
 
 **Why.** every edit must cache and mark itself unsaved, or it vanishes on reload — the 2026-07-25 report where imported, deleted and edited screens all came back as if nothing had happened
 
-**Debt — promotion.** the property currently holds because three sites each remember four lines, which is the tripwire: a step duplicated at a second call site means the design is already wrong. Promote by giving the closure ONE `commit(next: ConfigOverlay, dirty: boolean)` that does the assign, the reconcile, the flag and the cache — the three sites differ only in the flag (revert marks dirty, loadFromMachine marks clean), so one parameter covers all of them and a fourth site cannot forget.
+**Debt — promotion.** `commit` is closure-private, so this holds within the module and says nothing about a future module. Promotion to 7 is making the overlay a branded value only commit can produce, so a second store could not assign one either.
 
 `packages/ui/src/config/store.ts:172`
 
@@ -227,7 +227,7 @@ in the diff that drops it.
 
 **Debt — promotion.** promote by making ConfigSnapshot's label a branded SnapshotLabel this function is the sole producer of, so a snapshot assembled elsewhere cannot be pushed at all rather than merely not being.
 
-`packages/ui/src/config/store.ts:352`
+`packages/ui/src/config/store.ts:367`
 
 ### `config/untrusted-overlay-boundary` — rung 6
 
@@ -597,13 +597,13 @@ in the diff that drops it.
 
 ## om
 
-### `om/console-log-is-bounded` — rung 5
+### `om/console-log-is-bounded` — rung 6
 
-**Mechanism.** one shared constant, TWO enforcement sites — om/store.ts:100 splices the live store in place, and capLines below slices on the way to localStorage. The number is a single fact; the capping is not
+**Mechanism.** choke-point — every APPLICATION of the bound lives in this module. om/store.ts used to import CONSOLE_LIMIT and splice the live array itself; it now calls appendCapped and has no way to express an uncapped append. The two entry points that remain — live append and the storage boundary — are two operations on one bound rather than two implementations of it. The constant stays exported because the tests build an overflowing log from it, which is reading the bound, not re-applying it
 
 **Why.** the console takes every reply the board sends, and a long print sends a lot. Unbounded, it grows until the tab is slow and the localStorage write throws — and the catch that hides that write failure would take the whole persisted log with it
 
-**Debt — promotion.** the tripwire: the same processing step at a second call site. Promote by making the log a small bounded type whose push caps, so both the live store and the save path get the bound from the value rather than each applying it, and a third consumer cannot forget.
+**Debt — promotion.** promotion to 7 is a bounded log TYPE whose push caps, so the bound comes from the value rather than from calling the right function. Blocked by the live log being a Solid store array written through produce(), which hands the callback a plain mutable array — a custom type cannot survive that round trip without wrapping every read.
 
 `packages/ui/src/om/consoleLog.ts:38`
 

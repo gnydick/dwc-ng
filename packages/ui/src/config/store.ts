@@ -170,36 +170,52 @@ export function createConfigStore(): ConfigStore {
 
 	/**
 	 * @invariant overlay-writes-persist
-	 * @rung 5  shared helper — persistCache is called by all THREE sites that
-	 *          assign `overlay` (this one, revert-to-snapshot, and
-	 *          loadFromMachine), each of which also repeats the same
-	 *          setConfig/reconcile and setMeta("dirty") lines. Corrected
-	 *          2026-08-01: first declared rung 6 as "the only function that
-	 *          assigns it", which is false — there are three, and I checked the
-	 *          claim by reading the function rather than by searching for the
-	 *          assignment
+	 * @rung 6  choke-point — `commit` below is the only place `overlay` is
+	 *          assigned, and it does all four steps together: assign, re-derive
+	 *          the effective config, set the flag, cache. A fourth writer gets
+	 *          them by having nowhere else to go. Promoted 2026-08-01 from a
+	 *          rung 5 where three sites each repeated the same four lines — and
+	 *          before that from a rung-6 claim that was simply FALSE, made by
+	 *          reading the function instead of searching for the assignment
 	 * @why every edit must cache and mark itself unsaved, or it vanishes on
 	 *      reload — the 2026-07-25 report where imported, deleted and edited
 	 *      screens all came back as if nothing had happened
-	 * @debt the property currently holds because three sites each remember four
-	 *       lines, which is the tripwire: a step duplicated at a second call
-	 *       site means the design is already wrong. Promote by giving the
-	 *       closure ONE `commit(next: ConfigOverlay, dirty: boolean)` that does
-	 *       the assign, the reconcile, the flag and the cache — the three sites
-	 *       differ only in the flag (revert marks dirty, loadFromMachine marks
-	 *       clean), so one parameter covers all of them and a fourth site
-	 *       cannot forget.
+	 * @debt `commit` is closure-private, so this holds within the module and
+	 *       says nothing about a future module. Promotion to 7 is making the
+	 *       overlay a branded value only commit can produce, so a second store
+	 *       could not assign one either.
 	 */
+	/**
+	 * The ONE place `overlay` is assigned. Everything that must happen with it —
+	 * re-derive the effective config, set the unsaved flag, cache — happens
+	 * here, so a new writer gets all four by having nowhere else to go. The
+	 * three callers differ only in the flag: an edit and a revert are unsaved
+	 * work, a load from the card is not.
+	 */
+	const commit = (next: ConfigOverlay, dirty: boolean): void => {
+		overlay = next;
+		setConfig(reconcile(effective(overlay)));
+		setMeta("dirty", dirty);
+		// Cache on EVERY change, with its flag. This is the one path every edit
+		// — import, delete, card authoring, a role change — flows through, so
+		// caching here is what makes any of them survive a reload.
+		persistCache();
+	};
+
+	/**
+	 * The flag alone, for the two things that change whether work is saved
+	 * without changing the overlay: a layout edit (geometry lives in the canvas
+	 * store until Save reads it) and a successful upload.
+	 */
+	const markDirty = (dirty: boolean): void => {
+		setMeta("dirty", dirty);
+		persistCache();
+	};
+
 	const apply = (mutate: (draft: ConfigOverlay) => void): void => {
 		const next = structuredClone(overlay);
 		mutate(next);
-		overlay = prune(next) ?? {};
-		setConfig(reconcile(effective(overlay)));
-		setMeta("dirty", true);
-		// Cache on EVERY mutation, marked unsaved. This is the one path every
-		// edit — import, delete, card authoring, a role change — flows through,
-		// so caching here is what makes any of them survive a reload.
-		persistCache();
+		commit(prune(next) ?? {}, true);
 	};
 
 	const store: ConfigStore = {
@@ -212,8 +228,7 @@ export function createConfigStore(): ConfigStore {
 			// is needed now is for Save to be reachable, and for a reload to
 			// know the work is unsaved.
 			if (meta.dirty) return;
-			setMeta("dirty", true);
-			persistCache();
+			markDirty(true);
 		},
 		get snapshots() { return meta.snapshots; },
 
@@ -384,10 +399,7 @@ export function createConfigStore(): ConfigStore {
 			// proxy and structuredClone throws DataCloneError on it. (Node's
 			// server build of Solid hands back plain objects, which hid this —
 			// the tests now run with --conditions=browser so they can't again.)
-			overlay = structuredClone(unwrap(snap.overlay));
-			setConfig(reconcile(effective(overlay)));
-			setMeta("dirty", true);
-			persistCache();
+			commit(structuredClone(unwrap(snap.overlay)), true);
 		},
 
 		/*
@@ -414,8 +426,7 @@ export function createConfigStore(): ConfigStore {
 			store.snapshot(label ?? "");
 			const payload = JSON.stringify({ version: CONFIG_VERSION, overlay }, null, "\t");
 			await connector.upload(CONFIG_FILE, payload);
-			setMeta("dirty", false);
-			persistCache();
+			markDirty(false);
 		},
 
 		async loadFromMachine(connector) {
@@ -433,10 +444,7 @@ export function createConfigStore(): ConfigStore {
 				if (!(err instanceof FileNotFoundError)) throw err;
 			}
 			// Keep the current (cache-seeded) overlay when the SD has none.
-			overlay = loaded ?? overlay;
-			setConfig(reconcile(effective(overlay)));
-			setMeta("dirty", false);
-			persistCache();
+			commit(loaded ?? overlay, false);
 		},
 	};
 
