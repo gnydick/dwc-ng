@@ -248,3 +248,33 @@ test("babystepZero clears the accumulated offset with the reference's exact form
 	assert.equal(cmd.babystep(0.02), "M290 R1 Z0.02", "the relative step form is unchanged");
 	assert.equal(cmd.babystep(-0.02), "M290 R1 Z-0.02");
 });
+
+// A filename carrying a quote closes the parameter early and the rest is parsed
+// as further G-code. runMacro escaped it correctly; print, simulate and
+// loadFilament hand-wrote their own `"${x}"` and did NOT — found 2026-08-01 by
+// the compiler, when command assembly was moved behind a tagged template that
+// accepts only proven-safe pieces. RRF escapes an embedded quote by DOUBLING.
+const NASTY = '0:/gcodes/a"b.gcode';
+
+test("print quotes its path through gcodeQuote", () => {
+	assert.equal(cmd.print(NASTY), 'M32 "0:/gcodes/a""b.gcode"');
+});
+
+test("simulate quotes its path through gcodeQuote", () => {
+	assert.equal(cmd.simulate(NASTY), 'M37 P"0:/gcodes/a""b.gcode"');
+});
+
+test("loadFilament quotes the filament name", () => {
+	assert.equal(cmd.loadFilament('a"b'), 'M701 S"a""b"\nM703');
+});
+
+test("an axis letter keeps its CASE — AxisLetter has A and a as separate axes", () => {
+	assert.equal(cmd.homeAxis("a"), "G28 a");
+	assert.equal(cmd.homeAxis("X"), "G28 X");
+});
+
+test("anything that is not one letter is refused, not spliced into a command", () => {
+	assert.throws(() => cmd.homeAxis(""), /not an axis letter/);
+	assert.throws(() => cmd.releaseAxis("X Y"), /not an axis letter/);
+	assert.throws(() => cmd.homeAxis('X\nM112'), /not an axis letter/);
+});

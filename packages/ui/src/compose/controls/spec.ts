@@ -18,6 +18,20 @@
 import { compileTemplate, type CompiledTemplate } from "./template.ts";
 import { parseOmSelector, type OmSelector } from "./omSelector.ts";
 
+/**
+ * @invariant operator-input-cannot-add-a-line
+ * @rung 8  illegal state unrepresentable — every value an operator can supply
+ *          to a data-defined control is a NUMBER. There is no free-text kind,
+ *          `default` is a number and `options` is number[], so what
+ *          resolveTemplate interpolates is always String(number) and a newline
+ *          has no representation. Not achieved by escaping the value
+ * @why a control's template is arbitrary G-code by design, reviewed at import.
+ *      The line COUNT of what it sends must still be the author's, not the
+ *      operator's: an input able to carry a newline would let a typed value
+ *      append a second command to a control whose stamp shows one. That is not
+ *      an escalation for the author, who writes the template anyway — it is a
+ *      trap for the operator using the card, on a machine with heaters
+ */
 export interface InputDef {
 	kind: "number" | "chips";
 	label: string;

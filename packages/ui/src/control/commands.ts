@@ -12,8 +12,46 @@
 import { EMERGENCY_STOP } from "../connector/emergency.ts";
 import type { GcodeCommand } from "../connector/types.ts";
 
-/** Trim a number to a compact G-code literal (no trailing ".00"). */
-const n = (v: number): string => String(v);
+/**
+ * The two things a command may be assembled from, and their sole producers.
+ *
+ * A `Param` is the currency of the `gc` tagged template below: an interpolation
+ * must be one, and the only ways to obtain one are `n()` for a number and
+ * `gcodeQuote()` for a string. A bare `string` is not assignable, so
+ * `` gc`M98 P${path}` `` does not compile while
+ * `` gc`M98 P${gcodeQuote(path)}` `` does.
+ */
+declare const param: unique symbol;
+export type Param = string & { readonly [param]: true };
+
+/**
+ * Trim a number to a compact G-code literal (no trailing ".00").
+ *
+ * Sole producer of a numeric Param. A number cannot carry a quote or a newline,
+ * so there is nothing to escape — the brand records that it was checked by the
+ * TYPE, which is the whole guarantee for numeric parameters.
+ */
+const n = (v: number): Param => String(v) as Param;
+
+/**
+ * The only way to build a command string.
+ *
+ * Every interpolation must already be a Param, so an unquoted operator string
+ * cannot be spliced into a command at all — not by a new builder, not by
+ * someone in a hurry. Literal text between the holes is this module's own
+ * source, which is the trusted part.
+ */
+/**
+ * Join commands that are ALREADY built. Composition, not assembly: both sides
+ * came out of gc, so there is nothing here to escape — which is exactly why it
+ * is a separate function. Passing raw text to gc is a compile error; passing it
+ * here would be indistinguishable from passing a command, so this takes only
+ * what other builders produced.
+ */
+const lines = (...parts: string[]): string => parts.join("\n");
+
+const gc = (parts: TemplateStringsArray, ...values: Param[]): string =>
+	parts.reduce((out, part, i) => out + part + (values[i] ?? ""), "");
 
 /**
  * Quote a string parameter the way RRF's quoted strings demand: quotes are
@@ -24,23 +62,49 @@ const n = (v: number): string => String(v);
  * Strings).
  *
  * @invariant gcode-quoting
- * @rung 5  shared helper — the one quoting implementation, imported by
- *          messagebox/ack.ts rather than reimplemented, and pinned by
- *          test/control-commands.test.ts; nothing stops a new builder writing
- *          its own `"${value}"`
+ * @rung 7  sole-constructor type — this is the only producer of a string
+ *          `Param`, and `gc`, the only command-assembly form in this module,
+ *          accepts nothing else. `` gc`M98 P${path}` `` where path is a string
+ *          is a COMPILE error; it has to be `gcodeQuote(path)` first. A new
+ *          builder cannot write its own `"${n(value)}"` and reach a command,
+ *          because a plain template literal is no longer how commands are made
  * @why an unquoted operator filename reaching M98 was a real injection: a name
  *      containing a quote closed the parameter early and the remainder was
- *      parsed as further G-code. The builders below all call it, but that is
- *      inspection rather than mechanism, which is what keeps this at 5
- * @debt return a branded QuotedParam instead of string, and have every builder
- *       taking operator text accept only that — then a raw interpolation into a
- *       command string stops compiling rather than merely being unusual.
+ *      parsed as further G-code, against a machine with heaters. Promoted from
+ *      rung 5 on 2026-08-01 — it had been "the builders below all call it",
+ *      which is inspection, and inspection is what the next builder skips
  */
-export const gcodeQuote = (value: string): string =>
-	`"${value.replace(/"/g, '""').replace(/'/g, "''")}"`;
+/**
+ * A bare axis or parameter letter. Some parameters are tokens, not strings —
+ * `G28 X`, never `G28 "X"` — so quoting would be wrong and there is nothing to
+ * escape. Instead the shape is CHECKED: one letter, or the call throws.
+ *
+ * Letters reach here from the object model (move.axes[].letter), which is the
+ * board talking. Throwing on anything else means a malformed axis becomes a
+ * loud failure at the one place that could have spliced it into a command,
+ * rather than a silently odd G-code line.
+ */
+/** A number at a FIXED decimal width. Distinct from n() because the trailing
+ *  digits are part of the emitted form: (50/100).toFixed(2) is "0.50", and
+ *  re-parsing that through n() would send "0.5" instead. */
+const fixed = (value: number, digits: number): Param => value.toFixed(digits) as Param;
+
+export const axisLetter = (value: string): Param => {
+	if (!/^[A-Za-z]$/.test(value)) throw new Error(`not an axis letter: ${JSON.stringify(value)}`);
+	// Passed through with its CASE INTACT. An earlier draft of this uppercased,
+	// which would have been a wrong-axis bug: reference/objectmodel
+	// move/Axis.ts's AxisLetter enum lists 'A' and 'a' as SEPARATE axes (:13
+	// and :17), so normalising case would silently retarget a lowercase axis.
+	// AxisLetter.none is '' (:43), which fails the test above — an axis with no
+	// letter cannot be homed or released, and saying so loudly is correct.
+	return value as Param;
+};
+
+export const gcodeQuote = (value: string): Param =>
+	`"${value.replace(/"/g, '""').replace(/'/g, "''")}"` as Param;
 
 /** Run a macro file (M98). The P filename is quoted through gcodeQuote. */
-const runMacro = (path: string): string => `M98 P${gcodeQuote(path)}`;
+const runMacro = (path: string): string => gc`M98 P${gcodeQuote(path)}`;
 
 /**
  * A height-map file name for G29's P parameter.
@@ -51,7 +115,7 @@ const runMacro = (path: string): string => `M98 P${gcodeQuote(path)}`;
  * somewhere unintended. Quoted like every other string parameter, because a
  * name can come from an operator's typing.
  */
-const meshFile = (file: string): string => gcodeQuote(file.split("/").pop() ?? file);
+const meshFile = (file: string): Param => gcodeQuote(file.split("/").pop() ?? file);
 
 export interface FilamentOpts {
 	/** Select this tool first. Undefined = act on whatever is already selected. */
@@ -66,8 +130,7 @@ export interface FilamentOpts {
  * T-code and send the command to whatever was already selected.
  */
 const withTool = (tool: number | undefined, code: string): string =>
-	tool === undefined ? code : `T${tool}
-${code}`;
+	tool === undefined ? code : lines(gc`T${n(tool)}`, code);
 
 const rawCmd = {
 	/**
@@ -80,7 +143,7 @@ const rawCmd = {
 
 	// --- homing ---
 	homeAll: (): string => "G28",
-	homeAxis: (axis: string): string => `G28 ${axis}`,
+	homeAxis: (axis: string): string => gc`G28 ${axisLetter(axis)}`,
 	/** Run bed.g — bed tramming / leveling. On this toolchanger bed.g levels
 	 *  the bed by moving the Z leadscrews (UVW) independently. Bare G32, no
 	 *  params (reference/duet-gcode.md G32; DWC sends the same). */
@@ -96,8 +159,8 @@ const rawCmd = {
 	 * would otherwise drive a broken axis.
 	 */
 	selectTool: (tool: number, p?: number): string =>
-		p === undefined ? `T${tool}` : `T${tool} P${p}`,
-	deselectTool: (p?: number): string => (p === undefined ? "T-1" : `T-1 P${p}`),
+		p === undefined ? gc`T${n(tool)}` : gc`T${n(tool)} P${n(p)}`,
+	deselectTool: (p?: number): string => (p === undefined ? "T-1" : gc`T-1 P${n(p)}`),
 
 	// --- tool heaters (M568) ---
 	/**
@@ -115,12 +178,12 @@ const rawCmd = {
 	 * also why each has its own button rather than one button sending both —
 	 * a commit writes exactly the field it sits beside, and nothing else.
 	 */
-	toolActiveSetpoint: (tool: number, temp: number): string => `M568 P${tool} S${n(temp)}`,
-	toolStandbySetpoint: (tool: number, temp: number): string => `M568 P${tool} R${n(temp)}`,
+	toolActiveSetpoint: (tool: number, temp: number): string => gc`M568 P${n(tool)} S${n(temp)}`,
+	toolStandbySetpoint: (tool: number, temp: number): string => gc`M568 P${n(tool)} R${n(temp)}`,
 	/** Mode only — A2/A1/A0 carry no temperature (see toolSetpoints). */
-	toolActive: (tool: number): string => `M568 P${tool} A2`,
-	toolStandby: (tool: number): string => `M568 P${tool} A1`,
-	toolOff: (tool: number): string => `M568 P${tool} A0`,
+	toolActive: (tool: number): string => gc`M568 P${n(tool)} A2`,
+	toolStandby: (tool: number): string => gc`M568 P${n(tool)} A1`,
+	toolOff: (tool: number): string => gc`M568 P${n(tool)} A0`,
 
 	/**
 	 * --- bed heater (M140): off is the sub-absolute-zero sentinel DWC uses ---
@@ -131,8 +194,8 @@ const rawCmd = {
 	 * invent a distinction the firmware does not have. The asymmetry with the
 	 * tools is the hardware's, not the UI's.
 	 */
-	bedActive: (index: number, temp: number): string => `M140 P${index} S${n(temp)}`,
-	bedOff: (index: number): string => `M140 P${index} S-273.15`,
+	bedActive: (index: number, temp: number): string => gc`M140 P${n(index)} S${n(temp)}`,
+	bedOff: (index: number): string => gc`M140 P${n(index)} S-273.15`,
 
 	// --- movement ---
 	/**
@@ -142,8 +205,8 @@ const rawCmd = {
 	 * assumes a homed machine (H2 would bypass endstops/limits — wrong here).
 	 */
 	jog: (axis: string, delta: number, feed: number): string =>
-		`M120\nG91\nG1 ${axis}${n(delta)} F${n(feed)}\nM121`,
-	extrude: (amount: number, feed: number): string => `M83\nG1 E${n(amount)} F${n(feed)}`,
+		gc`M120\nG91\nG1 ${axisLetter(axis)}${n(delta)} F${n(feed)}\nM121`,
+	extrude: (amount: number, feed: number): string => gc`M83\nG1 E${n(amount)} F${n(feed)}`,
 	runMacro,
 	couplerLock: (): string => runMacro("/macros/tool_lock"),
 	couplerUnlock: (): string => runMacro("/macros/tool_unlock"),
@@ -155,13 +218,13 @@ const rawCmd = {
 	 * business and the operator's, not something this UI second-guesses.
 	 */
 	releaseAllMotors: (): string => "M84",
-	releaseAxis: (axis: string): string => `M84 ${axis}`,
+	releaseAxis: (axis: string): string => gc`M84 ${axisLetter(axis)}`,
 
 	/** ATX PSU control (reference/dwc ATXPanel.vue:51). */
 	atxPower: (on: boolean): string => (on ? "M80" : "M81"),
 
 	/** Start printing a job file (reference/dwc JobFileList.vue / M32). */
-	print: (path: string): string => `M32 "${path}"`,
+	print: (path: string): string => gc`M32 ${gcodeQuote(path)}`,
 
 	// --- job control (forms per reference/duet-gcode.md M24/M25/M0; these
 	// were raw literals in ActiveJobCard before — audit M3) ---
@@ -181,7 +244,7 @@ const rawCmd = {
 
 	/** Load + activate a saved height map (G29 S1; equivalent to M375). */
 	loadHeightmap: (file?: string): string =>
-		file === undefined ? "G29 S1" : `G29 S1 P${meshFile(file)}`,
+		file === undefined ? "G29 S1" : gc`G29 S1 P${meshFile(file)}`,
 
 	/**
 	 * Probe the bed. Bare G29 runs sys/mesh.g when it exists and behaves as
@@ -191,7 +254,7 @@ const rawCmd = {
 	probeMesh: (): string => "G29",
 
 	/** Save the CURRENT height map under a chosen name (G29 S3, RRF 2.04+). */
-	saveHeightmapAs: (file: string): string => `G29 S3 P${meshFile(file)}`,
+	saveHeightmapAs: (file: string): string => gc`G29 S3 P${meshFile(file)}`,
 
 	/** Disable mesh compensation AND clear the height map (G29 S2). */
 	clearMesh: (): string => "G29 S2",
@@ -213,10 +276,10 @@ const rawCmd = {
 	 * wiki's own examples (`M997`, `M997 B121`).
 	 */
 	updateFirmware: (canAddress: number): string =>
-		canAddress === 0 ? "M997" : `M997 B${n(canAddress)}`,
+		canAddress === 0 ? "M997" : gc`M997 B${n(canAddress)}`,
 
 	/** Simulate a job file without moving (reference/dwc JobFileList.vue:353). */
-	simulate: (path: string): string => `M37 P"${path}"`,
+	simulate: (path: string): string => gc`M37 P${gcodeQuote(path)}`,
 
 	// --- per-object cancel (M486) ---
 	//
@@ -224,8 +287,8 @@ const rawCmd = {
 	// GCodeViewer.vue:915). Indexed explicitly rather than using M486 C, which
 	// cancels whichever object is current: the one the operator picked is not
 	// necessarily the one printing by the time the command lands.
-	cancelObject: (index: number): string => `M486 P${index}`,
-	resumeObject: (index: number): string => `M486 U${index}`,
+	cancelObject: (index: number): string => gc`M486 P${n(index)}`,
+	resumeObject: (index: number): string => gc`M486 U${n(index)}`,
 
 	// --- filament (M701/M702/M703) ---
 	//
@@ -238,29 +301,33 @@ const rawCmd = {
 	// the load, not a separate step.
 
 	unloadFilament: (opts: FilamentOpts = {}): string =>
-		withTool(opts.selectTool, `M702${opts.runMacros === false ? " P0" : ""}`),
+		withTool(opts.selectTool, opts.runMacros === false ? "M702 P0" : "M702"),
 
 	loadFilament: (filament: string, opts: FilamentOpts = {}): string =>
 		withTool(
 			opts.selectTool,
-			`M701${opts.runMacros === false ? " P0" : ""} S"${filament}"
-M703`,
+			lines(
+				opts.runMacros === false
+					? gc`M701 P0 S${gcodeQuote(filament)}`
+					: gc`M701 S${gcodeQuote(filament)}`,
+				"M703",
+			),
 		),
 
 	// --- fans ---
-	fan: (index: number, percent: number): string => `M106 P${index} S${(percent / 100).toFixed(2)}`,
+	fan: (index: number, percent: number): string => gc`M106 P${n(index)} S${fixed(percent / 100, 2)}`,
 
 	/**
 	 * Clear a heater fault. P is the HEATER INDEX (heat.heaters), not a tool
 	 * number — they differ on a toolchanger (reference/dwc
 	 * ResetHeaterFaultDialog.vue:58).
 	 */
-	resetHeaterFault: (heater: number): string => `M562 P${heater}`,
+	resetHeaterFault: (heater: number): string => gc`M562 P${n(heater)}`,
 
 	// --- tuning ---
-	speedFactor: (percent: number): string => `M220 S${n(percent)}`,
-	flowFactor: (percent: number): string => `M221 S${n(percent)}`,
-	babystep: (delta: number): string => `M290 R1 Z${n(delta)}`,
+	speedFactor: (percent: number): string => gc`M220 S${n(percent)}`,
+	flowFactor: (percent: number): string => gc`M221 S${n(percent)}`,
+	babystep: (delta: number): string => gc`M290 R1 Z${n(delta)}`,
 	/** Clear accumulated babystepping — the reference's own example form
 	 *  (reference/duet-gcode.md M290: "M290 R0 S0 ; clear babystepping"). */
 	babystepZero: (): string => "M290 R0 S0",
@@ -271,11 +338,11 @@ M703`,
 	 * answer to a box that has already gone cannot be mistaken for a fresh one.
 	 * P1 is a distinct answer (cancelled), never "OK with an empty value".
 	 */
-	ackOk: (seq: number): string => `M292 S${n(seq)}`,
-	ackCancel: (seq: number): string => `M292 P1 S${n(seq)}`,
-	ackNumber: (seq: number, value: number): string => `M292 R{${n(value)}} S${n(seq)}`,
+	ackOk: (seq: number): string => gc`M292 S${n(seq)}`,
+	ackCancel: (seq: number): string => gc`M292 P1 S${n(seq)}`,
+	ackNumber: (seq: number, value: number): string => gc`M292 R{${n(value)}} S${n(seq)}`,
 	/** Operator free text — quoted, because it is the operator's. */
-	ackText: (seq: number, text: string): string => `M292 R{${gcodeQuote(text)}} S${n(seq)}`,
+	ackText: (seq: number, text: string): string => gc`M292 R{${gcodeQuote(text)}} S${n(seq)}`,
 };
 
 /**

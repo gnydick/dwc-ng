@@ -56,6 +56,13 @@
 			"where": "packages/ui/src/thumbnails/qoi.ts:66",
 			"what": "A corrupt QOI thumbnail header could crash the tab. The 32-bit width/height were assembled with `<< 24`, which is SIGNED in JS, so a width of 0xFF______ read negative and `new Uint8ClampedArray(negative)` threw RangeError; and a width of 0x7Fffffff produced a **pixelCount of 2.1 billion and an 8.6 GB allocation** — measured 2026-08-01, it did not throw, it just took the memory. The bytes come off the SD card via rr_thumbnail, so a damaged or truncated preview reached this directly, and `Thumbnail.tsx` had no catch: the throw escaped a Solid effect and the job listing went down with the decoration. The header's own claim of 'malformed input can only yield wrong pixels, never NaN or a crash' was false in both directions.",
 			"fix": "Dimensions read UNSIGNED (`>>> 0`), and pixelCount is bounded by what the remaining bytes could physically encode — QOI_OP_RUN carries at most 62 pixels in one byte, so `(bytes.length - 14) * 62` is the true ceiling rather than an arbitrary cap, and every valid image passes it. `Thumbnail.tsx` catches and leaves the canvas blank. Declared as `thumbnails/decode-allocates-only-what-the-stream-could-hold` (rung 6); 3 tests, each red-checked against the pre-fix decoder."
+		},
+		{
+			"slug": "gcode-quote-bypassed-in-three-builders",
+			"status": "fixed",
+			"where": "packages/ui/src/control/commands.ts (print, simulate, loadFilament)",
+			"what": "Three command builders hand-wrote their own quotes instead of calling gcodeQuote, so an embedded quote was NOT doubled and closed the parameter early — the exact injection control/gcode-quoting exists to prevent, and which its own text described as already fixed. Measured before the change: print('0:/sys/a\"b.g') emitted M32 \"0:/sys/a\"b.g\" while runMacro on the same input correctly emitted M98 P\"0:/sys/a\"\"b.g\". Filenames reach these from the SD listing and from operator uploads. Found 2026-08-01 by the COMPILER while promoting the invariant from rung 5 to 7 — not by review, and not by any test, in the months it was there.",
+			"fix": "Command assembly moved behind a `gc` tagged template whose interpolations must be a branded `Param`, produced only by gcodeQuote (strings), n()/fixed() (numbers) or axisLetter (bare tokens). A raw string in a command literal is now a compile error, which is what surfaced all three. A/B over all 45 builders: 39 byte-identical, 6 changed and every change a fix. 5 regression tests."
 		}
 	]
 }

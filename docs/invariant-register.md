@@ -21,7 +21,7 @@ and invariant claim mentions 13 -> 23, so no mechanism was deleted and no
 claim was lost in the gap. From here the ratchets make a dropped rung visible
 in the diff that drops it.
 
-**Totals:** 73 invariants · 45 at rung 6 or above · 28 below rung 6 (ceiling 28).
+**Totals:** 74 invariants · 47 at rung 6 or above · 27 below rung 6 (ceiling 27).
 
 ## bed
 
@@ -109,13 +109,21 @@ in the diff that drops it.
 
 `packages/ui/src/compose/controls/omSelector.ts:4`
 
+### `compose/controls/operator-input-cannot-add-a-line` — rung 8
+
+**Mechanism.** illegal state unrepresentable — every value an operator can supply to a data-defined control is a NUMBER. There is no free-text kind, `default` is a number and `options` is number[], so what resolveTemplate interpolates is always String(number) and a newline has no representation. Not achieved by escaping the value
+
+**Why.** a control's template is arbitrary G-code by design, reviewed at import. The line COUNT of what it sends must still be the author's, not the operator's: an input able to carry a newline would let a typed value append a second command to a control whose stamp shows one. That is not an escalation for the author, who writes the template anyway — it is a trap for the operator using the card, on a machine with heaters
+
+`packages/ui/src/compose/controls/spec.ts:22`
+
 ### `compose/controls/spec-compiles-whole` — rung 7
 
 **Mechanism.** sole-constructor type — this is the only producer of the branded CompiledControlSpec, and it throws on the first bad reference rather than returning a partial spec, so nothing downstream can render a control whose bindings were never resolved
 
 **Why.** a half-compiled spec renders controls that look operable and send nothing, or send the wrong thing. Built-in specs run this at module load, so a broken one fails the build rather than the machine
 
-`packages/ui/src/compose/controls/spec.ts:88`
+`packages/ui/src/compose/controls/spec.ts:102`
 
 ### `compose/controls/template-compiles-whole` — rung 7
 
@@ -339,15 +347,13 @@ in the diff that drops it.
 
 `packages/ui/src/control/armed.ts:17`
 
-### `control/gcode-quoting` — rung 5
+### `control/gcode-quoting` — rung 7
 
-**Mechanism.** shared helper — the one quoting implementation, imported by messagebox/ack.ts rather than reimplemented, and pinned by test/control-commands.test.ts; nothing stops a new builder writing its own `"${value}"`
+**Mechanism.** sole-constructor type — this is the only producer of a string `Param`, and `gc`, the only command-assembly form in this module, accepts nothing else. `` gc`M98 P${path}` `` where path is a string is a COMPILE error; it has to be `gcodeQuote(path)` first. A new builder cannot write its own `"${n(value)}"` and reach a command, because a plain template literal is no longer how commands are made
 
-**Why.** an unquoted operator filename reaching M98 was a real injection: a name containing a quote closed the parameter early and the remainder was parsed as further G-code. The builders below all call it, but that is inspection rather than mechanism, which is what keeps this at 5
+**Why.** an unquoted operator filename reaching M98 was a real injection: a name containing a quote closed the parameter early and the remainder was parsed as further G-code, against a machine with heaters. Promoted from rung 5 on 2026-08-01 — it had been "the builders below all call it", which is inspection, and inspection is what the next builder skips
 
-**Debt — promotion.** return a branded QuotedParam instead of string, and have every builder taking operator text accept only that — then a raw interpolation into a command string stops compiling rather than merely being unusual.
-
-`packages/ui/src/control/commands.ts:26`
+`packages/ui/src/control/commands.ts:64`
 
 ## deploy
 
