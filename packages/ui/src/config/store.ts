@@ -73,23 +73,40 @@ export interface ConfigStore {
 	 * `replaceScreenLayout` in compose/screens.ts, which writes both tiers.
 	 *
 	 * @invariant screen-layout-two-tier
-	 * @rung 5  shared helper — replaceScreenLayout (compose/screens.ts) writes
-	 *          both tiers, but this method stays public with four direct
-	 *          callers, every one of them correct only by inspection
+	 * @rung 6  choke-point — the whole-record write has TWO callers left, both in
+	 *          compose/screens.ts and both deliberate about the tiers
+	 *          (replaceScreenLayout writes both; captureScreenGeometry reads the
+	 *          canvas, so config alone is correct). The three incremental callers
+	 *          that used to rebuild a whole composition to change one card now
+	 *          use setScreenCard, which cannot express a wholesale write.
+	 *          Promoted 2026-08-01; removeCard, the helper they used to rebuild
+	 *          the dangerous shape, was deleted rather than left unused
 	 * @why a screen's geometry lives in two deliberate tiers and mergeCanvas
 	 *      assembles what renders CARD BY CARD, so a wholesale replacement that
 	 *      writes one tier alone delivers a shredded layout — reported
 	 *      2026-07-24 as "machine import didn't work", where the outcome was
 	 *      decided by how much the file and the browser happened to overlap
-	 * @debt remove updateScreenCards from the public ConfigStore interface and
-	 *       expose two named intents instead — updateScreenMembership(id, cards)
-	 *       for incremental changes, replaceScreenLayout(id, rects) for
-	 *       wholesale ones — so "write screen geometry without declaring which
-	 *       kind of change this is" has no encoding, and the operation's name
-	 *       carries the requirement. Scope: one interface change, four call
-	 *       sites.
+	 * @debt replaceAllScreenCards is still reachable from anywhere holding the
+	 *       store, and its name is the only thing saying the caller owes the
+	 *       second tier — which is naming, not prevention. Rung 7 is having it
+	 *       take a branded value that only compose/screens.ts can mint, so a
+	 *       bare Record cannot be passed. Rung 8 would be folding the canvas
+	 *       write in here so one tier alone has no encoding at all; that needs
+	 *       the config store to reach the canvas store, which is a bigger
+	 *       architectural change than this invariant alone justifies.
 	 */
-	updateScreenCards(id: string, cards: Record<string, SlotRect>): void;
+	replaceAllScreenCards(id: string, cards: Record<string, SlotRect>): void;
+
+	/**
+	 * Add, move or (with `null`) remove ONE card on a screen.
+	 *
+	 * The incremental intent, and the only screen-geometry write most callers
+	 * should reach for. It cannot express a wholesale replacement, which is the
+	 * point: the canvas syncs a single changed slot on its own, so this needs no
+	 * second-tier write, while a whole-layout write does — and a caller holding
+	 * only this method cannot get that wrong.
+	 */
+	setScreenCard(screenId: string, cardId: string, rect: SlotRect | null): void;
 
 	/** Create a user-authored card; returns its minted stable id ("c-…"). */
 	addCustomCard(name: string, spec: string): CustomCardId;
@@ -294,11 +311,21 @@ export function createConfigStore(): ConfigStore {
 				screens.hidden = current;
 			});
 		},
-		updateScreenCards(id, cards) {
+		replaceAllScreenCards(id, cards) {
 			apply(draft => {
 				const custom = isUserScreenId(id) ? draft.screens?.custom?.[id] : undefined;
 				if (custom !== undefined) custom.cards = cards;
 				else ((draft.screens ??= {}).layouts ??= {})[id] = cards;
+			});
+		},
+		setScreenCard(screenId, cardId, rect) {
+			apply(draft => {
+				const custom = isUserScreenId(screenId) ? draft.screens?.custom?.[screenId] : undefined;
+				const target = custom !== undefined
+					? (custom.cards ??= {})
+					: (((draft.screens ??= {}).layouts ??= {})[screenId] ??= {});
+				if (rect === null) delete target[cardId];
+				else target[cardId] = rect;
 			});
 		},
 

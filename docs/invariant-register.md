@@ -21,7 +21,7 @@ and invariant claim mentions 13 -> 23, so no mechanism was deleted and no
 claim was lost in the gap. From here the ratchets make a dropped rung visible
 in the diff that drops it.
 
-**Totals:** 74 invariants · 52 at rung 6 or above · 22 below rung 6 (ceiling 22).
+**Totals:** 74 invariants · 53 at rung 6 or above · 21 below rung 6 (ceiling 21).
 
 ## bed
 
@@ -185,7 +185,7 @@ in the diff that drops it.
 
 **Why.** "u-" ids must never collide with built-in screen ids or the lab route, and "c-" ids never with registry CardIds. A collision would silently shadow a built-in screen with a user one, and the user could not delete what they had not created
 
-`packages/ui/src/config/store.ts:457`
+`packages/ui/src/config/store.ts:484`
 
 ### `config/labels-never-travel` — rung 6
 
@@ -195,7 +195,7 @@ in the diff that drops it.
 
 **Debt — promotion.** the payload is a hand-built object literal, so a future field is one line away. Promote by giving ConfigOverlay a single serialize that returns a branded ConfigPayload upload accepts, so what travels is decided by the overlay's own type rather than here.
 
-`packages/ui/src/config/store.ts:406`
+`packages/ui/src/config/store.ts:433`
 
 ### `config/overlay-writes-persist` — rung 6
 
@@ -205,15 +205,15 @@ in the diff that drops it.
 
 **Debt — promotion.** `commit` is closure-private, so this holds within the module and says nothing about a future module. Promotion to 7 is making the overlay a branded value only commit can produce, so a second store could not assign one either.
 
-`packages/ui/src/config/store.ts:172`
+`packages/ui/src/config/store.ts:189`
 
-### `config/screen-layout-two-tier` — rung 5
+### `config/screen-layout-two-tier` — rung 6
 
-**Mechanism.** shared helper — replaceScreenLayout (compose/screens.ts) writes both tiers, but this method stays public with four direct callers, every one of them correct only by inspection
+**Mechanism.** choke-point — the whole-record write has TWO callers left, both in compose/screens.ts and both deliberate about the tiers (replaceScreenLayout writes both; captureScreenGeometry reads the canvas, so config alone is correct). The three incremental callers that used to rebuild a whole composition to change one card now use setScreenCard, which cannot express a wholesale write. Promoted 2026-08-01; removeCard, the helper they used to rebuild the dangerous shape, was deleted rather than left unused
 
 **Why.** a screen's geometry lives in two deliberate tiers and mergeCanvas assembles what renders CARD BY CARD, so a wholesale replacement that writes one tier alone delivers a shredded layout — reported 2026-07-24 as "machine import didn't work", where the outcome was decided by how much the file and the browser happened to overlap
 
-**Debt — promotion.** remove updateScreenCards from the public ConfigStore interface and expose two named intents instead — updateScreenMembership(id, cards) for incremental changes, replaceScreenLayout(id, rects) for wholesale ones — so "write screen geometry without declaring which kind of change this is" has no encoding, and the operation's name carries the requirement. Scope: one interface change, four call sites.
+**Debt — promotion.** replaceAllScreenCards is still reachable from anywhere holding the store, and its name is the only thing saying the caller owes the second tier — which is naming, not prevention. Rung 7 is having it take a branded value that only compose/screens.ts can mint, so a bare Record cannot be passed. Rung 8 would be folding the canvas write in here so one tier alone has no encoding at all; that needs the config store to reach the canvas store, which is a bigger architectural change than this invariant alone justifies.
 
 `packages/ui/src/config/store.ts:75`
 
@@ -225,7 +225,7 @@ in the diff that drops it.
 
 **Debt — promotion.** promote by making ConfigSnapshot's label a branded SnapshotLabel this function is the sole producer of, so a snapshot assembled elsewhere cannot be pushed at all rather than merely not being.
 
-`packages/ui/src/config/store.ts:367`
+`packages/ui/src/config/store.ts:394`
 
 ### `config/untrusted-overlay-boundary` — rung 6
 
@@ -245,7 +245,7 @@ in the diff that drops it.
 
 **Debt — promotion.** promote by making writeCache take one CacheRecord value assembled in one place, so a second call site physically cannot pass a subset.
 
-`packages/ui/src/config/store.ts:158`
+`packages/ui/src/config/store.ts:175`
 
 ## connector
 

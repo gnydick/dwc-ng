@@ -43,16 +43,16 @@ test("the screen list is never empty even with every builtin hidden", () => {
 	assert.ok(list.length >= 1, "the shell always has a screen to land on");
 });
 
-test("updateScreenCards overrides a builtin's composition; garbage falls back", () => {
+test("replaceAllScreenCards overrides a builtin's composition; garbage falls back", () => {
 	const store = createConfigStore();
-	store.updateScreenCards("machine", { position: { col: 0, row: 0, colSpan: 24, rowSpan: 95 } });
+	store.replaceAllScreenCards("machine", { position: { col: 0, row: 0, colSpan: 24, rowSpan: 95 } });
 	const overridden = resolveScreen(store.config, "machine")!.def.composition;
 	assert.deepEqual(Object.keys(overridden), ["position"]);
 	assert.equal(overridden.position!.colSpan, 24);
 
 	// An override whose every slot is bogus parses to nothing → the builtin
 	// composition returns, never a blank screen.
-	store.updateScreenCards("control", { "not-a-card": { col: 0, row: 0, colSpan: 4, rowSpan: 4 } });
+	store.replaceAllScreenCards("control", { "not-a-card": { col: 0, row: 0, colSpan: 4, rowSpan: 4 } });
 	assert.deepEqual(
 		resolveScreen(store.config, "control")!.def.composition,
 		BUILTIN_SCREENS.control.composition,

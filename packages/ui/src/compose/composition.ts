@@ -148,10 +148,9 @@ export function addCard(composition: Composition, id: SlotId): Composition {
 	return { ...composition, [id]: { col, row, ...size } };
 }
 
-/** Remove a card. Other slots are untouched — removal never reflows. */
-export function removeCard(composition: Composition, id: SlotId): Composition {
-	if (composition[id] === undefined) return composition;
-	const next = { ...composition };
-	delete next[id];
-	return next;
-}
+// removeCard lived here until 2026-08-01. It had exactly one consumer, which
+// used it to rebuild a WHOLE composition in order to drop one card, and that
+// whole-record write is the hazard config/screen-layout-two-tier exists to
+// prevent. Removal is now setScreenCard(screen, card, null) — a single-slot
+// write the config store applies directly. An unused function that reconstructs
+// the dangerous shape is an invitation, so it is gone rather than kept "in case".

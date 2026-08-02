@@ -278,7 +278,7 @@ export function planScreenImport(config: UiConfig, name: string): ScreenImportPl
 /** What a layout writer needs from the config store. */
 export interface LayoutStore {
 	config: UiConfig;
-	updateScreenCards: (id: string, cards: Record<string, SlotRect>) => void;
+	replaceAllScreenCards: (id: string, cards: Record<string, SlotRect>) => void;
 }
 
 /**
@@ -307,7 +307,7 @@ export interface LayoutStore {
  * do not get to write one.
  */
 export function replaceScreenLayout(store: LayoutStore, screenId: string, rects: Record<string, SlotRect>): void {
-	store.updateScreenCards(screenId, rects);
+	store.replaceAllScreenCards(screenId, rects);
 	// Orientation rides IN the slot but is stored beside the geometry, so it
 	// is split out here rather than at every call site.
 	const orientations: OrientationState = {};
@@ -340,6 +340,6 @@ export function captureScreenGeometry(store: LayoutStore): void {
 				...(orientation === undefined ? {} : { orientation }),
 			});
 		}
-		store.updateScreenCards(entry.id, cards);
+		store.replaceAllScreenCards(entry.id, cards);
 	}
 }

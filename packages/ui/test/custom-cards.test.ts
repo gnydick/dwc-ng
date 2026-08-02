@@ -69,7 +69,7 @@ test("a custom card lands on a screen via the same addCard path and survives res
 	const screenId = store.addScreen("CNC");
 	const composition = addCard({}, cardId);
 	assert.ok(composition[cardId], "auto-placed at the custom default size");
-	store.updateScreenCards(screenId, composition as Record<string, { col: number; row: number; colSpan: number; rowSpan: number }>);
+	store.replaceAllScreenCards(screenId, composition as Record<string, { col: number; row: number; colSpan: number; rowSpan: number }>);
 	const entry = resolveScreen(store.config, screenId)!;
 	assert.deepEqual(Object.keys(entry.def.composition), [cardId]);
 
@@ -109,11 +109,11 @@ test("Reset everything drops overrides but KEEPS custom cards and screens", asyn
 	const store = createConfigStore();
 	const cardId = store.addCustomCard("Spindle", SPINDLE_EXAMPLE_JSON);
 	const screenId = store.addScreen("CNC");
-	store.updateScreenCards(screenId, { [cardId]: { col: 0, row: 0, colSpan: 12, rowSpan: 40 } });
+	store.replaceAllScreenCards(screenId, { [cardId]: { col: 0, row: 0, colSpan: 12, rowSpan: 40 } });
 	store.setAxisRole("U", "Z motor 1");
 	store.renameScreen("machine", "Printer");
 	store.setScreenHidden("bed", true);
-	store.updateScreenCards("machine", { position: { col: 0, row: 0, colSpan: 24, rowSpan: 95 } });
+	store.replaceAllScreenCards("machine", { position: { col: 0, row: 0, colSpan: 24, rowSpan: 95 } });
 
 	store.resetAll();
 

@@ -22,7 +22,7 @@ import { PanelCanvas } from "../shell/PanelCanvas.tsx";
 import { canvasStorageKey, createPanelCanvas, type PanelCanvasController } from "../shell/panelCanvas.ts";
 import { CARD_DEFS, allCardIds, parseCardId, type CardId } from "./defs.ts";
 import { RegistryCard, cardTitleOf } from "./RegistryCard.tsx";
-import { addCard, compositionRects, customCardIds, isCustomCardId, removeCard, slotsOf, type Composition, type CustomCardId, type SlotId } from "./composition.ts";
+import { addCard, compositionRects, customCardIds, isCustomCardId, slotsOf, type Composition, type CustomCardId, type SlotId } from "./composition.ts";
 import { createServicePool } from "./services.ts";
 import { orientationsOf, planScreenImport, replaceScreenLayout, resolveScreen, screenList, type ScreenEntry } from "./screens.ts";
 import { CustomCard } from "./CustomCard.tsx";
@@ -226,7 +226,7 @@ function ComposeDrawer(props: { screenId: string; entry: ScreenEntry | null; com
 		if (parsed === null || parsed.kind === "error") return;
 		if (parsed.kind === "card") {
 			const minted = app.config.addCustomCard(parsed.name, parsed.specText);
-			app.config.updateScreenCards(props.screenId, asRects(addCard(props.composition, minted)));
+			placeOne(minted);
 		} else {
 			// Re-importing a screen with the same name REPLACES it rather than
 			// stacking a duplicate: "import my Control again" means update, not
@@ -274,10 +274,20 @@ function ComposeDrawer(props: { screenId: string; entry: ScreenEntry | null; com
 
 	const asRects = compositionRects;
 
+	/**
+	 * Place one card, at the spot addCard picks for it. Written as a SINGLE-card
+	 * write rather than a whole-record one: these are membership edits, the
+	 * canvas syncs the changed slot itself, and a wholesale write here would
+	 * need the second tier too (see config/screen-layout-two-tier).
+	 */
+	const placeOne = (id: SlotId): void => {
+		const rect = asRects(addCard(props.composition, id))[id];
+		if (rect !== undefined) app.config.setScreenCard(props.screenId, id, rect);
+	};
+
 	const toggleCard = (id: SlotId): void => {
-		const has = props.composition[id] !== undefined;
-		const next = has ? removeCard(props.composition, id) : addCard(props.composition, id);
-		app.config.updateScreenCards(props.screenId, asRects(next));
+		if (props.composition[id] !== undefined) app.config.setScreenCard(props.screenId, id, null);
+		else placeOne(id);
 	};
 
 	/** The studio already validated through the one boundary; just store. */
@@ -286,7 +296,7 @@ function ComposeDrawer(props: { screenId: string; entry: ScreenEntry | null; com
 			const minted = app.config.addCustomCard(name, specJson);
 			// A just-made card lands on the current screen immediately — the
 			// author is composing here, not filing it away.
-			app.config.updateScreenCards(props.screenId, asRects(addCard(props.composition, minted)));
+			placeOne(minted);
 		} else {
 			app.config.updateCustomCard(id, { name, spec: specJson });
 		}

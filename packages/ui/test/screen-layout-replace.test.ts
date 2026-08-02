@@ -32,12 +32,12 @@ const useMemStore = (): MemStore => {
 };
 
 /** A config store stub that records what reached the config overlay. */
-const stubStore = (): { config: UiConfig; written: Record<string, Record<string, SlotRect>>; updateScreenCards: (id: string, cards: Record<string, SlotRect>) => void } => {
+const stubStore = (): { config: UiConfig; written: Record<string, Record<string, SlotRect>>; replaceAllScreenCards: (id: string, cards: Record<string, SlotRect>) => void } => {
 	const written: Record<string, Record<string, SlotRect>> = {};
 	return {
 		config: DEFAULT_CONFIG,
 		written,
-		updateScreenCards(id, cards) { written[id] = cards; },
+		replaceAllScreenCards(id, cards) { written[id] = cards; },
 	};
 };
 
@@ -83,7 +83,7 @@ test("RED CHECK: writing only the config overlay reproduces the shredding", () =
 	useMemStore();
 	const store = stubStore();
 	replaceScreenLayout(store, "machine", OLD); // browser knows the old layout
-	store.updateScreenCards("machine", IMPORTED); // config-only write, as before
+	store.replaceAllScreenCards("machine", IMPORTED); // config-only write, as before
 
 	// What the canvas would render: defaults (the imported composition) merged
 	// against storage, per card. Storage wins for every known id.

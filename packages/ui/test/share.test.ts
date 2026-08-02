@@ -58,7 +58,7 @@ test("exportScreen embeds custom cards; import remaps to fresh ids", () => {
 	const source = createConfigStore();
 	const cardId = source.addCustomCard("Spindle", SPINDLE_EXAMPLE_JSON) as CustomCardId;
 	const screenId = source.addScreen("CNC");
-	source.updateScreenCards(screenId, {
+	source.replaceAllScreenCards(screenId, {
 		[cardId]: { col: 0, row: 0, colSpan: 12, rowSpan: 40 },
 		homing: { col: 12, row: 0, colSpan: 12, rowSpan: 51 },
 	});
@@ -79,7 +79,7 @@ test("exportScreen embeds custom cards; import remaps to fresh ids", () => {
 	const idMap = new Map<string, string>();
 	for (const card of parsed.customCards) idMap.set(card.fileId, target.addCustomCard(card.name, card.specText));
 	const newScreen = target.addScreen(parsed.name);
-	target.updateScreenCards(newScreen, remapScreenCards(parsed.cards, idMap));
+	target.replaceAllScreenCards(newScreen, remapScreenCards(parsed.cards, idMap));
 	const imported = resolveScreen(target.config, newScreen)!;
 	const keys = Object.keys(imported.def.composition);
 	assert.equal(keys.length, 2);

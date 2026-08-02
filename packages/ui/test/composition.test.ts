@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { parseCardId, allCardIds, cardTitleOf, CARD_DEFS, type CardId } from "../src/compose/defs.ts";
 import {
-	parseComposition, findFreePosition, addCard, removeCard, slotsOf,
+	parseComposition, findFreePosition, addCard, slotsOf,
 	type Composition,
 } from "../src/compose/composition.ts";
 import { GRID_COLS, rectsOverlap } from "../src/shell/panelCanvas.ts";
@@ -73,13 +73,6 @@ test("addCard is idempotent (I2: the duplicate has no encoding)", () => {
 	const twice = addCard(once, "build-objects");
 	assert.equal(twice, once, "re-adding returns the same composition");
 	assert.equal(slotsOf(twice).length, 1);
-});
-
-test("removeCard removes only the named slot and never reflows", () => {
-	const composition = addCard({}, "build-objects");
-	const emptied = removeCard(composition, "build-objects");
-	assert.deepEqual(emptied, {});
-	assert.equal(removeCard(emptied, "build-objects"), emptied, "removing absent = no-op");
 });
 
 // ---- built-in screens: shippable by construction ----
