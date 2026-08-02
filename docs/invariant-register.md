@@ -21,7 +21,7 @@ and invariant claim mentions 13 -> 23, so no mechanism was deleted and no
 claim was lost in the gap. From here the ratchets make a dropped rung visible
 in the diff that drops it.
 
-**Totals:** 74 invariants · 47 at rung 6 or above · 27 below rung 6 (ceiling 27).
+**Totals:** 74 invariants · 48 at rung 6 or above · 26 below rung 6 (ceiling 26).
 
 ## bed
 
@@ -455,15 +455,13 @@ in the diff that drops it.
 
 `packages/ui/src/files/path.ts:4`
 
-### `files/remembered-dir-untrusted` — rung 3
+### `files/remembered-dir-untrusted` — rung 7
 
-**Mechanism.** a test, plus the return type being plain `string` rather than a proven directory — the single consumer (createFileBrowser) does call dirUnderRoot, but nothing makes it
+**Mechanism.** sole-constructor type — BrowserMemory.dir is a RememberedDir, an opaque object rather than a branded string, so it cannot be used as a path by accident: not concatenated, not passed to childPath, not sent to the connector. This function is the only thing that accepts one, and what it returns is built segment by segment from parseFileName. Promoted from rung 3 on 2026-08-01, where it had been "the single consumer does call this, but nothing makes it"
 
-**Why.** localStorage is operator-editable and survives a firmware change that moved or deleted the directory. A remembered path used as a real one lists outside the browser's root, or 404s the view into a dead end it cannot navigate out of
+**Why.** localStorage is operator-editable and survives a firmware change that moved or deleted the directory. A remembered path used as a real one lists outside the browser's domain, or 404s the view into a dead end it cannot navigate out of — and the browser is how files get deleted
 
-**Debt — promotion.** return a branded `RememberedDir` that only `dirUnderRoot` can convert into the directory type createFileBrowser accepts, so a second consumer cannot use the raw string as a path — the same shape as files/path-escape, which already proves it works here.
-
-`packages/ui/src/files/browserMemory.ts:10`
+`packages/ui/src/files/path.ts:97`
 
 ### `files/restore-lands-on-real-rows` — rung 1
 
@@ -483,7 +481,7 @@ in the diff that drops it.
 
 **Debt — promotion.** fold the cap into a small bounded-map type so a second writer cannot add a key without eviction.
 
-`packages/ui/src/files/browserMemory.ts:23`
+`packages/ui/src/files/browserMemory.ts:15`
 
 ## gcode
 

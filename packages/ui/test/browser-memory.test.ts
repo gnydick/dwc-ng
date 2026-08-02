@@ -20,9 +20,9 @@ class MemStore {
 test("dir round-trips per root, independently", () => {
 	saveBrowserDir("0:/gcodes", "0:/gcodes/benchies");
 	saveBrowserDir("0:/macros", "0:/macros/tools");
-	assert.equal(loadBrowserMemory("0:/gcodes").dir, "0:/gcodes/benchies");
-	assert.equal(loadBrowserMemory("0:/macros").dir, "0:/macros/tools");
-	assert.equal(loadBrowserMemory("0:/sys").dir, undefined, "an untouched root remembers nothing");
+	assert.equal(loadBrowserMemory("0:/gcodes").dir?.raw, "0:/gcodes/benchies");
+	assert.equal(loadBrowserMemory("0:/macros").dir?.raw, "0:/macros/tools");
+	assert.equal(loadBrowserMemory("0:/sys").dir?.raw, undefined, "an untouched root remembers nothing");
 });
 
 test("scroll round-trips per directory, and dir/scroll coexist", () => {
@@ -30,7 +30,7 @@ test("scroll round-trips per directory, and dir/scroll coexist", () => {
 	saveBrowserScroll("0:/gcodes", "0:/gcodes/a", 120);
 	saveBrowserScroll("0:/gcodes", "0:/gcodes/b", 340);
 	const m = loadBrowserMemory("0:/gcodes");
-	assert.equal(m.dir, "0:/gcodes/a", "saving scroll preserves the remembered dir");
+	assert.equal(m.dir?.raw, "0:/gcodes/a", "saving scroll preserves the remembered dir");
 	assert.equal(m.scroll["0:/gcodes/a"], 120);
 	assert.equal(m.scroll["0:/gcodes/b"], 340);
 });

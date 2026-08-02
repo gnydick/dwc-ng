@@ -7,18 +7,10 @@
  * Keyed by the browser's ROOT ("0:/gcodes" etc.), so each domain remembers
  * its own place.
  *
- * @invariant remembered-dir-untrusted
- * @rung 3  a test, plus the return type being plain `string` rather than a
- *          proven directory — the single consumer (createFileBrowser) does call
- *          dirUnderRoot, but nothing makes it
- * @why localStorage is operator-editable and survives a firmware change that
- *      moved or deleted the directory. A remembered path used as a real one
- *      lists outside the browser's root, or 404s the view into a dead end it
- *      cannot navigate out of
- * @debt return a branded `RememberedDir` that only `dirUnderRoot` can convert
- *       into the directory type createFileBrowser accepts, so a second consumer
- *       cannot use the raw string as a path — the same shape as
- *       files/path-escape, which already proves it works here.
+ * `dir` is a RememberedDir, not a string: the declaration for that lives with
+ * dirUnderRoot in ./path.ts, which is the only thing that can turn one into a
+ * directory. The wrapper is stripped on the way OUT, so the persisted JSON
+ * still holds a plain string and an existing file reads back unchanged.
  *
  * @invariant scroll-map-bounded
  * @rung 6  choke-point — saveBrowserScroll is the only writer of the map and
@@ -31,10 +23,12 @@
  *       add a key without eviction.
  */
 import { isPlainObject, safeEntries } from "../util/safeObject.ts";
+import { asRemembered, type RememberedDir } from "./path.ts";
 
 export interface BrowserMemory {
-	/** The directory last shown; undefined when nothing is remembered. */
-	dir: string | undefined;
+	/** The directory last shown; undefined when nothing is remembered.
+	 *  A RememberedDir, not a string — see files/remembered-dir-untrusted. */
+	dir: RememberedDir | undefined;
 	/** Scroll offset of the file list, keyed by directory. */
 	scroll: Record<string, number>;
 }
@@ -60,7 +54,7 @@ export function loadBrowserMemory(root: string): BrowserMemory {
 		}
 	}
 	return {
-		dir: typeof parsed["dir"] === "string" ? parsed["dir"] : undefined,
+		dir: typeof parsed["dir"] === "string" ? asRemembered(parsed["dir"]) : undefined,
 		scroll,
 	};
 }
@@ -68,7 +62,7 @@ export function loadBrowserMemory(root: string): BrowserMemory {
 function write(root: string, memory: BrowserMemory): void {
 	if (typeof localStorage === "undefined") return;
 	try {
-		localStorage.setItem(keyOf(root), JSON.stringify(memory));
+		localStorage.setItem(keyOf(root), JSON.stringify({ dir: memory.dir?.raw, scroll: memory.scroll }));
 	} catch {
 		// Private mode / quota: navigation memory just won't persist.
 	}
@@ -76,8 +70,8 @@ function write(root: string, memory: BrowserMemory): void {
 
 export function saveBrowserDir(root: string, dir: string): void {
 	const memory = loadBrowserMemory(root);
-	if (memory.dir === dir) return;
-	memory.dir = dir;
+	if (memory.dir?.raw === dir) return;
+	memory.dir = asRemembered(dir);
 	write(root, memory);
 }
 

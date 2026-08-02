@@ -67,6 +67,24 @@ export function parentDir(dir: string, root: string): string {
 	return up.length < root.length ? root : up;
 }
 
+declare const remembered: unique symbol;
+
+/**
+ * A directory string as restored from storage — deliberately NOT a string.
+ *
+ * A branded string would be assignable anywhere a path is wanted, which is
+ * precisely the mistake to prevent, so this is an opaque OBJECT: it cannot be
+ * concatenated, passed to childPath, or handed to the connector. The only thing
+ * that can be done with one is give it to dirUnderRoot, which is the check.
+ */
+export interface RememberedDir {
+	readonly raw: string;
+	readonly [remembered]: true;
+}
+
+/** Wrap a stored value. Untrusted by construction — that is the whole point. */
+export const asRemembered = (raw: string): RememberedDir => ({ raw }) as RememberedDir;
+
 /**
  * Reconstruct a REMEMBERED directory (restored from localStorage — untrusted)
  * as a proven descendant of `root`, or fall back to `root`. Every segment
@@ -75,9 +93,23 @@ export function parentDir(dir: string, root: string): string {
  * carrying "..", an absolute path, a foreign root, or any forbidden character
  * cannot point the browser outside its domain. Parse, don't validate — the
  * unchecked string never becomes a dir.
+ *
+ * @invariant remembered-dir-untrusted
+ * @rung 7  sole-constructor type — BrowserMemory.dir is a RememberedDir, an
+ *          opaque object rather than a branded string, so it cannot be used as
+ *          a path by accident: not concatenated, not passed to childPath, not
+ *          sent to the connector. This function is the only thing that accepts
+ *          one, and what it returns is built segment by segment from
+ *          parseFileName. Promoted from rung 3 on 2026-08-01, where it had been
+ *          "the single consumer does call this, but nothing makes it"
+ * @why localStorage is operator-editable and survives a firmware change that
+ *      moved or deleted the directory. A remembered path used as a real one
+ *      lists outside the browser's domain, or 404s the view into a dead end it
+ *      cannot navigate out of — and the browser is how files get deleted
  */
-export function dirUnderRoot(root: string, raw: unknown): string {
-	if (typeof raw !== "string" || raw === root) return root;
+export function dirUnderRoot(root: string, stored: RememberedDir | undefined): string {
+	const raw = stored?.raw;
+	if (raw === undefined || raw === root) return root;
 	if (!raw.startsWith(`${root}/`)) return root;
 	let dir = root;
 	for (const segment of raw.slice(root.length + 1).split("/")) {

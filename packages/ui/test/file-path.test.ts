@@ -97,14 +97,14 @@ test("parentDir on an unrelated path falls back to the root", () => {
 // --- dirUnderRoot: a REMEMBERED directory can never escape its root ---
 
 test("dirUnderRoot reconstructs a genuine descendant", async () => {
-	const { dirUnderRoot } = await import("../src/files/path.ts");
-	assert.equal(dirUnderRoot("0:/gcodes", "0:/gcodes"), "0:/gcodes", "root is itself");
-	assert.equal(dirUnderRoot("0:/gcodes", "0:/gcodes/benchies"), "0:/gcodes/benchies");
-	assert.equal(dirUnderRoot("0:/gcodes", "0:/gcodes/a/b/c"), "0:/gcodes/a/b/c", "nested rebuilt");
+	const { dirUnderRoot, asRemembered } = await import("../src/files/path.ts");
+	assert.equal(dirUnderRoot("0:/gcodes", asRemembered("0:/gcodes")), "0:/gcodes", "root is itself");
+	assert.equal(dirUnderRoot("0:/gcodes", asRemembered("0:/gcodes/benchies")), "0:/gcodes/benchies");
+	assert.equal(dirUnderRoot("0:/gcodes", asRemembered("0:/gcodes/a/b/c")), "0:/gcodes/a/b/c", "nested rebuilt");
 });
 
 test("dirUnderRoot rejects anything that could escape the root — falls back to root", async () => {
-	const { dirUnderRoot } = await import("../src/files/path.ts");
+	const { dirUnderRoot, asRemembered } = await import("../src/files/path.ts");
 	const root = "0:/gcodes";
 	for (const hostile of [
 		"0:/gcodes/../../sys",     // traversal
@@ -117,13 +117,23 @@ test("dirUnderRoot rejects anything that could escape the root — falls back to
 		"relative/path",           // not under root at all
 		"0:/gcodesevil/x",         // prefix-match trap (starts with root text, not root/)
 	]) {
-		assert.equal(dirUnderRoot(root, hostile), root, `must fall back to root: ${hostile}`);
+		assert.equal(dirUnderRoot(root, asRemembered(hostile)), root, `must fall back to root: ${hostile}`);
 	}
 });
 
-test("dirUnderRoot tolerates non-string input", async () => {
+test("dirUnderRoot falls back to root when nothing is remembered", async () => {
 	const { dirUnderRoot } = await import("../src/files/path.ts");
-	assert.equal(dirUnderRoot("0:/macros", null), "0:/macros");
 	assert.equal(dirUnderRoot("0:/macros", undefined), "0:/macros");
-	assert.equal(dirUnderRoot("0:/macros", 42), "0:/macros");
+});
+
+// The brand is an opaque OBJECT, not a branded string, precisely so a
+// remembered value cannot be used as a path by being passed somewhere a string
+// is wanted. A branded string would satisfy every one of those signatures.
+test("a RememberedDir is not usable as a path", async () => {
+	const { asRemembered } = await import("../src/files/path.ts");
+	const stored: unknown = asRemembered("0:/gcodes/sub");
+	assert.equal(typeof stored, "object", "not a string, so it cannot be concatenated into one");
+	// @ts-expect-error a RememberedDir is not assignable where a path is wanted
+	const _reject: string = asRemembered("0:/gcodes/sub");
+	void _reject;
 });
