@@ -95,3 +95,18 @@ test("a move subtree with no currentMove still conforms to the promised shape", 
 		assert.deepEqual(cm, { requestedSpeed: null, topSpeed: null, extrusionRate: null });
 	}
 });
+
+// Measured 2026-08-01 while considering routing the live patch route through
+// this function: it FILLS IN absent arrays from defaults, which is right for a
+// wholesale subtree (the whole truth) and wrong for a partial patch (absence
+// means "unchanged"). Pinned so the difference stays visible to whoever tries.
+test("conform COMPLETES a subtree from defaults — which a partial patch must not do", () => {
+	const r = conformModelKey("heat", { heaters: [{ current: 210 }] });
+	assert.equal(r.ok, true);
+	const value = (r as { ok: true; value: Record<string, unknown> }).value;
+	assert.deepEqual(value.bedHeaters, [], "absent arrays are invented, not left absent");
+	assert.deepEqual(value.chamberHeaters, []);
+	// Deep-merged into a store that HAS bed heaters, those empties would replace
+	// them. That is why om-entry-shape-gate cannot simply reuse this on the
+	// patch route, and why om/speeds.ts's second parse is load bearing.
+});
