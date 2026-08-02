@@ -82,6 +82,13 @@ const highlight = HighlightStyle.define([
 export interface EditorHandle {
 	/** Current document text. */
 	getDoc(): string;
+	/**
+	 * Replace the whole document, KEEPING the current clean baseline — so the
+	 * result still reads dirty if it differs from the board's copy. This is what
+	 * stepping through the checkpoint history uses: arriving at an older
+	 * revision is not the same as that revision having been saved.
+	 */
+	replaceDoc(text: string): void;
 	/** Replace the whole document and treat the new text as the clean baseline. */
 	setDoc(text: string): void;
 	/** Tear down the CodeMirror instance. */
@@ -90,6 +97,12 @@ export interface EditorHandle {
 
 export interface EditorOptions {
 	doc: string;
+	/**
+	 * What "unsaved" is measured against. Defaults to `doc`, which is right when
+	 * a file is opened straight off the board; a restored draft passes the
+	 * board's copy here so it opens already showing as dirty.
+	 */
+	baseline?: string;
 	lang: EditorLang;
 	/** Called with the current dirty state whenever the document changes. */
 	onDirty(dirty: boolean): void;
@@ -98,7 +111,7 @@ export interface EditorOptions {
 
 /** Mount a CodeMirror editor into `parent` and return a small control handle. */
 export function createEditor(parent: HTMLElement, opts: EditorOptions): EditorHandle {
-	let baseline = opts.doc;
+	let baseline = opts.baseline ?? opts.doc;
 	const view = new EditorView({
 		parent,
 		state: EditorState.create({
@@ -117,12 +130,19 @@ export function createEditor(parent: HTMLElement, opts: EditorOptions): EditorHa
 			],
 		}),
 	});
+	// The one write path. Dirtiness is DERIVED from the text and the baseline
+	// every time rather than asserted per caller, so the two ways to replace the
+	// document below cannot disagree about what "unsaved" means.
+	const write = (text: string): void => {
+		view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text } });
+		opts.onDirty(text !== baseline);
+	};
 	return {
 		getDoc: () => view.state.doc.toString(),
+		replaceDoc: write,
 		setDoc(text) {
 			baseline = text;
-			view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text } });
-			opts.onDirty(false);
+			write(text);
 		},
 		destroy: () => view.destroy(),
 	};

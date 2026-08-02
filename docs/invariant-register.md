@@ -21,7 +21,7 @@ and invariant claim mentions 13 -> 23, so no mechanism was deleted and no
 claim was lost in the gap. From here the ratchets make a dropped rung visible
 in the diff that drops it.
 
-**Totals:** 74 invariants · 55 at rung 6 or above · 19 below rung 6 (ceiling 19).
+**Totals:** 76 invariants · 57 at rung 6 or above · 19 below rung 6 (ceiling 19).
 
 ## bed
 
@@ -149,6 +149,14 @@ in the diff that drops it.
 
 `packages/ui/src/compose/composition.ts:7`
 
+### `compose/one-service-instance-per-screen` — rung 8
+
+**Mechanism.** illegal state unrepresentable — ctx.service(id) provisions ON FIRST ACCESS and memoizes into the pool, so "asked for but not provisioned" is not a state that exists, and asking twice returns the same object. Two cards holding different instances would require a second pool, which nothing can make: the composer owns it and hands out only the accessor
+
+**Why.** a service IS the shared state — the file browser and its selection, the height-map store and the selected cell. Two instances would mean two cards on one screen disagreeing about which cell is selected or which directory is open, each correct about its own copy, with the operator acting on whichever one the click reached
+
+`packages/ui/src/compose/services.ts:27`
+
 ### `compose/one-visibility-predicate` — rung 6
 
 **Mechanism.** choke-point — `visibleWhen` is the single predicate, and ComposedView derives BOTH the JSX mount and the canvas isActive cell-release from that one call. Was design I3
@@ -176,6 +184,14 @@ in the diff that drops it.
 **Why.** a screen holding an id nothing renders is a hole the user cannot fill or remove; deriving the type from the registry means the set of legal ids and the set of rendered cards are ONE fact
 
 `packages/ui/src/compose/defs.ts:10`
+
+### `compose/services-die-with-their-screen` — rung 7
+
+**Mechanism.** RAII — factories run under the SCREEN's reactive owner via runWithOwner, so every resource, effect and cleanup a service creates is tied to that owner's lifetime. Disposal is not a step anyone performs; there is no unmount path that skips it
+
+**Why.** services hold polls, resources and effects against a board whose HTTP server tolerates very few connections. A service outliving its screen keeps fetching for a view nobody is looking at, and the cost lands on the live poll everyone IS looking at. What must NOT die with the screen is what the operator was doing — the open file and selection — which is why that lives in browserMemory instead
+
+`packages/ui/src/compose/services.ts:40`
 
 ## config
 
@@ -419,9 +435,9 @@ in the diff that drops it.
 
 **Why.** the two awaits are a dynamic import and a board download, and the board is slow enough that clicking a second file before the first arrives is ordinary use, not a stress test. Losing the race mounts the PREVIOUS file's contents under the NEW file's title — and this editor's Save uploads to the path in the title, so the operator would overwrite one config file with another and the UI would show it as success
 
-**Debt — promotion.** promote by making the guard the thing that resumes rather than a value to remember to compare — a helper that takes the promise and resolves only for the current generation, so an unchecked await has no way to reach the mount. Rung 6, and it removes the second site. `lang` forces the highlight mode; without it the extension decides. Macros are often extensionless on RRF, so callers that know the domain (macros, sys) pass "gcode" rather than falling back to plain text. Content-only body (the compose conversion): Revert/Save/Close moved from the old Panel header into the .editor-bar row here, because they read the editor's own state (dirty/status), which a registry's static actions closure cannot. The card's dynamic title (the file path) comes from the def.
+**Debt — promotion.** promote by making the guard the thing that resumes rather than a value to remember to compare — a helper that takes the promise and resolves only for the current generation, so an unchecked await has no way to reach the mount. Rung 6, and it removes the second site. `lang` forces the highlight mode; without it the extension decides. Macros are often extensionless on RRF, so callers that know the domain (macros, sys) pass "gcode" rather than falling back to plain text. Content-only body (the compose conversion): Revert/Save/Close moved from the old Panel header into the .editor-bar row here, because they read the editor's own state (dirty/status), which a registry's static actions closure cannot. The card's dynamic title (the file path) comes from the def. ## The text outlives this component CodeMirror is now a VIEW of an edit session (editor/drafts.ts), not the owner of the text. The view is destroyed whenever the open path changes or the card unmounts — which happens on every navigation — so anything held only inside it was being thrown away, including the in-progress text and CodeMirror's own undo stack. The session survives both, and a reload. Every route by which live text leaves the view goes through `capture()`: the 10s tick, stepping, saving, reverting, switching files, and unmounting. That is one place rather than six, so there is no exit from this component through which the last few seconds of typing can escape unrecorded — and because a session carries its own path, flushing on the way OUT of a file files the text under that file even though `props.path` has already changed.
 
-`packages/ui/src/editor/FileEditor.tsx:15`
+`packages/ui/src/editor/FileEditor.tsx:31`
 
 ## files
 
@@ -451,13 +467,13 @@ in the diff that drops it.
 
 `packages/ui/src/files/path.ts:4`
 
-### `files/remembered-dir-untrusted` — rung 7
+### `files/remembered-path-untrusted` — rung 7
 
-**Mechanism.** sole-constructor type — BrowserMemory.dir is a RememberedDir, an opaque object rather than a branded string, so it cannot be used as a path by accident: not concatenated, not passed to childPath, not sent to the connector. This function is the only thing that accepts one, and what it returns is built segment by segment from parseFileName. Promoted from rung 3 on 2026-08-01, where it had been "the single consumer does call this, but nothing makes it"
+**Mechanism.** sole-constructor type over a single walk — BrowserMemory holds a RememberedPath, an opaque object rather than a branded string, so a stored value cannot be used as a path by accident: not concatenated, not passed to childPath, not sent to the connector. The only things that accept one are dirUnderRoot and fileUnderRoot, and both get their answer from this walk. Merged 2026-08-02 from two independent fixes: the brand, and the extraction of this loop so the new open-file memory could not grow a second copy of it
 
-**Why.** localStorage is operator-editable and survives a firmware change that moved or deleted the directory. A remembered path used as a real one lists outside the browser's domain, or 404s the view into a dead end it cannot navigate out of — and the browser is how files get deleted
+**Why.** localStorage is operator-editable and survives a firmware change that moved or deleted the target. A remembered path used as a real one lists outside the browser's domain, or 404s the view into a dead end it cannot navigate out of — and the browser is how files get deleted
 
-`packages/ui/src/files/path.ts:97`
+`packages/ui/src/files/path.ts:104`
 
 ### `files/restore-lands-on-real-rows` — rung 1
 

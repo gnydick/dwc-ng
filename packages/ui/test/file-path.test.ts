@@ -137,3 +137,35 @@ test("a RememberedDir is not usable as a path", async () => {
 	const _reject: string = asRemembered("0:/gcodes/sub");
 	void _reject;
 });
+
+// --- fileUnderRoot: a REMEMBERED open file, or nothing ---
+
+test("fileUnderRoot reconstructs a genuine descendant", async () => {
+	const { fileUnderRoot, asRemembered } = await import("../src/files/path.ts");
+	assert.equal(fileUnderRoot("0:/sys", asRemembered("0:/sys/config.g")), "0:/sys/config.g");
+	assert.equal(fileUnderRoot("0:/macros", asRemembered("0:/macros/tools/park.g")), "0:/macros/tools/park.g");
+});
+
+test("fileUnderRoot yields NOTHING where dirUnderRoot falls back to the root", async () => {
+	// The two differ only here, and it matters: falling back would put the
+	// domain's root directory into an editor that can only hold a file.
+	const { fileUnderRoot, dirUnderRoot, asRemembered } = await import("../src/files/path.ts");
+	const root = "0:/gcodes";
+	// null and 42 are gone from this list on purpose: a RememberedPath carries a
+	// string by construction, so those are no longer states either function can
+	// be handed. The type removed the case rather than the test covering it.
+	for (const hostile of [
+		"0:/gcodes/../../sys",
+		"0:/sys/config.g",
+		"0:/gcodes/a//b",
+		"0:/gcodesevil/x",
+		"relative/path",
+		root, // the root itself is a directory, never an open file
+	]) {
+		assert.equal(fileUnderRoot(root, asRemembered(hostile)), null, `must be nothing: ${hostile}`);
+		assert.equal(dirUnderRoot(root, asRemembered(hostile)), root, `dir form still falls back: ${hostile}`);
+	}
+	// And "nothing remembered" is the absent case both must still handle.
+	assert.equal(fileUnderRoot(root, undefined), null);
+	assert.equal(dirUnderRoot(root, undefined), root);
+});

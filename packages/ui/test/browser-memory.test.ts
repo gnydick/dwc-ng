@@ -4,7 +4,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { loadBrowserMemory, saveBrowserDir, saveBrowserScroll } from "../src/files/browserMemory.ts";
+import { loadBrowserMemory, saveBrowserDir, saveBrowserFile, saveBrowserScroll } from "../src/files/browserMemory.ts";
 
 // A minimal in-memory localStorage for the node test environment.
 class MemStore {
@@ -38,7 +38,7 @@ test("scroll round-trips per directory, and dir/scroll coexist", () => {
 test("malformed or hostile storage yields empty memory, never a throw", () => {
 	const ls = globalThis.localStorage as unknown as MemStore;
 	ls.setItem("dwc-ng.browser.0:/x", "{not json");
-	assert.deepEqual(loadBrowserMemory("0:/x"), { dir: undefined, scroll: {} });
+	assert.deepEqual(loadBrowserMemory("0:/x"), { dir: undefined, file: undefined, scroll: {} });
 	ls.setItem("dwc-ng.browser.0:/y", JSON.stringify({ dir: 5, scroll: { good: 10, bad: "x", neg: -3, inf: Infinity } }));
 	const m = loadBrowserMemory("0:/y");
 	assert.equal(m.dir, undefined, "a non-string dir is dropped");
@@ -46,6 +46,26 @@ test("malformed or hostile storage yields empty memory, never a throw", () => {
 	ls.setItem("dwc-ng.browser.0:/z", JSON.stringify({ scroll: { "__proto__": 9 } }));
 	const z = loadBrowserMemory("0:/z");
 	assert.equal(Object.getPrototypeOf(z.scroll), Object.prototype, "a prototype-reaching scroll key can't pollute");
+});
+
+test("the open file round-trips per root, and closing is storable", () => {
+	// Closing has to be recordable, or a closed editor would reopen itself on
+	// the next visit to the screen.
+	saveBrowserFile("0:/macros", "0:/macros/tools/park.g");
+	saveBrowserDir("0:/macros", "0:/macros/tools");
+	const m = loadBrowserMemory("0:/macros");
+	assert.equal(m.file?.raw, "0:/macros/tools/park.g");
+	assert.equal(m.dir?.raw, "0:/macros/tools", "file and dir coexist");
+	assert.equal(loadBrowserMemory("0:/sys").file?.raw, undefined, "another root is unaffected");
+	saveBrowserFile("0:/macros", null);
+	assert.equal(loadBrowserMemory("0:/macros").file?.raw, undefined, "closing is remembered");
+	assert.equal(loadBrowserMemory("0:/macros").dir?.raw, "0:/macros/tools", "closing kept the directory");
+});
+
+test("a non-string remembered file is dropped rather than returned", () => {
+	const ls = globalThis.localStorage as unknown as MemStore;
+	ls.setItem("dwc-ng.browser.0:/f", JSON.stringify({ file: { evil: true }, scroll: {} }));
+	assert.equal(loadBrowserMemory("0:/f").file, undefined);
 });
 
 test("the scroll map is capped so it cannot grow without bound", () => {

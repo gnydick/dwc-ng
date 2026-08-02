@@ -2482,6 +2482,20 @@
 .editor-dirty { font: 600 calc(10.5px + var(--fs-bump))/1 var(--font-display); text-transform: uppercase; letter-spacing: 0.1em; color: var(--gold); }
 .editor-msg { font-size: calc(12px + var(--fs-bump)); color: var(--silk-dim); white-space: nowrap; }
 .editor-msg.err { color: var(--fault); }
+/* A restored draft or a file that moved on the board. Allowed to shrink and
+   ellipsize: the bar's buttons keep their size, the sentence gives way. */
+.editor-msg.warn { color: var(--gold); overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+/* Checkpoint stepper, held at the LEFT of the bar by the auto margin (the bar
+   itself is flex-end). Rendered in every state, both buttons disabled at the
+   ends, and the readout is fixed-width with tabular figures — "9 of 9" going to
+   "10 of 12" must not shift Revert/Save/Close under an aimed pointer. */
+.editor-steps { display: flex; align-items: center; gap: 4px; margin-right: auto; flex: 0 0 auto; }
+.editor-bar .btn.step { padding: 3px 8px; min-width: 28px; line-height: 1; font-size: calc(11px + var(--fs-bump)); }
+.editor-step-count {
+	font: 500 calc(11px + var(--fs-bump))/1 var(--font-display);
+	color: var(--silk-dim); font-variant-numeric: tabular-nums;
+	min-width: 8ch; text-align: center; white-space: nowrap;
+}
 /* Header action buttons stay within the 28px header. */
 .card-actions .btn { padding: 3px 10px; font-size: calc(12px + var(--fs-bump)); }
 .btn.primary { background: rgba(217, 133, 59, 0.16); border-color: var(--copper); color: var(--copper-bright); }

@@ -66,56 +66,85 @@ export function parentDir(dir: string, root: string): string {
 	const up = dir.slice(0, cut);
 	return up.length < root.length ? root : up;
 }
-
 declare const remembered: unique symbol;
 
 /**
- * A directory string as restored from storage — deliberately NOT a string.
+ * A path as restored from storage — deliberately NOT a string.
  *
  * A branded string would be assignable anywhere a path is wanted, which is
  * precisely the mistake to prevent, so this is an opaque OBJECT: it cannot be
- * concatenated, passed to childPath, or handed to the connector. The only thing
- * that can be done with one is give it to dirUnderRoot, which is the check.
+ * concatenated, passed to childPath, or handed to the connector. The only
+ * things that accept one are the two re-provers below.
+ *
+ * Named for a PATH rather than a directory since 2026-08-02: the same wrapper
+ * now carries the remembered open file, and both need re-proving identically.
  */
-export interface RememberedDir {
+export interface RememberedPath {
 	readonly raw: string;
 	readonly [remembered]: true;
 }
 
 /** Wrap a stored value. Untrusted by construction — that is the whole point. */
-export const asRemembered = (raw: string): RememberedDir => ({ raw }) as RememberedDir;
+export const asRemembered = (raw: string): RememberedPath => ({ raw }) as RememberedPath;
 
 /**
- * Reconstruct a REMEMBERED directory (restored from localStorage — untrusted)
- * as a proven descendant of `root`, or fall back to `root`. Every segment
- * below the root is re-parsed through `parseFileName` and re-joined through
+ * Rebuild a REMEMBERED path (restored from localStorage — untrusted) as a
+ * proven descendant of `root`, or null if it cannot be one. Every segment below
+ * the root is re-parsed through `parseFileName` and re-joined through
  * `childPath`, so the result is built only from safe segments: a stored value
  * carrying "..", an absolute path, a foreign root, or any forbidden character
- * cannot point the browser outside its domain. Parse, don't validate — the
- * unchecked string never becomes a dir.
+ * cannot point outside its domain. Parse, don't validate — the unchecked string
+ * never becomes a path.
  *
- * @invariant remembered-dir-untrusted
- * @rung 7  sole-constructor type — BrowserMemory.dir is a RememberedDir, an
- *          opaque object rather than a branded string, so it cannot be used as
- *          a path by accident: not concatenated, not passed to childPath, not
- *          sent to the connector. This function is the only thing that accepts
- *          one, and what it returns is built segment by segment from
- *          parseFileName. Promoted from rung 3 on 2026-08-01, where it had been
- *          "the single consumer does call this, but nothing makes it"
+ * The ONE segment walk behind both public forms below. They differ only in what
+ * an unusable value means — a directory falls back to the root, an open file
+ * falls back to nothing — and that is the only thing either is allowed to add.
+ * Two copies of this loop would be two chances to get traversal wrong.
+ *
+ * @invariant remembered-path-untrusted
+ * @rung 7  sole-constructor type over a single walk — BrowserMemory holds a
+ *          RememberedPath, an opaque object rather than a branded string, so a
+ *          stored value cannot be used as a path by accident: not concatenated,
+ *          not passed to childPath, not sent to the connector. The only things
+ *          that accept one are dirUnderRoot and fileUnderRoot, and both get
+ *          their answer from this walk. Merged 2026-08-02 from two independent
+ *          fixes: the brand, and the extraction of this loop so the new
+ *          open-file memory could not grow a second copy of it
  * @why localStorage is operator-editable and survives a firmware change that
- *      moved or deleted the directory. A remembered path used as a real one
- *      lists outside the browser's domain, or 404s the view into a dead end it
- *      cannot navigate out of — and the browser is how files get deleted
+ *      moved or deleted the target. A remembered path used as a real one lists
+ *      outside the browser's domain, or 404s the view into a dead end it cannot
+ *      navigate out of — and the browser is how files get deleted
  */
-export function dirUnderRoot(root: string, stored: RememberedDir | undefined): string {
+function pathUnderRoot(root: string, stored: RememberedPath | undefined): string | null {
 	const raw = stored?.raw;
-	if (raw === undefined || raw === root) return root;
-	if (!raw.startsWith(`${root}/`)) return root;
-	let dir = root;
+	if (raw === undefined) return null;
+	if (raw === root) return root;
+	if (!raw.startsWith(`${root}/`)) return null;
+	let path = root;
 	for (const segment of raw.slice(root.length + 1).split("/")) {
 		const name = parseFileName(segment);
-		if (name === null) return root; // any unsafe/empty segment rejects the whole path
-		dir = childPath(dir, name);
+		if (name === null) return null; // any unsafe/empty segment rejects the whole path
+		path = childPath(path, name);
 	}
-	return dir;
+	return path;
+}
+
+/**
+ * A remembered DIRECTORY, or `root` when the stored value is unusable. The
+ * browser always has a directory to show, so there is no "no directory" state
+ * to represent.
+ */
+export function dirUnderRoot(root: string, stored: RememberedPath | undefined): string {
+	return pathUnderRoot(root, stored) ?? root;
+}
+
+/**
+ * A remembered open FILE, or null when the stored value is unusable — "nothing
+ * is open" is a real state here, so this cannot fall back the way a directory
+ * does. The root itself is rejected: it is a directory, and an editor holding a
+ * directory is not a state that exists.
+ */
+export function fileUnderRoot(root: string, stored: RememberedPath | undefined): string | null {
+	const path = pathUnderRoot(root, stored);
+	return path === null || path === root ? null : path;
 }
