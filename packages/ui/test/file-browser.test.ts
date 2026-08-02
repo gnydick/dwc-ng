@@ -325,3 +325,19 @@ test("crumbs describe the path below the root", async () => {
 		]);
 	});
 });
+
+// The map is what makes the rung real: every entry in the mutations table
+// must come out wrapped. Asserted by BEHAVIOUR — a mutating member returns an
+// OpResult instead of rejecting — because that is what withRefresh confers,
+// and a member added straight to the returned object would not have it.
+test("every mutating operation returns an OpResult, never a rejection", async () => {
+	await withBrowser(async browser => {
+		for (const name of ["createDir", "createFile", "upload", "rename", "remove"] as const) {
+			assert.equal(typeof browser[name], "function", `${name} is missing from the browser`);
+		}
+		// An empty name is rejected by resolve(), which THROWS inside the raw
+		// effect. Reaching the caller as { ok: false } is proof the wrapper ran.
+		const result = await browser.createDir("");
+		assert.equal(result.ok, false, "createDir did not go through withRefresh");
+	});
+});

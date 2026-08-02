@@ -21,7 +21,7 @@ and invariant claim mentions 13 -> 23, so no mechanism was deleted and no
 claim was lost in the gap. From here the ratchets make a dropped rung visible
 in the diff that drops it.
 
-**Totals:** 74 invariants · 54 at rung 6 or above · 20 below rung 6 (ceiling 20).
+**Totals:** 74 invariants · 55 at rung 6 or above · 19 below rung 6 (ceiling 19).
 
 ## bed
 
@@ -255,7 +255,7 @@ in the diff that drops it.
 
 **Why.** one retrying request holding its slot through the backoff is indistinguishable, from inside the queue, from one request that is merely slow — so the queue drains to nothing while appearing healthy
 
-**Debt — promotion.** this is a caller precondition in prose (the anti-pattern), and it was caught by this repo's own red-flag lint rather than by review. Promote by having enqueue hand the callback a token it must return to retry — `retry()` re-enqueues and releases — so "sleep while holding the slot" has no expression, rather than being merely discouraged.
+**Debt — promotion.** this is a caller precondition in prose (the anti-pattern), and it was caught by this repo's own red-flag lint rather than by review. INSPECTED 2026-08-01, and the honest finding is that the queue CANNOT enforce this from inside — its own @why says why: a job sleeping in its slot and a job that is merely slow are the same observation. So a runtime check is out, and no type can see an await. What is actually wrong is upstream: PollConnector carries TWO retry ladders, attemptRequest and attemptUpload, with the same `delay(retryDelayMs * (retry + 1))`, the same `retry < maxRetries` guard and the same recursion, differing only in the request they wrap. Both happen to back off outside the slot; nothing makes the third one do so. The promotion is therefore to give the QUEUE the retry loop — it releases between attempts by construction — and have both ladders become policy arguments to it. Deferred deliberately: that rewrites the connector's recovery path, whose behaviour against a real board (503 reply-drain on the first retry, 401 re-auth, whole-file re-send) is only provable on hardware. Filed in DEBT.md as `two-retry-ladders-in-the-connector`.
 
 `packages/ui/src/connector/requestQueue.ts:23`
 
@@ -431,15 +431,15 @@ in the diff that drops it.
 
 **Why.** the count the operator is shown and the flag sent to the board come from one object, so "delete 1 item?" cannot precede a recursive wipe of forty. A recursive delete cannot even be issued without having first listed the directory and learned what is inside it
 
-`packages/ui/src/files/browser.ts:102`
+`packages/ui/src/files/browser.ts:106`
 
-### `files/listing-follows-mutation` — rung 5
+### `files/listing-follows-mutation` — rung 6
 
-**Mechanism.** shared helper — all five mutating operations are individually wrapped in `withRefresh` at their definition. A sixth can simply not be
+**Mechanism.** choke-point — the five mutating effects live in ONE table (MUTATIONS) and withRefresh is MAPPED over it, so an entry added there is wrapped on the way out rather than by whoever remembers. The mapped Refreshed<T> carries each signature through. Promoted 2026-08-01, which is also when the table finally came to exist
 
 **Why.** a listing that disagrees with the board is worse than no listing: the operator deletes what they believe is there and hits a file that is not, or re-uploads over something they think they removed
 
-**Debt — promotion.** CORRECTED 2026-08-01. This was declared rung 7 — "the refetch is applied by a MAP over the operation table, an entry added to OPS is wrapped on the way out" — copied from this module's own header. There is no OPS table and `git log -S` says there never was one: the header described a design that was never built, and the sweep promoted that aspiration to a mechanism claim. Promote for real by building the operations from a table and mapping withRefresh over it, which is what the original sentence meant and would make the rung-7 wording true.
+**Debt — promotion.** the table is the only route in PRACTICE — a sixth operation could still be added straight to the returned object, bypassing both the table and the map, which is exactly what rung 6 admits. Rung 7 is having FileBrowser's mutating members typed as Refreshed<...> of the table itself, so an unwrapped member does not satisfy the interface. HISTORY: this was declared rung 7 on the strength of this module's own header, which described "a MAP over the operation table". `git log -S` said no such table had ever existed — the comment described a design that was never built, and the sweep promoted that aspiration to a mechanism claim. It exists now.
 
 `packages/ui/src/files/browser.ts:14`
 

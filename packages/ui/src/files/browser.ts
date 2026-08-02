@@ -12,20 +12,24 @@
  * `files/path-escape`, declared where its mechanism lives, in ./path.ts.)
  *
  * @invariant listing-follows-mutation
- * @rung 5  shared helper — all five mutating operations are individually
- *          wrapped in `withRefresh` at their definition. A sixth can simply
- *          not be
+ * @rung 6  choke-point — the five mutating effects live in ONE table
+ *          (MUTATIONS) and withRefresh is MAPPED over it, so an entry added
+ *          there is wrapped on the way out rather than by whoever remembers.
+ *          The mapped Refreshed<T> carries each signature through. Promoted
+ *          2026-08-01, which is also when the table finally came to exist
  * @why a listing that disagrees with the board is worse than no listing: the
  *      operator deletes what they believe is there and hits a file that is not,
  *      or re-uploads over something they think they removed
- * @debt CORRECTED 2026-08-01. This was declared rung 7 — "the refetch is
- *       applied by a MAP over the operation table, an entry added to OPS is
- *       wrapped on the way out" — copied from this module's own header. There
- *       is no OPS table and `git log -S` says there never was one: the header
- *       described a design that was never built, and the sweep promoted that
- *       aspiration to a mechanism claim. Promote for real by building the
- *       operations from a table and mapping withRefresh over it, which is what
- *       the original sentence meant and would make the rung-7 wording true.
+ * @debt the table is the only route in PRACTICE — a sixth operation could
+ *       still be added straight to the returned object, bypassing both the
+ *       table and the map, which is exactly what rung 6 admits. Rung 7 is
+ *       having FileBrowser's mutating members typed as Refreshed<...> of the
+ *       table itself, so an unwrapped member does not satisfy the interface.
+ *       HISTORY: this was declared rung 7 on the strength of this module's own
+ *       header, which described "a MAP over the operation table". `git log -S`
+ *       said no such table had ever existed — the comment described a design
+ *       that was never built, and the sweep promoted that aspiration to a
+ *       mechanism claim. It exists now.
  */
 import { createEffect, createMemo, createResource, createSignal, type Accessor } from "solid-js";
 import { FileNotFoundError, type Connector, type FileListEntry } from "../connector/types.ts";
@@ -181,6 +185,11 @@ export function createFileBrowser(
 	 * the choke point that keeps the UI honest: it is applied by the map that
 	 * builds the public operations, so no operation can be written without it.
 	 */
+	/** A raw effect, once withRefresh has given it a refresh and an OpResult. */
+	type Refreshed<T> = T extends (...args: infer A) => Promise<void>
+		? (...args: A) => Promise<OpResult>
+		: never;
+
 	const withRefresh =
 		<A extends unknown[]>(op: (...args: A) => Promise<void>) =>
 		async (...args: A): Promise<OpResult> => {
@@ -217,22 +226,6 @@ export function createFileBrowser(
 			await op(r.path);
 		};
 
-	const createDir = withRefresh(named(path => connector.mkdir(path)));
-	const createFile = withRefresh(named(path => connector.upload(path, "")));
-
-	const upload = withRefresh(async (rawName: string, content: Uint8Array, onProgress?: (fraction: number) => void) => {
-		const r = resolve(rawName);
-		if ("error" in r) throw new Error(r.error);
-		await connector.upload(r.path, content, onProgress);
-	});
-
-	const rename = withRefresh(async (entry: FileListEntry, rawName: string) => {
-		const r = resolve(rawName);
-		if ("error" in r) throw new Error(r.error);
-		if (r.path === pathOf(entry)) return; // renaming to itself is a no-op, not an error
-		await connector.move(pathOf(entry), r.path);
-	});
-
 	const planRemove = async (entry: FileListEntry): Promise<RemovePlan> => {
 		const path = pathOf(entry);
 		// Count a directory's contents before offering to delete it. A failed
@@ -256,12 +249,46 @@ export function createFileBrowser(
 		} as RemovePlan;
 	};
 
-	const remove = withRefresh(async (plan: RemovePlan, typedName?: string) => {
-		if (plan.protectedReason !== null && typedName?.trim() !== plan.name) {
-			throw new Error(`Type "${plan.name}" to confirm deleting it.`);
-		}
-		await connector.remove(plan.path, plan.recursive);
-	});
+	/**
+	 * Every operation that CHANGES the board, as raw effects — no refresh, no
+	 * error handling. That is the table the rung-7 wording always described and
+	 * which, until 2026-08-01, did not exist: the five were each wrapped by hand
+	 * at their own definition, and a sixth could simply not be.
+	 *
+	 * `remove` joins below, after planRemove it depends on.
+	 */
+	const MUTATIONS = {
+		createDir: named(path => connector.mkdir(path)),
+		createFile: named(path => connector.upload(path, "")),
+		upload: async (rawName: string, content: Uint8Array, onProgress?: (fraction: number) => void) => {
+			const r = resolve(rawName);
+			if ("error" in r) throw new Error(r.error);
+			await connector.upload(r.path, content, onProgress);
+		},
+		rename: async (entry: FileListEntry, rawName: string) => {
+			const r = resolve(rawName);
+			if ("error" in r) throw new Error(r.error);
+			if (r.path === pathOf(entry)) return; // renaming to itself is a no-op, not an error
+			await connector.move(pathOf(entry), r.path);
+		},
+
+		remove: async (plan: RemovePlan, typedName?: string) => {
+			if (plan.protectedReason !== null && typedName?.trim() !== plan.name) {
+				throw new Error(`Type "${plan.name}" to confirm deleting it.`);
+			}
+			await connector.remove(plan.path, plan.recursive);
+		},
+	};
+
+	/**
+	 * withRefresh MAPPED over the table, so an entry added to MUTATIONS is
+	 * wrapped on the way out rather than by whoever remembers. The mapped type
+	 * carries each operation's own signature through — same shape as
+	 * control/commands.ts's GcodeBuilders.
+	 */
+	const ops = Object.fromEntries(
+		Object.entries(MUTATIONS).map(([name, op]) => [name, withRefresh(op as (...a: unknown[]) => Promise<void>)]),
+	) as { [K in keyof typeof MUTATIONS]: Refreshed<typeof MUTATIONS[K]> };
 
 	return {
 		root,
@@ -276,11 +303,9 @@ export function createFileBrowser(
 		goUp: () => setDir(parentDir(dir(), root)),
 		goTo: path => setDir(path),
 		refresh: () => void refetch(),
-		createDir,
-		createFile,
-		upload,
-		rename,
 		planRemove,
-		remove,
+		// Spread from the mapped table: every mutating operation reaches the
+		// caller having been through withRefresh, by construction.
+		...ops,
 	};
 }

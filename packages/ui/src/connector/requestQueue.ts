@@ -29,10 +29,25 @@
  *      indistinguishable, from inside the queue, from one request that is
  *      merely slow — so the queue drains to nothing while appearing healthy
  * @debt this is a caller precondition in prose (the anti-pattern), and it was
- *       caught by this repo's own red-flag lint rather than by review. Promote
- *       by having enqueue hand the callback a token it must return to retry —
- *       `retry()` re-enqueues and releases — so "sleep while holding the slot"
- *       has no expression, rather than being merely discouraged.
+ *       caught by this repo's own red-flag lint rather than by review.
+ *
+ *       INSPECTED 2026-08-01, and the honest finding is that the queue CANNOT
+ *       enforce this from inside — its own @why says why: a job sleeping in its
+ *       slot and a job that is merely slow are the same observation. So a
+ *       runtime check is out, and no type can see an await.
+ *
+ *       What is actually wrong is upstream: PollConnector carries TWO retry
+ *       ladders, attemptRequest and attemptUpload, with the same
+ *       `delay(retryDelayMs * (retry + 1))`, the same `retry < maxRetries`
+ *       guard and the same recursion, differing only in the request they wrap.
+ *       Both happen to back off outside the slot; nothing makes the third one
+ *       do so. The promotion is therefore to give the QUEUE the retry loop —
+ *       it releases between attempts by construction — and have both ladders
+ *       become policy arguments to it. Deferred deliberately: that rewrites the
+ *       connector's recovery path, whose behaviour against a real board (503
+ *       reply-drain on the first retry, 401 re-auth, whole-file re-send) is
+ *       only provable on hardware. Filed in DEBT.md as
+ *       `two-retry-ladders-in-the-connector`.
  */
 
 /** high: user commands · normal: the poll heartbeat · low: bulk file I/O. */
