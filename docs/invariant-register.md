@@ -21,7 +21,7 @@ and invariant claim mentions 13 -> 23, so no mechanism was deleted and no
 claim was lost in the gap. From here the ratchets make a dropped rung visible
 in the diff that drops it.
 
-**Totals:** 70 invariants · 44 at rung 6 or above · 26 below rung 6 (ceiling 26).
+**Totals:** 72 invariants · 45 at rung 6 or above · 27 below rung 6 (ceiling 27).
 
 ## bed
 
@@ -66,6 +66,18 @@ in the diff that drops it.
 **Debt — promotion.** promote by making the accept action take the reading and its provenance as one value, rendered by one component — so "offer to accept a number without showing where it came from" has no expression.
 
 `packages/ui/src/cards/BedCards.tsx:505`
+
+## charts
+
+### `charts/the-in-progress-layer-is-never-a-statistic` — rung 6
+
+**Mechanism.** choke-point — one `completed()`, private to this module, and both exports (layerChartData and layerStats) start by calling it. There is no path from job.layers to a rendered figure that does not pass through here, and the module's only consumer is LayersCard
+
+**Why.** RRF appends the CURRENT layer with duration 0 and fills it in once the layer finishes. Counted, that zero drags the mean down and pins the minimum at 0 for the whole print — every "fastest layer" reading would be wrong, always, and the chart would draw a full-width zero bar beside the real ones. Only the LAST entry is in progress, so trimming more would discard real data
+
+**Debt — promotion.** the trailing zero is recognised by its VALUE, so a genuinely instantaneous layer (a board reporting whole seconds, a layer under 500ms) is indistinguishable from an in-progress one and gets dropped. Promote by taking the live layer number alongside the array and trimming by INDEX, which is the fact actually being reasoned about.
+
+`packages/ui/src/charts/layerData.ts:18`
 
 ## compose
 
@@ -686,6 +698,16 @@ in the diff that drops it.
 **Debt — promotion.** the test reads the stylesheet as text. Rung 6 is emitting these widths from the same table definition the component renders from, so a column and its width are one fact rather than two that agree. The Tools card renders the same table without the control columns, so Current is the second cell rather than the fourth. Under role classes that fact needs no restatement of any OTHER column's width — which is what the positional version got wrong. 152 + 58 = 210.
 
 `packages/ui/src/app.css:759`
+
+### `ui/heavy-libraries-stay-behind-a-dynamic-import` — rung 4
+
+**Mechanism.** static analysis — test/lazy-bundle.test.ts walks src and checks both halves: that only editor/setup.ts, gcode/scene.ts and heightmap/surface3d.ts name a heavy package at all, and that those three are reached only by `import type` (erased, since verbatimModuleSyntax is on) or `import(...)`. A value import of scene.ts pulls Babylon in exactly as a direct import would, which is why one check is not enough
+
+**Why.** CLAUDE.md's first hard constraint is that the board's HTTP server is weak and payload is expensive. Babylon is 232 KB gzipped — larger than the whole eager bundle — and CodeMirror is comparable. The failure is silent in the worst way: one static import adds a quarter-megabyte to what every load must serve, the app behaves identically on a dev machine, and the cost appears only as a slower first paint on hardware nobody profiles
+
+**Debt — promotion.** the owner set is a hand-maintained allowlist, which is debt by this project's own rule — a fourth lazy surface has to be added by name. It is the honest shape though: which boundaries are dynamic is a design decision, not something derivable from source. Promote by asserting against the BUILT chunk graph instead — the eager entry chunk must not reference a lazy vendor chunk — which measures the thing the constraint is actually about rather than a proxy for it.
+
+`packages/ui/src/main.tsx:5`
 
 ### `ui/narrow-rules-come-after-desktop` — rung 4
 

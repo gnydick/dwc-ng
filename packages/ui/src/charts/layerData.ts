@@ -13,7 +13,25 @@ import type { AlignedData } from "../om/temperature.ts";
  *  Total over undefined: a wholesale job-subtree replacement from a board
  *  that doesn't report `layers` deletes the key entirely (the OM rule is
  *  "tolerate missing fields") — that must read as "no layers", not a crash.
- *  Found live 2026-07-23: the layers card's visibleWhen threw on it. */
+ *  Found live 2026-07-23: the layers card's visibleWhen threw on it.
+ *
+ * @invariant the-in-progress-layer-is-never-a-statistic
+ * @rung 6  choke-point — one `completed()`, private to this module, and both
+ *          exports (layerChartData and layerStats) start by calling it. There
+ *          is no path from job.layers to a rendered figure that does not pass
+ *          through here, and the module's only consumer is LayersCard
+ * @why RRF appends the CURRENT layer with duration 0 and fills it in once the
+ *      layer finishes. Counted, that zero drags the mean down and pins the
+ *      minimum at 0 for the whole print — every "fastest layer" reading would
+ *      be wrong, always, and the chart would draw a full-width zero bar beside
+ *      the real ones. Only the LAST entry is in progress, so trimming more
+ *      would discard real data
+ * @debt the trailing zero is recognised by its VALUE, so a genuinely
+ *       instantaneous layer (a board reporting whole seconds, a layer under
+ *       500ms) is indistinguishable from an in-progress one and gets dropped.
+ *       Promote by taking the live layer number alongside the array and
+ *       trimming by INDEX, which is the fact actually being reasoned about.
+ */
 function completed(layers: Layer[] | undefined): Layer[] {
 	if (layers === undefined) return [];
 	if (layers.length > 0 && layers[layers.length - 1]!.duration === 0) {
