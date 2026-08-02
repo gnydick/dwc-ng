@@ -21,7 +21,7 @@ and invariant claim mentions 13 -> 23, so no mechanism was deleted and no
 claim was lost in the gap. From here the ratchets make a dropped rung visible
 in the diff that drops it.
 
-**Totals:** 72 invariants · 45 at rung 6 or above · 27 below rung 6 (ceiling 27).
+**Totals:** 73 invariants · 45 at rung 6 or above · 28 below rung 6 (ceiling 28).
 
 ## bed
 
@@ -408,6 +408,18 @@ in the diff that drops it.
 **Debt — promotion.** this is documented-not-a-gap rather than debt to pay, and the ratchet counts it regardless — which is correct: a rung-0 entry should stay visible. Promotion, if it is ever wanted, is to make the production build's connector a distinct type that simply has no guard slot, so "is the guard on in production?" stops being a question one can ask.
 
 `packages/ui/src/dev/writeGuard.ts:50`
+
+## editor
+
+### `editor/a-superseded-load-never-mounts` — rung 5
+
+**Mechanism.** a closure-private counter, bumped at entry and re-checked after EVERY await — which is two sites today, the success path and the catch, both correct by inspection. That repetition is the tripwire: a third await added inside load() is a stale editor, and nothing fails until someone clicks quickly
+
+**Why.** the two awaits are a dynamic import and a board download, and the board is slow enough that clicking a second file before the first arrives is ordinary use, not a stress test. Losing the race mounts the PREVIOUS file's contents under the NEW file's title — and this editor's Save uploads to the path in the title, so the operator would overwrite one config file with another and the UI would show it as success
+
+**Debt — promotion.** promote by making the guard the thing that resumes rather than a value to remember to compare — a helper that takes the promise and resolves only for the current generation, so an unchecked await has no way to reach the mount. Rung 6, and it removes the second site. `lang` forces the highlight mode; without it the extension decides. Macros are often extensionless on RRF, so callers that know the domain (macros, sys) pass "gcode" rather than falling back to plain text. Content-only body (the compose conversion): Revert/Save/Close moved from the old Panel header into the .editor-bar row here, because they read the editor's own state (dirty/status), which a registry's static actions closure cannot. The card's dynamic title (the file path) comes from the def.
+
+`packages/ui/src/editor/FileEditor.tsx:15`
 
 ## files
 

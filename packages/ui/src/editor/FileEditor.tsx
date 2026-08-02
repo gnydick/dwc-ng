@@ -12,6 +12,23 @@ type Status = "loading" | "ready" | "saving" | "error";
  * re-reads the on-disk copy. Loads are generation-guarded so fast selection
  * changes can't leave a stale editor mounted.
  *
+ * @invariant a-superseded-load-never-mounts
+ * @rung 5  a closure-private counter, bumped at entry and re-checked after
+ *          EVERY await — which is two sites today, the success path and the
+ *          catch, both correct by inspection. That repetition is the tripwire:
+ *          a third await added inside load() is a stale editor, and nothing
+ *          fails until someone clicks quickly
+ * @why the two awaits are a dynamic import and a board download, and the board
+ *      is slow enough that clicking a second file before the first arrives is
+ *      ordinary use, not a stress test. Losing the race mounts the PREVIOUS
+ *      file's contents under the NEW file's title — and this editor's Save
+ *      uploads to the path in the title, so the operator would overwrite one
+ *      config file with another and the UI would show it as success
+ * @debt promote by making the guard the thing that resumes rather than a
+ *       value to remember to compare — a helper that takes the promise and
+ *       resolves only for the current generation, so an unchecked await has
+ *       no way to reach the mount. Rung 6, and it removes the second site.
+ *
  * `lang` forces the highlight mode; without it the extension decides. Macros are
  * often extensionless on RRF, so callers that know the domain (macros, sys)
  * pass "gcode" rather than falling back to plain text.
