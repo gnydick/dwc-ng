@@ -81,22 +81,22 @@ export interface LevelOptions {
 	 * damages the probe, so no single step may tilt it far, however large the
 	 * measured error is (a mis-seated probe or a bad tap can report metres).
 	 *
+	 * A caller may only ever LOWER it. See HARD_MAX_STEP_MM.
+	 *
 	 * @invariant no-single-step-over-tilts-the-bed
-	 * @rung 5  the clamp sits in planLevel, which is the sole producer of a
-	 *          LevelMove — but the BOUND is this parameter, so the safety limit
-	 *          is whatever the caller passed. DEFAULT_LEVEL_OPTIONS holds the
-	 *          measured-safe 0.5mm; nothing stops a caller supplying 100
+	 * @rung 7  the violating state has no expression — planLevel is the sole
+	 *          producer of a LevelMove, and the cap it applies is
+	 *          `Math.min(options.maxStep, HARD_MAX_STEP_MM)`, so no input can
+	 *          RAISE the limit. Passing 100 yields 0.5. Promoted from rung 5 on
+	 *          2026-08-01, where the bound was whatever the caller supplied and
+	 *          only DEFAULT_LEVEL_OPTIONS made it safe
 	 * @why a mis-seated probe or a bad tap reports a reading in METRES, and the
 	 *      correction is ~1:1 with the reading. Uncapped, one bad sample drives a
 	 *      screw its whole travel in a single move and the far side of the bed
 	 *      lifts into the probe. The failure is mechanical damage, not a wrong
-	 *      number, and it happens before anyone can read the plan
-	 * @debt the bound and the clamp are two facts a caller can separate. Promote
-	 *       by making the cap a module constant rather than an option — nothing
-	 *       has ever needed to raise it, and "how far may one step tilt the bed"
-	 *       is a property of THIS machine's probe, not of a call site. Rung 7 is
-	 *       a branded SafeStep that only the clamp can produce and the sender
-	 *       will only accept.
+	 *      number, and it happens before anyone can read the plan. Downward
+	 *      adjustment stays open because a cautious caller wanting SMALLER steps
+	 *      is asking for more safety, not less
 	 */
 	maxStep: number;
 	/**
@@ -125,7 +125,16 @@ export interface LevelOptions {
 	direction: 1 | -1;
 }
 
-/** Sensible starting point for this machine; callers may override. */
+/**
+ * The ceiling on a single axis move, mm — a property of THIS machine's probe
+ * and bed, not of any call site, so it is not configurable upward.
+ *
+ * Well under the "few mm of far-side lift" that damages the probe, while still
+ * being 50x a full motor step so progress is quick.
+ */
+const HARD_MAX_STEP_MM = 0.5;
+
+/** Sensible starting point for this machine; callers may lower maxStep. */
 export const DEFAULT_LEVEL_OPTIONS: Omit<LevelOptions, "direction"> = {
 	// Two full motor steps. Z/U/V/W run 6400 steps/mm at 64x microstepping, so
 	// one FULL step is 10um and corrections below that are executed by stiction
@@ -133,9 +142,7 @@ export const DEFAULT_LEVEL_OPTIONS: Omit<LevelOptions, "direction"> = {
 	// number the actuator cannot hold.
 	tolerance: 0.02,
 	relaxation: 0.7,
-	// Well under the "few mm of far-side lift" that damages the probe, while
-	// still being 50x a full step so progress is quick.
-	maxStep: 0.5,
+	maxStep: HARD_MAX_STEP_MM,
 };
 
 const mean = (values: number[]): number => values.reduce((a, b) => a + b, 0) / values.length;
@@ -162,7 +169,11 @@ export function planLevel(readings: LevelReading[], options: LevelOptions): Leve
 		// Positive error = this corner reads high (triggered at a larger Z).
 		const error = r.reading - target;
 		const wanted = error * options.relaxation * options.direction;
-		const capped = Math.max(-options.maxStep, Math.min(options.maxStep, wanted));
+		// The caller's cap, but never above the machine's: an option can lower
+		// this and cannot raise it, so "one move over-tilts the bed" is not
+		// something any input expresses.
+		const limit = Math.min(Math.abs(options.maxStep), HARD_MAX_STEP_MM);
+		const capped = Math.max(-limit, Math.min(limit, wanted));
 		// A move the machine cannot resolve is not worth a traverse: below one
 		// full step it is executed by stiction, in an unpredictable direction.
 		if (Math.abs(capped) < 0.001) continue;

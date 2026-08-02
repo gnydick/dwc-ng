@@ -16,7 +16,7 @@ import { useApp } from "../shell/context.ts";
 import { HeightMapGrid } from "../heightmap/HeightMapGrid.tsx";
 import { HeightMapSurface3D } from "../heightmap/HeightMapSurface3D.tsx";
 import { buildProbeCommand } from "../heightmap/probeCommand.ts";
-import { parseProbeReply, heightmapValue } from "../heightmap/probeReply.ts";
+import { parseProbeReply, heightmapValue, stopHeightFromModel, adjustMapValue, type StopHeight, type MapValue } from "../heightmap/probeReply.ts";
 import { HEIGHTMAP_FILE } from "../heightmap/store.ts";
 import { GcodeButton } from "../control/GcodeButton.tsx";
 import { cmd } from "../control/commands.ts";
@@ -323,10 +323,14 @@ export function ProbePointBody(props: { ctx: CardCtx }) {
 	// the map edits are shared (via the service / the store).
 	const [probing, setProbing] = createSignal(false);
 	const [reply, setReply] = createSignal("");
-	const [probed, setProbed] = createSignal<number | null>(null);
+	// The DERIVED value — what Accept writes into the map. Typed as MapValue so
+	// the raw reading below cannot be assigned to it by mistake; that swap is the
+	// bug this pair exists to prevent.
+	const [probed, setProbed] = createSignal<MapValue | null>(null);
 	/** The RAW machine Z the probe stopped at, kept so the card can show the
 	 *  subtraction rather than only its result. */
-	const [rawStop, setRawStop] = createSignal<number | null>(null);
+	/** The machine's own number, shown beside the derived one. Never stored. */
+	const [rawStop, setRawStop] = createSignal<StopHeight | null>(null);
 	/** Manual nudge step, mm. Matches the babystep control's granularity. */
 	const [step, setStep] = createSignal(0.01);
 
@@ -357,19 +361,19 @@ export function ProbePointBody(props: { ctx: CardCtx }) {
 	 * A macro that aborts on one of its guards is still refused: it emits no
 	 * reply line and leaves lastStopHeight untouched, so neither signal fires.
 	 */
-	const waitForNewStopHeight = async (before: number | null, fromLine: number): Promise<number | null> => {
+	const waitForNewStopHeight = async (before: number | null, fromLine: number): Promise<StopHeight | null> => {
 		const deadline = Date.now() + PROBE_WAIT_MS;
 		while (Date.now() < deadline) {
 			await new Promise(resolve => setTimeout(resolve, 400));
 			const now = app.om.om.sensors.probes[0]?.lastStopHeight ?? null;
 			if (now === null) continue;
 			// The value moved — unambiguous.
-			if (now !== before) return now;
+			if (now !== before) return stopHeightFromModel(now);
 			// Or it did not, but the machine reported a fresh probe anyway: the
 			// point simply measured the same twice, which is a GOOD result.
 			const lines = app.om.console;
 			for (let i = lines.length - 1; i >= fromLine; i--) {
-				if (parseProbeReply(lines[i]!.text) !== null) return now;
+				if (parseProbeReply(lines[i]!.text) !== null) return stopHeightFromModel(now);
 			}
 		}
 		return null;
@@ -391,7 +395,7 @@ export function ProbePointBody(props: { ctx: CardCtx }) {
 		// Where the reply log stands BEFORE sending, so an older "Stopped at
 		// height" can never be read as evidence that THIS probe ran.
 		const fromLine = app.om.console.length;
-		let stopHeight: number | null = null;
+		let stopHeight: StopHeight | null = null;
 		let sendError = "";
 		try {
 			const text = await app.connector.sendCode(code);
@@ -441,9 +445,9 @@ export function ProbePointBody(props: { ctx: CardCtx }) {
 	const nudge = (delta: number): void => {
 		const target = svc.cell();
 		if (target === null) return;
-		const next = store.valueAt(target.row, target.col) + delta;
-		// Keep the file's own precision: the map is written to three decimals.
-		store.edit(target.row, target.col, Number(next.toFixed(3)));
+		// adjustMapValue keeps the file's own precision (three decimals) and keeps
+		// the result inside the map's own type — a nudge is an offset within it.
+		store.edit(target.row, target.col, adjustMapValue(store.valueAt(target.row, target.col), delta));
 		clearProbe();
 	};
 

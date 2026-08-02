@@ -87,3 +87,22 @@ test("spread is reported even when level, so progress is visible", () => {
 	assert.equal(plan.level, true);
 	assert.ok(Math.abs(plan.spread - 0.005) < 1e-9);
 });
+
+// The cap is a property of this machine's probe, not of a call site. An option
+// may LOWER it (a cautious caller asking for smaller steps is asking for more
+// safety) and cannot raise it — a mis-seated probe reports readings in metres,
+// and the correction is ~1:1 with the reading.
+test("SAFETY: no option can raise the step limit above the machine's own", () => {
+	const wild = planLevel([r("U", 40), r("V", -13.0), r("W", -13.0)], { ...OPTS, maxStep: 100 });
+	for (const m of wild.moves) {
+		assert.ok(Math.abs(m.delta) <= 0.5, `${m.axis} moved ${m.delta} with maxStep:100 — the ceiling did not hold`);
+	}
+	assert.ok(wild.clamped, "and the plan says it was shortened");
+});
+
+test("a caller may still ask for SMALLER steps", () => {
+	const gentle = planLevel([r("U", 40), r("V", -13.0), r("W", -13.0)], { ...OPTS, maxStep: 0.05 });
+	for (const m of gentle.moves) {
+		assert.ok(Math.abs(m.delta) <= 0.05, `${m.axis} moved ${m.delta}, over the caller's own tighter cap`);
+	}
+});

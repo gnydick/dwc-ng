@@ -3,6 +3,9 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createRoot } from "solid-js";
 import { createHeightMapStore, HEIGHTMAP_FILE } from "../src/heightmap/store.ts";
+import type { MapValue } from "../src/heightmap/probeReply.ts";
+/** A cell value, as the map itself would hold it. */
+const cell = (mm: number) => mm as MapValue;
 import type { Connector } from "../src/connector/types.ts";
 
 const CAPTURE = new URL(
@@ -63,7 +66,7 @@ test("an edit is pending, not applied to the loaded map", async () => {
 	await withStore(async store => {
 		await store.load();
 		const before = store.map()!.rows[0]?.[0];
-		store.edit(0, 0, 0.123);
+		store.edit(0, 0, cell(0.123));
 		assert.equal(store.dirty(), true);
 		assert.equal(store.valueAt(0, 0), 0.123, "the pending value is what the UI shows");
 		assert.equal(store.map()!.rows[0]?.[0], before, "the loaded map is untouched until save");
@@ -75,7 +78,7 @@ test("editing a cell back to its original value clears the edit", async () => {
 	await withStore(async store => {
 		await store.load();
 		const original = store.valueAt(0, 0);
-		store.edit(0, 0, 0.123);
+		store.edit(0, 0, cell(0.123));
 		assert.equal(store.dirty(), true);
 		store.edit(0, 0, original);
 		assert.equal(store.dirty(), false, "a no-op edit must not leave the map dirty");
@@ -86,8 +89,8 @@ test("discard drops every pending edit", async () => {
 	await withStore(async store => {
 		await store.load();
 		const before = store.valueAt(0, 0);
-		store.edit(0, 0, 9);
-		store.edit(1, 1, 9);
+		store.edit(0, 0, cell(9));
+		store.edit(1, 1, cell(9));
 		store.discard();
 		assert.equal(store.dirty(), false);
 		assert.equal(store.pending().size, 0);
@@ -100,7 +103,7 @@ test("save uploads the edited map AND reloads it on the machine", async () => {
 	// loaded. The two must not be separable.
 	await withStore(async (store, calls) => {
 		await store.load();
-		store.edit(0, 0, 0.123);
+		store.edit(0, 0, cell(0.123));
 		const result = await store.save();
 		assert.deepEqual(result, { ok: true });
 		assert.equal(calls.upload.length, 1);
@@ -113,9 +116,9 @@ test("save uploads the edited map AND reloads it on the machine", async () => {
 test("many edits produce exactly one upload", async () => {
 	await withStore(async (store, calls) => {
 		await store.load();
-		store.edit(0, 0, 0.1);
-		store.edit(1, 1, 0.2);
-		store.edit(2, 2, 0.3);
+		store.edit(0, 0, cell(0.1));
+		store.edit(1, 1, cell(0.2));
+		store.edit(2, 2, cell(0.3));
 		await store.save();
 		assert.equal(calls.upload.length, 1);
 	});
@@ -124,7 +127,7 @@ test("many edits produce exactly one upload", async () => {
 test("a save that fails leaves the edits pending", async () => {
 	await withStore(async (store, calls) => {
 		await store.load();
-		store.edit(0, 0, 0.123);
+		store.edit(0, 0, cell(0.123));
 		const result = await store.save();
 		assert.equal(result.ok, false);
 		assert.equal(store.dirty(), true, "edits must survive a failed write");
@@ -137,7 +140,7 @@ test("a reload that fails is reported, and does not claim the map is clean", asy
 	// map. Saying "saved" here would be a lie the operator acts on.
 	await withStore(async (store, calls) => {
 		await store.load();
-		store.edit(0, 0, 0.123);
+		store.edit(0, 0, cell(0.123));
 		const result = await store.save();
 		assert.equal(result.ok, false);
 		assert.equal(calls.upload.length, 1, "the upload did happen");
@@ -148,7 +151,7 @@ test("a reload that fails is reported, and does not claim the map is clean", asy
 test("save clears the pending set once it has succeeded", async () => {
 	await withStore(async store => {
 		await store.load();
-		store.edit(0, 0, 0.123);
+		store.edit(0, 0, cell(0.123));
 		await store.save();
 		assert.equal(store.dirty(), false);
 		assert.equal(store.valueAt(0, 0), 0.123, "the saved value is now the loaded value");

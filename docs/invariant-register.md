@@ -21,7 +21,7 @@ and invariant claim mentions 13 -> 23, so no mechanism was deleted and no
 claim was lost in the gap. From here the ratchets make a dropped rung visible
 in the diff that drops it.
 
-**Totals:** 74 invariants · 50 at rung 6 or above · 24 below rung 6 (ceiling 24).
+**Totals:** 74 invariants · 52 at rung 6 or above · 22 below rung 6 (ceiling 22).
 
 ## bed
 
@@ -35,15 +35,13 @@ in the diff that drops it.
 
 `packages/ui/src/bed/levelPlan.ts:108`
 
-### `bed/no-single-step-over-tilts-the-bed` — rung 5
+### `bed/no-single-step-over-tilts-the-bed` — rung 7
 
-**Mechanism.** the clamp sits in planLevel, which is the sole producer of a LevelMove — but the BOUND is this parameter, so the safety limit is whatever the caller passed. DEFAULT_LEVEL_OPTIONS holds the measured-safe 0.5mm; nothing stops a caller supplying 100
+**Mechanism.** the violating state has no expression — planLevel is the sole producer of a LevelMove, and the cap it applies is `Math.min(options.maxStep, HARD_MAX_STEP_MM)`, so no input can RAISE the limit. Passing 100 yields 0.5. Promoted from rung 5 on 2026-08-01, where the bound was whatever the caller supplied and only DEFAULT_LEVEL_OPTIONS made it safe
 
-**Why.** a mis-seated probe or a bad tap reports a reading in METRES, and the correction is ~1:1 with the reading. Uncapped, one bad sample drives a screw its whole travel in a single move and the far side of the bed lifts into the probe. The failure is mechanical damage, not a wrong number, and it happens before anyone can read the plan
+**Why.** a mis-seated probe or a bad tap reports a reading in METRES, and the correction is ~1:1 with the reading. Uncapped, one bad sample drives a screw its whole travel in a single move and the far side of the bed lifts into the probe. The failure is mechanical damage, not a wrong number, and it happens before anyone can read the plan. Downward adjustment stays open because a cautious caller wanting SMALLER steps is asking for more safety, not less
 
-**Debt — promotion.** the bound and the clamp are two facts a caller can separate. Promote by making the cap a module constant rather than an option — nothing has ever needed to raise it, and "how far may one step tilt the bed" is a property of THIS machine's probe, not of a call site. Rung 7 is a branded SafeStep that only the clamp can produce and the sender will only accept.
-
-`packages/ui/src/bed/levelPlan.ts:84`
+`packages/ui/src/bed/levelPlan.ts:86`
 
 ### `bed/tram-fit-never-reads-the-map` — rung 4
 
@@ -65,7 +63,7 @@ in the diff that drops it.
 
 **Debt — promotion.** promote by making the accept action take the reading and its provenance as one value, rendered by one component — so "offer to accept a number without showing where it came from" has no expression.
 
-`packages/ui/src/cards/BedCards.tsx:505`
+`packages/ui/src/cards/BedCards.tsx:509`
 
 ## charts
 
@@ -553,15 +551,13 @@ in the diff that drops it.
 
 `packages/ui/src/heightmap/store.ts:15`
 
-### `heightmap/stop-height-is-not-a-map-value` — rung 5
+### `heightmap/stop-height-is-not-a-map-value` — rung 7
 
-**Mechanism.** shared helper — the sole implementation of the conversion, and the sole consumer (cards/BedCards.tsx:430) does call it. But both quantities are `number`: setRawStop(stopHeight) and setProbed(heightmapValue(...)) sit on ADJACENT lines taking the same type, and store.edit accepts either
+**Mechanism.** sole-constructor types — StopHeight and MapValue are distinct brands, and this is the ONLY StopHeight -> MapValue conversion. The map's rows are MapValue[][] and heightmap/store.ts's edit takes a MapValue, so handing it a raw stop height does not compile. Promoted from rung 5 on 2026-08-01, where both were `number` and the two lines that set them sat adjacent, taking the same type
 
 **Why.** they are different quantities in the same units. RRF reports the raw machine Z of the trigger, which sits near the configured G31 Z (~-13 on this machine), so storing it as measured put a ~13mm error into every re-probed cell — a map that then drives live compensation on a bed the probe has to survive
 
-**Debt — promotion.** this is technique 7 (units as types) left undone. Promote by branding both: parseProbeReply produces a StopHeight, this is the only StopHeight -> MapValue, and heightmap/store.ts's edit() accepts only a MapValue — then handing the raw reading to the map stops compiling instead of merely looking wrong. nudge() composes because valueAt() already returns a MapValue and the delta is an offset within it.
-
-`packages/ui/src/heightmap/probeReply.ts:47`
+`packages/ui/src/heightmap/probeReply.ts:80`
 
 ## messagebox
 

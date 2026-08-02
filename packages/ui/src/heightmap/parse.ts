@@ -30,6 +30,7 @@
  * Geometry (lines 2 and 3) passes through unmodified — this edits values, it
  * does not redefine the mesh. That is `M557`/`M558`'s job.
  */
+import type { MapValue } from "./probeReply.ts";
 
 export interface HeightMapMeta {
 	axis0: string;
@@ -49,7 +50,10 @@ export interface HeightMapMeta {
 export interface HeightMap {
 	meta: HeightMapMeta;
 	/** rows[row][col]; row indexes axis1, col indexes axis0. */
-	rows: number[][];
+	/** rows[row][col]; row indexes axis1, col indexes axis0. A MapValue is a
+	 *  stop height already made relative to the trigger height — see
+	 *  heightmap/stop-height-is-not-a-map-value. */
+	rows: MapValue[][];
 	/** The "generated at" text, preserved verbatim. */
 	generatedAt: string;
 }
@@ -126,11 +130,11 @@ export function parseHeightMap(csv: string): HeightMap | null {
 	if (numeric.some(v => !Number.isFinite(v))) return null;
 	if (meta.num0 <= 0 || meta.num1 <= 0) return null;
 
-	const rows: number[][] = [];
+	const rows: MapValue[][] = [];
 	for (let i = 0; i < meta.num1; i++) {
 		const line = lines[3 + i];
 		if (line === undefined) return null;
-		const values = line.split(",").map(num);
+		const values = line.split(",").map(num) as MapValue[];
 		// A short or long row means the file disagrees with its own header, which
 		// is not something to paper over — the grid geometry would be wrong.
 		if (values.length !== meta.num0 || values.some(v => !Number.isFinite(v))) return null;

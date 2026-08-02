@@ -40,7 +40,7 @@ test("round-trips the real capture byte-for-byte", () => {
 test("the header statistics are DERIVED, not carried through", () => {
 	const map = parseHeightMap(csv());
 	assert.ok(map);
-	map.rows[0]![0] = 9.999; // an obviously out-of-range value
+	map.rows[0]![0] = 9.999 as typeof map.rows[0][0]; // an obviously out-of-range value
 	const out = serializeHeightMap(map);
 	assert.match(out, /max error 9\.999/, "max must reflect the edited grid");
 	assert.doesNotMatch(out, /max error 0\.150/, "the original max must not survive");

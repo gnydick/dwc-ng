@@ -17,10 +17,43 @@
  * The UI still shows this raw reply beside the value it stores, so a reading
  * that looks wrong is visible before it is accepted into the map.
  */
+declare const stop: unique symbol;
+declare const mapped: unique symbol;
+
+/**
+ * The RAW machine Z at which the probe triggered, as RRF reported it.
+ *
+ * Branded as `number &` rather than an opaque object: reading one as a number
+ * (formatting it, showing it beside the derived value) must stay effortless.
+ * What the brand blocks is the other direction — a plain number cannot BECOME
+ * one, and neither quantity can be passed where the other is wanted.
+ */
+export type StopHeight = number & { readonly [stop]: true };
+
+/**
+ * A height-map cell value: a stop height made relative to the probe's trigger
+ * height. The only thing the map will store.
+ */
+export type MapValue = number & { readonly [mapped]: true };
+
+/**
+ * The object model's `sensors.probes[].lastStopHeight` is the same quantity
+ * arriving by a different road — the board reports it directly, with no reply
+ * text to parse. Named so the ingress is visible rather than a bare cast.
+ */
+export const stopHeightFromModel = (value: number): StopHeight => value as StopHeight;
+
+/**
+ * Nudge a cell by hand. An offset WITHIN the map's own units, so the result is
+ * still a map value — this is the one arithmetic that stays inside the type.
+ */
+export const adjustMapValue = (value: MapValue, delta: number): MapValue =>
+	Number((value + delta).toFixed(3)) as MapValue;
+
 export interface ProbeResult {
 	/** Machine Z at which the probe triggered, in mm, as RRF reported it - the
 	 *  raw stop height, before it is made relative to the trigger height. */
-	stopHeight: number;
+	stopHeight: StopHeight;
 }
 
 /** RRF answers a probe with "Stopped at height <n> mm". */
@@ -32,7 +65,7 @@ export function parseProbeReply(reply: string): ProbeResult | null {
 	const stopHeight = Number(match[1]);
 	// A match that somehow isn't a number is a failure to read, not a height of
 	// NaN - the caller distinguishes "no trigger" from "triggered at 0.000".
-	return Number.isFinite(stopHeight) ? { stopHeight } : null;
+	return Number.isFinite(stopHeight) ? { stopHeight: stopHeight as StopHeight } : null;
 }
 
 /**
@@ -45,23 +78,18 @@ export function parseProbeReply(reply: string): ProbeResult | null {
  * into every cell.
  *
  * @invariant stop-height-is-not-a-map-value
- * @rung 5  shared helper — the sole implementation of the conversion, and the
- *          sole consumer (cards/BedCards.tsx:430) does call it. But both
- *          quantities are `number`: setRawStop(stopHeight) and
- *          setProbed(heightmapValue(...)) sit on ADJACENT lines taking the same
- *          type, and store.edit accepts either
+ * @rung 7  sole-constructor types — StopHeight and MapValue are distinct
+ *          brands, and this is the ONLY StopHeight -> MapValue conversion. The
+ *          map's rows are MapValue[][] and heightmap/store.ts's edit takes a
+ *          MapValue, so handing it a raw stop height does not compile.
+ *          Promoted from rung 5 on 2026-08-01, where both were `number` and the
+ *          two lines that set them sat adjacent, taking the same type
  * @why they are different quantities in the same units. RRF reports the raw
  *      machine Z of the trigger, which sits near the configured G31 Z (~-13 on
  *      this machine), so storing it as measured put a ~13mm error into every
  *      re-probed cell — a map that then drives live compensation on a bed the
  *      probe has to survive
- * @debt this is technique 7 (units as types) left undone. Promote by branding
- *       both: parseProbeReply produces a StopHeight, this is the only
- *       StopHeight -> MapValue, and heightmap/store.ts's edit() accepts only a
- *       MapValue — then handing the raw reading to the map stops compiling
- *       instead of merely looking wrong. nudge() composes because valueAt()
- *       already returns a MapValue and the delta is an offset within it.
  */
-export function heightmapValue(stopHeight: number, triggerHeight: number): number {
-	return stopHeight - triggerHeight;
+export function heightmapValue(stopHeight: StopHeight, triggerHeight: number): MapValue {
+	return (stopHeight - triggerHeight) as MapValue;
 }

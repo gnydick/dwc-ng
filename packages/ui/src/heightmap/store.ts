@@ -32,6 +32,7 @@ import { createMemo, createSignal, type Accessor } from "solid-js";
 import type { Connector } from "../connector/types.ts";
 import type { OpResult } from "../files/browser.ts";
 import { parseHeightMap, serializeHeightMap, type HeightMap } from "./parse.ts";
+import type { MapValue } from "./probeReply.ts";
 import { cmd } from "../control/commands.ts";
 
 export const HEIGHTMAP_FILE = "0:/sys/heightmap.csv";
@@ -39,8 +40,8 @@ export const HEIGHTMAP_FILE = "0:/sys/heightmap.csv";
 export interface PendingEdit {
 	row: number;
 	col: number;
-	from: number;
-	to: number;
+	from: MapValue;
+	to: MapValue;
 }
 
 const key = (row: number, col: number): string => `${row},${col}`;
@@ -53,10 +54,12 @@ export interface HeightMapStore {
 	error: Accessor<string>;
 	pending: Accessor<Map<string, PendingEdit>>;
 	dirty: Accessor<boolean>;
-	valueAt(row: number, col: number): number;
+	valueAt(row: number, col: number): MapValue;
 	/** Load a map. Omit the path to reload whichever file is current. */
 	load(path?: string): Promise<void>;
-	edit(row: number, col: number, value: number): void;
+	/** Only a MapValue — a raw probe stop height does not compile here.
+	 *  See heightmap/stop-height-is-not-a-map-value. */
+	edit(row: number, col: number, value: MapValue): void;
 	discard(): void;
 	save(): Promise<OpResult>;
 }
@@ -75,10 +78,11 @@ export function createHeightMapStore(connector: Connector): HeightMapStore {
 
 	const dirty = createMemo(() => pending().size > 0);
 
-	const valueAt = (row: number, col: number): number => {
+	const valueAt = (row: number, col: number): MapValue => {
 		const edit = pending().get(key(row, col));
 		if (edit !== undefined) return edit.to;
-		return map()?.rows[row]?.[col] ?? 0;
+		// A cell outside a loaded map reads as flat, which IS a map value.
+		return map()?.rows[row]?.[col] ?? (0 as MapValue);
 	};
 
 	const load = async (next?: string): Promise<void> => {
@@ -107,7 +111,7 @@ export function createHeightMapStore(connector: Connector): HeightMapStore {
 		}
 	};
 
-	const edit = (row: number, col: number, value: number): void => {
+	const edit = (row: number, col: number, value: MapValue): void => {
 		const current = map();
 		if (current === null) return;
 		const from = current.rows[row]?.[col];
