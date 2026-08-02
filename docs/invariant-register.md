@@ -21,7 +21,7 @@ and invariant claim mentions 13 -> 23, so no mechanism was deleted and no
 claim was lost in the gap. From here the ratchets make a dropped rung visible
 in the diff that drops it.
 
-**Totals:** 76 invariants · 57 at rung 6 or above · 19 below rung 6 (ceiling 19).
+**Totals:** 81 invariants · 61 at rung 6 or above · 20 below rung 6 (ceiling 20).
 
 ## bed
 
@@ -429,6 +429,16 @@ in the diff that drops it.
 
 ## editor
 
+### `editor/a-session-belongs-to-exactly-one-file` — rung 6
+
+**Mechanism.** choke-point — readStore is the only route from storage into a session and revives EVERY entry through this, which refuses a record whose stored path disagrees with the key it was filed under. Both public readers (loadSession, and saveSession's read-modify-write) go through readStore; nothing parses the store itself
+
+**Why.** localStorage is operator-editable and the store is one record holding every file. A session restored under the wrong key puts one file's text into an editor titled with another, and this editor's Save uploads to the path in the title — so the next Save overwrites a config file with an unrelated one. It is the single failure in this module that destroys data the operator cannot get back
+
+**Debt — promotion.** the pairing is checked, not typed. Promote by keying the store with a branded path that a session carries, so "filed under a key it does not claim" has no representation rather than being rejected on read.
+
+`packages/ui/src/editor/drafts.ts:222`
+
 ### `editor/a-superseded-load-never-mounts` — rung 5
 
 **Mechanism.** a closure-private counter, bumped at entry and re-checked after EVERY await — which is two sites today, the success path and the catch, both correct by inspection. That repetition is the tripwire: a third await added inside load() is a stale editor, and nothing fails until someone clicks quickly
@@ -438,6 +448,44 @@ in the diff that drops it.
 **Debt — promotion.** promote by making the guard the thing that resumes rather than a value to remember to compare — a helper that takes the promise and resolves only for the current generation, so an unchecked await has no way to reach the mount. Rung 6, and it removes the second site. `lang` forces the highlight mode; without it the extension decides. Macros are often extensionless on RRF, so callers that know the domain (macros, sys) pass "gcode" rather than falling back to plain text. Content-only body (the compose conversion): Revert/Save/Close moved from the old Panel header into the .editor-bar row here, because they read the editor's own state (dirty/status), which a registry's static actions closure cannot. The card's dynamic title (the file path) comes from the def. ## The text outlives this component CodeMirror is now a VIEW of an edit session (editor/drafts.ts), not the owner of the text. The view is destroyed whenever the open path changes or the card unmounts — which happens on every navigation — so anything held only inside it was being thrown away, including the in-progress text and CodeMirror's own undo stack. The session survives both, and a reload. Every route by which live text leaves the view goes through `capture()`: the 10s tick, stepping, saving, reverting, switching files, and unmounting. That is one place rather than six, so there is no exit from this component through which the last few seconds of typing can escape unrecorded — and because a session carries its own path, flushing on the way OUT of a file files the text under that file even though `props.path` has already changed.
 
 `packages/ui/src/editor/FileEditor.tsx:31`
+
+### `editor/every-string-in-a-session-is-canonical` — rung 7
+
+**Mechanism.** sole-constructor type — this is the only producer of CanonicalText, and EditSession's `baseline` and `entries` are typed as it, so a raw string cannot enter a session at all. A sixth entry point that forgets does not compile. Promoted 2026-08-02 from a rung 5 where five call sites each remembered, under a header that called it "by construction" when it was not
+
+**Why.** CodeMirror hands text back as LF whatever it was given, so a CRLF file from the board comes out of the view different from how it went in — and that difference is indistinguishable from an edit. Stepping back to a revision and forward again made checkpoint read the view's own normalization as a change, truncate the forward history as a new branch, and DESTROY the newer revision. Watched happen on duet3, where sys files are CRLF and the mock's are not: lens=[115,126] became lens=[115,111]. It would also have marked every CRLF file dirty on the first tick
+
+`packages/ui/src/editor/drafts.ts:107`
+
+### `editor/history-is-never-empty-and-at-always-indexes-it` — rung 5
+
+**Mechanism.** every producer preserves it — beginSession seeds one entry, checkpoint appends, stepTo clamps, reviveSession rejects an empty array and an out-of-range index. But the TYPE says `readonly string[]` and `number`, so the guarantee is five functions agreeing, and currentText spends it on a non-null assertion rather than a proof
+
+**Why.** every reader takes entries[at] as the live document. An empty history or a stale index does not read as a bug, it reads as an EMPTY FILE — and the next Save uploads that over the operator's config
+
+**Debt — promotion.** this is the NonEmpty case from the design rules, left undone. Promote by making the pair a sole-constructor type — a non-empty list plus an index proven against it — so currentText returns a string without an assertion and a sixth transition cannot break the pairing.
+
+`packages/ui/src/editor/drafts.ts:34`
+
+### `editor/saving-never-costs-you-your-history` — rung 6
+
+**Mechanism.** choke-point — this is the only function that deletes a session on purpose, and it has exactly one caller in src (FileEditor's close). Nothing on the save path reaches it: markSaved does not touch the store at all, and saveSession's two eviction paths both EXCLUDE session.path by name, so writing a file cannot evict that file
+
+**Why.** the request was "flushed after you close, not after you save". A save that dropped the history would silently remove the ability to step back past it — and the operator only discovers that at the moment they need it, which is after a save went wrong
+
+**Debt — promotion.** eviction can still drop ANOTHER file's history with nothing said, so "closing is the only flush" is true of the file you are looking at and not of the store. Promote by having eviction report what it dropped, so a lost draft is observable rather than merely bounded.
+
+`packages/ui/src/editor/drafts.ts:331`
+
+### `editor/the-draft-store-cannot-crowd-out-the-rest-of-the-app` — rung 6
+
+**Mechanism.** choke-point — the only function that grows the store, and it applies BOTH caps before writing: a count cap by eviction and a byte cap by eviction, then gives up rather than exceeding either. One record for every file, deliberately, so the size can be measured where it is written; per-file keys would each be bounded and the set unbounded
+
+**Why.** localStorage gives the whole origin a few megabytes, shared with the layout canvases and the config cache. Two large config files with twenty revisions each would evict THOSE — so an unbounded draft store does not cost you drafts, it costs you your screen layouts and your saved settings, with nothing on screen connecting the two
+
+**Debt — promotion.** returning false is honest but silent about WHICH sessions were evicted to make room. Promote by folding both caps into a bounded-store type whose insert reports evictions, so a third writer cannot add a session without meeting them.
+
+`packages/ui/src/editor/drafts.ts:287`
 
 ## files
 

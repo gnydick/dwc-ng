@@ -220,3 +220,33 @@ test("a session too large to store says so instead of pretending", () => {
 	const huge = "x".repeat(600 * 1024);
 	assert.equal(saveSession(checkpoint(beginSession("0:/sys/big.g", "a"), huge)), false);
 });
+
+// The exact sequence that destroyed a revision on duet3, where sys files are
+// CRLF and the mock's are not: open a CRLF file, checkpoint an edit, step BACK
+// and then forward. CodeMirror hands text back as LF whatever it was given, so
+// without normalization the round trip reads as an edit nobody typed, truncates
+// the forward history as a new branch, and the newer revision is gone.
+test("a CRLF file survives step-back-then-forward with its history intact", () => {
+	const session = beginSession("0:/sys/config.g", "G28\r\nG1 X0\r\n");
+	const edited = checkpoint(session, "G28\nG1 X0\nG1 Y0\n");
+	assert.equal(edited.entries.length, 2, "the edit is a second checkpoint");
+
+	// Step back to the opened text, then forward again — the round trip a
+	// stepper exists to make.
+	const back = stepTo(edited, 0);
+	// The view hands the SAME document back as LF. Before normalization this
+	// looked like a change and dropped entries[1].
+	const afterViewRoundTrip = checkpoint(back, "G28\nG1 X0\n");
+	assert.equal(afterViewRoundTrip, back, "the view's own normalization is not an edit");
+
+	const forward = stepTo(afterViewRoundTrip, 1);
+	assert.equal(currentText(forward), "G28\nG1 X0\nG1 Y0\n", "the newer revision is still there");
+	assert.equal(forward.entries.length, 2, "and nothing was truncated");
+});
+
+test("a CRLF file is not dirty the moment it opens", () => {
+	const session = beginSession("0:/sys/config.g", "G28\r\nG1 X0\r\n");
+	assert.equal(isDirty(session), false, "every CRLF file would otherwise show unsaved on the first tick");
+	assert.equal(isStale(session, "G28\r\nG1 X0\r\n"), false, "nor changed on the board");
+	assert.equal(isDirty(checkpoint(session, "G28\nG1 X0\n")), false, "nor after the view returns it as LF");
+});

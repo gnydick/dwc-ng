@@ -31,18 +31,28 @@ const STORE_KEY = "dwc-ng.drafts";
 /**
  * The document, its history, and the board copy it diverged from.
  *
- * Invariant: `entries` is non-empty and `at` indexes it. Every value of this
- * type comes from `beginSession` or from a transition below that preserves
- * both, and `loadSession` rebuilds a stored record through the same rules —
- * so no reader has to defend against an empty history or an index off its end.
+ * @invariant history-is-never-empty-and-at-always-indexes-it
+ * @rung 5  every producer preserves it — beginSession seeds one entry,
+ *          checkpoint appends, stepTo clamps, reviveSession rejects an empty
+ *          array and an out-of-range index. But the TYPE says `readonly
+ *          string[]` and `number`, so the guarantee is five functions agreeing,
+ *          and currentText spends it on a non-null assertion rather than a
+ *          proof
+ * @why every reader takes entries[at] as the live document. An empty history or
+ *      a stale index does not read as a bug, it reads as an EMPTY FILE — and
+ *      the next Save uploads that over the operator's config
+ * @debt this is the NonEmpty case from the design rules, left undone. Promote
+ *       by making the pair a sole-constructor type — a non-empty list plus an
+ *       index proven against it — so currentText returns a string without an
+ *       assertion and a sixth transition cannot break the pairing.
  */
 export interface EditSession {
 	/** The absolute path this text belongs to. */
 	readonly path: string;
 	/** The board's copy as of the last load or save — what "unsaved" measures against. */
-	readonly baseline: string;
+	readonly baseline: CanonicalText;
 	/** Checkpoints, oldest first. `entries[0]` is the text as first opened. */
-	readonly entries: readonly string[];
+	readonly entries: readonly CanonicalText[];
 	/** Which checkpoint the document currently shows. Always a valid index. */
 	readonly at: number;
 }
@@ -66,6 +76,17 @@ const MAX_SESSIONS = 12;
  */
 const MAX_STORE_BYTES = 512 * 1024;
 
+declare const canonical: unique symbol;
+
+/**
+ * Document text in canonical form — LF line endings.
+ *
+ * Branded as `string &`, so reading one (rendering it, uploading it, comparing
+ * it) needs no unwrapping; what the brand blocks is a raw string being STORED
+ * as if it were already canonical. normalizeDoc is its only producer.
+ */
+export type CanonicalText = string & { readonly [canonical]: true };
+
 /**
  * The canonical form of a document: LF line endings.
  *
@@ -78,12 +99,29 @@ const MAX_STORE_BYTES = 512 * 1024;
  * mock's are not. It would also have marked every CRLF file dirty on the first
  * tick.
  *
- * Applied at every entry point below rather than at the call sites, so every
- * string inside an EditSession is canonical by construction and no caller has
- * to know this is a problem. Saving uploads the view's text, which was already
- * LF before any of this existed — so what lands on the board is unchanged.
+ * Applied at every entry point below rather than at the call sites, so no
+ * caller has to know this is a problem. Saving uploads the view's text, which
+ * was already LF before any of this existed — so what lands on the board is
+ * unchanged.
+ *
+ * @invariant every-string-in-a-session-is-canonical
+ * @rung 7  sole-constructor type — this is the only producer of CanonicalText,
+ *          and EditSession's `baseline` and `entries` are typed as it, so a raw
+ *          string cannot enter a session at all. A sixth entry point that
+ *          forgets does not compile. Promoted 2026-08-02 from a rung 5 where
+ *          five call sites each remembered, under a header that called it "by
+ *          construction" when it was not
+ * @why CodeMirror hands text back as LF whatever it was given, so a CRLF file
+ *      from the board comes out of the view different from how it went in — and
+ *      that difference is indistinguishable from an edit. Stepping back to a
+ *      revision and forward again made checkpoint read the view's own
+ *      normalization as a change, truncate the forward history as a new branch,
+ *      and DESTROY the newer revision. Watched happen on duet3, where sys files
+ *      are CRLF and the mock's are not: lens=[115,126] became lens=[115,111].
+ *      It would also have marked every CRLF file dirty on the first tick
  */
-export const normalizeDoc = (text: string): string => text.replace(/\r\n?/g, "\n");
+export const normalizeDoc = (text: string): CanonicalText =>
+	text.replace(/\r\n?/g, "\n") as CanonicalText;
 
 /** Open a file for editing: one checkpoint, holding the board's copy. */
 export function beginSession(path: string, baseline: string): EditSession {
@@ -92,7 +130,7 @@ export function beginSession(path: string, baseline: string): EditSession {
 }
 
 /** The text the document currently shows. */
-export function currentText(session: EditSession): string {
+export function currentText(session: EditSession): CanonicalText {
 	return session.entries[session.at]!;
 }
 
@@ -113,7 +151,7 @@ export function isDirty(session: EditSession): boolean {
 export function checkpoint(session: EditSession, rawText: string): EditSession {
 	const text = normalizeDoc(rawText);
 	if (text === currentText(session)) return session;
-	const kept = session.entries.slice(0, session.at + 1);
+	const kept: CanonicalText[] = session.entries.slice(0, session.at + 1);
 	kept.push(text);
 	// Drop from the OLD end when full: the recent past is what a stepper is for.
 	const entries = kept.length > MAX_ENTRIES ? kept.slice(kept.length - MAX_ENTRIES) : kept;
@@ -180,6 +218,22 @@ function readStore(): Store {
  * was filed under: that is the check that stops a hand-edited store from
  * handing config.g's text to an editor open on homeall.g, which would overwrite
  * it on the next Save.
+ *
+ * @invariant a-session-belongs-to-exactly-one-file
+ * @rung 6  choke-point — readStore is the only route from storage into a
+ *          session and revives EVERY entry through this, which refuses a record
+ *          whose stored path disagrees with the key it was filed under. Both
+ *          public readers (loadSession, and saveSession's read-modify-write) go
+ *          through readStore; nothing parses the store itself
+ * @why localStorage is operator-editable and the store is one record holding
+ *      every file. A session restored under the wrong key puts one file's text
+ *      into an editor titled with another, and this editor's Save uploads to
+ *      the path in the title — so the next Save overwrites a config file with
+ *      an unrelated one. It is the single failure in this module that destroys
+ *      data the operator cannot get back
+ * @debt the pairing is checked, not typed. Promote by keying the store with a
+ *       branded path that a session carries, so "filed under a key it does not
+ *       claim" has no representation rather than being rejected on read.
  */
 function reviveSession(path: string, value: unknown): EditSession | null {
 	if (!isPlainObject(value)) return null;
@@ -188,10 +242,12 @@ function reviveSession(path: string, value: unknown): EditSession | null {
 	if (typeof baseline !== "string") return null;
 	const rawEntries = value["entries"];
 	if (!Array.isArray(rawEntries)) return null;
-	const all: string[] = [];
+	const all: CanonicalText[] = [];
 	for (const entry of rawEntries) {
 		if (typeof entry !== "string") return null;
-		all.push(entry);
+		// Normalized on the way IN, not in the map below: the array's type is the
+		// guarantee, so it may never hold a string that has not been through here.
+		all.push(normalizeDoc(entry));
 	}
 	if (all.length === 0) return null;
 	const rawAt = value["at"];
@@ -203,7 +259,7 @@ function reviveSession(path: string, value: unknown): EditSession | null {
 	// Normalized here too, so the "every string in a session is canonical"
 	// invariant holds for a record that came from storage rather than a
 	// constructor — the one route into a session that skips them.
-	const entries = all.slice(dropped).map(normalizeDoc);
+	const entries = all.slice(dropped);
 	return { path, baseline: normalizeDoc(baseline), entries, at: Math.max(0, rawAt - dropped) };
 }
 
@@ -227,6 +283,22 @@ export function loadSession(path: string): EditSession | null {
  * Returns whether it actually landed, so the editor can tell the operator that
  * this file is too large to survive a reload instead of implying a safety net
  * that isn't there.
+ *
+ * @invariant the-draft-store-cannot-crowd-out-the-rest-of-the-app
+ * @rung 6  choke-point — the only function that grows the store, and it applies
+ *          BOTH caps before writing: a count cap by eviction and a byte cap by
+ *          eviction, then gives up rather than exceeding either. One record for
+ *          every file, deliberately, so the size can be measured where it is
+ *          written; per-file keys would each be bounded and the set unbounded
+ * @why localStorage gives the whole origin a few megabytes, shared with the
+ *      layout canvases and the config cache. Two large config files with twenty
+ *      revisions each would evict THOSE — so an unbounded draft store does not
+ *      cost you drafts, it costs you your screen layouts and your saved
+ *      settings, with nothing on screen connecting the two
+ * @debt returning false is honest but silent about WHICH sessions were evicted
+ *       to make room. Promote by folding both caps into a bounded-store type
+ *       whose insert reports evictions, so a third writer cannot add a session
+ *       without meeting them.
  */
 export function saveSession(session: EditSession): boolean {
 	const store = readStore();
@@ -255,6 +327,21 @@ export function saveSession(session: EditSession): boolean {
  * Forget a file's session entirely. THE sole flush — closing an editor is the
  * only thing that reaches it, which is what makes "saving keeps your history"
  * a property of the code rather than a promise in a comment.
+ *
+ * @invariant saving-never-costs-you-your-history
+ * @rung 6  choke-point — this is the only function that deletes a session on
+ *          purpose, and it has exactly one caller in src (FileEditor's close).
+ *          Nothing on the save path reaches it: markSaved does not touch the
+ *          store at all, and saveSession's two eviction paths both EXCLUDE
+ *          session.path by name, so writing a file cannot evict that file
+ * @why the request was "flushed after you close, not after you save". A save
+ *      that dropped the history would silently remove the ability to step back
+ *      past it — and the operator only discovers that at the moment they need
+ *      it, which is after a save went wrong
+ * @debt eviction can still drop ANOTHER file's history with nothing said, so
+ *       "closing is the only flush" is true of the file you are looking at and
+ *       not of the store. Promote by having eviction report what it dropped, so
+ *       a lost draft is observable rather than merely bounded.
  */
 export function closeSession(path: string): void {
 	const store = readStore();
