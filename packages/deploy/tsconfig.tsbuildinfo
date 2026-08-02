@@ -1,0 +1,1 @@
+{"root":["./src/cli.ts","./src/crc32.ts","./src/deploy.ts","./src/dsftransport.ts","./src/manifest.ts","./src/polltransport.ts","./src/transport.ts","./src/verify.ts","./test/deploy.test.ts","./test/entry-hash.test.ts","./test/faketransport.ts"],"version":"6.0.3"}

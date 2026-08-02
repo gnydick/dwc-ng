@@ -5,7 +5,7 @@
 // anywhere on the route, so there is no call site at which the bytes written and
 // the server that must read them can disagree.
 
-import { assetDir, buildManifest, ownedPaths, type DeployFile, type Layout } from "./manifest.ts"
+import { assetDir, buildManifest, ownedAsset, ownedPaths, type DeployFile, type Layout } from "./manifest.ts"
 import type { Transport } from "./transport.ts"
 import { verify } from "./verify.ts"
 
@@ -83,7 +83,7 @@ export async function deploy(
 	for (const name of await transport.list(dir)) {
 		if (keep.has(name)) continue
 		pruned.push(`${dir}/${name}`)
-		if (!opts.dryRun) await transport.remove(`${dir}/${name}`)
+		if (!opts.dryRun) await transport.remove(ownedAsset(dir, name))
 	}
 
 	if (!opts.dryRun && opts.skipVerify !== true) {

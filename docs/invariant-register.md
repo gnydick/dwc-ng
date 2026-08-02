@@ -21,7 +21,7 @@ and invariant claim mentions 13 -> 23, so no mechanism was deleted and no
 claim was lost in the gap. From here the ratchets make a dropped rung visible
 in the diff that drops it.
 
-**Totals:** 74 invariants · 53 at rung 6 or above · 21 below rung 6 (ceiling 21).
+**Totals:** 74 invariants · 54 at rung 6 or above · 20 below rung 6 (ceiling 20).
 
 ## bed
 
@@ -361,17 +361,15 @@ in the diff that drops it.
 
 **Why.** compression depends on which SERVER will answer the browser, never on the transport that wrote the files. Verified on hardware 2026-07-24: DuetWebServer (Kestrel) neither compresses on the fly nor serves .gz transparently, so a gzipped deploy 404s EVERY asset — a bricked UI, from one boolean set by the wrong thing. Re-seated 2026-07-31 so one protocol (FTP) can serve either mode
 
-`packages/deploy/src/transport.ts:45`
+`packages/deploy/src/transport.ts:57`
 
-### `deploy/uninstall-owns-only-its-own` — rung 5
+### `deploy/uninstall-owns-only-its-own` — rung 7
 
-**Mechanism.** shared helper on ONE of two delete paths — uninstall derives every path from here, but the redeploy orphan prune (deploy.ts:86) deletes `${assetDir}/${name}` directly. That one is confined to the asset directory the manifest just wrote, so it is not loose, but it does not come from here. Corrected 2026-08-01: first declared rung 6 as "the single authority", which the prune contradicts
+**Mechanism.** sole-constructor type — transport.remove takes an OwnedPath, and the only two producers are this function and ownedAsset above. A hand-built string does not compile, so BOTH delete paths now carry proof of entitlement rather than one being trusted because it looks careful. Red-checked: restoring the prune's own template literal fails the build at deploy.ts:86. Promoted 2026-08-01 from rung 5, itself a correction of a rung-6 claim the prune contradicted
 
 **Why.** the board's filesystem IS the machine's configuration. Sidecar mode shares 0:/www with stock DWC, so an uninstall handed the shared root would delete the operator's working UI along with ours — and there is no undo on an SD card
 
-**Debt — promotion.** promote by returning a branded OwnedPath that transport.remove is the only consumer of, and having assetDir produce one too — then BOTH delete paths carry proof of ownership and a hand-built path stops compiling, rather than one path being trusted because it looks careful.
-
-`packages/deploy/src/manifest.ts:188`
+`packages/deploy/src/manifest.ts:202`
 
 ## dev
 

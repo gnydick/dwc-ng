@@ -1,3 +1,5 @@
+import type { OwnedPath } from "./transport.ts"
+
 // Pure: turn a built dist/ into the exact set of files that belong on the
 // board, at the exact paths they belong at. No network, no side effects.
 
@@ -183,27 +185,36 @@ export const assetDir = (name: string, layout: Layout, wwwRoot?: string): string
 	`${wwwRoot ?? defaultWwwRoot(layout)}${layout === "root" ? "" : `/${name}`}/assets`
 
 /**
+/**
+ * One orphaned asset, inside the asset directory this deploy just wrote.
+ *
+ * A separate producer from ownedPaths on purpose: the prune's entitlement comes
+ * from a DIFFERENT argument — the manifest says which files belong, and
+ * anything else in that one directory is ours to remove. Naming it here is what
+ * lets deploy.ts stop building the path itself.
+ */
+export const ownedAsset = (assetDirectory: string, fileName: string): OwnedPath =>
+	`${assetDirectory}/${fileName}` as OwnedPath
+
+/**
  * Every board path a deployment owns, for uninstall.
  *
  * @invariant uninstall-owns-only-its-own
- * @rung 5  shared helper on ONE of two delete paths — uninstall derives every
- *          path from here, but the redeploy orphan prune (deploy.ts:86) deletes
- *          `${assetDir}/${name}` directly. That one is confined to the asset
- *          directory the manifest just wrote, so it is not loose, but it does
- *          not come from here. Corrected 2026-08-01: first declared rung 6 as
- *          "the single authority", which the prune contradicts
+ * @rung 7  sole-constructor type — transport.remove takes an OwnedPath, and
+ *          the only two producers are this function and ownedAsset above. A
+ *          hand-built string does not compile, so BOTH delete paths now carry
+ *          proof of entitlement rather than one being trusted because it looks
+ *          careful. Red-checked: restoring the prune's own template literal
+ *          fails the build at deploy.ts:86. Promoted 2026-08-01 from rung 5,
+ *          itself a correction of a rung-6 claim the prune contradicted
  * @why the board's filesystem IS the machine's configuration. Sidecar mode
  *      shares 0:/www with stock DWC, so an uninstall handed the shared root
  *      would delete the operator's working UI along with ours — and there is no
  *      undo on an SD card
- * @debt promote by returning a branded OwnedPath that transport.remove is the
- *       only consumer of, and having assetDir produce one too — then BOTH
- *       delete paths carry proof of ownership and a hand-built path stops
- *       compiling, rather than one path being trusted because it looks careful.
  */
-export const ownedPaths = (name: string, layout: Layout, wwwRoot?: string): string[] => {
+export const ownedPaths = (name: string, layout: Layout, wwwRoot?: string): OwnedPath[] => {
 	const root = wwwRoot ?? defaultWwwRoot(layout)
 	// Root mode owns its whole directory; sidecar owns exactly two entries and
 	// must never be handed the root it shares with stock DWC.
-	return layout === "root" ? [root] : [`${root}/${name}.html`, `${root}/${name}`]
+	return (layout === "root" ? [root] : [`${root}/${name}.html`, `${root}/${name}`]) as OwnedPath[]
 }

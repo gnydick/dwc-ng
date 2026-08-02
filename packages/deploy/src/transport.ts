@@ -24,6 +24,18 @@ declare const compressionBrand: unique symbol
  * server resolve foo.css.gz when asked for foo.css" — a fact about the server,
  * not about how the file arrived on the card.
  */
+declare const owned: unique symbol
+
+/**
+ * A board path this deployment is entitled to DELETE.
+ *
+ * `remove` below accepts nothing else, and the only producers are ownedPaths
+ * and ownedAsset in ./manifest.ts — so a hand-built string cannot be deleted,
+ * however careful the surrounding code looks. Branded as `string &` so it
+ * still reads and logs as a path; what the brand blocks is MINTING one.
+ */
+export type OwnedPath = string & { readonly [owned]: true }
+
 export type ServingStack =
 	/** RRF's embedded HTTP server (standalone). Resolves .gz transparently. */
 	| "rrf-embedded"
@@ -103,7 +115,7 @@ export type Transport = {
 	 * orphaned asset is a file, and a recursive delete of a file is the same
 	 * delete.
 	 */
-	remove(boardPath: string, recursive?: boolean): Promise<void>
+	remove(boardPath: OwnedPath, recursive?: boolean): Promise<void>
 	/** Fetch by URL the way a browser would — this is what proves a deploy. */
 	fetchUrl(urlPath: string): Promise<FetchedResource>
 }

@@ -3,7 +3,8 @@ import assert from "node:assert/strict"
 import { mkdtemp, mkdir, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { buildManifest } from "../src/manifest.ts"
+import { buildManifest, ownedAsset, ownedPaths } from "../src/manifest.ts"
+import type { OwnedPath } from "../src/transport.ts"
 import { deploy, uninstall } from "../src/deploy.ts"
 import { verify, parseEntryScript } from "../src/verify.ts"
 import { crc32, crc32Hex } from "../src/crc32.ts"
@@ -308,4 +309,20 @@ test("a dry run reports orphans without deleting them", async () => {
 	const result = await deploy(dist, t, { name: "ng", dryRun: true })
 	assert.deepEqual(result.pruned, [stale])
 	assert.ok(t.files.has(stale), "dry run deleted a file")
+})
+
+// The brand's whole job: a path nobody minted cannot be deleted. These are
+// COMPILE-time assertions — each directive below is the test, and the build
+// fails if remove starts accepting a bare string again. The board's filesystem
+// IS the machine's configuration, and there is no undo on an SD card.
+test("only a minted OwnedPath can be deleted", () => {
+	const owned = ownedPaths("ng", "sidecar")
+	assert.equal(typeof owned[0], "string", "still reads and logs as a path")
+	const takesOwned = (p: OwnedPath): OwnedPath => p
+	takesOwned(owned[0]!)
+	takesOwned(ownedAsset("0:/www/ng/assets", "index-abc123.js"))
+	// @ts-expect-error a hand-built path carries no proof of ownership
+	takesOwned("0:/www")
+	// @ts-expect-error not even one that looks exactly like ours
+	takesOwned("0:/www/ng.html")
 })
