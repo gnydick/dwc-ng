@@ -191,7 +191,7 @@ export class PollConnector implements Connector {
 		this.trackLayers(live);
 
 		// Changed subtrees → authoritative re-fetch, wholesale replacement
-		for (const [key, value] of Object.entries(pickNumbers(seqs))) {
+		for (const [key, value] of safeEntries(pickNumbers(seqs))) {
 			if (NON_MODEL_SEQS.has(key) || SKIPPED_KEYS.has(key)) continue;
 			if (this.lastSeqs[key] !== value) {
 				this.events.onModelKey?.(key, await this.fetchModelKey(key));

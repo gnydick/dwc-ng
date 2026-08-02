@@ -63,6 +63,13 @@
 			"where": "packages/ui/src/control/commands.ts (print, simulate, loadFilament)",
 			"what": "Three command builders hand-wrote their own quotes instead of calling gcodeQuote, so an embedded quote was NOT doubled and closed the parameter early — the exact injection control/gcode-quoting exists to prevent, and which its own text described as already fixed. Measured before the change: print('0:/sys/a\"b.g') emitted M32 \"0:/sys/a\"b.g\" while runMacro on the same input correctly emitted M98 P\"0:/sys/a\"\"b.g\". Filenames reach these from the SD listing and from operator uploads. Found 2026-08-01 by the COMPILER while promoting the invariant from rung 5 to 7 — not by review, and not by any test, in the months it was there.",
 			"fix": "Command assembly moved behind a `gc` tagged template whose interpolations must be a branded `Param`, produced only by gcodeQuote (strings), n()/fixed() (numbers) or axisLetter (bare tokens). A raw string in a command literal is now a compile error, which is what surfaced all three. A/B over all 45 builders: 39 byte-identical, 6 changed and every change a fix. 5 regression tests."
+		},
+		{
+			"slug": "sanitize-canvas-accepted-a-prototype",
+			"status": "fixed",
+			"where": "packages/ui/src/shell/panelCanvas.ts:813",
+			"what": "sanitizeCanvas — the function whose whole job is making stored layout JSON safe — walked it with raw Object.entries and assigned out[id]. JSON.parse creates \"__proto__\" as an OWN property, so that key ran the prototype SETTER rather than adding an entry. Measured 2026-08-01: a stored {\"__proto__\":{col,row,colSpan,rowSpan}, ...} came back with Object.getPrototypeOf(out) replaced by the attacker's object, while Object.keys(out) showed only the legitimate card and nothing looked wrong. Global Object.prototype was NOT polluted, so the blast radius is the returned CanvasState, and the source is this browser's own localStorage — but it is the exact class the util/safeObject kernel exists to delete, in the one function named for preventing it.",
+			"fix": "safeEntries at that walk, plus the rule made self-maintaining: test/safe-walks.test.ts fails any file that imports safeEntries and also uses raw Object.entries, so the import that makes a boundary safe is the one that arms the check. safeEntries is now generic, so converting a trusted walk costs nothing and the ban can be total. Audit of all 18 raw walks in src: 17 safe (locally-built records, or keys gated by parseCardId/isSafeKey, or already filtered upstream), this one not. Declared at rung 4, up from 3; 2 tests, both red-checked."
 		}
 	]
 }

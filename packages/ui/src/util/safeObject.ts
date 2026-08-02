@@ -16,25 +16,28 @@
  * records only.
  *
  * @invariant untrusted-walks-cannot-reach-the-prototype
- * @rung 3  tests over the KNOWN boundaries — test/proto-pollution.test.ts feeds
- *          a "__proto__" payload through the six named ingress points (config
- *          store, OM merge, share import, control spec, orientation state) and
- *          asserts Object.prototype is untouched. The helper itself is rung 5,
- *          but which walks use it is not enforced: 24 raw Object.entries remain
- *          in src, correct only because each happens to be over trusted data
+ * @rung 4  static analysis — test/safe-walks.test.ts fails any file that
+ *          imports safeEntries and ALSO uses raw Object.entries. The rule is
+ *          self-selecting rather than an allowlist: importing this IS the
+ *          declaration "I walk data I did not author", and the same import that
+ *          makes a new boundary safe is the one that arms the check. Complying
+ *          is free — safeEntries is generic and drops three keys that cannot
+ *          occur in a locally-built record, so a trusted walk converts as a
+ *          no-op, which is why the ban can be total instead of negotiated
  * @why JSON.parse creates "__proto__" as an OWN property — CreateDataProperty
- *      bypasses the setter — so a naive walk that reads base[key] gets
- *      Object.prototype and merging into THAT poisons every object in the app.
- *      The inputs are the SD card, localStorage, the board and other people's
- *      share files, none of which this app authored
- * @debt this sentence says "must", which is the caller-precondition
- *       anti-pattern: the rule lives in prose and the tests cover only the
- *       boundaries that existed when they were written. Cheap promotion to 4 is
- *       the shape files/raw-transport-fence already uses — walk src and reject
- *       Object.entries inside the parse/ingress modules by path, so a NEW
- *       boundary is caught by construction rather than by someone remembering
- *       to extend the fixture. Rung 7 is having the parse boundaries return an
- *       Untrusted<T> whose only iterator is safeEntries.
+ *      bypasses the setter — so a walk that assigns out[key] runs the prototype
+ *      SETTER instead of adding an entry. The inputs are the SD card,
+ *      localStorage, the board and other people's share files, none of which
+ *      this app authored. Promoted from rung 3 on 2026-08-01, and the audit
+ *      that did it found a live one: sanitizeCanvas returned an object wearing
+ *      an attacker-chosen prototype while Object.keys showed nothing wrong
+ * @debt the fence is per-FILE, so a module that walks untrusted data and never
+ *       imports safeEntries is outside it — 17 raw walks elsewhere in src are
+ *       correct today because each is over a locally-built record or an
+ *       id-gated key, verified one at a time rather than by construction.
+ *       Rung 7 is having every parse boundary return an Untrusted<T> whose
+ *       only iterator is safeEntries, which makes the walk unwritable rather
+ *       than merely detected.
  */
 
 const FORBIDDEN_KEYS = new Set(["__proto__", "constructor", "prototype"]);
@@ -44,9 +47,16 @@ export function isSafeKey(key: string): boolean {
 	return !FORBIDDEN_KEYS.has(key);
 }
 
-/** Object.entries minus the prototype-reaching keys — the only sanctioned
- *  way to iterate a parsed-but-unvalidated object. */
-export function safeEntries(value: Record<string, unknown>): Array<[string, unknown]> {
+/**
+ * Object.entries minus the prototype-reaching keys — the only sanctioned way to
+ * iterate a parsed-but-unvalidated object.
+ *
+ * Generic so it is a drop-in for Object.entries on a TYPED record too: a walk
+ * over trusted data loses nothing by using it (the three dropped keys cannot
+ * occur), which is what lets the fence below ban the raw form outright rather
+ * than maintain a list of which walks are allowed to be unsafe.
+ */
+export function safeEntries<T>(value: Record<string, T>): Array<[string, T]> {
 	return Object.entries(value).filter(([key]) => isSafeKey(key));
 }
 

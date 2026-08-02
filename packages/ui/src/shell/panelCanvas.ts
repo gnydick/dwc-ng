@@ -180,7 +180,7 @@ export function collidesWithAny(
 	rect: PanelRect,
 ): boolean {
 	const excluded = typeof exclude === "string" ? null : exclude;
-	for (const [otherId, otherRect] of Object.entries(state)) {
+	for (const [otherId, otherRect] of safeEntries(state)) {
 		if (excluded === null ? otherId === exclude : excluded.has(otherId)) continue;
 		if (rectsOverlap(rect, otherRect)) return true;
 	}
@@ -810,7 +810,13 @@ export function serializeCanvas(state: CanvasState): string {
 export function sanitizeCanvas(stored: unknown): CanvasState {
 	const out: CanvasState = {};
 	if (typeof stored !== "object" || stored === null) return out;
-	for (const [id, rect] of Object.entries(stored as Record<string, unknown>)) {
+	// safeEntries, not Object.entries: `stored` is JSON.parse output from
+	// localStorage, which creates "__proto__" as an OWN property, and `out[id] =`
+	// on that key runs the prototype SETTER instead of adding an entry.
+	// Measured 2026-08-01 with the raw walk: a stored {"__proto__":{col,row,
+	// colSpan,rowSpan}} left sanitizeCanvas returning an object whose prototype
+	// was the attacker's, while Object.keys showed nothing amiss.
+	for (const [id, rect] of safeEntries(stored as Record<string, unknown>)) {
 		if (isPanelRect(rect)) out[id] = clampRect(rect);
 	}
 	return out;
@@ -960,7 +966,7 @@ export function reflow(state: CanvasState): CanvasState {
  */
 export function benchOrigin(state: CanvasState): CanvasState {
 	const out: CanvasState = {};
-	for (const [id, r] of Object.entries(state)) {
+	for (const [id, r] of safeEntries(state)) {
 		out[id] = { col: 0, row: 0, colSpan: r.colSpan, rowSpan: r.rowSpan };
 	}
 	return out;
@@ -1207,7 +1213,7 @@ export function createPanelCanvas(
 	const collidableState = (selfId: string): CanvasState => {
 		if (!isActive) return state();
 		const filtered: CanvasState = {};
-		for (const [pid, rect] of Object.entries(state())) {
+		for (const [pid, rect] of safeEntries(state())) {
 			if (pid === selfId || isActive(pid)) filtered[pid] = rect;
 		}
 		return filtered;

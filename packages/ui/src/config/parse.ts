@@ -200,7 +200,7 @@ export function parseOverlay(raw: unknown): ConfigOverlay {
 		cards: parseCards(raw.cards),
 		pins: parsePins(raw.pins),
 	} satisfies { [K in keyof ConfigOverlay]: ConfigOverlay[K] };
-	for (const [key, value] of Object.entries(sections)) {
+	for (const [key, value] of safeEntries(sections)) {
 		if (value !== undefined) (out as Record<string, unknown>)[key] = value;
 	}
 	return out;

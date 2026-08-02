@@ -675,7 +675,7 @@ in the diff that drops it.
 
 **Debt — promotion.** promote by making the placement order a value produced once and consumed by the loop, so a future caller cannot iterate the state directly and place out of order.
 
-`packages/ui/src/shell/panelCanvas.ts:904`
+`packages/ui/src/shell/panelCanvas.ts:910`
 
 ### `shell/reflow-terminates` — rung 3
 
@@ -685,7 +685,7 @@ in the diff that drops it.
 
 **Debt — promotion.** make the loop consume a bounded, strictly-increasing cursor rather than mutating a candidate in place — then "a push that advances nothing" has no encoding and the argument stops needing to be believed.
 
-`packages/ui/src/shell/panelCanvas.ts:916`
+`packages/ui/src/shell/panelCanvas.ts:922`
 
 ### `shell/stream-dies-with-its-element` — rung 7
 
@@ -747,12 +747,12 @@ in the diff that drops it.
 
 `packages/ui/src/util/unreachable.ts:9`
 
-### `util/untrusted-walks-cannot-reach-the-prototype` — rung 3
+### `util/untrusted-walks-cannot-reach-the-prototype` — rung 4
 
-**Mechanism.** tests over the KNOWN boundaries — test/proto-pollution.test.ts feeds a "__proto__" payload through the six named ingress points (config store, OM merge, share import, control spec, orientation state) and asserts Object.prototype is untouched. The helper itself is rung 5, but which walks use it is not enforced: 24 raw Object.entries remain in src, correct only because each happens to be over trusted data
+**Mechanism.** static analysis — test/safe-walks.test.ts fails any file that imports safeEntries and ALSO uses raw Object.entries. The rule is self-selecting rather than an allowlist: importing this IS the declaration "I walk data I did not author", and the same import that makes a new boundary safe is the one that arms the check. Complying is free — safeEntries is generic and drops three keys that cannot occur in a locally-built record, so a trusted walk converts as a no-op, which is why the ban can be total instead of negotiated
 
-**Why.** JSON.parse creates "__proto__" as an OWN property — CreateDataProperty bypasses the setter — so a naive walk that reads base[key] gets Object.prototype and merging into THAT poisons every object in the app. The inputs are the SD card, localStorage, the board and other people's share files, none of which this app authored
+**Why.** JSON.parse creates "__proto__" as an OWN property — CreateDataProperty bypasses the setter — so a walk that assigns out[key] runs the prototype SETTER instead of adding an entry. The inputs are the SD card, localStorage, the board and other people's share files, none of which this app authored. Promoted from rung 3 on 2026-08-01, and the audit that did it found a live one: sanitizeCanvas returned an object wearing an attacker-chosen prototype while Object.keys showed nothing wrong
 
-**Debt — promotion.** this sentence says "must", which is the caller-precondition anti-pattern: the rule lives in prose and the tests cover only the boundaries that existed when they were written. Cheap promotion to 4 is the shape files/raw-transport-fence already uses — walk src and reject Object.entries inside the parse/ingress modules by path, so a NEW boundary is caught by construction rather than by someone remembering to extend the fixture. Rung 7 is having the parse boundaries return an Untrusted<T> whose only iterator is safeEntries.
+**Debt — promotion.** the fence is per-FILE, so a module that walks untrusted data and never imports safeEntries is outside it — 17 raw walks elsewhere in src are correct today because each is over a locally-built record or an id-gated key, verified one at a time rather than by construction. Rung 7 is having every parse boundary return an Untrusted<T> whose only iterator is safeEntries, which makes the walk unwritable rather than merely detected.
 
 `packages/ui/src/util/safeObject.ts:18`

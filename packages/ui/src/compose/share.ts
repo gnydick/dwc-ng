@@ -128,7 +128,7 @@ export function exportCard(name: string, specText: string): { fileName: string; 
 export function exportScreen(entry: ScreenEntry, config: UiConfig): { fileName: string; text: string } {
 	const cards: Record<string, SlotRect> = {};
 	const customCards: Record<string, { name: string; spec: unknown }> = {};
-	for (const [id, slot] of Object.entries(entry.def.composition)) {
+	for (const [id, slot] of safeEntries(entry.def.composition)) {
 		if (slot === undefined) continue;
 		if (isCustomCardId(id)) {
 			const def = config.cards[id];
@@ -253,7 +253,7 @@ export function parseShareFile(text: string): ShareImport {
 /** Rewrite a screen's slot keys through the file-id → minted-id map. */
 export function remapScreenCards(cards: Record<string, SlotRect>, idMap: ReadonlyMap<string, string>): Record<string, SlotRect> {
 	const out: Record<string, SlotRect> = {};
-	for (const [key, rect] of Object.entries(cards)) {
+	for (const [key, rect] of safeEntries(cards)) {
 		if (isCustomCardId(key)) {
 			const minted = idMap.get(key);
 			if (minted !== undefined) out[minted] = rect;
