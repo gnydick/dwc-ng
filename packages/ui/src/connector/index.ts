@@ -16,7 +16,16 @@
  *       call outside the connector package stops compiling. Rung 7, and no new
  *       dependency — the alternative, ESLint, is one.
  */
+/**
+ * The concrete connectors are NOT re-exported. createConnector is the only way
+ * to obtain one, so a second construction site cannot be written against this
+ * module's public face — see connector/sole-construction.
+ *
+ * Removing them cost nothing, which is worth recording: the re-export had zero
+ * consumers. Every test imports PollConnector straight from ./PollConnector.ts,
+ * and App.tsx takes only createConnector. The promotion note on
+ * createConnector.ts had claimed the tests blocked this; they never used this
+ * route at all.
+ */
 export * from "./types.ts";
-export { PollConnector, type PollConnectorOptions } from "./PollConnector.ts";
-export { DsfConnector, type DsfConnectorOptions } from "./DsfConnector.ts";
 export { createConnector, probeTransport, type Transport, type ConnectorTarget } from "./createConnector.ts";

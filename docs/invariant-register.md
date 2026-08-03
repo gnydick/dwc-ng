@@ -323,11 +323,11 @@ in the diff that drops it.
 
 ### `connector/sole-construction` — rung 6
 
-**Mechanism.** choke-point — createConnector is the only construction site in src; nothing else calls `new PollConnector` or `new DsfConnector`
+**Mechanism.** choke-point, now with two things holding it rather than one. The concrete classes are no longer on connector/index.ts's public face, so a second site cannot be written against the module's exports; and test/sole-construction.test.ts scans src for `new PollConnector` / `new DsfConnector` outside this file, naming any it finds by line
 
 **Why.** exactly one transport may drive the store per session, and two connectors racing to write the same object model would interleave subtree replacements with no way to tell which won
 
-**Debt — promotion.** stop re-exporting the classes from connector/index.ts and make them module-private, so a second construction site is a compile error rather than merely absent. Blocked only by the tests, which construct PollConnector directly against mock-duet (test/config.test.ts, test/connector.test.ts) — they would take a test-only factory.
+**Debt — promotion.** still 6, and the reason is worth being exact about. Removing the re-exports cost NOTHING — they had zero consumers, since every test imports PollConnector straight from its own module and App.tsx takes only createConnector. The previous note here claimed the tests blocked this; they never used that route. What remains is that any file in this PACKAGE can still import ./PollConnector.ts directly, and no runtime mechanism can prevent source that has not been written yet — freeze, seal and #private all constrain values during execution, while "a second route is added" is a fact about a future edit. Rung 7 therefore needs a boundary the compiler enforces: move the connector into its own workspace package with one entry point, which also unlocks raw-transport-fence by letting @dwc-ng/ui shadow `fetch` as never.
 
 `packages/ui/src/connector/createConnector.ts:17`
 

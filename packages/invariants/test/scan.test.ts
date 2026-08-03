@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { scanTree, repoRoot } from "../src/scan.ts";
@@ -55,7 +55,15 @@ test("the order is deterministic across runs", () => {
 	assert.deepEqual(scanTree(root).map(d => d.file), scanTree(root).map(d => d.file));
 });
 
+// Asserts what repoRoot is FOR — that it lands on a directory holding the
+// workspace — rather than that the checkout is named a particular thing. The
+// name check failed in a git worktree, where the root is
+// .claude/worktrees/<name>, which this project uses routinely. A test that
+// pins an incidental fact reports a false defect the first time the
+// environment is legitimately different.
 test("repoRoot finds the real workspace", () => {
-	assert.equal(typeof repoRoot(), "string");
-	assert.match(repoRoot().replaceAll("\\", "/"), /dwc-ng$/);
+	const root = repoRoot();
+	assert.equal(typeof root, "string");
+	assert.ok(existsSync(join(root, "pnpm-workspace.yaml")), `no pnpm-workspace.yaml at ${root}`);
+	assert.ok(existsSync(join(root, "packages", "invariants")), `no packages/invariants at ${root}`);
 });
