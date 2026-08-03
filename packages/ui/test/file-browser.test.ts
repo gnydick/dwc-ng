@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRoot } from "solid-js";
 import { createFileBrowser, type FileBrowser } from "../src/files/browser.ts";
-import type { Connector, FileListEntry } from "../src/connector/types.ts";
+import type { Connector, FileListEntry } from "@dwc-ng/connector";
 
 const ROOT = "0:/gcodes";
 

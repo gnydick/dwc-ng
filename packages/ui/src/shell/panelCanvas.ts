@@ -16,7 +16,7 @@ import {
 	type Orientation, type OrientationState,
 	parseOrientationState, serializeOrientationState, toggledOrientation,
 } from "./panelOrientation.ts";
-import { safeEntries } from "../util/safeObject.ts";
+import { safeEntries } from "@dwc-ng/connector";
 
 /**
  * Horizontal granularity, and the same argument the rows already won.

@@ -1,8 +1,8 @@
 import { createStore, reconcile, produce, type SetStoreFunction } from "solid-js/store";
-import type { ConnectorEvents, ConnectionStatus, ConnectorTransport } from "../connector/types.ts";
+import type { ConnectorEvents, ConnectionStatus, ConnectorTransport } from "@dwc-ng/connector";
 import { conformModelKey, emptyModel, type ObjectModel } from "./types.ts";
 import { appendCapped, loadConsole, saveConsole, type ConsoleLine } from "./consoleLog.ts";
-import { isPlainObject, isSafeKey, safeEntries } from "../util/safeObject.ts";
+import { isPlainObject, isSafeKey, safeEntries } from "@dwc-ng/connector";
 
 /**
  * The two stores of machine truth, and the bridge from a Connector.

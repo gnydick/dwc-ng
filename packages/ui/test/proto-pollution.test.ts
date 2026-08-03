@@ -10,12 +10,12 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createConfigStore } from "../src/config/store.ts";
 import { DEFAULT_CONFIG } from "../src/config/types.ts";
-import type { Connector } from "../src/connector/types.ts";
+import type { Connector } from "@dwc-ng/connector";
 import { createOmStore, deepMergeInto } from "../src/om/store.ts";
 import { parseShareFile } from "../src/compose/share.ts";
 import { parseControlSpecText } from "../src/compose/controls/parse.ts";
 import { parseOrientationState } from "../src/shell/panelOrientation.ts";
-import { safeEntries, isSafeKey } from "../src/util/safeObject.ts";
+import { safeEntries, isSafeKey } from "@dwc-ng/connector";
 
 /** Assert Object.prototype did not gain `name`; clean up if it somehow did,
  *  so one failing construction can't cascade into unrelated tests. */

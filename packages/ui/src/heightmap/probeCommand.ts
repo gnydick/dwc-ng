@@ -1,5 +1,5 @@
 import { operatorTyped } from "../control/commands.ts";
-import type { GcodeCommand } from "../connector/types.ts";
+import type { GcodeCommand } from "@dwc-ng/connector";
 
 /**
  * The probe command is a template the operator owns, not motion this UI

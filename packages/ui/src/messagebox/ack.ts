@@ -11,7 +11,7 @@
  * (reference/dwc/src/components/dialogs/MessageBoxDialog.vue) and the object
  * model (reference/objectmodel/src/state/MessageBox.ts) — not from memory.
  */
-import type { GcodeCommand } from "../connector/types.ts";
+import type { GcodeCommand } from "@dwc-ng/connector";
 import type { MessageBox } from "../om/types.ts";
 import { cmd } from "../control/commands.ts";
 

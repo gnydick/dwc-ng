@@ -1,7 +1,7 @@
 import { createContext, useContext } from "solid-js";
 import type { OmStore } from "../om/store.ts";
 import type { ConfigStore } from "../config/store.ts";
-import type { Connector } from "../connector/types.ts";
+import type { Connector } from "@dwc-ng/connector";
 import type { Backend } from "../dev/backend.ts";
 import type { TemperatureHistory } from "../om/temperature.ts";
 

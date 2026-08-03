@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { createConfigStore } from "../src/config/store.ts";
 import { CONFIG_FILE, DEFAULT_CONFIG, MAX_LABEL_LEN } from "../src/config/types.ts";
 import { createMockServer } from "../../mock-duet/src/server.ts";
-import { PollConnector } from "../src/connector/PollConnector.ts";
+import { PollConnector } from "@dwc-ng/connector/testing";
 
 test("empty overlay means pure defaults", () => {
 	const store = createConfigStore();

@@ -22,7 +22,7 @@
  * @debt fold the cap into a small bounded-map type so a second writer cannot
  *       add a key without eviction.
  */
-import { isPlainObject, safeEntries } from "../util/safeObject.ts";
+import { isPlainObject, safeEntries } from "@dwc-ng/connector";
 import { asRemembered, type RememberedPath } from "./path.ts";
 
 export interface BrowserMemory {

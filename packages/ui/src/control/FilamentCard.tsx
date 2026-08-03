@@ -1,7 +1,7 @@
 import { For, Show, createMemo, createResource, createSignal } from "solid-js";
 import { useApp } from "../shell/context.ts";
 import { cmd, joinCommands } from "./commands.ts";
-import type { GcodeCommand } from "../connector/types.ts";
+import type { GcodeCommand } from "@dwc-ng/connector";
 import { GcodeButton } from "./GcodeButton.tsx";
 import { describeToolP, parseToolP } from "./toolP.ts";
 import type { Tool } from "../om/types.ts";

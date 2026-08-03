@@ -2,9 +2,9 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createMockServer, type MockServer, type MockServerOptions } from "../../mock-duet/src/server.ts";
 import { loadCaptureFile } from "../../mock-duet/src/capture.ts";
-import { PollConnector } from "../src/connector/PollConnector.ts";
-import { probeTransport } from "../src/connector/createConnector.ts";
-import type { ConnectionStatus } from "../src/connector/types.ts";
+import { PollConnector } from "../src/PollConnector.ts";
+import { probeTransport } from "../src/createConnector.ts";
+import type { ConnectionStatus } from "../src/types.ts";
 
 const CAPTURE = new URL("../../mock-duet/captures/om-snapshot-2026-07-12.json", import.meta.url);
 

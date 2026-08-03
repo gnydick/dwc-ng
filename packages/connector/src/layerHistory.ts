@@ -34,7 +34,17 @@
  *       this module made, putting a hand-built layer array out of reach rather
  *       than merely out of fashion.
  */
-import type { Layer } from "../om/types.ts";
+/** reference/objectmodel/src/job/index.ts (Layer) */
+export interface Layer {
+	/** Wall-clock time this layer took, seconds; 0 while it is still printing. */
+	duration: number;
+	/** Filament used this layer, mm per extruder. */
+	filament: number[];
+	fractionPrinted: number;
+	/** Z height of the layer, mm. */
+	height: number;
+	temperatures: number[];
+}
 
 /** What one poll tick tells us — extracted tolerantly by the caller. */
 export interface LayerObservation {

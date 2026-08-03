@@ -8,6 +8,15 @@ importers:
 
   .: {}
 
+  packages/connector:
+    devDependencies:
+      '@types/node':
+        specifier: ^24.13.2
+        version: 24.13.2
+      typescript:
+        specifier: ~6.0.2
+        version: 6.0.3
+
   packages/deploy:
     devDependencies:
       '@types/node':
@@ -55,6 +64,9 @@ importers:
       '@codemirror/view':
         specifier: ^6.43.6
         version: 6.43.6
+      '@dwc-ng/connector':
+        specifier: workspace:*
+        version: link:../connector
       '@lezer/highlight':
         specifier: ^1.2.3
         version: 1.2.3

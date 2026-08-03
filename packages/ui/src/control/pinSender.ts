@@ -17,7 +17,7 @@
  * and is swallowed, never reaching the network.
  */
 import { operatorTyped } from "./commands.ts";
-import type { GcodeCommand } from "../connector/types.ts";
+import type { GcodeCommand } from "@dwc-ng/connector";
 import type { PinnedCommand } from "../config/types.ts";
 
 export const PIN_INTERVAL_MS = 500;

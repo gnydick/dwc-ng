@@ -6,7 +6,7 @@ import { createHeightMapStore, HEIGHTMAP_FILE } from "../src/heightmap/store.ts"
 import type { MapValue } from "../src/heightmap/probeReply.ts";
 /** A cell value, as the map itself would hold it. */
 const cell = (mm: number) => mm as MapValue;
-import type { Connector } from "../src/connector/types.ts";
+import type { Connector } from "@dwc-ng/connector";
 
 const CAPTURE = new URL(
 	"../../mock-duet/captures/duet3-real-2026-07-15/heightmap.csv",

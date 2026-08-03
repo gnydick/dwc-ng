@@ -29,7 +29,7 @@
  *       so "write the file without reloading it" has no expression.
  */
 import { createMemo, createSignal, type Accessor } from "solid-js";
-import type { Connector } from "../connector/types.ts";
+import type { Connector } from "@dwc-ng/connector";
 import type { OpResult } from "../files/browser.ts";
 import { parseHeightMap, serializeHeightMap, type HeightMap } from "./parse.ts";
 import type { MapValue } from "./probeReply.ts";

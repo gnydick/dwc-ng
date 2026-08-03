@@ -8,7 +8,7 @@ import { crc32 } from "./crc32.ts";
 import { RequestQueue, type RequestPriority } from "./requestQueue.ts";
 import { isEmergencyStop } from "./emergency.ts";
 import { createLayerHistory, type LayerHistory, type LayerObservation } from "./layerHistory.ts";
-import { isPlainObject as isRecord, safeEntries } from "../util/safeObject.ts";
+import { isPlainObject as isRecord, safeEntries } from "./safeObject.ts";
 
 /**
  * Standalone-mode connector speaking RRF's rr_ HTTP dialect.

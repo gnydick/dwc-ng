@@ -17,7 +17,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createDsfModel, type DsfModel } from "../src/connector/dsfModel.ts";
+import { createDsfModel, type DsfModel } from "../src/dsfModel.ts";
 
 /** Assert Object.prototype did not gain `name`; clean up if it somehow did,
  *  so one failing construction can't cascade into unrelated tests. */

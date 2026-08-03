@@ -12,7 +12,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createLayerHistory, type LayerObservation } from "../src/connector/layerHistory.ts";
+import { createLayerHistory, type LayerObservation } from "../src/layerHistory.ts";
 
 const obs = (partial: Partial<LayerObservation>): LayerObservation => ({
 	duration: null,

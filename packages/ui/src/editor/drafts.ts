@@ -24,7 +24,7 @@
  * count and the total size can be capped in the same place they are written;
  * per-file keys would each be bounded and the set of them unbounded.
  */
-import { isPlainObject, safeEntries } from "../util/safeObject.ts";
+import { isPlainObject, safeEntries } from "@dwc-ng/connector";
 
 const STORE_KEY = "dwc-ng.drafts";
 

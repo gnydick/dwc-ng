@@ -2,7 +2,7 @@ import { operatorTyped } from "../src/control/commands.ts";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { guardWrites, isEmergencyStop, RealWriteBlockedError } from "../src/dev/writeGuard.ts";
-import type { Connector } from "../src/connector/types.ts";
+import type { Connector } from "@dwc-ng/connector";
 
 /** Records what actually reached the "board". */
 function fakeConnector() {

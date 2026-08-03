@@ -28,7 +28,7 @@
 import { render } from 'solid-js/web'
 import './index.css'
 import App from './App.tsx'
-import { probeTransport } from './connector/createConnector.ts'
+import { probeTransport } from '@dwc-ng/connector'
 import { initialBackend, pinnedTransport } from './dev/backend.ts'
 import { applyStoredPitch } from './shell/density.ts'
 

@@ -34,7 +34,7 @@
  * layers are independent deep clones — the caller owns them; later merges
  * cannot reach them, and mutating them cannot reach the copy.
  */
-import { isPlainObject, safeEntries } from "../util/safeObject.ts";
+import { isPlainObject, safeEntries } from "./safeObject.ts";
 
 export interface DsfDigest {
 	/**

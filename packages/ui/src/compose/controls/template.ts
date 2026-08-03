@@ -20,7 +20,7 @@
  * (I15) makes an unresolved placeholder VISIBLE as a gap in the shown code
  * rather than hiding it behind an error.
  */
-import type { GcodeCommand } from "../../connector/types.ts";
+import type { GcodeCommand } from "@dwc-ng/connector";
 import { parseOmSelector, readOm, type OmSelector } from "./omSelector.ts";
 
 type Token =

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { createOmStore, deepMergeInto } from "../src/om/store.ts";
 import { CONSOLE_LIMIT } from "../src/om/consoleLog.ts";
 import { createMockServer } from "../../mock-duet/src/server.ts";
-import { PollConnector } from "../src/connector/PollConnector.ts";
+import { PollConnector } from "@dwc-ng/connector/testing";
 
 test("onModelKey replaces a subtree wholesale", () => {
 	const store = createOmStore();

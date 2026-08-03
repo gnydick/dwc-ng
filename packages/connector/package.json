@@ -1,0 +1,19 @@
+{
+  "name": "@dwc-ng/connector",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Board transport: the rr_ and DSF dialects, and the untrusted-JSON kernel they parse with. The ONLY package allowed to call fetch/XMLHttpRequest.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./testing": "./src/testing.ts"
+  },
+  "scripts": {
+    "test": "node --test \"test/*.test.ts\"",
+    "typecheck": "tsc -b"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.2",
+    "typescript": "~6.0.2"
+  }
+}

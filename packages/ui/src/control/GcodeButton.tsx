@@ -1,6 +1,6 @@
 import { createSignal, onCleanup } from "solid-js";
 import { useApp } from "../shell/context.ts";
-import type { GcodeCommand } from "../connector/types.ts";
+import type { GcodeCommand } from "@dwc-ng/connector";
 
 /** How long the sent/failed acknowledgement stays visible. */
 const ACK_MS = { sent: 1100, failed: 3000 } as const;

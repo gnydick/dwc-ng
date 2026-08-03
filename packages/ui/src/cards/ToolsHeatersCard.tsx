@@ -1,7 +1,7 @@
 import { For, Show, createEffect, createMemo, createSignal } from "solid-js";
 import { commitPhase, clickSendsSetpoint, staysArmed, thermalMark, type CommitPhase } from "../control/setpointCommit.ts";
 import { useApp } from "../shell/context.ts";
-import type { GcodeCommand } from "../connector/types.ts";
+import type { GcodeCommand } from "@dwc-ng/connector";
 import { cmd } from "../control/commands.ts";
 import { GcodeButton } from "../control/GcodeButton.tsx";
 import type { Heater } from "../om/types.ts";

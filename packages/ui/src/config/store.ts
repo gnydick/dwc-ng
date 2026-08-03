@@ -1,7 +1,7 @@
 import { createStore, reconcile, unwrap } from "solid-js/store";
-import type { Connector } from "../connector/types.ts";
-import { FileNotFoundError } from "../connector/types.ts";
-import { isPlainObject, safeEntries } from "../util/safeObject.ts";
+import type { Connector } from "@dwc-ng/connector";
+import { FileNotFoundError } from "@dwc-ng/connector";
+import { isPlainObject, safeEntries } from "@dwc-ng/connector";
 import { parseOverlay, parseOverlayPayload } from "./parse.ts";
 import {
 	CONFIG_CACHE_KEY, CONFIG_FILE, CONFIG_VERSION, DEFAULT_CONFIG, MAX_SNAPSHOTS,

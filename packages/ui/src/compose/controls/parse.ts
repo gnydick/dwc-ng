@@ -13,7 +13,7 @@
  * vocabulary can't say.
  */
 import { compileControlSpec, ENRICHMENT_IDS, type CompiledControlSpec, type ControlNode, type ControlSpec, type InputDef, type RowItem } from "./spec.ts";
-import { isSafeKey } from "../../util/safeObject.ts";
+import { isSafeKey } from "@dwc-ng/connector";
 
 export type ParsedSpec =
 	| { ok: true; spec: CompiledControlSpec; data: ControlSpec }

@@ -9,8 +9,8 @@
  * toolchange macros — do not "improve" them from memory.
  */
 
-import { EMERGENCY_STOP } from "../connector/emergency.ts";
-import type { GcodeCommand } from "../connector/types.ts";
+import { EMERGENCY_STOP } from "@dwc-ng/connector";
+import type { GcodeCommand } from "@dwc-ng/connector";
 
 /**
  * The two things a command may be assembled from, and their sole producers.

@@ -19,7 +19,7 @@
 import { For, Show, createMemo, createSignal } from "solid-js";
 import { createStore, produce } from "solid-js/store";
 import { AppContext, useApp, type AppServices } from "../shell/context.ts";
-import { createStubConnector } from "../connector/stubConnector.ts";
+import { createStubConnector } from "@dwc-ng/connector";
 import { ControlList } from "./controls/ControlList.tsx";
 import { parseControlSpecText } from "./controls/parse.ts";
 import { SPINDLE_EXAMPLE, SPINDLE_EXAMPLE_NAME } from "./controls/examples.ts";

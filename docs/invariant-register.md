@@ -273,7 +273,7 @@ in the diff that drops it.
 
 **Debt — promotion.** this is a caller precondition in prose (the anti-pattern), and it was caught by this repo's own red-flag lint rather than by review. INSPECTED 2026-08-01, and the honest finding is that the queue CANNOT enforce this from inside — its own @why says why: a job sleeping in its slot and a job that is merely slow are the same observation. So a runtime check is out, and no type can see an await. What is actually wrong is upstream: PollConnector carries TWO retry ladders, attemptRequest and attemptUpload, with the same `delay(retryDelayMs * (retry + 1))`, the same `retry < maxRetries` guard and the same recursion, differing only in the request they wrap. Both happen to back off outside the slot; nothing makes the third one do so. The promotion is therefore to give the QUEUE the retry loop — it releases between attempts by construction — and have both ladders become policy arguments to it. Deferred deliberately: that rewrites the connector's recovery path, whose behaviour against a real board (503 reply-drain on the first retry, 401 re-auth, whole-file re-send) is only provable on hardware. Filed in DEBT.md as `two-retry-ladders-in-the-connector`.
 
-`packages/ui/src/connector/requestQueue.ts:23`
+`packages/connector/src/requestQueue.ts:23`
 
 ### `connector/bulk-io-yields-to-the-heartbeat` — rung 6
 
@@ -281,7 +281,7 @@ in the diff that drops it.
 
 **Why.** CLAUDE.md's first hard constraint: the board tolerates very few concurrent connections and each request is expensive. Strict FIFO put a thumbnail chunk loop and filelist pagination AHEAD of the poll heartbeat, so opening a file browser froze the live view
 
-`packages/ui/src/connector/requestQueue.ts:13`
+`packages/connector/src/requestQueue.ts:13`
 
 ### `connector/estop-is-never-queued` — rung 6
 
@@ -291,7 +291,7 @@ in the diff that drops it.
 
 **Debt — promotion.** the bypass is chosen by inspecting the code string. Promote by giving the e-stop its own method on the transport so "send this without a slot" is a distinct operation rather than a branch inside the general one, and cannot be reached by any other payload. One transparent re-auth on a culled session (also unqueued), then re-fire; any other failure surfaces to the button, which honestly reports "failed" rather than pretending.
 
-`packages/ui/src/connector/PollConnector.ts:297`
+`packages/connector/src/PollConnector.ts:297`
 
 ### `connector/estop-vocabulary` — rung 6
 
@@ -301,7 +301,7 @@ in the diff that drops it.
 
 **Debt — promotion.** the constant and the matcher remain two facts that must agree. Promote to 7 by deriving the matcher FROM the payload — parse EMERGENCY_STOP once into the accepted line set — so there is one fact rather than two.
 
-`packages/ui/src/connector/emergency.ts:10`
+`packages/connector/src/emergency.ts:10`
 
 ### `connector/gcode-producers` — rung 7
 
@@ -309,17 +309,17 @@ in the diff that drops it.
 
 **Why.** an unquoted operator filename reaching M98 was a real injection: a name containing a quote closed the parameter early and the rest was parsed as further G-code. Routing every producer through gcodeQuote fixed that instance; the parameter's TYPE is what stops the next one arriving by a different route. This is the promotion the 2026-07-22 audit committed to and did not make — unrecorded for 136 commits, which is why the register now generates itself
 
-`packages/ui/src/connector/types.ts:105`
+`packages/connector/src/types.ts:105`
 
-### `connector/raw-transport-fence` — rung 3
+### `connector/raw-transport-fence` — rung 4
 
-**Mechanism.** a test — test/no-raw-transport.test.ts walks src and fails on any `fetch(`/XMLHttpRequest outside src/connector/, naming file and line. Declared here rather than on the test because the test file is not scanned: a declaration belongs at the boundary it protects
+**Mechanism.** static analysis over a package boundary. Board traffic can only be issued from THIS package now — @dwc-ng/ui declares no transport of its own and cannot name a connector class, so the interesting violation (traffic that skips the session handling, the 503 ladder, the queue and the dev write guard) is no longer expressible there. What a raw `fetch` in ui could still do is talk to something that is not the board, and test/no-raw-transport.test.ts is what catches that, by file and line
 
 **Why.** board traffic that bypasses the connector also bypasses the session handling, the 503 retry ladder, the request queue and the dev write guard — every one of which exists because the board's HTTP server is weak enough to fall over without them
 
-**Debt — promotion.** a test reports the violation after it is written. Promote by moving this module into its own workspace package, then shadowing the global in @dwc-ng/ui with a `globals.d.ts` declaring `fetch: never`, so a raw call outside the connector package stops compiling. Rung 7, and no new dependency — the alternative, ESLint, is one.
+**Debt — promotion.** MEASURED 2026-08-02, and the previously filed promotion does not work. It said: move the connector into its own package, then shadow the global in @dwc-ng/ui with a d.ts declaring `fetch: never`, for rung 7. The package move is done. The shadow is not achievable: a global `declare const fetch: never` does not override lib.dom's declaration — tested directly, a `fetch(...)` call beside it compiles clean, and skipLibCheck hides the duplicate-identifier conflict that would otherwise be raised against the DECLARATION rather than against uses. Making it work needs either dropping "DOM" from ui's lib and re-declaring what the app actually uses, which is a large and fragile surface, or a lint rule — and the linter is a dependency, which is Gabe's call under the dependency policy rather than mine. Filed rather than guessed at: the scan stays, and it now guards a much smaller gap.
 
-`packages/ui/src/connector/index.ts:4`
+`packages/connector/src/index.ts:4`
 
 ### `connector/sole-construction` — rung 6
 
@@ -329,7 +329,7 @@ in the diff that drops it.
 
 **Debt — promotion.** still 6, and the reason is worth being exact about. Removing the re-exports cost NOTHING — they had zero consumers, since every test imports PollConnector straight from its own module and App.tsx takes only createConnector. The previous note here claimed the tests blocked this; they never used that route. What remains is that any file in this PACKAGE can still import ./PollConnector.ts directly, and no runtime mechanism can prevent source that has not been written yet — freeze, seal and #private all constrain values during execution, while "a second route is added" is a fact about a future edit. Rung 7 therefore needs a boundary the compiler enforces: move the connector into its own workspace package with one entry point, which also unlocks raw-transport-fence by letting @dwc-ng/ui shadow `fetch` as never.
 
-`packages/ui/src/connector/createConnector.ts:17`
+`packages/connector/src/createConnector.ts:17`
 
 ### `connector/synthesized-layers-have-one-producer` — rung 6
 
@@ -339,7 +339,7 @@ in the diff that drops it.
 
 **Debt — promotion.** promote by branding the produced Layer[] so the store accepts only what this module made, putting a hand-built layer array out of reach rather than merely out of fashion.
 
-`packages/ui/src/connector/layerHistory.ts:24`
+`packages/connector/src/layerHistory.ts:24`
 
 ### `connector/transport-exhaustive` — rung 7
 
@@ -347,7 +347,17 @@ in the diff that drops it.
 
 **Why.** a transport that silently falls through would return undefined where the caller's type says Connector, and the failure would surface far from here as "the machine never connects"
 
-`packages/ui/src/connector/createConnector.ts:9`
+`packages/connector/src/createConnector.ts:9`
+
+### `connector/untrusted-walks-cannot-reach-the-prototype` — rung 4
+
+**Mechanism.** static analysis — test/safe-walks.test.ts fails any file that imports safeEntries and ALSO uses raw Object.entries. The rule is self-selecting rather than an allowlist: importing this IS the declaration "I walk data I did not author", and the same import that makes a new boundary safe is the one that arms the check. Complying is free — safeEntries is generic and drops three keys that cannot occur in a locally-built record, so a trusted walk converts as a no-op, which is why the ban can be total instead of negotiated
+
+**Why.** JSON.parse creates "__proto__" as an OWN property — CreateDataProperty bypasses the setter — so a walk that assigns out[key] runs the prototype SETTER instead of adding an entry. The inputs are the SD card, localStorage, the board and other people's share files, none of which this app authored. Promoted from rung 3 on 2026-08-01, and the audit that did it found a live one: sanitizeCanvas returned an object wearing an attacker-chosen prototype while Object.keys showed nothing wrong
+
+**Debt — promotion.** the fence is per-FILE, so a module that walks untrusted data and never imports safeEntries is outside it — 17 raw walks elsewhere in src are correct today because each is over a locally-built record or an id-gated key, verified one at a time rather than by construction. Rung 7 is having every parse boundary return an Untrusted<T> whose only iterator is safeEntries, which makes the walk unwritable rather than merely detected.
+
+`packages/connector/src/safeObject.ts:18`
 
 ## control
 
@@ -691,7 +701,7 @@ in the diff that drops it.
 
 **Debt — promotion.** two routes in means the gate is not a gate, and om/speeds.ts re-parses currentMove at the point of DISPLAY to cover the ungated one — a second mechanism for the same property, i.e. the drift hazard. CORRECTED 2026-08-01. This used to say "promote by routing both through one entry that brands what it produces". Following that literally would have introduced a bug, measured rather than reasoned about: this function FILLS IN defaults for absent arrays, so conforming a PARTIAL patch invents them. conformModelKey("heat", { heaters: [...] }) returns that patch plus bedHeaters: [] and chamberHeaters: [], and deep-merging those empties over the store wipes the real lists — on this machine the bed heater would vanish from the UI mid-print. Pinned by test/om-conform.test.ts. The two routes are not one operation with two callers. A wholesale subtree may be completed from defaults because it IS the whole truth; a live patch may never be, because absence there means "unchanged", not "empty". The real promotion is a conform that distinguishes the two — filling only on replacement — and only then can both share an entry. Until that exists, speeds.ts's second parse is load bearing and must not be deleted as redundant.
 
-`packages/ui/src/om/types.ts:349`
+`packages/ui/src/om/types.ts:346`
 
 ## shell
 
@@ -802,13 +812,3 @@ in the diff that drops it.
 **Why.** a silent default arm is how a new union member ships as "nothing happened". These unions are transports, render modes and control kinds — adding one and having the old code quietly ignore it means a machine that never connects, or a control that renders and sends nothing. The runtime throw is the backstop for values that bypassed the type system entirely (parsed JSON cast into a union), and is deliberately loud rather than a silent fallback
 
 `packages/ui/src/util/unreachable.ts:9`
-
-### `util/untrusted-walks-cannot-reach-the-prototype` — rung 4
-
-**Mechanism.** static analysis — test/safe-walks.test.ts fails any file that imports safeEntries and ALSO uses raw Object.entries. The rule is self-selecting rather than an allowlist: importing this IS the declaration "I walk data I did not author", and the same import that makes a new boundary safe is the one that arms the check. Complying is free — safeEntries is generic and drops three keys that cannot occur in a locally-built record, so a trusted walk converts as a no-op, which is why the ban can be total instead of negotiated
-
-**Why.** JSON.parse creates "__proto__" as an OWN property — CreateDataProperty bypasses the setter — so a walk that assigns out[key] runs the prototype SETTER instead of adding an entry. The inputs are the SD card, localStorage, the board and other people's share files, none of which this app authored. Promoted from rung 3 on 2026-08-01, and the audit that did it found a live one: sanitizeCanvas returned an object wearing an attacker-chosen prototype while Object.keys showed nothing wrong
-
-**Debt — promotion.** the fence is per-FILE, so a module that walks untrusted data and never imports safeEntries is outside it — 17 raw walks elsewhere in src are correct today because each is over a locally-built record or an id-gated key, verified one at a time rather than by construction. Rung 7 is having every parse boundary return an Untrusted<T> whose only iterator is safeEntries, which makes the walk unwritable rather than merely detected.
-
-`packages/ui/src/util/safeObject.ts:18`

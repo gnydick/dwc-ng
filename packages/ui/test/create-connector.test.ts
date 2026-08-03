@@ -5,9 +5,9 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createConnector, probeTransport } from "../src/connector/createConnector.ts";
-import { PollConnector } from "../src/connector/PollConnector.ts";
-import { DsfConnector } from "../src/connector/DsfConnector.ts";
+import { createConnector, probeTransport } from "@dwc-ng/connector";
+import { PollConnector } from "@dwc-ng/connector/testing";
+import { DsfConnector } from "@dwc-ng/connector/testing";
 import { BACKENDS } from "../src/dev/backend.ts";
 import { createMockServer } from "../../mock-duet/src/server.ts";
 

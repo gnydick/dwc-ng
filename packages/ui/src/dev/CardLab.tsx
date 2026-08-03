@@ -15,7 +15,7 @@ import { customCardIds, isCustomCardId, type CustomCardId, type SlotId } from ".
 import { createServicePool } from "../compose/services.ts";
 import type { CardCtx } from "../compose/ctx.ts";
 import { SCENARIOS, scenarioModel, type ScenarioId } from "./cardScenarios.ts";
-import { createStubConnector } from "../connector/stubConnector.ts";
+import { createStubConnector } from "@dwc-ng/connector";
 import { LayoutAuditAll, LayoutAuditPanel } from "./LayoutAuditPanel.tsx";
 
 /**

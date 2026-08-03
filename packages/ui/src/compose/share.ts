@@ -23,7 +23,7 @@ import { isCustomCardId } from "./composition.ts";
 import { cardTitleOf, parseCardId } from "./defs.ts";
 import type { SlotRect, UiConfig } from "../config/types.ts";
 import type { ScreenEntry } from "./screens.ts";
-import { isPlainObject, safeEntries } from "../util/safeObject.ts";
+import { isPlainObject, safeEntries } from "@dwc-ng/connector";
 import { unreachable } from "../util/unreachable.ts";
 
 export const SHARE_VERSION = 1;

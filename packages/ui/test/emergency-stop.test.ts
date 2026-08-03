@@ -7,9 +7,9 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { EMERGENCY_STOP, isEmergencyStop } from "../src/connector/emergency.ts";
+import { EMERGENCY_STOP, isEmergencyStop } from "@dwc-ng/connector";
 import { cmd } from "../src/control/commands.ts";
-import { PollConnector } from "../src/connector/PollConnector.ts";
+import { PollConnector } from "@dwc-ng/connector/testing";
 
 test("the weld: what the STOP button sends is exactly what the guard lets through", () => {
 	assert.equal(cmd.emergencyStop(), EMERGENCY_STOP);

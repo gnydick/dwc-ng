@@ -1,5 +1,5 @@
 import { For, Show, createEffect, createSignal, on, onCleanup, type JSX } from "solid-js";
-import type { FileListEntry } from "../connector/types.ts";
+import type { FileListEntry } from "@dwc-ng/connector";
 import type { FileBrowser, OpResult, RemovePlan } from "./browser.ts";
 import { parseFileName } from "./path.ts";
 import { loadBrowserMemory, saveBrowserScroll } from "./browserMemory.ts";

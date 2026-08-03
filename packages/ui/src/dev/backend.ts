@@ -16,7 +16,7 @@
  * could not express it and no longer exists (design D9/C14).
  */
 import { createSignal } from "solid-js";
-import type { Transport } from "../connector/createConnector.ts";
+import type { Transport } from "@dwc-ng/connector";
 
 /**
  * `import.meta.env` is injected by the bundler and simply absent under plain

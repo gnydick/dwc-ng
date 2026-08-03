@@ -9,7 +9,7 @@
  * system in panelCanvas.ts didn't need to change shape for this.
  */
 
-import { safeEntries } from "../util/safeObject.ts";
+import { safeEntries } from "@dwc-ng/connector";
 
 export type Orientation = "vertical" | "horizontal";
 

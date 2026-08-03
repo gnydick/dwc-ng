@@ -6,12 +6,12 @@ import { createHash } from "node:crypto";
 import type { Duplex } from "node:stream";
 import { createMockServer, type MockServer, type MockServerOptions } from "../../mock-duet/src/server.ts";
 import { THUMBNAIL_PNG_BASE64 } from "../../mock-duet/src/files.ts";
-import { DsfConnector, type DsfConnectorOptions } from "../src/connector/DsfConnector.ts";
-import { EMERGENCY_STOP } from "../src/connector/emergency.ts";
+import { DsfConnector, type DsfConnectorOptions } from "../src/DsfConnector.ts";
+import { EMERGENCY_STOP } from "../src/emergency.ts";
 import {
 	DisconnectedError, FileNotFoundError, InvalidPasswordError, OperationFailedError,
 	type ConnectionStatus,
-} from "../src/connector/types.ts";
+} from "../src/types.ts";
 
 /**
  * End-to-end DsfConnector tests: a real DsfConnector talking WebSocket +

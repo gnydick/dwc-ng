@@ -32,7 +32,7 @@
  *       mechanism claim. It exists now.
  */
 import { createEffect, createMemo, createResource, createSignal, type Accessor } from "solid-js";
-import { FileNotFoundError, type Connector, type FileListEntry } from "../connector/types.ts";
+import { FileNotFoundError, type Connector, type FileListEntry } from "@dwc-ng/connector";
 import { childPath, dirUnderRoot, parentDir, parseFileName } from "./path.ts";
 import { loadBrowserMemory, saveBrowserDir } from "./browserMemory.ts";
 import { protectedReason } from "./safety.ts";

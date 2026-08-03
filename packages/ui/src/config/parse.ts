@@ -28,7 +28,7 @@ import {
 	type ConfigOverlay, type CustomScreen, type PinnedCommand, type SlotRect,
 	type ThermalColors, type UserScreenId,
 } from "./types.ts";
-import { isPlainObject, safeEntries } from "../util/safeObject.ts";
+import { isPlainObject, safeEntries } from "@dwc-ng/connector";
 import { COL_GRANULARITY_FACTOR } from "../shell/panelCanvas.ts";
 import { isHexColor } from "../util/colorDistance.ts";
 

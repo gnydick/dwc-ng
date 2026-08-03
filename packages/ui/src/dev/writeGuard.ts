@@ -11,8 +11,8 @@
  * caller gates it behind import.meta.env.DEV) and it gates nothing on machine
  * state. The firmware remains the only authority over what the machine will do.
  */
-import type { Connector, ConnectorReads, ConnectorWrites, GcodeCommand } from "../connector/types.ts";
-import { isEmergencyStop } from "../connector/emergency.ts";
+import type { Connector, ConnectorReads, ConnectorWrites, GcodeCommand } from "@dwc-ng/connector";
+import { isEmergencyStop } from "@dwc-ng/connector";
 
 export { isEmergencyStop };
 

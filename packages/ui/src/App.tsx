@@ -2,7 +2,7 @@ import { createEffect, onCleanup, onMount } from "solid-js";
 import { createOmStore } from "./om/store.ts";
 import { createConfigStore } from "./config/store.ts";
 import { createTemperatureHistory } from "./om/temperature.ts";
-import { createConnector } from "./connector/index.ts";
+import { createConnector } from "@dwc-ng/connector";
 import { writesArmed, type Backend } from "./dev/backend.ts";
 import { guardWrites } from "./dev/writeGuard.ts";
 import { startPinSender } from "./control/pinSender.ts";

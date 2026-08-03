@@ -184,17 +184,14 @@ export interface Build {
 	objects: (BuildObject | null)[];
 }
 
-/** reference/objectmodel/src/job/index.ts (Layer) */
-export interface Layer {
-	/** Wall-clock time this layer took, seconds; 0 while it is still printing. */
-	duration: number;
-	/** Filament used this layer, mm per extruder. */
-	filament: number[];
-	fractionPrinted: number;
-	/** Z height of the layer, mm. */
-	height: number;
-	temperatures: number[];
-}
+/**
+ * Layer statistics are SYNTHESIZED by the connector — RRF keeps no per-layer
+ * history — so the type lives with the thing that produces it and is re-exported
+ * here, where the rest of the app reads the object model from. See
+ * connector/synthesized-layers-have-one-producer.
+ */
+import type { Layer } from "@dwc-ng/connector";
+export type { Layer };
 
 /** reference/objectmodel/src/job/index.ts (Job) */
 export interface Job {

@@ -10,7 +10,7 @@ import { parseOverlay, parseOverlayPayload, asSlotRect } from "../src/config/par
 import { createConfigStore } from "../src/config/store.ts";
 import { DEFAULT_CONFIG } from "../src/config/types.ts";
 import { screenList } from "../src/compose/screens.ts";
-import type { Connector } from "../src/connector/types.ts";
+import type { Connector } from "@dwc-ng/connector";
 
 const payload = (overlay: unknown): string => JSON.stringify({ version: 1, overlay });
 

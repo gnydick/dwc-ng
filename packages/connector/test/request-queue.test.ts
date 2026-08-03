@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { RequestQueue } from "../src/connector/requestQueue.ts";
+import { RequestQueue } from "../src/requestQueue.ts";
 
 const tick = (ms = 5) => new Promise(r => setTimeout(r, ms));
 

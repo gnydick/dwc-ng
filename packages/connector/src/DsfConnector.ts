@@ -5,7 +5,7 @@ import {
 } from "./types.ts";
 import { createDsfModel, type DsfModel, type DsfDigest } from "./dsfModel.ts";
 import { isEmergencyStop } from "./emergency.ts";
-import { isPlainObject } from "../util/safeObject.ts";
+import { isPlainObject } from "./safeObject.ts";
 
 /**
  * SBC-mode connector speaking DSF's native /machine API (design:

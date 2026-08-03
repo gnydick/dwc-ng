@@ -10,7 +10,7 @@
  */
 import { For, Show, createMemo, createSignal } from "solid-js";
 import { useApp } from "../shell/context.ts";
-import type { GcodeCommand } from "../connector/types.ts";
+import type { GcodeCommand } from "@dwc-ng/connector";
 import { cmd } from "../control/commands.ts";
 import { GcodeButton } from "../control/GcodeButton.tsx";
 import { SpeedSlider } from "../control/SpeedSlider.tsx";
