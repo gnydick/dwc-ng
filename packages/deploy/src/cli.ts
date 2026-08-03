@@ -9,6 +9,7 @@ import { entryUrl, type Layout } from "./manifest.ts"
 import { dsfTransport } from "./dsfTransport.ts"
 import { pollTransport } from "./pollTransport.ts"
 import { compressionFor, type Transport } from "./transport.ts"
+import { measureEager, overBudget, readEagerBudget } from "./eagerBudget.ts"
 
 export type CliArgs = {
 	readonly target: string
@@ -102,6 +103,23 @@ async function main(): Promise<void> {
 		if (args.layout === "root") {
 			console.log(`note: point the server back at stock DWC with  M505.1 P"0:/www"`)
 		}
+		return
+	}
+
+	/**
+	 * The payload gate, before anything is written — and on a dry run too,
+	 * because the point of a dry run is to learn what a deploy would do, and
+	 * "it would exceed the payload budget" is the most useful thing it can say.
+	 *
+	 * Not applied to --uninstall, which returns above: removing a deployment
+	 * has no payload, and blocking a removal on the size of what is being
+	 * removed would be absurd.
+	 */
+	const eager = measureEager(args.dist)
+	const overrun = overBudget(eager, readEagerBudget())
+	if (overrun !== null) {
+		console.error(overrun)
+		process.exitCode = 1
 		return
 	}
 

@@ -21,7 +21,7 @@ and invariant claim mentions 13 -> 23, so no mechanism was deleted and no
 claim was lost in the gap. From here the ratchets make a dropped rung visible
 in the diff that drops it.
 
-**Totals:** 81 invariants · 61 at rung 6 or above · 20 below rung 6 (ceiling 20).
+**Totals:** 82 invariants · 62 at rung 6 or above · 20 below rung 6 (ceiling 20).
 
 ## bed
 
@@ -388,6 +388,16 @@ in the diff that drops it.
 **Why.** compression depends on which SERVER will answer the browser, never on the transport that wrote the files. Verified on hardware 2026-07-24: DuetWebServer (Kestrel) neither compresses on the fly nor serves .gz transparently, so a gzipped deploy 404s EVERY asset — a bricked UI, from one boolean set by the wrong thing. Re-seated 2026-07-31 so one protocol (FTP) can serve either mode
 
 `packages/deploy/src/transport.ts:57`
+
+### `deploy/eager-payload-cannot-drift-upward` — rung 6
+
+**Mechanism.** choke-point on the one path that puts bytes on a board — ship measures before it writes anything, on dry runs too, and refuses. The ceiling is committed, so raising it is a diff. Not a lint that can be skipped and not a number in a doc: the deploy either fits or does not happen
+
+**Why.** CLAUDE.md's first hard constraint is payload, and it was the only constraint here with no ratchet. Measured cost of that: eager grew 26% between 2026-07-24 and 2026-08-03 (96.9 -> 122.4 KB gz) with no commit reporting it, because it arrived one card at a time in increments no single change would flag. Over DSF the real figure is worse — Kestrel sends it uncompressed, so a cold load is 402 KB, not 122
+
+**Debt — promotion.** it gates the DEPLOY, which is late: the growth is already committed and possibly merged by then. Promote by measuring in CI on the build, so the diff that adds the weight is the one that fails. Blocked on there being no CI in this repo yet — which is worth stating plainly rather than filing as though a script would fix it.
+
+`packages/deploy/src/eagerBudget.ts:18`
 
 ### `deploy/uninstall-owns-only-its-own` — rung 7
 

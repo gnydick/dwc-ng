@@ -1,0 +1,4 @@
+{
+  "maxEagerBytes": 410624,
+  "note": "401 KiB. Seeded 2026-08-03 from a measured 401,859 B, leaving ~8.5 KB of headroom so a content-hash reshuffle does not trip it. RAW bytes, because DSF's Kestrel serves uncompressed. Raising this is a deliberate commit, not a fix."
+}
