@@ -27,21 +27,21 @@ in the diff that drops it.
 
 ### `bed/drive-direction-is-observed-never-assumed` — rung 0
 
-**Mechanism.** the type pins the MAGNITUDE and nothing pins the SIGN. "Must be established by observation" is a caller precondition in prose — the anti-pattern — and this module cannot check it: a wrong sign produces a perfectly well-formed plan
+**Mechanism.** INERT, and that is the whole of the honest statement. The type pins the MAGNITUDE and nothing pins the SIGN, but no consumer exists, so a wrong sign yields a wrong plan that is never sent. Corrected 2026-08-03: this was written as a live hardware hazard and raised with the operator as a decision, which it is not. The machine is levelled by G32/bed.g and the operator's own probe macro; this app sends neither a jog nor a leadscrew move
 
-**Why.** the sign decides which way every correction goes, so getting it backwards does not level slowly or badly, it drives the bed INTO the probe on the FIRST move, and each round makes the error larger. There is no reading that looks wrong first
+**Why.** recorded for whoever wires it, not as a guard on anything today. If a sender is ever built, the sign decides which way every correction goes — backwards would not level slowly, it would move toward the probe from the first step, with no reading that looks wrong first
 
-**Debt — promotion.** this is the one place in the levelling path where being wrong costs hardware and nothing in the code can tell. Promote by making the first move of a session a deliberate probe of the sign — move one axis by a known small step, re-probe, and require the reading to have changed in the predicted direction before any further move is planned. That turns an assumption into a measurement, and it is what a supervised first run does by hand today.
+**Debt — promotion.** the promotion is not code here, it is a precondition on ever building a consumer: the first move of a session must PROBE the sign — move one axis a known small step, re-probe, require the reading to have moved in the predicted direction before planning further. Until a consumer exists there is nothing to promote, and filing it as though there were is how an inert module comes to look like a safety system.
 
-`packages/ui/src/bed/levelPlan.ts:108`
+`packages/ui/src/bed/levelPlan.ts:122`
 
 ### `bed/no-single-step-over-tilts-the-bed` — rung 7
 
-**Mechanism.** the violating state has no expression — planLevel is the sole producer of a LevelMove, and the cap it applies is `Math.min(options.maxStep, HARD_MAX_STEP_MM)`, so no input can RAISE the limit. Passing 100 yields 0.5. Promoted from rung 5 on 2026-08-01, where the bound was whatever the caller supplied and only DEFAULT_LEVEL_OPTIONS made it safe
+**Mechanism.** the violating state has no expression — planLevel is the sole producer of a LevelMove, and the cap it applies is `Math.min(options.maxStep, HARD_MAX_STEP_MM)`, so no input can RAISE the limit. Passing 100 yields 0.5. INERT, and the rung is about the VALUE rather than the machine: no consumer exists, so what this bounds is a number in a plan, not a move
 
-**Why.** a mis-seated probe or a bad tap reports a reading in METRES, and the correction is ~1:1 with the reading. Uncapped, one bad sample drives a screw its whole travel in a single move and the far side of the bed lifts into the probe. The failure is mechanical damage, not a wrong number, and it happens before anyone can read the plan. Downward adjustment stays open because a cautious caller wanting SMALLER steps is asking for more safety, not less
+**Why.** a mis-seated probe or a bad tap reports a reading in METRES, and the correction is ~1:1 with the reading. Uncapped, one bad sample would put a screw its whole travel into a single planned move. WOULD — the plan goes nowhere today. Worth having before a consumer exists rather than after, but it is a property of this arithmetic, not something standing between the operator and the hardware. Downward adjustment stays open because a cautious caller wanting SMALLER steps is asking for more safety, not less
 
-`packages/ui/src/bed/levelPlan.ts:86`
+`packages/ui/src/bed/levelPlan.ts:99`
 
 ### `bed/tram-fit-never-reads-the-map` — rung 4
 

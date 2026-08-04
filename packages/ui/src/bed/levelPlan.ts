@@ -12,6 +12,19 @@
  * talks to a connector, so the arithmetic that decides how far a bed moves is
  * testable without a machine.
  *
+ * ── NOT WIRED. This module has NO consumer in src. ──────────────────────────
+ * Verified 2026-08-03 by search: nothing calls planLevel outside its own tests.
+ * The app never drives U/V/W. What the Bed screen actually sends is G32 (which
+ * runs bed.g on the printer) and the operator's own configured probe macro —
+ * both macros, both the firmware's business, per this project's rule that
+ * controls are 1:1 with G-code and the firmware is the authority.
+ *
+ * That matters for reading the two invariants below. They describe hazards of
+ * a procedure this app does not perform, and say so, rather than being left to
+ * read as live safety mechanisms. An unlabelled guard on code that cannot run
+ * gets trusted for protection it is not providing.
+ * ───────────────────────────────────────────────────────────────────────────
+ *
  * Levelness is the three readings AGREEING; their absolute value is the Z datum
  * and is re-established by homing afterwards. So the target is the readings'
  * own mean — the correction that moves the bed least, and the one least likely
@@ -87,16 +100,17 @@ export interface LevelOptions {
 	 * @rung 7  the violating state has no expression — planLevel is the sole
 	 *          producer of a LevelMove, and the cap it applies is
 	 *          `Math.min(options.maxStep, HARD_MAX_STEP_MM)`, so no input can
-	 *          RAISE the limit. Passing 100 yields 0.5. Promoted from rung 5 on
-	 *          2026-08-01, where the bound was whatever the caller supplied and
-	 *          only DEFAULT_LEVEL_OPTIONS made it safe
+	 *          RAISE the limit. Passing 100 yields 0.5. INERT, and the rung is
+	 *          about the VALUE rather than the machine: no consumer exists, so
+	 *          what this bounds is a number in a plan, not a move
 	 * @why a mis-seated probe or a bad tap reports a reading in METRES, and the
-	 *      correction is ~1:1 with the reading. Uncapped, one bad sample drives a
-	 *      screw its whole travel in a single move and the far side of the bed
-	 *      lifts into the probe. The failure is mechanical damage, not a wrong
-	 *      number, and it happens before anyone can read the plan. Downward
-	 *      adjustment stays open because a cautious caller wanting SMALLER steps
-	 *      is asking for more safety, not less
+	 *      correction is ~1:1 with the reading. Uncapped, one bad sample would
+	 *      put a screw its whole travel into a single planned move. WOULD — the
+	 *      plan goes nowhere today. Worth having before a consumer exists rather
+	 *      than after, but it is a property of this arithmetic, not something
+	 *      standing between the operator and the hardware. Downward adjustment
+	 *      stays open because a cautious caller wanting SMALLER steps is asking
+	 *      for more safety, not less
 	 */
 	maxStep: number;
 	/**
@@ -106,21 +120,24 @@ export interface LevelOptions {
 	 * Must be established by observation before the first unattended run.
 	 *
 	 * @invariant drive-direction-is-observed-never-assumed
-	 * @rung 0  the type pins the MAGNITUDE and nothing pins the SIGN. "Must be
-	 *          established by observation" is a caller precondition in prose —
-	 *          the anti-pattern — and this module cannot check it: a wrong sign
-	 *          produces a perfectly well-formed plan
-	 * @why the sign decides which way every correction goes, so getting it
-	 *      backwards does not level slowly or badly, it drives the bed INTO the
-	 *      probe on the FIRST move, and each round makes the error larger. There
-	 *      is no reading that looks wrong first
-	 * @debt this is the one place in the levelling path where being wrong costs
-	 *       hardware and nothing in the code can tell. Promote by making the
-	 *       first move of a session a deliberate probe of the sign — move one
-	 *       axis by a known small step, re-probe, and require the reading to
-	 *       have changed in the predicted direction before any further move is
-	 *       planned. That turns an assumption into a measurement, and it is what
-	 *       a supervised first run does by hand today.
+	 * @rung 0  INERT, and that is the whole of the honest statement. The type
+	 *          pins the MAGNITUDE and nothing pins the SIGN, but no consumer
+	 *          exists, so a wrong sign yields a wrong plan that is never sent.
+	 *          Corrected 2026-08-03: this was written as a live hardware hazard
+	 *          and raised with the operator as a decision, which it is not. The
+	 *          machine is levelled by G32/bed.g and the operator's own probe
+	 *          macro; this app sends neither a jog nor a leadscrew move
+	 * @why recorded for whoever wires it, not as a guard on anything today. If
+	 *      a sender is ever built, the sign decides which way every correction
+	 *      goes — backwards would not level slowly, it would move toward the
+	 *      probe from the first step, with no reading that looks wrong first
+	 * @debt the promotion is not code here, it is a precondition on ever
+	 *       building a consumer: the first move of a session must PROBE the
+	 *       sign — move one axis a known small step, re-probe, require the
+	 *       reading to have moved in the predicted direction before planning
+	 *       further. Until a consumer exists there is nothing to promote, and
+	 *       filing it as though there were is how an inert module comes to look
+	 *       like a safety system.
 	 */
 	direction: 1 | -1;
 }
