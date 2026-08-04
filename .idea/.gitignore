@@ -1,0 +1,14 @@
+# Default ignored files
+/shelf/
+/workspace.xml
+# Editor-based HTTP Client requests
+/httpRequests/
+# Ignored default folder with query files
+/queries/
+# Datasource local storage ignored files
+/dataSources/
+/dataSources.local.xml
+# Deployment targets are per-machine, and this repo is public: the server
+# name carries a host and username that a fresh clone neither needs nor should
+# learn. Configure your own under Settings > Deployment.
+/deployment.xml
