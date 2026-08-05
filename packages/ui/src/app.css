@@ -1172,6 +1172,36 @@
 	   dragged shut over its own picture. Same 100px as the toolpath viewer: the
 	   point below which a camera frame stops being worth looking at. */
 	min-height: 100px;
+	/* The WIDTH half of the same statement, and it has to be containment rather
+	   than a min-width because the problem is the opposite one: the picture
+	   reports a floor that is far too LARGE.
+
+	   contentColSpan measures the body at `width: min-content`, and a scroll
+	   container's min-content is still derived from its contents — `overflow:
+	   auto` zeroes the automatic minimum size, which is a different thing.
+	   Zoomed to native the stream is drawn at its own resolution (max-width:
+	   none), so the card reported the frame's full width as a floor it could
+	   never be dragged under: measured 2026-08-04 on a 1600px frame, min-content
+	   1651px against 69.75px when fit — about 414 columns, wider than the card
+	   is ever laid out, so clampToStop pinned the width every frame and the
+	   camera could only be resized while zoomed OUT (reported same day).
+
+	   `contain: inline-size` says the thing that is actually true — a viewport's
+	   width does not depend on what is inside it — so the frame still overflows
+	   and still scrolls (measured: scrollWidth stays 1616 at native), it just
+	   stops being quoted as a minimum. Same reason .temp-chart-plot carries it,
+	   and the same reason .gcode-canvas is positioned out of flow. */
+	contain: inline-size;
+	/* Containment SILENCES the element, so the floor has to be restated here or
+	   the card could be dragged down to its header — see the
+	   "every contain: inline-size element declares an explicit min-width" test,
+	   which is what caught this being left off.
+
+	   Derived, not chosen: 16:9 of the 100px height floor above is 177.8px, and
+	   176 is the nearest whole column (44 x 4px). So the widest ordinary frame
+	   stays exactly as worth looking at as the height floor already promised,
+	   and one decision governs both axes instead of two unrelated numbers. */
+	min-width: 176px;
 	background: radial-gradient(120% 90% at 65% 30%, #16283f 0%, #0a1220 70%);
 	display: grid;
 	place-items: center;

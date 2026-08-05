@@ -431,6 +431,115 @@ export function clampToStop(rawSpan: number, minSpan: number): { span: number; a
 	return { span: minSpan, atLimit: true };
 }
 
+/** How near a scroll container's edge the pointer must be before a resize
+ *  drag starts scrolling for it. */
+export const EDGE_ZONE_PX = 36;
+/**
+ * The most one frame of edge-scrolling may move, at the very edge.
+ *
+ * 2.5px, down from a flat 18px. The old number was not merely fast, it was the
+ * engine of a runaway: the scroll offset it produced is an INPUT to the size
+ * the same loop computes, so scrolling grew the card, a taller card made a
+ * taller canvas, and a taller canvas left room to scroll again — about
+ * 1080 px/s at 60fps with nothing bounding it (reported 2026-08-04, "resizing
+ * 1000-2000 pixels in < 1 second").
+ *
+ * Halved again from 5px on the operator's call after driving it on the machine
+ * (2026-08-05: "works much better, but make it about half the speed"). The rate
+ * is a feel judgement and belongs to whoever uses it; what code can hold is that
+ * it stays a bounded one, which test/resize-edge-scroll.test.ts pins as a budget.
+ */
+export const EDGE_MAX_STEP_PX = 2.5;
+
+/**
+ * Pixels to auto-scroll this frame, RAMPED by how far the pointer has pushed
+ * past the zone boundary — zero at the boundary itself, the full step only at
+ * the very edge.
+ *
+ * The ramp is the part that matters, not the smaller constant. A flat step
+ * fires at full speed the instant the pointer enters the zone, which is why the
+ * move drag deleted its own auto-scroll outright ("any tiny involuntary
+ * movement past the origin while starting a drag near an edge was enough to
+ * trigger a runaway scroll" — see startMove). Ramping means resting near the
+ * edge does nothing at all and the operator has to keep pushing to keep
+ * scrolling, so the gesture stays theirs to stop.
+ *
+ * Clamped at both ends: a pointer dragged off the screen reports coordinates
+ * past the edge, and an unclamped depth would hand back an ever-larger step —
+ * the runaway again, wearing the fix's clothes.
+ */
+export function edgeScrollStep(
+	pointer: number,
+	edge: number,
+	zonePx: number = EDGE_ZONE_PX,
+	maxStepPx: number = EDGE_MAX_STEP_PX,
+): number {
+	if (!Number.isFinite(pointer) || !Number.isFinite(edge) || !(zonePx > 0)) return 0;
+	const depth = (pointer - (edge - zonePx)) / zonePx;
+	return Math.min(1, Math.max(0, depth)) * maxStepPx;
+}
+
+/**
+ * The signed scroll for one axis: positive toward the end (down / right),
+ * negative toward the start (up / left).
+ *
+ * Both directions are needed and only one was built. Auto-scroll existed to let
+ * a card GROW past the viewport, so it watched the bottom and right edges only —
+ * which left shrinking with no way to reach past the screen at all, and after
+ * the reservation froze the scroll frame that was the whole of it: the card
+ * "just shrinks as far as the mouse can reach" (reported 2026-08-05). Dragging
+ * up to shrink has exactly the same problem dragging down to grow does, and now
+ * the same answer.
+ *
+ * The backward direction is the forward ramp MIRRORED — the axis negated rather
+ * than a second ramp written out — so the two cannot drift apart, and a change
+ * to the feel of one is a change to the feel of both. Subtracting instead of
+ * branching also keeps it continuous on a scroller narrower than two zones,
+ * where both ends are in range at once: they cancel toward the middle rather
+ * than one arbitrarily winning.
+ *
+ * Bounded without needing to say so: the browser clamps scrollTop at 0, so
+ * shrinking runs out of scroll at the top of the canvas and simply stops.
+ */
+export function axisScrollStep(
+	pointer: number,
+	start: number,
+	end: number,
+	zonePx: number = EDGE_ZONE_PX,
+	maxStepPx: number = EDGE_MAX_STEP_PX,
+): number {
+	return edgeScrollStep(pointer, end, zonePx, maxStepPx)
+		- edgeScrollStep(-pointer, -start, zonePx, maxStepPx);
+}
+
+/**
+ * The lowest grid row a drag has reached SO FAR — monotonic, and that is the
+ * entire point.
+ *
+ * A resize reads the container's scroll offset to convert the pointer into a
+ * size, and the browser clamps scrollTop to `scrollHeight - clientHeight`. So
+ * shrinking a tall card shortens the canvas, the clamp yanks the scroll
+ * position down by exactly the height just lost, and that displacement arrives
+ * back at the next frame as MORE shrink. It compounds rather than accumulating:
+ * measured 2026-08-05, dropping a card 800px pulled scrollTop 1700 -> 900, so
+ * the card collapsed to its stop in a few frames (reported the same day, "when
+ * shrinking the card back into the page it exhibits the same super fast
+ * behavior").
+ *
+ * Holding a hidden spacer at the reach keeps the canvas from ever getting
+ * SHORTER mid-drag, which leaves the clamp nothing to do: same measurement with
+ * the spacer in place, scrollTop 1704 -> 1704. startMove has carried one for the
+ * same reason since it was written; the resize path never got one.
+ *
+ * Never decreases, so the reservation cannot be walked back by a frame that
+ * shrank — which is what makes the scroll frame stable for the whole gesture
+ * rather than only while growing.
+ */
+export function reservedReach(previous: number, rect: PanelRect): number {
+	const bottom = rect.row + rect.rowSpan;
+	return Number.isFinite(bottom) ? Math.max(previous, bottom) : previous;
+}
+
 /**
  * WHICH of the body's children a floor is computed over.
  *
@@ -1395,6 +1504,15 @@ export function createPanelCanvas(
 		// viewport: the pointer runs out of screen and scrolling goes unnoticed.
 		const scroller = canvasEl.closest<HTMLElement>(".view-scroll");
 		const originScrollTop = scroller?.scrollTop ?? 0;
+		// The horizontal twin, which was missing. The loop scrolled scrollLeft and
+		// then measured the width delta from clientX alone, so sideways the view ran
+		// to the end of the canvas while the card never changed width at all — the
+		// card appearing to fly off the edge of the screen (reported 2026-08-04).
+		// Scrolling right moves the card's left edge left under a stationary
+		// pointer, which IS width the operator has dragged out; not counting it
+		// measures the wrong distance.
+		const originScrollLeft = scroller?.scrollLeft ?? 0;
+		const originScrollX = window.scrollX;
 
 		// One hard stop per axis, both measured once at the start of the drag.
 		// A card can be dragged down to the size that exactly contains what it
@@ -1448,24 +1566,47 @@ export function createPanelCanvas(
 		let pointerX = event.clientX;
 		let pointerY = event.clientY;
 
-		// Auto-scroll while the pointer sits near the container's bottom/right
-		// edge. Without it "drag to resize" is capped by the window: you cannot
-		// move the pointer below the screen, so a card that already fills the
-		// viewport can never be made taller. Only engages at the edge, so an
-		// ordinary resize is unaffected.
-		const EDGE_PX = 36;
-		const EDGE_STEP_PX = 18;
+		// Auto-scroll while the pointer pushes into any of the container's edges.
+		// Without it "drag to resize" is capped by the window in BOTH directions:
+		// you cannot move the pointer below the screen, so a card that fills the
+		// viewport can never be made taller — nor, pushing up, any shorter than
+		// one screenful of pointer travel.
+		//
+		// Speed comes from edgeScrollStep, which ramps it from zero at the edge
+		// of the zone — an ordinary resize is unaffected, and a pointer merely
+		// RESTING near the edge does nothing. That is the correction: this loop
+		// feeds its own scroll offset back in as a size input below, so a flat
+		// step made the drag accelerate itself off the screen.
+		//
+		// The spacer holds the canvas at the lowest extent this drag has reached,
+		// so it can grow but never SHORTEN while the pointer is down — see
+		// reservedReach. Without it a shrinking card pulls the scroll position out
+		// from under its own measurement. Invisible, part of no state, and gone
+		// the instant the drag ends; startMove carries the same one.
+		const spacer = document.createElement("div");
+		spacer.style.gridColumn = "1 / span 1";
+		spacer.style.visibility = "hidden";
+		canvasEl.appendChild(spacer);
+		let reach = start.row + start.rowSpan;
+		spacer.style.gridRow = `${reach + 1} / span 1`;
+
 		let raf = 0;
 		const tick = (): void => {
 			if (scroller) {
 				const box = scroller.getBoundingClientRect();
-				if (pointerY > box.bottom - EDGE_PX) scroller.scrollTop += EDGE_STEP_PX;
-				if (pointerX > box.right - EDGE_PX) scroller.scrollLeft += EDGE_STEP_PX;
+				scroller.scrollTop += axisScrollStep(pointerY, box.top, box.bottom);
+				scroller.scrollLeft += axisScrollStep(pointerX, box.left, box.right);
 			}
-			const scrolled = (window.scrollY - originScrollY)
-				+ ((scroller?.scrollTop ?? 0) - originScrollTop);
-			const effectiveY = pointerY + scrolled;
-			const deltaColSpan = Math.round((pointerX - originX) / (COL_UNIT_PX + GAP_PX));
+			// Both axes measured in the CONTENT's frame, not the viewport's: the
+			// pointer stands still while the container scrolls under it, and that
+			// relative motion is size the operator has dragged out. Symmetric on
+			// purpose — the vertical term existed and the horizontal one did not,
+			// which is precisely how the two axes came to behave differently.
+			const scrolledY = (window.scrollY - originScrollY) + ((scroller?.scrollTop ?? 0) - originScrollTop);
+			const scrolledX = (window.scrollX - originScrollX) + ((scroller?.scrollLeft ?? 0) - originScrollLeft);
+			const effectiveY = pointerY + scrolledY;
+			const effectiveX = pointerX + scrolledX;
+			const deltaColSpan = Math.round((effectiveX - originX) / (COL_UNIT_PX + GAP_PX));
 			const deltaRowSpan = Math.round((effectiveY - originY) / (unitPx + ROW_GAP_PX));
 			// Detent at the content fit (snaps, then breaks away), THEN the hard
 			// floor clamps whatever the detent produced so a released card still
@@ -1478,6 +1619,10 @@ export function createPanelCanvas(
 			// goes" — rather than two competing signals.
 			cardEl?.classList.toggle("at-limit", rows.atLimit || cols.atLimit);
 			const next = tryResize(collidableState(id), id, cols.span, rows.span);
+			// Reserve BEFORE the preview lands, so the frame that shrinks the card
+			// never presents the browser with a shorter canvas to clamp against.
+			reach = reservedReach(reach, next);
+			spacer.style.gridRow = `${reach + 1} / span 1`;
 			setState({ ...state(), [id]: next }); // live preview, persisted only on drop
 			raf = requestAnimationFrame(tick);
 		};
@@ -1489,6 +1634,7 @@ export function createPanelCanvas(
 		};
 		const onUp = (): void => {
 			cancelAnimationFrame(raf);
+			spacer.remove();
 			cardEl?.classList.remove("at-limit");
 			window.removeEventListener("pointermove", onMove);
 			window.removeEventListener("pointerup", onUp);
