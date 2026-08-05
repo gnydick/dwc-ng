@@ -53,6 +53,7 @@ import { createEffect, createResource, createSignal, getOwner, onCleanup, runWit
 import { createFileBrowser } from "../files/browser.ts";
 import { loadBrowserMemory, saveBrowserFile } from "../files/browserMemory.ts";
 import { fileUnderRoot } from "../files/path.ts";
+import { forcedJobInfoErrorNow } from "../dev/forcedJobInfoError.ts";
 import { createHeightMapStore } from "../heightmap/store.ts";
 import { cellPosition } from "../heightmap/parse.ts";
 import type { AppServices } from "../shell/context.ts";
@@ -105,7 +106,16 @@ function jobsBrowserService(base: ServiceBaseCtx) {
 	// is not a recovery so much as a trick you have to know.
 	const [info, { refetch: refetchInfo }] = createResource(
 		domain.selected,
-		path => base.connector.getFileInfo(path),
+		async path => {
+			// A URL flag can make this read fail on demand, so the card's failure
+			// state can be looked at without owning a file the machine cannot read
+			// (see dev/forcedJobInfoError.ts). Checked per fetch rather than once,
+			// so Retry keeps failing while the flag is set — which is the honest
+			// demonstration, and also proves Retry is wired to anything at all.
+			const forced = forcedJobInfoErrorNow();
+			if (forced !== null) throw forced;
+			return base.connector.getFileInfo(path);
+		},
 	);
 	const [thumb] = createResource(
 		() => {

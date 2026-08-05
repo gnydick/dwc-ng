@@ -1022,6 +1022,12 @@
 	/* The console's own stack, not a new one: this IS console output, just
 	   surfaced where the operator was looking when it happened. */
 	font: 400 calc(12px + var(--fs-bump))/1.45 ui-monospace, "Cascadia Code", Consolas, monospace;
+	/* Machine output is frequently multi-line, and HTML would collapse those
+	   breaks into spaces — running a two-line diagnostic together into one
+	   sentence that reads like neither of them. pre-wrap keeps the machine's own
+	   line structure; overflow-wrap still breaks a single long token (a path, an
+	   offset) rather than letting it push the card sideways. */
+	white-space: pre-wrap;
 	overflow-wrap: anywhere;
 	user-select: text;
 }

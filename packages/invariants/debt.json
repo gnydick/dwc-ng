@@ -74,7 +74,7 @@
 		{
 			"slug": "two-retry-ladders-in-the-connector",
 			"status": "todo",
-			"where": "packages/ui/src/connector/PollConnector.ts (attemptRequest, attemptUpload)",
+			"where": "packages/connector/src/PollConnector.ts (attemptRequest, attemptUpload)",
 			"what": "The 503/401/network retry ladder exists TWICE, with the same backoff formula `delay(retryDelayMs * (retry + 1))`, the same `retry < maxRetries` guard and the same recursion — differing only in the request wrapped and the status handling. That is the tripwire: the same processing step at a second call site. Both currently back off OUTSIDE the queue slot, which is what connector/backoff-outside-the-slot needs, but nothing makes a third one do so, and the queue cannot detect a violation — a job sleeping in its slot and a job that is merely slow are the same observation from inside.",
 			"fix": "Give RequestQueue the retry loop, so it releases the slot between attempts by construction, and reduce both ladders to policy passed in (which statuses retry, what to do first on a 503, whether to re-auth). Deferred deliberately on 2026-08-01: this rewrites the connector's recovery path, and its behaviour against a real board — the reply-drain on the first 503, the 401 re-auth, the whole-file re-send on upload — is only provable on hardware, not against mock-duet alone."
 		},

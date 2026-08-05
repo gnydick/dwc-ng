@@ -1,4 +1,4 @@
-// The transport seam. Mirrors packages/ui/src/connector: one interface, two
+// The transport seam. Mirrors packages/connector/src: one interface, two
 // dialects, no caller that has to know which board it is talking to.
 //
 // The load-bearing rule here is that COMPRESSION IS A PROPERTY OF THE SERVING
