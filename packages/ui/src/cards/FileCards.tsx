@@ -16,6 +16,7 @@ import { FileEditorBody } from "../editor/FileEditor.tsx";
 import { languageFor, type EditorLang } from "../editor/lang.ts";
 import { OmInspector } from "../om/OmInspector.tsx";
 import { baseName, fmtDuration, formatSize } from "../files/format.ts";
+import { describeFileInfoError } from "../files/fileInfoError.ts";
 import { isJobActive } from "../om/job.ts";
 import type { CardCtx } from "../compose/ctx.ts";
 
@@ -105,6 +106,10 @@ export function JobDetailsBody(props: { ctx: CardCtx }) {
 	const app = useApp();
 	const svc = props.ctx.service("jobsBrowser");
 	const active = createMemo(() => isJobActive(app.om.om.state.status));
+	// Read here rather than inside the <Match>: Match's callback form needs a
+	// keyed child, and the memo wants to live in the component's scope anyway so
+	// the error is described once per failure instead of once per render.
+	const failure = createMemo(() => describeFileInfoError(svc.info.error));
 
 	const startPrint = (): void => {
 		const path = svc.selected();
@@ -121,7 +126,21 @@ export function JobDetailsBody(props: { ctx: CardCtx }) {
 		<Switch>
 			<Match when={svc.selected() === null}><p class="job-empty">No selection</p></Match>
 			<Match when={svc.info.loading}><p class="job-empty">Reading…</p></Match>
-			<Match when={svc.info.error}><p class="job-empty">No metadata</p></Match>
+			{/* A failed read is a FAILURE, and it says so — not "No metadata" in the
+			    same muted style as "No selection". The run actions are absent here
+			    and cannot be added: they live at exactly one site, inside the
+			    loaded-metadata branch below (spec D1). */}
+			<Match when={svc.info.error}>
+				<div class="job-error">
+					<p class="job-error-summary">⚠ {failure().summary}</p>
+					<Show when={failure().detail}>
+						{detail => <p class="job-error-detail">{detail()}</p>}
+					</Show>
+					<div class="btn-row">
+						<button class="btn" onClick={() => void svc.refetchInfo()}>Retry</button>
+					</div>
+				</div>
+			</Match>
 			<Match when={svc.info()}>
 				{info => (
 					<>

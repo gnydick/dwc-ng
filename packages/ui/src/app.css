@@ -1004,6 +1004,28 @@
 }
 .job-empty { color: var(--silk-dim); font-size: calc(13px + var(--fs-bump)); }
 
+/* A job whose metadata could not be read. Deliberately NOT .job-empty: an
+   unreadable file used to look exactly like an unselected one, in the same muted
+   grey, which is how a failure came to read as "nothing here yet". */
+.job-error { display: flex; flex-direction: column; gap: 10px; }
+.job-error-summary {
+	color: var(--fault);
+	font-size: calc(13px + var(--fs-bump));
+	font-weight: 600;
+}
+/* The machine's own words. Monospace because that is what they are — a
+   diagnostic, not prose — and SELECTABLE because the first thing anyone does
+   with one is copy it somewhere. Wraps rather than ellipsising: a truncated
+   reason is the same as no reason. */
+.job-error-detail {
+	color: var(--silk-dim);
+	/* The console's own stack, not a new one: this IS console output, just
+	   surfaced where the operator was looking when it happened. */
+	font: 400 calc(12px + var(--fs-bump))/1.45 ui-monospace, "Cascadia Code", Consolas, monospace;
+	overflow-wrap: anywhere;
+	user-select: text;
+}
+
 /* ---------- dock indicator ---------- */
 
 /* A single dot beside the tool name — docked (green) / away (gold). Kept

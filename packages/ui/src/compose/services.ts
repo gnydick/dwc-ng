@@ -100,7 +100,13 @@ function jobsBrowserService(base: ServiceBaseCtx) {
 	const [downloading, setDownloading] = createSignal<string | null>(null);
 	// The details card's data, chained: fileinfo keyed on the selection, then
 	// the first thumbnail keyed on the fileinfo.
-	const [info] = createResource(domain.selected, path => base.connector.getFileInfo(path));
+	// refetch is kept, not discarded: without it the only way to re-read a file
+	// whose metadata failed is to select something else and select it back, which
+	// is not a recovery so much as a trick you have to know.
+	const [info, { refetch: refetchInfo }] = createResource(
+		domain.selected,
+		path => base.connector.getFileInfo(path),
+	);
 	const [thumb] = createResource(
 		() => {
 			const i = info();
@@ -134,7 +140,7 @@ function jobsBrowserService(base: ServiceBaseCtx) {
 		}
 	};
 
-	return { ...domain, downloading, download, info, thumb };
+	return { ...domain, downloading, download, info, refetchInfo, thumb };
 }
 
 function heightmapService(base: ServiceBaseCtx) {

@@ -811,7 +811,7 @@ in the diff that drops it.
 
 **Debt — promotion.** the scan is a brace walker over text, so it sees source order but not cascade subtleties (:is(), layers, differing specificity within a selector list). Rung 6 is generating the breakpoint blocks from one typed source, so ordering stops being something an author controls at all. (The palette entry's narrow-width rules are NOT here — they live in a second max-width block directly after the desktop ones further down.)
 
-`packages/ui/src/app.css:1357`
+`packages/ui/src/app.css:1379`
 
 ## util
 
