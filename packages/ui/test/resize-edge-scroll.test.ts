@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import {
 	EDGE_ZONE_PX, EDGE_MAX_STEP_PX, edgeScrollStep, axisScrollStep, reservedReach,
+	scrollFloorRows,
 } from "../src/shell/panelCanvas.ts";
 
 /**
@@ -176,14 +177,53 @@ test("the horizontal delta compensates for horizontal scrolling", () => {
  * A spacer left behind would hold every canvas at the tallest anything was ever
  * dragged to, for the life of the page.
  */
-test("startResize reserves the extent for the drag and gives it back on drop", () => {
+test("startResize reserves the extent for the drag, and settles rather than dropping it", () => {
 	const resize = canvasSrc.slice(canvasSrc.indexOf("const startResize"));
-	assert.match(resize, /canvasEl\.appendChild\(spacer\)/,
+	assert.match(resize, /holdFloor\(canvasEl, scroller, reach \+ 1\)/,
 		"the resize drag must reserve scroll extent, or a shrink clamps its own measurement");
 	assert.match(resize, /reservedReach\(reach, next\)/,
 		"the reservation must be updated from the previewed rect");
-	assert.match(resize, /spacer\.remove\(\)/,
-		"a spacer outliving its drag would pin the canvas tall forever");
+	// THE REGRESSION: removing the reservation outright is what made the view
+	// jump on release. It has to recede, not vanish.
+	assert.match(resize, /settleFloor\(unitPx\)/,
+		"the drag must settle the floor on drop, not remove it");
+	assert.doesNotMatch(resize, /floor\.el\.remove\(\)|spacer\.remove\(\)/,
+		"removing the reservation at drop is exactly the jump this fixes");
+});
+
+/**
+ * The floor is PHANTOM SPACE. Holding more than the view needs would leave the
+ * canvas scrollable into emptiness for the rest of the session; holding less
+ * would let the browser clamp and the view jump. It is exactly the scroll
+ * position already on screen, rounded up to a whole row.
+ */
+test("the settled floor is exactly what the current view occupies", () => {
+	// 300px viewport scrolled to 1700, 4px rows: the view's bottom edge is 2000px.
+	assert.equal(scrollFloorRows(1700, 300, 4), 500);
+	// A partial row rounds UP — rounding down would leave the last row short and
+	// hand the clamp the very gap this exists to close.
+	assert.equal(scrollFloorRows(1701, 300, 4), 501);
+	assert.equal(scrollFloorRows(0, 300, 4), 75);
+});
+
+test("a degenerate scroller yields no floor rather than a NaN one", () => {
+	assert.equal(scrollFloorRows(NaN, 300, 4), 0);
+	assert.equal(scrollFloorRows(100, NaN, 4), 0);
+	assert.equal(scrollFloorRows(100, 300, 0), 0);
+	assert.equal(scrollFloorRows(-9999, 300, 4), 0, "a floor is never negative rows");
+});
+
+/**
+ * The floor must be able to GO. A hidden cell that outlives its purpose pins the
+ * canvas tall for the life of the page, which is the opposite failure: you could
+ * never scroll back to a tidy bottom again.
+ */
+test("the floor is released once scrolling makes it redundant", () => {
+	assert.match(canvasSrc, /const dropFloor = \(\)/, "there must be a way to let the floor go");
+	assert.match(canvasSrc, /addEventListener\("scroll", onScroll/,
+		"the floor must watch for the moment it stops holding anything up");
+	assert.match(canvasSrc, /removeEventListener\("scroll", floor\.onScroll\)/,
+		"the watcher must be detached with the floor, or it leaks per drag");
 });
 
 test("no unramped constant step survives in the resize loop", () => {

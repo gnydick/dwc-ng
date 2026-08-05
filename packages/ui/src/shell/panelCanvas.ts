@@ -541,6 +541,28 @@ export function reservedReach(previous: number, rect: PanelRect): number {
 }
 
 /**
+ * How many rows the canvas must keep to leave the CURRENT view untouched —
+ * the scroll position already on screen, expressed in grid rows.
+ *
+ * This is what a drag's reservation recedes TO when the pointer comes up,
+ * rather than being removed outright. Removing it lets the canvas snap back to
+ * the real content height, and the browser then clamps scrollTop to fit, which
+ * slides the whole view by exactly the distance from the pointer to the bottom
+ * of the viewport — measured 2026-08-05 at 20px, 148px and 260px for a pointer
+ * 20, 150 and 260px above a 300px viewport's bottom. Holding this many rows
+ * instead moves nothing at all: 0px in all three cases.
+ *
+ * The result is phantom space and must not outlive its purpose, so the caller
+ * drops it as soon as scrolling makes it redundant — by which time it is below
+ * the fold, and its removal is invisible.
+ */
+export function scrollFloorRows(scrollTop: number, clientHeight: number, unitPx: number): number {
+	const px = scrollTop + clientHeight;
+	if (!Number.isFinite(px) || !(unitPx > 0)) return 0;
+	return Math.max(0, Math.ceil(px / unitPx));
+}
+
+/**
  * WHICH of the body's children a floor is computed over.
  *
  * Two named questions rather than a caller-supplied predicate, because there
@@ -1378,6 +1400,80 @@ export function createPanelCanvas(
 		persist(next);
 	};
 
+	/**
+	 * THE CANVAS FLOOR — one hidden grid cell that stops the canvas becoming
+	 * SHORTER than something that currently matters.
+	 *
+	 * It has two jobs across a drag's life, and they are the same mechanism:
+	 * while the pointer is down it holds the drag's reach, so shrinking a card
+	 * cannot pull the scroll position out from under the measurement that sizes
+	 * it (see reservedReach); when the pointer comes up it recedes to the scroll
+	 * position already on screen (scrollFloorRows), so releasing changes nothing
+	 * visible. It is then dropped the moment scrolling up makes it redundant —
+	 * below the fold, where its removal cannot be seen.
+	 *
+	 * ONE floor, owned here, because two would fight: a drag that created its
+	 * own would leave the previous drag's still holding, and the pair would
+	 * accumulate a taller and taller phantom canvas across a session. Reusing
+	 * the element also means a second drag never has to remove the first's
+	 * floor — removing it is precisely the jump this exists to avoid.
+	 */
+	let floor: { el: HTMLElement; scroller: HTMLElement | null; onScroll: (() => void) | null } | null = null;
+
+	/** The lowest row any tracked panel occupies — the canvas's real height. */
+	const contentRows = (): number =>
+		Object.values(state()).reduce((max, r) => Math.max(max, r.row + r.rowSpan), 0);
+
+	const dropFloor = (): void => {
+		if (floor === null) return;
+		if (floor.onScroll !== null && floor.scroller !== null) {
+			floor.scroller.removeEventListener("scroll", floor.onScroll);
+		}
+		floor.el.remove();
+		floor = null;
+	};
+
+	/** Hold the canvas at `rows`, creating the floor if this is the first drag. */
+	const holdFloor = (canvasEl: HTMLElement, scroller: HTMLElement | null, rows: number): void => {
+		if (floor === null) {
+			const el = document.createElement("div");
+			el.style.gridColumn = "1 / span 1";
+			el.style.visibility = "hidden";
+			canvasEl.appendChild(el);
+			floor = { el, scroller, onScroll: null };
+		} else if (floor.onScroll !== null && floor.scroller !== null) {
+			// Re-entering a drag: the settle listener must not fire mid-gesture and
+			// pull the floor away while it is doing its first job.
+			floor.scroller.removeEventListener("scroll", floor.onScroll);
+			floor.onScroll = null;
+			floor.scroller = scroller;
+		}
+		floor.el.style.gridRow = `${Math.max(1, rows)} / span 1`;
+	};
+
+	/** Pointer up: recede to what the view needs, or let go if it needs nothing. */
+	const settleFloor = (unitPx: number): void => {
+		if (floor === null) return;
+		const scroller = floor.scroller;
+		if (scroller === null) {
+			dropFloor();
+			return;
+		}
+		const needed = scrollFloorRows(scroller.scrollTop, scroller.clientHeight, unitPx);
+		if (needed <= contentRows()) {
+			// The real cards already reach past the bottom of the view; the floor is
+			// holding nothing up and can go now, unnoticed.
+			dropFloor();
+			return;
+		}
+		floor.el.style.gridRow = `${needed} / span 1`;
+		const onScroll = (): void => {
+			if (scroller.scrollTop + scroller.clientHeight <= contentRows() * unitPx) dropFloor();
+		};
+		floor.onScroll = onScroll;
+		scroller.addEventListener("scroll", onScroll, { passive: true });
+	};
+
 	const startMove = (id: string, event: PointerEvent): void => {
 		const grip = event.currentTarget as HTMLElement;
 		const canvasEl = grip.closest<HTMLElement>(".panel-canvas");
@@ -1578,17 +1674,12 @@ export function createPanelCanvas(
 		// feeds its own scroll offset back in as a size input below, so a flat
 		// step made the drag accelerate itself off the screen.
 		//
-		// The spacer holds the canvas at the lowest extent this drag has reached,
-		// so it can grow but never SHORTEN while the pointer is down — see
+		// The floor holds the canvas at the lowest extent this drag has reached, so
+		// it can grow but never SHORTEN while the pointer is down — see
 		// reservedReach. Without it a shrinking card pulls the scroll position out
-		// from under its own measurement. Invisible, part of no state, and gone
-		// the instant the drag ends; startMove carries the same one.
-		const spacer = document.createElement("div");
-		spacer.style.gridColumn = "1 / span 1";
-		spacer.style.visibility = "hidden";
-		canvasEl.appendChild(spacer);
+		// from under its own measurement. It is NOT removed on drop; it recedes.
 		let reach = start.row + start.rowSpan;
-		spacer.style.gridRow = `${reach + 1} / span 1`;
+		holdFloor(canvasEl, scroller, reach + 1);
 
 		let raf = 0;
 		const tick = (): void => {
@@ -1622,7 +1713,7 @@ export function createPanelCanvas(
 			// Reserve BEFORE the preview lands, so the frame that shrinks the card
 			// never presents the browser with a shorter canvas to clamp against.
 			reach = reservedReach(reach, next);
-			spacer.style.gridRow = `${reach + 1} / span 1`;
+			holdFloor(canvasEl, scroller, reach + 1);
 			setState({ ...state(), [id]: next }); // live preview, persisted only on drop
 			raf = requestAnimationFrame(tick);
 		};
@@ -1634,7 +1725,13 @@ export function createPanelCanvas(
 		};
 		const onUp = (): void => {
 			cancelAnimationFrame(raf);
-			spacer.remove();
+			// NOT a removal. Dropping the reservation outright lets the canvas snap
+			// back to the content height, and the browser then clamps scrollTop to
+			// fit — sliding the whole view by the distance from the pointer to the
+			// bottom of the viewport (reported 2026-08-05: "when you shrink the
+			// camera the screen position jumps"). Receding to what the view actually
+			// needs moves nothing; see settleFloor.
+			settleFloor(unitPx);
 			cardEl?.classList.remove("at-limit");
 			window.removeEventListener("pointermove", onMove);
 			window.removeEventListener("pointerup", onUp);
