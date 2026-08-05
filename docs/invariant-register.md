@@ -373,11 +373,11 @@ in the diff that drops it.
 
 ### `control/gcode-quoting` — rung 7
 
-**Mechanism.** sole-constructor type — this is the only producer of a string `Param`, and `gc`, the only command-assembly form in this module, accepts nothing else. `` gc`M98 P${path}` `` where path is a string is a COMPILE error; it has to be `gcodeQuote(path)` first. A new builder cannot write its own `"${n(value)}"` and reach a command, because a plain template literal is no longer how commands are made
+**Mechanism.** sole-constructor type — this is the only producer of a string `Param`, and `gc`, the only command-assembly form in this module, accepts nothing else. `` gc`M98 P${path}` `` where path is a string is a COMPILE error; it has to be `gcodeQuote(path)` first. A new builder cannot write its own `"${n(value)}"` and reach a command, because a plain template literal is no longer how commands are made. The control-character check runs inside that sole producer, so it covers every string parameter without any builder opting in
 
-**Why.** an unquoted operator filename reaching M98 was a real injection: a name containing a quote closed the parameter early and the remainder was parsed as further G-code, against a machine with heaters. Promoted from rung 5 on 2026-08-01 — it had been "the builders below all call it", which is inspection, and inspection is what the next builder skips
+**Why.** an unquoted operator filename reaching M98 was a real injection: a name containing a quote closed the parameter early and the remainder was parsed as further G-code, against a machine with heaters. Promoted from rung 5 on 2026-08-01 — it had been "the builders below all call it", which is inspection, and inspection is what the next builder skips. Control characters added 2026-08-05: the same early-close, by a route doubling cannot address. Not reachable at the time — a filename is already filtered by files/path.ts, and an `<input type="text">` strips newlines — but both of those barriers belong to OTHER systems (that parser, the DOM), and messagebox/ack.ts already has a path around the second: MessageBoxPrompt seeds its input straight from the board's `default`, so an unedited answer never passes through the DOM at all. What kept it safe was RRF being unable to put a newline in M291's F"..." parameter, which is RRF's guarantee to withdraw, not ours
 
-`packages/ui/src/control/commands.ts:64`
+`packages/ui/src/control/commands.ts:66`
 
 ## deploy
 

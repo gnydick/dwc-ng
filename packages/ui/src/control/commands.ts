@@ -59,7 +59,9 @@ const gc = (parts: TemplateStringsArray, ...values: Param[]): string =>
  * lowercase-next flag) doubles likewise — an unescaped quote from a
  * filename or an operator's free text would otherwise produce a malformed
  * command. Verified against reference/duet-gcode.md (M98 notes, Quoted
- * Strings).
+ * Strings). A control character is REFUSED rather than escaped, because
+ * doubling has nothing to offer one: a newline ends the command line instead
+ * of sitting inside the string.
  *
  * @invariant gcode-quoting
  * @rung 7  sole-constructor type — this is the only producer of a string
@@ -67,12 +69,23 @@ const gc = (parts: TemplateStringsArray, ...values: Param[]): string =>
  *          accepts nothing else. `` gc`M98 P${path}` `` where path is a string
  *          is a COMPILE error; it has to be `gcodeQuote(path)` first. A new
  *          builder cannot write its own `"${n(value)}"` and reach a command,
- *          because a plain template literal is no longer how commands are made
+ *          because a plain template literal is no longer how commands are made.
+ *          The control-character check runs inside that sole producer, so it
+ *          covers every string parameter without any builder opting in
  * @why an unquoted operator filename reaching M98 was a real injection: a name
  *      containing a quote closed the parameter early and the remainder was
  *      parsed as further G-code, against a machine with heaters. Promoted from
  *      rung 5 on 2026-08-01 — it had been "the builders below all call it",
- *      which is inspection, and inspection is what the next builder skips
+ *      which is inspection, and inspection is what the next builder skips.
+ *      Control characters added 2026-08-05: the same early-close, by a route
+ *      doubling cannot address. Not reachable at the time — a filename is
+ *      already filtered by files/path.ts, and an `<input type="text">` strips
+ *      newlines — but both of those barriers belong to OTHER systems (that
+ *      parser, the DOM), and messagebox/ack.ts already has a path around the
+ *      second: MessageBoxPrompt seeds its input straight from the board's
+ *      `default`, so an unedited answer never passes through the DOM at all.
+ *      What kept it safe was RRF being unable to put a newline in M291's
+ *      F"..." parameter, which is RRF's guarantee to withdraw, not ours
  */
 /**
  * A bare axis or parameter letter. Some parameters are tokens, not strings —
@@ -100,8 +113,20 @@ export const axisLetter = (value: string): Param => {
 	return value as Param;
 };
 
-export const gcodeQuote = (value: string): Param =>
-	`"${value.replace(/"/g, '""').replace(/'/g, "''")}"` as Param;
+export const gcodeQuote = (value: string): Param => {
+	// Doubling escapes " and ', which is the whole of RRF's quoting rule. It has
+	// nothing to offer a control character: a newline ENDS the command line
+	// rather than sitting inside the string, so the remainder would parse as
+	// further G-code. Refused rather than escaped, because there is no escape.
+	// Same test and same reasoning as files/path.ts's parseFileName, which
+	// rejects these at the boundary that mints a filename.
+	for (let i = 0; i < value.length; i++) {
+		if (value.charCodeAt(i) < 0x20) {
+			throw new Error(`control character in a quoted parameter: ${JSON.stringify(value)}`);
+		}
+	}
+	return `"${value.replace(/"/g, '""').replace(/'/g, "''")}"` as Param;
+};
 
 /** Run a macro file (M98). The P filename is quoted through gcodeQuote. */
 const runMacro = (path: string): string => gc`M98 P${gcodeQuote(path)}`;

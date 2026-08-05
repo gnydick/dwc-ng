@@ -237,6 +237,23 @@ test("gcodeQuote is the one quoting authority (ack.ts imports it)", () => {
 	assert.equal(gcodeQuote("a'b"), "\"a''b\"");
 });
 
+// Doubling escapes " and ', which is the whole of RRF's quoting rule — and it
+// cannot escape a NEWLINE, because a newline ends the G-code line rather than
+// sitting inside the string. So a control character in a quoted parameter is
+// not a value to escape, it is a value that must not reach a command.
+//
+// Reachable today only through messagebox/ack.ts: MessageBoxPrompt seeds its
+// input signal straight from box.default (the board's M291 F"..." string), so
+// an unedited answer bypasses the DOM's own newline stripping. RRF cannot put
+// a newline in that field, but that is RRF's guarantee, not this repo's.
+test("gcodeQuote refuses a control character rather than escaping it", () => {
+	assert.throws(() => gcodeQuote("ok\nM112"), /control character/);
+	assert.throws(() => gcodeQuote("a\rb"), /control character/);
+	assert.throws(() => gcodeQuote("a\u0000b"), /control character/);
+	// A space is 0x20 and ordinary — height-map names carry them routinely.
+	assert.equal(gcodeQuote("Textured pei.csv"), '"Textured pei.csv"');
+});
+
 test("the coupler macros derive from runMacro (no second M98 form)", () => {
 	assert.equal(cmd.couplerLock(), cmd.runMacro("/macros/tool_lock"));
 	assert.equal(cmd.couplerUnlock(), cmd.runMacro("/macros/tool_unlock"));
