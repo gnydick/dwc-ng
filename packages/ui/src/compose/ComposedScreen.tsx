@@ -10,13 +10,15 @@
  *  - the isActive predicate, derived from each card's ONE visibleWhen (I3:
  *    the mount Show uses the same expression), contained so a throwing
  *    predicate costs that card, never the screen;
- *  - the layout toolbar and the compose drawer (A8): add/remove cards,
- *    rename, hide/delete, new screen;
+ *  - the layout toolbar and the compose drawer (A8): add/remove cards on
+ *    THIS screen, rename, hide/delete screen, new screen — card DELETION
+ *    lives in the Card Studio, which shows the delete's blast radius;
  *  - the single <Card> wrapper per slot (compose/RegistryCard.tsx).
  */
 import { For, Show, createEffect, createMemo, createSignal, onCleanup, untrack } from "solid-js";
 import { Portal } from "solid-js/web";
 import { useApp } from "../shell/context.ts";
+import { createArmed } from "../control/armed.ts";
 import { railSlot } from "../shell/railSlot.ts";
 import { PanelCanvas } from "../shell/PanelCanvas.tsx";
 import { canvasStorageKey, createPanelCanvas, type PanelCanvasController } from "../shell/panelCanvas.ts";
@@ -153,8 +155,9 @@ export function ComposedScreen(props: { screenId: string }) {
  * membership edits write through updateScreenCards (custom in place, built-in
  * via the layouts override). Reset-everything on Settings undoes the
  * OVERRIDES (renames, hides, layouts, membership changes to built-ins) but
- * keeps the user's creations — custom cards and screens die only by their
- * own explicit ✕/Delete.
+ * keeps the user's creations — a custom screen dies only by its own explicit
+ * Delete here, and a custom CARD only in the Card Studio, whose armed confirm
+ * shows the screens the delete would strip it from.
  */
 /**
  * An artist's palette, drawn rather than borrowed.
@@ -312,30 +315,20 @@ function ComposeDrawer(props: { screenId: string; entry: ScreenEntry | null; com
 		window.location.hash = `#/${id}`;
 	};
 
-	// Two-step confirms for the drawer's destructive acts (house pattern —
-	// matching file delete / heater reset / macro run): first click arms,
-	// second fires; arming anything else disarms. Deleting a CREATION is
-	// permanent once saved, so it never rides on a single click.
-	const [armedCardDelete, setArmedCardDelete] = createSignal<CustomCardId | null>(null);
-	const [armedScreenDelete, setArmedScreenDelete] = createSignal(false);
-
-	const deleteCard = (id: CustomCardId): void => {
-		setArmedScreenDelete(false);
-		if (armedCardDelete() !== id) {
-			setArmedCardDelete(id);
-			return;
-		}
-		setArmedCardDelete(null);
-		app.config.removeCustomCard(id);
-	};
+	// Two-step confirm for the drawer's one destructive act (house pattern —
+	// matching file delete / heater reset / macro run): first click arms, the
+	// second fires. Deleting a CREATION is permanent once saved, so it never
+	// rides on a single click. Card deletion is the Card Studio's job — the
+	// drawer only composes the current screen. createArmed, so Escape disarms
+	// this like every other armed control.
+	const [armedScreenDelete, setArmedScreenDelete] = createArmed<true>();
 
 	const deleteScreen = (): void => {
-		setArmedCardDelete(null);
-		if (!armedScreenDelete()) {
+		if (armedScreenDelete() === null) {
 			setArmedScreenDelete(true);
 			return;
 		}
-		setArmedScreenDelete(false);
+		setArmedScreenDelete(null);
 		app.config.removeScreen(props.screenId);
 		// The hash still points at the screen just deleted, which would fall
 		// through to the first screen's cards while the nav highlights nothing —
@@ -432,10 +425,10 @@ function ComposeDrawer(props: { screenId: string; entry: ScreenEntry | null; com
 							fallback={
 								<button
 									class="fb-act danger"
-									classList={{ armed: armedScreenDelete() }}
+									classList={{ armed: armedScreenDelete() !== null }}
 									onClick={deleteScreen}
 								>
-									{armedScreenDelete() ? "Confirm" : "Delete screen"}
+									{armedScreenDelete() !== null ? "Confirm" : "Delete screen"}
 								</button>
 							}
 						>
@@ -505,14 +498,6 @@ function ComposeDrawer(props: { screenId: string; entry: ScreenEntry | null; com
 											}}
 										>
 											⤓
-										</button>
-										<button
-											class="fb-act danger"
-											classList={{ armed: armedCardDelete() === id }}
-											title={`Delete ${app.config.config.cards[id]!.name} — removes it from every screen`}
-											onClick={() => deleteCard(id)}
-										>
-											{armedCardDelete() === id ? "Confirm" : "✕"}
 										</button>
 									</div>
 								)}
