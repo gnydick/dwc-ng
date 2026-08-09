@@ -43,6 +43,14 @@ many-screens case. New-card mode (`cardId === null`) renders no delete button.
 The studio performs the delete itself via `app.config.removeCustomCard(id)`
 and then calls `props.onClose()`. No new callback prop.
 
+**Enforcement (added after cant-break-by-design review).** The armed value is
+not a boolean — it is a branded `CardDeletePlan` (the compose twin of
+`files/browser.ts`'s `RemovePlan`): sole producer `planCardDelete(config, id)`
+derives the screens-used list AND the message from one id, the message line
+renders `armed().message`, and the confirm deletes `armed().id`. The report
+shown and the deletion performed cannot disagree. Declared
+`compose/card-delete-carries-its-blast-radius`, rung 7.
+
 ### 2. `screensUsing(config, cardId)` helper in `compose/screens.ts`
 
 Returns `Array<{ id: string; name: string; hidden: boolean }>` — every screen
@@ -55,7 +63,8 @@ whose composition contains the card's slot id:
 - **Hidden built-ins included** and flagged `hidden: true` — `screenList()`
   cannot be reused as-is because it filters hidden screens out.
 
-Pure function over `UiConfig`; unit-tested directly.
+Pure function over `UiConfig`; unit-tested directly. `planCardDelete` wraps it
+as the sole producer of the branded plan (see §1).
 
 ### 3. The compose drawer's ✕ is removed
 
@@ -64,6 +73,19 @@ export (⤓). The `armedCardDelete` signal and `deleteCard` function in
 `ComposedScreen.tsx` are deleted. The screen-level "Delete screen" button
 stays. Deletion is reachable only through the studio — opened from the lab's
 ✎ Edit or the drawer's Edit — one lifecycle surface.
+
+**Enforcement.** "One surface" is declared `compose/one-card-delete-surface`
+(rung 6): a source-walking test (mechanics of `test/armed.test.ts`) pins
+`removeCustomCard` call sites to an allowlist — the store definition, the
+studio, and the import purge — rejecting any new delete surface by file and
+line. The store method itself cannot take the plan type (config importing
+compose would be a cycle); the walk covers that gap, and the declaration's
+debt note names the promotion.
+
+**Grandfathering.** The drawer edit sits beside `armedScreenDelete`, a raw
+`createSignal` two-step that bypasses the rung-6 `control/escape-disarms`
+choke point (invisible to its walk — not named `armed`). It is converted to
+`createArmed` in the same change, so Escape disarms "Delete screen" too.
 
 ### 4. The lab survives the delete by construction
 
