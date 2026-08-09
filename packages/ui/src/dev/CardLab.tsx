@@ -11,7 +11,7 @@ import { CARD_DEFS, allCardIds, type CardId } from "../compose/defs.ts";
 import { RegistryCard, cardTitleOf } from "../compose/RegistryCard.tsx";
 import { CustomCard } from "../compose/CustomCard.tsx";
 import { CardStudio } from "../compose/CardStudio.tsx";
-import { customCardIds, isCustomCardId, type CustomCardId, type SlotId } from "../compose/composition.ts";
+import { customCardIds, isCustomCardId, isOrphanSlot, type CustomCardId, type SlotId } from "../compose/composition.ts";
 import { createServicePool } from "../compose/services.ts";
 import type { CardCtx } from "../compose/ctx.ts";
 import { SCENARIOS, scenarioModel, type ScenarioId } from "./cardScenarios.ts";
@@ -96,6 +96,14 @@ export default function CardLab() {
 	// User-authored cards join the lab as they exist (incl. ones made HERE):
 	// adopt a slot for each at the custom default size.
 	const customIds = (): CustomCardId[] => customCardIds(outer.config.config);
+
+	// The featured card can be deleted out from under us — the studio's
+	// delete, an import purge — and a featured id with no definition renders
+	// a ghost. Fall back to the default featured card instead. This guards
+	// EVERY deletion path, not just the studio's.
+	createEffect(() => {
+		if (isOrphanSlot(featured(), outer.config.config)) setFeatured("active-job-detailed");
+	});
 
 	/**
 	 * Every card, registry and custom together, in one alphabetical list.
