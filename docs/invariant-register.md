@@ -21,7 +21,7 @@ and invariant claim mentions 13 -> 23, so no mechanism was deleted and no
 claim was lost in the gap. From here the ratchets make a dropped rung visible
 in the diff that drops it.
 
-**Totals:** 82 invariants · 62 at rung 6 or above · 20 below rung 6 (ceiling 20).
+**Totals:** 84 invariants · 64 at rung 6 or above · 20 below rung 6 (ceiling 20).
 
 ## bed
 
@@ -87,6 +87,14 @@ in the diff that drops it.
 
 `packages/ui/src/compose/composition.ts:27`
 
+### `compose/card-delete-carries-its-blast-radius` — rung 7
+
+**Mechanism.** sole-constructor type — the armed confirm holds a CardDeletePlan, and `planCardDelete` is its only producer, deriving the screens the card is on AND the message shown from the same id in one pass. The confirm deletes `plan.id`, so the report the operator read and the deletion performed cannot disagree
+
+**Why.** a delete that removes a card from every screen at once is exactly the action whose scope the operator must see before confirming — "delete this card?" cannot precede stripping it from screens they forgot it was on. The plan freezes usage at arm time; the studio is modal over composition edits, so the frozen report cannot go stale between the two clicks
+
+`packages/ui/src/compose/screens.ts:384`
+
 ### `compose/composition-degrades-per-slot` — rung 6
 
 **Mechanism.** choke-point — parseComposition is the only route from stored or imported data into slots, and it drops per-slot: an unknown id or a malformed rect costs that slot and nothing else. Was design I1's boundary half
@@ -148,6 +156,14 @@ in the diff that drops it.
 **Why.** two copies of a card would each poll, each subscribe, and each claim cells, and the operator could delete only whichever one the DOM handed the click to
 
 `packages/ui/src/compose/composition.ts:7`
+
+### `compose/one-card-delete-surface` — rung 6
+
+**Mechanism.** choke-point — this armed confirm is the only user-facing route to removeCustomCard, and test/card-delete-surface.test.ts walks src rejecting any new caller by file and line (allowlisted: the store definition, and ComposedScreen's import purge — which deletes the cards embedded in a screen being displaced, a flow with its own confirm). Promote by moving deletion behind an executor that accepts only a CardDeletePlan once the config layer can name compose types without an import cycle
+
+**Why.** a second delete surface is how the blast-radius report gets skipped: the old drawer ✕ deleted from every screen while showing only a tooltip warning. One surface, armed with the plan, keeps "delete" and "here is what that does" inseparable
+
+`packages/ui/src/compose/CardStudio.tsx:142`
 
 ### `compose/one-service-instance-per-screen` — rung 8
 
