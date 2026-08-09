@@ -16,9 +16,11 @@
  * events off and `inert` are the visual/focus half; the provider swap is
  * the enforcement.
  */
-import { For, Show, createMemo, createSignal } from "solid-js";
+import { For, Show, createEffect, createMemo, createSignal, onCleanup } from "solid-js";
 import { createStore, produce } from "solid-js/store";
 import { AppContext, useApp, type AppServices } from "../shell/context.ts";
+import { createArmed } from "../control/armed.ts";
+import { planCardDelete, type CardDeletePlan } from "./screens.ts";
 import { createStubConnector } from "@dwc-ng/connector";
 import { ControlList } from "./controls/ControlList.tsx";
 import { parseControlSpecText } from "./controls/parse.ts";
@@ -128,6 +130,56 @@ export function CardStudio(props: {
 		}
 		props.onSaved(props.cardId, trimmed, text);
 	};
+
+	/**
+	 * Deleting a CREATION is permanent once saved, so it never rides on one
+	 * click (house two-step), and it arms through createArmed so Escape is a
+	 * way out here like everywhere else. The armed value IS the CardDeletePlan:
+	 * arming requires producing the plan, the message line renders the plan,
+	 * and the confirm deletes the plan's id — there is no armed state without
+	 * a computed blast radius.
+	 *
+	 * @invariant one-card-delete-surface
+	 * @rung 6  choke-point — this armed confirm is the only user-facing route
+	 *          to removeCustomCard, and test/card-delete-surface.test.ts walks
+	 *          src rejecting any new caller by file and line (allowlisted: the
+	 *          store definition, and ComposedScreen's import purge — which
+	 *          deletes the cards embedded in a screen being displaced, a flow
+	 *          with its own confirm). Promote by moving deletion behind an
+	 *          executor that accepts only a CardDeletePlan once the config
+	 *          layer can name compose types without an import cycle
+	 * @why a second delete surface is how the blast-radius report gets skipped:
+	 *      the old drawer ✕ deleted from every screen while showing only a
+	 *      tooltip warning. One surface, armed with the plan, keeps "delete"
+	 *      and "here is what that does" inseparable
+	 */
+	const [armed, setArmed] = createArmed<CardDeletePlan>();
+	const deleteCard = (): void => {
+		const id = props.cardId;
+		if (id === null) return;
+		const plan = armed();
+		if (plan === null) {
+			setArmed(planCardDelete(app.config.config, id));
+			return;
+		}
+		setArmed(null);
+		app.config.removeCustomCard(plan.id);
+		props.onClose();
+	};
+
+	// A press anywhere but the delete button disarms it — same dismissal the
+	// drawer's armed controls use. pointerdown, not click, so a press that
+	// becomes a drag still disarms; registered only while armed.
+	let deleteBtn: HTMLButtonElement | undefined;
+	createEffect(() => {
+		if (armed() === null) return;
+		const disarm = (e: PointerEvent): void => {
+			if (deleteBtn !== undefined && e.target instanceof Node && deleteBtn.contains(e.target)) return;
+			setArmed(null);
+		};
+		document.addEventListener("pointerdown", disarm, { capture: true });
+		onCleanup(() => document.removeEventListener("pointerdown", disarm, { capture: true }));
+	});
 
 	return (
 		<div class="studio-backdrop" onClick={e => { if (e.target === e.currentTarget) props.onClose(); }}>
@@ -281,11 +333,25 @@ export function CardStudio(props: {
 					</div>
 				</div>
 
-				{/* Reserved line: an error appearing must not shove the buttons. */}
-				<p class="fb-msg" classList={{ show: error() !== "" }}>{error() || " "}</p>
+				{/* Reserved line: an error — or the armed delete's blast-radius
+				    report — appearing must not shove the buttons. The armed plan
+				    wins while armed: its report is what the next click acts on. */}
+				<p class="fb-msg" classList={{ show: armed() !== null || error() !== "" }}>
+					{armed()?.message ?? (error() || " ")}
+				</p>
 				<div class="compose-row">
 					<button class="fb-act ok" onClick={save}>{props.cardId === null ? "Create card" : "Save card"}</button>
 					<button class="fb-act" onClick={props.onClose}>Cancel</button>
+					<Show when={props.cardId !== null}>
+						<button
+							ref={deleteBtn}
+							class="fb-act danger studio-delete"
+							classList={{ armed: armed() !== null }}
+							onClick={deleteCard}
+						>
+							{armed() !== null ? "Confirm delete" : "Delete card"}
+						</button>
+					</Show>
 				</div>
 			</div>
 		</div>

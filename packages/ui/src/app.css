@@ -3000,6 +3000,8 @@
    codes, nothing sendable from a preview. */
 .studio-preview { display: flex; flex-direction: column; gap: 6px; position: sticky; top: 0; }
 .studio-preview-card { pointer-events: none; min-height: 120px; }
+/* Delete stands apart from Save/Cancel — a miss on Save must not land on it. */
+.studio-delete { margin-left: auto; }
 
 /* ---------- import review (B3) ---------- */
 .import-dialog { width: min(640px, 94vw); }
