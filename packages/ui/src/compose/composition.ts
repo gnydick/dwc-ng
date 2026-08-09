@@ -74,6 +74,12 @@ export function customCardIds(config: UiConfig): CustomCardId[] {
 	return Object.keys(config.cards).filter(isCustomCardId);
 }
 
+/** A slot id that can no longer render: a custom card whose definition is
+ *  gone. Registry ids never orphan — the registry is code. */
+export function isOrphanSlot(id: SlotId, config: UiConfig): boolean {
+	return isCustomCardId(id) && !Object.hasOwn(config.cards, id);
+}
+
 /** I2: keyed by SlotId — duplicates unrepresentable. Slots are Readonly so
  *  a built-in composition literal cannot be mutated at runtime (I12) —
  *  layout changes go through the canvas/overlay, never the code defaults. */

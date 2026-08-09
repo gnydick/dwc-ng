@@ -11,7 +11,7 @@
  * carried before the conversion. User screens (overlay entries with minted
  * stable ids) join this list in phase A7b.
  */
-import { parseComposition, slotsOf, toSlotRect, type Composition } from "./composition.ts";
+import { parseComposition, slotsOf, toSlotRect, type Composition, type CustomCardId } from "./composition.ts";
 import { canvasStorageKey, readCanvasOrientation, readCanvasState, writeCanvasState } from "../shell/panelCanvas.ts";
 import type { OrientationState } from "../shell/panelOrientation.ts";
 import { LAB_ROUTE } from "../shell/router.ts";
@@ -342,4 +342,72 @@ export function captureScreenGeometry(store: LayoutStore): void {
 		}
 		store.replaceAllScreenCards(entry.id, cards);
 	}
+}
+
+/** One screen that still shows a given custom card — a line of the delete
+ *  plan's blast radius. */
+export interface ScreenUse {
+	id: string;
+	name: string;
+	/** Hidden built-ins are reported too: the card is still placed on them,
+	 *  and unhiding the screen would bring it back. */
+	hidden: boolean;
+}
+
+/**
+ * Every screen whose composition contains `cardId`. Built-ins are checked via
+ * their layouts overlay ONLY: a built-in's default composition can never name
+ * a custom card (the registry and the "c-" namespace are disjoint by
+ * construction — see compose/defs.ts registered-card-ids). `screenList()` is
+ * deliberately not reused — it filters hidden screens out, which is exactly
+ * wrong here.
+ */
+export function screensUsing(config: UiConfig, cardId: CustomCardId): ScreenUse[] {
+	const uses: ScreenUse[] = [];
+	const screens = config.screens;
+	for (const [id, def] of Object.entries(BUILTIN_SCREENS) as Array<[BuiltinScreenId, ScreenDef]>) {
+		const override = screens.layouts[id];
+		if (override !== undefined && Object.hasOwn(override, cardId)) {
+			uses.push({ id, name: screens.renames[id] ?? def.name, hidden: screens.hidden.includes(id) });
+		}
+	}
+	for (const [id, c] of Object.entries(screens.custom)) {
+		if (Object.hasOwn(c.cards, cardId)) uses.push({ id, name: c.name, hidden: false });
+	}
+	return uses;
+}
+
+/**
+ * A checked intent to delete a custom card, carrying what would be lost —
+ * the compose twin of files/browser.ts's RemovePlan.
+ *
+ * @invariant card-delete-carries-its-blast-radius
+ * @rung 7  sole-constructor type — the armed confirm holds a CardDeletePlan,
+ *          and `planCardDelete` is its only producer, deriving the screens the
+ *          card is on AND the message shown from the same id in one pass. The
+ *          confirm deletes `plan.id`, so the report the operator read and the
+ *          deletion performed cannot disagree
+ * @why a delete that removes a card from every screen at once is exactly the
+ *      action whose scope the operator must see before confirming — "delete
+ *      this card?" cannot precede stripping it from screens they forgot it
+ *      was on. The plan freezes usage at arm time; the studio is modal over
+ *      composition edits, so the frozen report cannot go stale between the
+ *      two clicks
+ */
+export interface CardDeletePlan {
+	readonly id: CustomCardId;
+	readonly uses: readonly ScreenUse[];
+	/** The armed line's text — built here, beside the uses it describes. */
+	readonly message: string;
+	readonly __plan: unique symbol;
+}
+
+export function planCardDelete(config: UiConfig, id: CustomCardId): CardDeletePlan {
+	const uses: readonly ScreenUse[] = screensUsing(config, id);
+	const names = uses.map(u => (u.hidden ? `${u.name} (hidden)` : u.name)).join(", ");
+	const message = uses.length === 0
+		? "Not on any screen."
+		: `On screens: ${names} — confirm to remove it from all of them.`;
+	// The brand exists only in the type system; nothing reads it.
+	return { id, uses, message } as CardDeletePlan;
 }
