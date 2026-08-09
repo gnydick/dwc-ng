@@ -75,9 +75,14 @@ export function customCardIds(config: UiConfig): CustomCardId[] {
 }
 
 /** A slot id that can no longer render: a custom card whose definition is
- *  gone. Registry ids never orphan — the registry is code. */
+ *  gone. Registry ids never orphan — the registry is code.
+ *
+ *  A property READ, not Object.hasOwn: hasOwn goes through the proxy's
+ *  getOwnPropertyDescriptor trap, which Solid does not track, so an effect
+ *  watching for the orphan would never re-run when the card is deleted.
+ *  Found live: the lab's featured-card fallback sat inert on exactly that. */
 export function isOrphanSlot(id: SlotId, config: UiConfig): boolean {
-	return isCustomCardId(id) && !Object.hasOwn(config.cards, id);
+	return isCustomCardId(id) && config.cards[id] === undefined;
 }
 
 /** I2: keyed by SlotId — duplicates unrepresentable. Slots are Readonly so
