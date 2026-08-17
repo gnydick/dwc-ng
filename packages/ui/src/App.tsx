@@ -1,6 +1,7 @@
 import { createEffect, onCleanup, onMount } from "solid-js";
 import { createOmStore } from "./om/store.ts";
 import { createConfigStore } from "./config/store.ts";
+import { DEFAULT_THERMAL_COLORS } from "./config/types.ts";
 import { createTemperatureHistory } from "./om/temperature.ts";
 import { createConnector } from "@dwc-ng/connector";
 import { writesArmed, type Backend } from "./dev/backend.ts";
@@ -36,16 +37,32 @@ export default function App(props: { backend: Backend }) {
 
 	// The thermal ramp is spent by ~30 CSS rules (.t-cold/.t-warm/.t-hot and
 	// everything keyed off them), so the overlay drives the three custom
-	// properties rather than any rule. One write per change, no component
-	// needs to know a colour is configurable, and dropping the overlay
-	// restores index.css's own values because the effect re-runs with
-	// DEFAULT_THERMAL_COLORS.
+	// properties rather than any rule. One write per change, and no component
+	// needs to know a colour is configurable.
+	//
+	// A channel still at its shipped value is REMOVED rather than written, so
+	// the stylesheet supplies it. An inline style beats every rule, so writing
+	// all three unconditionally made index.css's declarations dead: a ground
+	// that wanted its own ramp — the light one in the dev palette lab, where the
+	// dark-ground amber measures 2.0:1 on a white card — could declare it and
+	// silently lose. The default now lives in exactly one place, which is the
+	// same rule data-pitch and data-ground already follow: the default is the
+	// ABSENCE of an override, never a copy of it.
+	//
+	// Compared against DEFAULT_THERMAL_COLORS rather than against the overlay,
+	// which is module-private to the config store. The one case the two disagree
+	// is an operator who explicitly picks a colour identical to the shipped one:
+	// that reads as "not overridden" and they get the ground's ramp. On the
+	// shipped ground those are the same colour, so it is invisible there.
 	createEffect(() => {
-		const { cold, warm, hot } = config.config.thermalColors;
+		const colors = config.config.thermalColors;
 		const root = document.documentElement.style;
-		root.setProperty("--t-cold", cold);
-		root.setProperty("--t-warm", warm);
-		root.setProperty("--t-hot", hot);
+		for (const channel of ["cold", "warm", "hot"] as const) {
+			const property = `--t-${channel}`;
+			const value = colors[channel];
+			if (value === DEFAULT_THERMAL_COLORS[channel]) root.removeProperty(property);
+			else root.setProperty(property, value);
+		}
 	});
 
 	onMount(() => {

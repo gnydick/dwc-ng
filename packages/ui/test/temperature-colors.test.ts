@@ -126,10 +126,14 @@ test("DEFAULT_CONFIG customises no heater and ships the full ramp", () => {
 });
 
 /**
- * index.css declares --t-cold/--t-warm/--t-hot for the first paint; App.tsx
- * overwrites them from config.thermalColors once the store exists. If the two
- * disagree, the UI visibly shifts colour a frame after boot for a user who has
- * customised nothing.
+ * index.css declares --t-cold/--t-warm/--t-hot, and IS the default — App.tsx
+ * writes an inline property only for a channel the operator has changed.
+ *
+ * The constant is what App.tsx compares against to decide "changed". If the two
+ * drift, a channel sitting at its shipped value no longer matches the constant,
+ * so it gets written inline forever — and an inline style beats every rule, so
+ * no ground could supply its own ramp again. That is the failure this pins now;
+ * the original one (a visible colour shift a frame after boot) still applies.
  */
 test("index.css and DEFAULT_THERMAL_COLORS declare the same ramp", () => {
 	const css = readFileSync(fileURLToPath(new URL("../src/index.css", import.meta.url)), "utf8");
@@ -141,4 +145,28 @@ test("index.css and DEFAULT_THERMAL_COLORS declare the same ramp", () => {
 			`--t-${channel} in index.css must match DEFAULT_THERMAL_COLORS`,
 		);
 	}
+});
+
+/**
+ * The ramp must be REMOVABLE, not merely writable.
+ *
+ * App.tsx clears a channel's inline property when it equals the shipped value,
+ * which is the whole mechanism that lets a ground own the default. A version
+ * that only ever called setProperty would pass every other test here and still
+ * leave the light ground's ramp dead, because an inline style always wins.
+ *
+ * Asserted against the source rather than a rendered document: the effect needs
+ * a live Solid root and a real <html>, and what can silently regress is the
+ * branch, not the plumbing.
+ */
+test("App.tsx removes a thermal channel it does not override", () => {
+	const app = readFileSync(fileURLToPath(new URL("../src/App.tsx", import.meta.url)), "utf8");
+	assert.match(
+		app, /removeProperty\(/,
+		"App.tsx never removes a thermal property, so a ground can never supply the ramp",
+	);
+	assert.match(
+		app, /=== DEFAULT_THERMAL_COLORS\[/,
+		"App.tsx should decide 'overridden' by comparing against DEFAULT_THERMAL_COLORS",
+	);
 });

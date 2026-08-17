@@ -65,11 +65,22 @@
 	   row of Act/Stand/Off reads as three peers. Moved off #C45FA0 with the
 	   ground: that magenta was mixed for a blue surface. */
 	--magenta: #a97fd6;
-	/* The thermal ramp. These three are USER-CONFIGURABLE: App.tsx writes them
-	   onto documentElement from config.thermalColors on every change. The
-	   values here must stay identical to DEFAULT_THERMAL_COLORS in
-	   config/types.ts — a test asserts it, because a mismatch would make the
-	   first paint differ from the state after the overlay loads. */
+	/* The thermal ramp. These three are USER-CONFIGURABLE, and THESE ARE THE
+	   DEFAULT — not a copy of it. App.tsx writes an inline property only for a
+	   channel the operator has actually changed, and removes it when they change
+	   it back, so an untouched channel is served from here and from nowhere else.
+
+	   That is what lets a ground carry its own ramp: the dev palette lab's light
+	   ground declares one, and before the inline write became conditional it
+	   declared it and silently lost to an inline style.
+
+	   The values here must stay identical to DEFAULT_THERMAL_COLORS in
+	   config/types.ts — a test asserts it. It mattered before because a mismatch
+	   made the first paint differ from the state after the overlay loaded; it
+	   matters more now, because that constant is what App.tsx compares against to
+	   decide whether a channel is overridden at all. If the two drift, a channel
+	   at its shipped value would be written inline forever and no ground could
+	   ever supply a ramp. */
 	--t-cold: #6e8ca8;
 	--t-warm: #e0a458;
 	--t-hot: #ef7b45;
