@@ -134,7 +134,7 @@ export function createSurface3D(
 	dotMaterial.specularColor = new Color3(0, 0, 0);
 	dotMaterial.disableLighting = true;
 
-	// The selected point, drawn as a slightly larger copper sphere — the same
+	// The selected point, drawn as a slightly larger sphere in the accent — the same
 	// "this one" accent the rest of the UI uses.
 	const highlightMaterial = new StandardMaterial("probeSelected", scene);
 	highlightMaterial.emissiveColor = new Color3(0.85, 0.52, 0.23);

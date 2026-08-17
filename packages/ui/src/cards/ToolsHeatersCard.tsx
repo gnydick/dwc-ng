@@ -397,7 +397,6 @@ function HeaterCells(props: { heater: Heater; index: number; kind: "tool" | "bed
 					</Show>
 					<GcodeButton
 						label="Off"
-						variant="danger"
 						class="mode-key heat-off"
 						atTarget
 						stamp={false}
@@ -454,7 +453,6 @@ function HeaterActions(props: {
 			</Show>
 			<GcodeButton
 				label="Off"
-				variant="danger"
 				class="mode-key heat-off"
 						atTarget
 				stamp={false}

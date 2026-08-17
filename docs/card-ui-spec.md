@@ -277,7 +277,7 @@ Palette below is this project's; substitute your own, but keep the rules.
 | `--silk` | `#e9eef4` | primary text |
 | `--silk-dim` | `#8fa3b8` | secondary text |
 | `--hairline` | `rgba(233,238,244,0.09)` | dividers |
-| `--copper-bright` | `#f0a050` | focus, selection, active handle |
+| `--accent-bright` | `#f0a050` | focus, selection, active handle |
 | `--ok` | `#6fbf8f` | success / go |
 | `--fault` | `#e05c4a` | failure / destructive |
 

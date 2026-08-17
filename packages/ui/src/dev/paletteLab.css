@@ -1,0 +1,230 @@
+/**
+ * Palette lab — DEV ONLY. Reached solely by the dynamic import in
+ * dev/paletteLab.ts, which main.tsx calls behind import.meta.env.DEV, so
+ * neither this file nor its module reaches a board build.
+ *
+ * Two independent axes, each one attribute on <html>:
+ *
+ *   data-ground  which set of chrome tokens the UI is painted with
+ *   data-keys    how the heater mode keys spend colour
+ *
+ * The DEFAULT of each axis is the ABSENCE of an override, exactly as
+ * shell/density.ts does with data-pitch: with no attribute the UI renders
+ * byte-identically to main, so "current" can never be a stale copy of the
+ * shipped values.
+ *
+ * Selectors are anchored on :root so they outrank app.css by SPECIFICITY
+ * rather than by load order — dev CSS is injected by JS and where it lands in
+ * the cascade is not something to depend on.
+ *
+ * NOT SET HERE: --t-cold / --t-warm / --t-hot. App.tsx writes those onto
+ * documentElement as INLINE styles from config.thermalColors, and an inline
+ * style beats any stylesheet rule. The ramp belongs to the operator; a ground
+ * that tried to own it would silently lose, which is worse than not trying.
+ * To try a different ramp, use Settings → thermal colours — the real control.
+ */
+
+/* ---------- navy - the previous shipped ground ("solder mask & silkscreen") ----------
+   Kept so the palette that shipped until 2026-08-17 stays one click away for
+   comparison. These are its exact values, which is why they live HERE and not
+   in index.css: the default ground is the absence of an attribute, so anodize
+   is written down once and navy cannot masquerade as it. */
+:root[data-ground="navy"] {
+	--mask-900: #0b1626;
+	--mask-700: #122238;
+	--mask-500: #1b3350;
+	--silk: #e9eef4;
+	--silk-dim: #8fa3b8;
+	--hairline: rgba(233, 238, 244, 0.09);
+	--accent: #d9853b;
+	--accent-bright: #f0a050;
+	--ok: #6fbf8f;
+	--fault: #e05c4a;
+	--gold: #c9a227;
+	--magenta: #c45fa0;
+	--face-hi: #24405f;
+	--face-lo: #1b3350;
+	--face-hi-hover: #2b4a6d;
+	--face-lo-hover: #203a5c;
+	--face-hi-fail: #3a2430;
+	--face-lo-fail: #2b1b26;
+}
+
+/* ---------- green · the other real mask colour ---------- */
+:root[data-ground="green"] {
+	--mask-900: #0d1410;
+	--mask-700: #15211a;
+	--mask-500: #1f2f26;
+	--silk: #e9ece6;
+	--silk-dim: #8a9a8d;
+	--hairline: rgba(233, 236, 230, 0.10);
+	--accent: #e08a3c;
+	--accent-bright: #ffa85c;
+	--ok: #45c9b4;
+	--fault: #e8574a;
+	--gold: #d8c65f;
+	--magenta: #b98ad8;
+	--face-hi: #27392e;
+	--face-lo: #1b2a21;
+	--face-hi-hover: #2f4638;
+	--face-lo-hover: #223429;
+	--face-hi-fail: #33241f;
+	--face-lo-fail: #261b18;
+}
+
+/* ---------- instrument · no chromatic accent; warn and fault only ---------- */
+:root[data-ground="instrument"] {
+	--mask-900: #141619;
+	--mask-700: #1c1f24;
+	--mask-500: #282c33;
+	--silk: #eceef1;
+	--silk-dim: #868c95;
+	--hairline: rgba(236, 238, 241, 0.10);
+	/* The accent has to survive BOTH a 26 px key and a full-width progress bar.
+	   At #cfd4da/#ffffff the keys looked right and .progress-fill became a
+	   1200 px block of near-white — the loudest thing on a screen whose whole
+	   point is that nothing is loud. Pulled down to a mid neutral: the bar
+	   reads as a filled track, and the engaged fill is still plainly lit
+	   against a graphite ground. */
+	--accent: #8f959d;
+	--accent-bright: #c9ced5;
+	--ok: #9aa3ad;
+	--fault: #e2574a;
+	--gold: #c9a227;
+	--magenta: #9aa3ad;
+	--face-hi: #33383f;
+	--face-lo: #272b31;
+	--face-hi-hover: #3d434b;
+	--face-lo-hover: #31363d;
+	--face-hi-fail: #3a2a28;
+	--face-lo-fail: #2b201f;
+}
+
+/* ---------- vellum · light ----------
+   INCOMPLETE ON PURPOSE. The chart series (om/heaterSeries.ts) is solved at
+   L 76 for a dark ground and sits near 1.8:1 on a white card, so the
+   temperature chart is not judgeable here. This ground exists to look at the
+   chrome in a bright shop, not to be shipped. */
+:root[data-ground="vellum"] {
+	/* Dropped a step from the first cut (page E8ECF2 / card FFFFFF). Pure white
+	   is a lamp on a shop screen, and the page had so little separation from it
+	   that cards floated. Chosen against the contrast floor rather than by eye:
+	   this is the darkest step where the accent still clears 4.5:1 on a card.
+	   One step further and A85C17 drops under it. */
+	--mask-900: #dee5ee;
+	--mask-700: #f2f5f9;
+	--mask-500: #cfd8e3;
+	--silk: #16202e;
+	--silk-dim: #5a6b80;
+	--hairline: rgba(22, 32, 46, 0.16);
+	--accent: #a85c17;
+	--accent-bright: #8a4a10;
+	--ok: #1c7a4d;
+	--fault: #b3271a;
+	--gold: #8a6a00;
+	--magenta: #9b3d76;
+	/* Light ground: the face is LIGHTER than the card, and the gradient runs
+	   the other way, because a raised thing catches light from above. */
+	--face-hi: #fbfcfe;
+	--face-lo: #e4eaf3;
+	--face-hi-hover: #ffffff;
+	--face-lo-hover: #d8e1ec;
+	--face-hi-fail: #f8e2e0;
+	--face-lo-fail: #eecfcb;
+}
+/* On a light ground the "bright" accent is DARKER, so anything painting
+   ground-coloured text on it needs the ground colour rather than white. */
+:root[data-ground="vellum"] .gcode-btn.is-engaged .gcode-label,
+:root[data-ground="vellum"] .mode-key.is-engaged .gcode-label {
+	color: var(--mask-900);
+}
+
+/* ============================================================
+   data-keys — how the three heater mode keys spend colour.
+
+   absent = SHIPPED: rest is neutral, and hue appears only where something is
+            happening — armed, engaged, arrival. See app.css.
+   "hued" = what shipped until 2026-08-17: every key wore its own colour at all
+            times, so four tools showed twelve lit buttons with the machine
+            idle, and ARMED was only an alpha step against that.
+
+   Kept as a toggle rather than deleted because the rest hue was doing one real
+   job — telling the three keys apart at a glance — and whether the label and
+   the fixed column carry that on their own is a judgement to make at the
+   machine, not from a screenshot.
+
+   The armed rung MUST stay visibly distinct either way. control/setpointCommit.ts
+   allows the emitted G-code to depend on `armed` only while the key displays
+   which of the two commands it will send. That requires a DISPLAY, not a hue —
+   weight satisfies it. Note the last rule below: restoring the hued rest also
+   removes the 2 px armed shadow, because the two are one design, and half of
+   each would leave armed reading as rest.
+   ============================================================ */
+:root[data-keys="hued"] .mode-key.heat-active:not(.is-engaged):not(.is-applied) { border-color: rgba(111, 191, 143, 0.35); }
+:root[data-keys="hued"] .mode-key.heat-active:not(.is-engaged):not(.is-applied) .gcode-label { color: rgba(111, 191, 143, 0.75); }
+:root[data-keys="hued"] .mode-key.heat-standby:not(.is-engaged):not(.is-applied) { border-color: rgba(201, 162, 39, 0.35); }
+:root[data-keys="hued"] .mode-key.heat-standby:not(.is-engaged):not(.is-applied) .gcode-label { color: rgba(201, 162, 39, 0.8); }
+:root[data-keys="hued"] .mode-key.heat-off:not(.is-engaged):not(.is-applied) { border-color: rgba(196, 95, 160, 0.35); }
+:root[data-keys="hued"] .mode-key.heat-off:not(.is-engaged):not(.is-applied) .gcode-label { color: rgba(196, 95, 160, 0.7); }
+:root[data-keys="hued"] .mode-key.is-applied:not(.is-engaged) { box-shadow: none; }
+
+/* ---------- the switcher ---------- */
+.plab {
+	position: fixed;
+	left: 10px;
+	bottom: 10px;
+	z-index: 9000;
+	display: flex;
+	flex-direction: column;
+	gap: 7px;
+	padding: 10px 12px 10px 10px;
+	border-radius: 6px;
+	border: 1px solid var(--hairline);
+	background: var(--mask-700);
+	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+	font-family: var(--font-display);
+}
+.plab-row { display: flex; align-items: center; gap: 5px; }
+.plab-lab {
+	font: 700 9px/1 var(--font-display);
+	text-transform: uppercase;
+	letter-spacing: 0.14em;
+	color: var(--silk-dim);
+	width: 44px;
+	flex: none;
+}
+.plab button {
+	appearance: none;
+	border: 1px solid var(--hairline);
+	border-radius: 3px;
+	background: transparent;
+	color: var(--silk-dim);
+	cursor: pointer;
+	font: 700 9.5px/1 var(--font-display);
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
+	padding: 6px 8px;
+}
+.plab button[aria-pressed="true"] {
+	color: var(--mask-900);
+	background: var(--accent-bright);
+	border-color: var(--accent-bright);
+}
+.plab button:focus-visible { outline: 2px solid var(--accent-bright); outline-offset: 1px; }
+.plab-foot {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 10px;
+	font: 700 8.5px/1 var(--font-display);
+	letter-spacing: 0.16em;
+	text-transform: uppercase;
+	color: var(--silk-dim);
+	opacity: 0.75;
+}
+/* Collapsed: a single corner tab, so the panel can sit on screen all session
+   without covering a card you are trying to read. */
+.plab.is-min { padding: 0; border-color: transparent; background: transparent; box-shadow: none; }
+.plab.is-min .plab-row, .plab.is-min .plab-foot { display: none; }
+.plab.is-min .plab-open { display: block; }
+.plab-open { display: none; }

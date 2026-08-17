@@ -39,6 +39,21 @@ const root = document.getElementById('app')!
 // would show one frame at the default spacing and then reflow the whole page.
 applyStoredPitch()
 
+// Palette lab (dev-only): repaints the chrome from a floating switcher so a
+// palette can be judged against real machine data. Same before-first-paint
+// reasoning as applyStoredPitch above — it sets attributes that drive CSS
+// custom properties, so applying it later would show one frame of the shipped
+// palette and then repaint.
+//
+// Dynamic, inside the guard, on purpose: Vite substitutes import.meta.env.DEV
+// to false for a board build and Rollup then drops this branch, so neither the
+// module nor its stylesheet reaches the bundle the printer serves. A static
+// import would ship both.
+if (import.meta.env.DEV) {
+  const { startPaletteLab } = await import('./dev/paletteLab.ts')
+  startPaletteLab()
+}
+
 // The dialect has to be known BEFORE App runs: the connector is constructed in
 // App's body and a session may never re-point it (C14), so there is no "detect
 // later and switch" — that is exactly the half-switched state the design

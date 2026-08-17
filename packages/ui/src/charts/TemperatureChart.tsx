@@ -2,6 +2,7 @@ import uPlot from "uplot";
 import "uplot/dist/uPlot.min.css";
 import { createEffect, on, onCleanup, onMount } from "solid-js";
 import type { AlignedData } from "../om/temperature.ts";
+import { token, tokenAlpha } from "./themeColors.ts";
 
 export interface ChartSeries {
 	label: string;
@@ -20,9 +21,11 @@ export function TemperatureChart(props: { data: () => AlignedData; series: Chart
 	let legendEl!: HTMLDivElement;
 	let plot: uPlot | undefined;
 
-	// Theme-matched axis/grid (uPlot needs concrete colors, not CSS vars).
-	const AXIS = "#8fa3b8"; // --silk-dim
-	const GRID = "rgba(143,163,184,0.10)";
+	// Theme-matched axis/grid. uPlot needs concrete colors, not CSS vars, so the
+	// tokens are READ rather than copied — see charts/themeColors.ts for why the
+	// copies these replaced had gone stale.
+	const AXIS = token("--silk-dim", "#8a9099");
+	const GRID = tokenAlpha("--silk-dim", 0.1, "#8a9099");
 	/**
 	 * The plot fills its host, so the DATA AREA grows with the card instead of
 	 * sitting at a fixed 220px with dead space beneath it. Callers may still pin

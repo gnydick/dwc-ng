@@ -89,6 +89,7 @@ test("line and page deltas become pixels", () => {
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 const appCss = readFileSync(fileURLToPath(new URL("../src/app.css", import.meta.url)), "utf8");
+const indexCss = readFileSync(fileURLToPath(new URL("../src/index.css", import.meta.url)), "utf8");
 
 test("the hover ghost is sized by the same --edge-w the handler sets", () => {
 	const rule = /\[data-edge-scroll\]\s*\{([^}]*)\}/.exec(appCss);
@@ -105,20 +106,36 @@ test("the hover ghost is sized by the same --edge-w the handler sets", () => {
 
 /**
  * The strips and .panel-scroll-nub are both scroll affordances revealed on
- * hover, so they must read as ONE cue. Copper in this app means state and
- * controls; a copper scroll hint beside a blue one says they are different
- * things when they are not.
+ * hover, so they must read as ONE cue. A scroll hint in one colour beside a
+ * scroll hint in another says they are different things when they are not.
+ *
+ * The expected colour is DERIVED from index.css rather than written here.
+ * These two cues used to be pinned to a literal #5AA9E6 (--accent-blue, since
+ * folded into --accent-bright), and when the ground moved from navy to anodize
+ * this test was asserting a colour the palette no longer contained — it failed
+ * for the right reason but named the wrong one. Deriving means the test pins
+ * the COUPLING, which is the actual invariant, and a future palette change
+ * cannot make it stale.
  */
-test("the ghost wears the same blue as the other scroll cue", () => {
+test("both scroll cues wear the same colour", () => {
+	const accent = /--accent-bright:\s*#([0-9a-f]{6})\s*;/i.exec(indexCss);
+	assert.ok(accent, "index.css has no --accent-bright to derive the cue colour from");
+	const n = parseInt(accent[1]!, 16);
+	const [r, g, b] = [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+
 	const nub = /\.panel-scroll-nub\.up\s*\{([^}]*)\}/.exec(appCss);
 	assert.ok(nub, "no .panel-scroll-nub.up rule");
-	assert.match(nub[1]!, /var\(--accent-blue\)/, "the nub is expected to use --accent-blue");
+	assert.match(nub[1]!, /var\(--accent-bright\)/, "the nub should take the accent from the token");
 
+	// The gradient needs rgba() to carry an animating alpha, so it restates the
+	// channels — the one place a token value is copied. Pinned to the token's
+	// own value so the copy cannot drift away from it.
 	const ghost = /\[data-edge-scroll\]\s*\{([^}]*)\}/.exec(appCss)![1]!;
-	// --accent-blue is #5aa9e6; the gradient needs rgba() to carry the alpha, so
-	// it restates the channels. Pinned so the two cannot drift to different blues.
-	assert.match(ghost, /rgba\(90,\s*169,\s*230,/, "the ghost is not --accent-blue's rgb");
-	assert.doesNotMatch(ghost, /rgba\(217,\s*133,\s*59/, "copper is for state, not for scroll hints");
+	assert.match(
+		ghost,
+		new RegExp(`rgba\\(\\s*${r},\\s*${g},\\s*${b},`),
+		`the ghost's channels are not --accent-bright (#${accent[1]} = ${r}, ${g}, ${b})`,
+	);
 });
 
 /**

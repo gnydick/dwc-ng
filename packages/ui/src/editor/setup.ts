@@ -49,8 +49,8 @@ const theme = EditorView.theme(
 			lineHeight: "1.55",
 		},
 		"&.cm-focused": { outline: "none" },
-		".cm-content": { caretColor: "var(--copper-bright)" },
-		".cm-cursor, .cm-dropCursor": { borderLeftColor: "var(--copper-bright)" },
+		".cm-content": { caretColor: "var(--accent-bright)" },
+		".cm-cursor, .cm-dropCursor": { borderLeftColor: "var(--accent-bright)" },
 		"&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection": {
 			backgroundColor: "rgba(217, 133, 59, 0.22)",
 		},
@@ -72,7 +72,7 @@ const theme = EditorView.theme(
 const highlight = HighlightStyle.define([
 	{ tag: t.comment, color: "var(--silk-dim)", fontStyle: "italic" },
 	{ tag: t.number, color: "#7fb2ff" },
-	{ tag: [t.keyword, t.operatorKeyword], color: "var(--copper-bright)", fontWeight: "600" },
+	{ tag: [t.keyword, t.operatorKeyword], color: "var(--accent-bright)", fontWeight: "600" },
 	{ tag: [t.string, t.special(t.string)], color: "#6fbf8f" },
 	{ tag: [t.propertyName], color: "#9ecbff" },
 	{ tag: [t.bool, t.null], color: "var(--gold)" },

@@ -163,11 +163,11 @@ export function ComposedScreen(props: { screenId: string }) {
  * An artist's palette, drawn rather than borrowed.
  *
  * Inline SVG and not an emoji: 🎨 renders in whatever colour and shape the
- * platform's font decides, which is the one thing a UI built on solder-mask
- * navy and copper cannot have — and it would be the only glyph in the rail we
- * did not control. currentColor throughout, so it inherits the same
- * dim → silk → copper treatment as every other rail control and needs no
- * separate hover rule.
+ * platform's font decides, which is the one thing a UI with a deliberate,
+ * re-groundable palette cannot have — and it would be the only glyph in the
+ * rail we did not control. currentColor throughout, so it inherits the same
+ * dim → silk → accent treatment as every other rail control, needs no separate
+ * hover rule, and followed the palette from navy to anodize without an edit.
  *
  * Dabs at FULL currentColor, all four. They were drawn at descending opacity
  * first, on the theory that a rarely-used control should stay quiet; magnified

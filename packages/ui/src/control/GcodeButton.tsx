@@ -64,7 +64,7 @@ export function GcodeButton(props: {
 	ariaLabel?: string;
 	/**
 	 * There is an edit sitting in this button's field that has not been sent.
-	 * Lights the ack dot in copper and pulses it — the same fixed-size dot the
+	 * Lights the ack dot in the accent and pulses it — the same fixed-size dot the
 	 * send states use, so signalling "unapplied" cannot change the button's box.
 	 */
 	pending?: boolean;
@@ -88,11 +88,11 @@ export function GcodeButton(props: {
 	applied?: boolean;
 	/**
 	 * This press leaves the machine SHORT of what the key stands for, so its
-	 * acknowledgement flashes copper instead of green.
+	 * acknowledgement flashes the accent instead of green.
 	 *
 	 * The flash reports the state you end up in, not which command went out. On
 	 * a heater's mode key the first press only stores the target — the tool is
-	 * still not in that mode — so copper, the same colour the pending dot uses
+	 * still not in that mode — so the accent, the same colour the pending dot uses
 	 * for "there is more to do here". The press that actually switches the mode
 	 * gets the green one, because after it there is nothing left.
 	 */

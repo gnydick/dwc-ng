@@ -1,4 +1,4 @@
-/* dwc-ng base — "solder mask & silkscreen" tokens (design/README.md) */
+/* dwc-ng base — "hard anodize" tokens (design/README.md) */
 
 @font-face {
 	font-family: "Rajdhani";
@@ -16,23 +16,55 @@
 }
 
 :root {
-	--mask-900: #0b1626;
-	--mask-700: #122238;
-	--mask-500: #1b3350;
-	--silk: #e9eef4;
-	--silk-dim: #8fa3b8;
-	--hairline: rgba(233, 238, 244, 0.09);
-	--copper: #d9853b;
-	--copper-bright: #f0a050;
-	--ok: #6fbf8f;
-	--fault: #e05c4a;
+	/* ---------- ground: hard anodize ----------
+	   Replaces the navy "solder mask" ground (2026-08-17). The move was not
+	   about taste: on the old palette SIX tokens sat inside a 39° hue arc at
+	   47–63% lightness, so --accent (28°) and --t-warm (34°) were 6° apart —
+	   the colour meaning "you may press this" and the colour meaning "this is
+	   heating up" were the same colour. Measuring with the project's own
+	   deltaE (util/colorDistance.ts) found 20 pairs under its own
+	   MIN_SEPARATION of 25, across the chrome, the operator's thermal ramp and
+	   the chart series.
+
+	   The ramp owns the warm arc and is the OPERATOR'S (thermalColors), so it
+	   cannot be moved to fix a collision — a palette separated by luck is not
+	   separated. The accent moves instead, 28° → 188°, which puts 152° between
+	   it and the whole warm arc. Nothing warm on screen is interactive, and
+	   nothing cyan is thermal.
+
+	   The ground is neutral graphite rather than blue, which is what makes the
+	   thermal ramp legible without touching it: --silk-dim is 7% saturated
+	   here, so --t-cold (209°, 25%) separates from it by CHROMA at the same
+	   lightness. On a blue ground the two were 2° apart and a cold reading
+	   looked like a disabled label.
+
+	   Navy is still one click away in the palette lab (dev only). */
+	--mask-900: #15171b;
+	--mask-700: #1e2128;
+	--mask-500: #2a2e37;
+	--silk: #e8eaee;
+	--silk-dim: #8a9099;
+	--hairline: rgba(232, 234, 238, 0.10);
+	/* Was --copper (and --copper-bright) until the ground changed. The name had
+	   stopped describing the value, and a token whose name says one colour while
+	   it holds another is a trap for the next person mixing a palette. --accent
+	   says what the token is FOR, which is the property that survives a
+	   re-ground: the ground can change again and this name will still be true. */
+	--accent: #2fc4d4;
+	--accent-bright: #5ce0ee;
+	--ok: #57c07a;
+	/* Nudged up from #e2574a, which measured 4.37:1 on a --mask-700 card and
+	   was the only token under 4.5 on the new ground. The alarm colour is the
+	   last one that may be hard to read. */
+	--fault: #e5645a;
 	--gold: #c9a227;
 	/* OFF, as a state rather than an alarm. --fault is for a heater that has
 	   gone wrong; a heater deliberately switched off is not a fault and should
-	   not wear the same red. Pitched to sit with copper and gold rather than
-	   against them: same mid lightness, same restrained saturation, so a row of
-	   Act/Stand/Off reads as three peers. */
-	--magenta: #c45fa0;
+	   not wear the same red. Pitched to sit with the accent and gold rather
+	   than against them: same mid lightness, same restrained saturation, so a
+	   row of Act/Stand/Off reads as three peers. Moved off #C45FA0 with the
+	   ground: that magenta was mixed for a blue surface. */
+	--magenta: #a97fd6;
 	/* The thermal ramp. These three are USER-CONFIGURABLE: App.tsx writes them
 	   onto documentElement from config.thermalColors on every change. The
 	   values here must stay identical to DEFAULT_THERMAL_COLORS in
@@ -41,7 +73,29 @@
 	--t-cold: #6e8ca8;
 	--t-warm: #e0a458;
 	--t-hot: #ef7b45;
-	--accent-blue: #5aa9e6;
+
+	/* ---------- raised faces ----------
+	   The gradient a pressable control is cut from. These were six literal hex
+	   values living in app.css, which made the button face the ONE large
+	   surface in the UI that no palette could reach: every token above could
+	   change and the buttons stayed navy, so a new ground read as two designs
+	   fighting rather than as one palette.
+
+	   Extracted from app.css unchanged first (that step was a move, not a
+	   restyle), then re-mixed for the anodize ground in the same pass. Kept as
+	   literal pairs rather than derived from --mask-*: the face is deliberately
+	   lighter than the card it sits on AND deliberately not a tint of it, and a
+	   derivation would quietly change that relationship for any ground whose
+	   surfaces are not blue.
+
+	   The failed pair is a desaturated maroon rather than --fault, because it
+	   is a GROUND behind a red border, not an alarm colour itself. */
+	--face-hi: #313640;        /* top of a resting control */
+	--face-lo: #262a32;        /* bottom of a resting control */
+	--face-hi-hover: #3b414d;
+	--face-lo-hover: #2f343d;
+	--face-hi-fail: #3a2a28;
+	--face-lo-fail: #2b201f;
 	--font-display: "Rajdhani", "Segoe UI", system-ui, sans-serif;
 	--font-body: system-ui, "Segoe UI", Roboto, sans-serif;
 	/* Added to EVERY font-size in the app, which is why every one of them is a
@@ -190,7 +244,7 @@ button {
 }
 
 :focus-visible {
-	outline: 2px solid var(--copper-bright);
+	outline: 2px solid var(--accent-bright);
 	outline-offset: 2px;
 	border-radius: 2px;
 }

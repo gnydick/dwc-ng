@@ -134,11 +134,16 @@ function FanControl(props: { label: string; index: number; actual: number; reque
 			<div class="btn-cluster">
 				{/* Modal exactly like the Tools & Heaters card's Active/Off pair:
 				    whichever mode the fan is currently IN lights up (fills) — Set
-				    (go → green) while the fan is running, Off (danger → copper) while
-				    it is stopped. Same heat-active/heat-off classes and engaged
-				    logic, so the lit colours match that card to the pixel. Set also
-				    re-pins at the new value when pinned, so the override tracks what
-				    you just set. */}
+				    in --ok while the fan is running, Off in --magenta while it is
+				    stopped. Same heat-active/heat-off classes and engaged logic, so
+				    the lit colours match that card to the pixel. Set also re-pins at
+				    the new value when pinned, so the override tracks what you just
+				    set.
+
+				    Neither carries variant="danger" any more: a stopped fan is not
+				    an alarm, and while Off was danger-styled this button (a
+				    full-size .gcode-btn, not a .mode-key) rested RED and engaged
+				    MAGENTA — one control, two hues. */}
 				<GcodeButton
 					label="Set"
 					variant="go"
@@ -150,7 +155,6 @@ function FanControl(props: { label: string; index: number; actual: number; reque
 				/>
 				<GcodeButton
 					label="Off"
-					variant="danger"
 					class="heat-off"
 					command={cmd.fan(props.index, 0)}
 					stamp={false}

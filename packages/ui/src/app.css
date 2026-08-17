@@ -40,7 +40,7 @@
 .rail nav a[aria-current="page"] {
 	background: var(--mask-700);
 	color: var(--silk);
-	box-shadow: inset 2px 0 0 var(--copper);
+	box-shadow: inset 2px 0 0 var(--accent);
 }
 
 /* The slack lives BELOW the nav, not above the board identity.
@@ -139,7 +139,7 @@
 	padding: var(--sp-input-py) 12px;
 }
 .ghost-btn:hover { color: var(--silk); background: var(--mask-700); }
-.ghost-btn[aria-pressed="true"] { color: var(--copper-bright); border-color: var(--copper); }
+.ghost-btn[aria-pressed="true"] { color: var(--accent-bright); border-color: var(--accent); }
 
 .estop {
 	font-family: var(--font-display);
@@ -202,7 +202,7 @@
 .chip-warn  { color: var(--gold); border-color: rgba(201, 162, 39, 0.45); }
 .chip-hot   { color: var(--t-hot); border-color: rgba(239, 123, 69, 0.45); }
 .chip-fault { color: var(--fault); border-color: rgba(224, 92, 74, 0.5); }
-.chip-busy  { color: var(--copper-bright); border-color: rgba(217, 133, 59, 0.5); }
+.chip-busy  { color: var(--accent-bright); border-color: rgba(217, 133, 59, 0.5); }
 .chip-quiet { border-style: dashed; }
 
 .wordmark {
@@ -214,7 +214,7 @@
 	display: flex;
 	align-items: center;
 }
-.wordmark span { color: var(--copper); }
+.wordmark span { color: var(--accent); }
 
 /* Hide-nav control, tucked to the right of the wordmark. */
 .nav-hide {
@@ -364,7 +364,7 @@
 	cursor: grab;
 	touch-action: none;
 }
-.panel-grip:hover { color: var(--silk); border-color: var(--copper); }
+.panel-grip:hover { color: var(--silk); border-color: var(--accent); }
 .panel-grip:active { cursor: grabbing; }
 
 .panel-orientation-toggle {
@@ -379,7 +379,7 @@
 	/* Always visible, like the grab handle beside it. Hover-only made the
 	   control undiscoverable — you had to already know it was there. */
 }
-.panel-orientation-toggle:hover { color: var(--silk); border-color: var(--copper); }
+.panel-orientation-toggle:hover { color: var(--silk); border-color: var(--accent); }
 
 .panel-resize-grip {
 	position: absolute;
@@ -402,7 +402,7 @@
 	border-bottom: 2px solid var(--silk-dim);
 	opacity: 0.5;
 }
-.panel-resize-grip:hover::before { opacity: 1; border-color: var(--copper-bright); }
+.panel-resize-grip:hover::before { opacity: 1; border-color: var(--accent-bright); }
 
 /* Invisible until the card is hovered — then a soft glow at the qualifying
    edge(s) hints "more here," no button chrome. Still a real button underneath
@@ -429,12 +429,12 @@
 .panel-scroll-nub.up {
 	top: 0;
 	border-radius: var(--radius) var(--radius) 0 0;
-	box-shadow: inset 0 8px 8px -6px var(--accent-blue);
+	box-shadow: inset 0 8px 8px -6px var(--accent-bright);
 }
 .panel-scroll-nub.down {
 	bottom: 0;
 	border-radius: 0 0 var(--radius) var(--radius);
-	box-shadow: inset 0 -8px 8px -6px var(--accent-blue);
+	box-shadow: inset 0 -8px 8px -6px var(--accent-bright);
 }
 .panel-scroll-nub:active { opacity: 1; filter: brightness(1.3); }
 
@@ -484,7 +484,7 @@
 	padding: 1px 6px 0;
 	white-space: nowrap;
 }
-.card-tip:hover { color: var(--silk); border-color: var(--copper); }
+.card-tip:hover { color: var(--silk); border-color: var(--accent); }
 .card-tip.copied { color: var(--ok); border-color: var(--ok); }
 /* A refused copy has to be visible, or a broken clipboard is indistinguishable
    from a dead button — which is exactly how this went unnoticed. */
@@ -556,7 +556,7 @@
 	font-size: calc(11px + var(--fs-bump));
 	letter-spacing: 0.06em;
 	text-transform: uppercase;
-	color: var(--copper);
+	color: var(--accent);
 	white-space: nowrap;
 }
 
@@ -662,11 +662,11 @@
 	appearance: none;
 	background: none;
 	border: none;
-	border-bottom: 1px dotted var(--copper);
+	border-bottom: 1px dotted var(--accent);
 	padding: 0;
 	cursor: pointer;
 	text-align: left;
-	color: var(--copper);
+	color: var(--accent);
 	/* Hug the label: the cell is a stretch-aligned flex column, so without
 	   this the dotted underline runs the full 88px slot and reads as a rule
 	   rather than as an affordance on the word. */
@@ -791,7 +791,7 @@
 	font-variant-numeric: tabular-nums;
 	text-align: right;
 }
-.heat-input:focus-visible { outline: none; border-color: var(--copper); }
+.heat-input:focus-visible { outline: none; border-color: var(--accent); }
 /* The in-row filament picker. Fills its fixed column and ellipsises a long
    material name rather than widening it — the columns are load-bearing. */
 .heat-fil {
@@ -950,7 +950,7 @@
 	background: rgba(224, 92, 74, 0.14);
 	color: var(--silk);
 }
-.heat-reset:focus-visible { outline: 2px solid var(--copper-bright); outline-offset: 1px; }
+.heat-reset:focus-visible { outline: 2px solid var(--accent-bright); outline-offset: 1px; }
 
 /* Horizontal Tools & Heaters layout (orientationToggle) — one compact block
    per tool/bed instead of a table row. */
@@ -1000,7 +1000,7 @@
 	font-family: var(--font-display);
 	font-weight: 700;
 	font-size: calc(22px + var(--fs-bump));
-	color: var(--copper-bright);
+	color: var(--accent-bright);
 }
 .job-empty { color: var(--silk-dim); font-size: calc(13px + var(--fs-bump)); }
 
@@ -1160,7 +1160,7 @@
 	padding: 5px 11px;
 }
 .lab-pill:hover { color: var(--silk); }
-.lab-pill[aria-pressed="true"] { color: var(--copper-bright); border-color: var(--copper); background: rgba(217, 133, 59, 0.1); }
+.lab-pill[aria-pressed="true"] { color: var(--accent-bright); border-color: var(--accent); background: rgba(217, 133, 59, 0.1); }
 .lab-note { font-size: calc(12px + var(--fs-bump)); color: var(--silk-dim); font-style: italic; }
 .lab-pill-custom { border-style: dashed; }
 .lab-pill-new { color: var(--ok); border-color: rgba(111, 191, 143, 0.5); }
@@ -1181,8 +1181,8 @@
 	font-size: calc(12px + var(--fs-bump));
 	letter-spacing: 0.1em;
 	text-transform: uppercase;
-	color: var(--copper-bright);
-	border: 1px solid var(--copper);
+	color: var(--accent-bright);
+	border: 1px solid var(--accent);
 	border-radius: var(--radius);
 	padding: var(--sp-input-py) 14px;
 }
@@ -1238,7 +1238,7 @@
 	text-align: center;
 	padding: 8px;
 }
-.cam-body a { color: var(--copper-bright); }
+.cam-body a { color: var(--accent-bright); }
 .cam-body img { width: 100%; height: 100%; object-fit: cover; cursor: zoom-in; }
 .cam-body.native { overflow: auto; place-items: start; scrollbar-width: none; }
 .cam-body.native::-webkit-scrollbar { display: none; }
@@ -1297,7 +1297,7 @@
 	font-size: calc(11px + var(--fs-bump));
 	letter-spacing: 0.1em;
 	text-transform: uppercase;
-	color: var(--copper-bright);
+	color: var(--accent-bright);
 	margin-left: auto;
 }
 .link-btn:hover { text-decoration: underline; }
@@ -1309,12 +1309,12 @@
 	letter-spacing: 0.1em;
 	text-transform: uppercase;
 	color: var(--mask-900);
-	background: var(--copper-bright);
+	background: var(--accent-bright);
 	border-radius: var(--radius);
 	padding: 8px 18px;
 }
 .primary-btn:disabled { opacity: 0.4; cursor: default; }
-.primary-btn:not(:disabled):hover { background: var(--copper); }
+.primary-btn:not(:disabled):hover { background: var(--accent); }
 
 .save-bar {
 	display: flex;
@@ -1449,7 +1449,7 @@
 	padding: 9px 16px;
 	cursor: pointer;
 }
-.btn:hover { border-color: var(--copper); color: var(--copper-bright); }
+.btn:hover { border-color: var(--accent); color: var(--accent-bright); }
 .btn:disabled { opacity: 0.4; cursor: not-allowed; border-color: var(--hairline); color: var(--silk-dim); }
 .btn-go { background: rgba(111, 191, 143, 0.14); border-color: rgba(111, 191, 143, 0.45); color: var(--ok); }
 .btn-go:hover:not(:disabled) { background: rgba(111, 191, 143, 0.24); border-color: var(--ok); color: var(--ok); }
@@ -1467,7 +1467,7 @@
 	color: var(--silk-dim); background: none; border: none; padding: 3px 5px; cursor: pointer; border-radius: 4px;
 }
 .crumb:hover { color: var(--silk); background: var(--mask-500); }
-.crumb.active { color: var(--copper-bright); }
+.crumb.active { color: var(--accent-bright); }
 .crumb-sep { color: var(--silk-dim); font-size: calc(12px + var(--fs-bump)); }
 
 /* The list fills the CARD and scrolls inside it. It used to cap at 62vh — a
@@ -1533,10 +1533,10 @@
 	font: 400 calc(14px + var(--fs-bump))/1.2 system-ui, sans-serif;
 }
 .file-row:hover { background: var(--mask-500); }
-.file-row.selected { background: var(--mask-500); box-shadow: inset 3px 0 0 var(--copper); }
+.file-row.selected { background: var(--mask-500); box-shadow: inset 3px 0 0 var(--accent); }
 .file-icon { color: var(--silk-dim); font-size: calc(12px + var(--fs-bump)); width: 14px; text-align: center; }
-.file-row.dir .file-icon { color: var(--copper); }
-.file-row.dir .file-name { color: var(--copper-bright); }
+.file-row.dir .file-icon { color: var(--accent); }
+.file-row.dir .file-name { color: var(--accent-bright); }
 /* min-width: the ellipsis is inert without it — see the .file-row .file-name
    block below for why. Every file list truncates long names rather than letting
    one long filename set its card's minimum width (operator's call, 2026-07-30:
@@ -1575,7 +1575,7 @@
    is the only child with no intrinsic text height, so it collapses to ~1px
    and the print silently looks like it has no progress at all. */
 .progress { position: relative; height: 22px; flex: 0 0 22px; min-height: 22px; background: var(--mask-900); border-radius: var(--radius); overflow: hidden; margin: 4px 0 12px; border: 1px solid var(--hairline); }
-.progress-fill { height: 100%; background: linear-gradient(90deg, var(--copper), var(--copper-bright)); transition: width 0.4s ease; }
+.progress-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-bright)); transition: width 0.4s ease; }
 .progress-label { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font: 600 calc(12px + var(--fs-bump))/1 "Rajdhani", sans-serif; color: var(--silk); }
 .job-active-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
 /* Facts and the two job actions share one row: Pause/Cancel belong beside the
@@ -1647,7 +1647,7 @@
 	font-size: calc(11px + var(--fs-bump)); padding: 4px 8px; border-radius: var(--radius);
 	border: 1px solid var(--hairline); background: var(--mask-700); color: var(--silk-dim);
 }
-.gcode-viewer-modes .mode-btn.active { color: var(--silk); border-color: var(--copper); }
+.gcode-viewer-modes .mode-btn.active { color: var(--silk); border-color: var(--accent); }
 .gcode-viewer-modes .mode-btn:disabled { opacity: 0.35; cursor: not-allowed; }
 .gcode-overlay {
 	position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
@@ -1679,7 +1679,7 @@
 .color-swatch::-webkit-color-swatch-wrapper { padding: 2px; }
 .color-swatch::-webkit-color-swatch { border: none; border-radius: 3px; }
 .color-swatch::-moz-color-swatch { border: none; border-radius: 3px; }
-.color-swatch:hover { border-color: var(--copper); }
+.color-swatch:hover { border-color: var(--accent); }
 
 /* Reserved width + tabular so "#6e8ca8" and "#fff" don't move the row. */
 .color-hex {
@@ -1740,7 +1740,7 @@
 }
 .pitch-opt + .pitch-opt { border-left: 1px solid var(--hairline); }
 .pitch-opt:hover { color: var(--silk); background: var(--mask-700); }
-.pitch-opt.active { color: var(--mask-900); background: var(--copper); }
+.pitch-opt.active { color: var(--mask-900); background: var(--accent); }
 
 /* ---------- dev Mock/Real backend toggle ---------- */
 .backend-toggle { display: inline-flex; border: 1px solid var(--hairline); border-radius: var(--radius); overflow: hidden; }
@@ -1750,7 +1750,7 @@
 }
 .backend-opt + .backend-opt { border-left: 1px solid var(--hairline); }
 .backend-opt:hover:not(:disabled) { color: var(--silk); background: var(--mask-700); }
-.backend-opt.active { color: var(--mask-900); background: var(--copper); }
+.backend-opt.active { color: var(--mask-900); background: var(--accent); }
 /* Real selected is a hazard state, not a neutral choice — make it unmissable. */
 .backend-opt.real.active { background: var(--fault); color: #fff; }
 .backend-opt:disabled { opacity: 0.5; cursor: wait; }
@@ -1764,7 +1764,7 @@
 	padding: 7px 10px; cursor: pointer; white-space: nowrap;
 	min-width: 116px; text-align: center;
 }
-.arm-btn:hover { color: var(--silk); border-color: var(--copper); }
+.arm-btn:hover { color: var(--silk); border-color: var(--accent); }
 .arm-btn.armed { color: #fff; background: var(--fault); border-color: var(--fault); }
 
 /* ---------- temperature chart ---------- */
@@ -1910,7 +1910,7 @@
 	   no card could be fitted to content that varied that way. */
 	display: inline-flex; flex-direction: row; align-items: center; gap: 8px;
 	height: var(--ctl-h); box-sizing: border-box;
-	background: linear-gradient(180deg, #24405f 0%, #1b3350 100%);
+	background: linear-gradient(180deg, var(--face-hi) 0%, var(--face-lo) 100%);
 	border: 1px solid rgba(233, 238, 244, 0.22);
 	box-shadow: inset 0 1px 0 rgba(233, 238, 244, 0.07), 0 1px 2px rgba(0, 0, 0, 0.32);
 	border-radius: var(--radius);
@@ -1918,12 +1918,12 @@
 	white-space: nowrap;
 	transition: background 90ms ease, border-color 90ms ease, transform 60ms ease, box-shadow 90ms ease;
 }
-.gcode-btn:hover:not(:disabled) { border-color: var(--copper); background: linear-gradient(180deg, #2b4a6d 0%, #203a5c 100%); }
-.gcode-btn:focus-visible { outline: 2px solid var(--copper-bright); outline-offset: 2px; }
+.gcode-btn:hover:not(:disabled) { border-color: var(--accent); background: linear-gradient(180deg, var(--face-hi-hover) 0%, var(--face-lo-hover) 100%); }
+.gcode-btn:focus-visible { outline: 2px solid var(--accent-bright); outline-offset: 2px; }
 .gcode-btn:active:not(:disabled) {
 	transform: translateY(1px);
 	box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.45);
-	background: linear-gradient(180deg, #1b3350 0%, #24405f 100%);
+	background: linear-gradient(180deg, var(--face-lo) 0%, var(--face-hi) 100%);
 }
 .gcode-btn:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: none; }
 .gcode-label { font: 600 calc(12.5px + var(--fs-bump))/1 var(--font-display); letter-spacing: 0.04em; text-transform: uppercase; }
@@ -1942,13 +1942,14 @@
    and colour ONLY — never border-width, padding or size — so lighting up can
    not move the button, and so :hover's background/border still work on top of
    it instead of cancelling the glow. */
-.gcode-btn { --btn-accent: var(--copper-bright); }
+.gcode-btn { --btn-accent: var(--accent-bright); }
 .gcode-go { --btn-accent: var(--ok); }
 .heat-standby { --btn-accent: var(--gold); }
-/* after .gcode-danger: the Off button is danger-styled, but a cold heater is
-   not an alarm — engaged Off reads as "current mode", not "fault". Magenta
-   rather than copper so Off is its own state and not confusable with the
-   copper the pending dot and the armed step already use. */
+/* Off is NOT danger-styled: a cold heater is not an alarm, and engaged Off
+   reads as "current mode", not "fault". Magenta rather than accent so Off is
+   its own state and not confusable with the accent the pending dot and the
+   armed step already use. The matching rest colour is further down, keyed on
+   .heat-off alone so the two states cannot diverge. */
 .heat-off { --btn-accent: var(--magenta); }
 /* FILLED, not outlined. Across five rows an outline still reads as "a button";
    only a ground change reads as "this one". This is the selected-chip language
@@ -1986,23 +1987,23 @@
 }
 /* Unsent edit sitting in this button's field. Reuses the ack dot's fixed box,
    so "there is something to apply" costs no layout — only the dot's colour
-   and the label's move. Copper, not the send states' green/red: nothing has
+   and the label's move. The accent, not the send states' green/red: nothing has
    been attempted yet. */
-.is-pending .gcode-ack { background: var(--copper-bright); animation: ack-pulse 900ms ease-in-out infinite; }
-.gcode-btn.is-pending { border-color: var(--copper); }
-.gcode-btn.is-pending .gcode-label { color: var(--copper-bright); }
+.is-pending .gcode-ack { background: var(--accent-bright); animation: ack-pulse 900ms ease-in-out infinite; }
+.gcode-btn.is-pending { border-color: var(--accent); }
+.gcode-btn.is-pending .gcode-label { color: var(--accent-bright); }
 
 .is-sending .gcode-ack { background: var(--silk-dim); animation: ack-pulse 700ms ease-in-out infinite; }
 .is-sent .gcode-ack { background: var(--ok); box-shadow: 0 0 0 3px rgba(111, 191, 143, 0.22); }
 /* A press that left the machine short of what the key stands for: the target
-   was stored, but the tool is still not in that mode. Copper says "landed, but
+   was stored, but the tool is still not in that mode. The accent says "landed, but
    not there yet"; the green flash above is reserved for the press after which
    nothing is left to do. */
-.is-sent.ack-mode .gcode-ack { background: var(--copper-bright); box-shadow: 0 0 0 3px rgba(214, 138, 76, 0.28); }
-.gcode-btn.is-sent.ack-mode { border-color: var(--copper); }
+.is-sent.ack-mode .gcode-ack { background: var(--accent-bright); box-shadow: 0 0 0 3px rgba(214, 138, 76, 0.28); }
+.gcode-btn.is-sent.ack-mode { border-color: var(--accent); }
 .is-failed .gcode-ack { background: var(--fault); box-shadow: 0 0 0 3px rgba(224, 92, 74, 0.25); }
 .gcode-btn.is-sent { border-color: var(--ok); }
-.gcode-btn.is-failed { border-color: var(--fault); background: linear-gradient(180deg, #3a2430 0%, #2b1b26 100%); }
+.gcode-btn.is-failed { border-color: var(--fault); background: linear-gradient(180deg, var(--face-hi-fail) 0%, var(--face-lo-fail) 100%); }
 
 @keyframes ack-pulse { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) {
@@ -2085,22 +2086,46 @@
    state here: nothing about the box moves. */
 .mode-key.is-applied:not(.is-engaged) { border-color: var(--btn-accent); }
 .mode-key.is-applied:not(.is-engaged) .gcode-label { color: var(--btn-accent); }
+/* 2px optically, via an INSET SHADOW rather than border-width, so the box never
+   changes size and a row of keys cannot reflow when one arms under your finger.
+   Against a neutral rest this is the loudest step on the ladder short of the
+   engaged fill — which is correct, because it is the step that says the next
+   press will switch the mode rather than write a number.
+
+   setpointCommit.ts permits the emitted G-code to depend on `armed` only while
+   the key DISPLAYS which of the two it will send. It requires a display, not a
+   hue; weight is a display. */
+.mode-key.is-applied:not(.is-engaged) { box-shadow: inset 0 0 0 1px var(--btn-accent); }
 /* Resting: dark green, nothing to do. Scoped to :not(.is-engaged) — this rule
    sits after the shared engaged rule, so without the guard it would repaint an
    ARRIVED key's label back to green on its own green ground and hide the word.
    */
-/* Each key rests in a DIM version of its own colour, so the three read as one
-   family and a key's identity is legible before anything is pressed: green for
-   active, gold for standby, magenta for off. The alphas are shared, so no key
-   looks louder at rest than its neighbours. */
-.mode-key.heat-active:not(.is-engaged):not(.is-applied) { border-color: rgba(111, 191, 143, 0.35); }
-.mode-key.heat-active:not(.is-engaged):not(.is-applied) .gcode-label { color: rgba(111, 191, 143, 0.75); }
-.mode-key.heat-standby:not(.is-engaged):not(.is-applied) { border-color: rgba(201, 162, 39, 0.35); }
-.mode-key.heat-standby:not(.is-engaged):not(.is-applied) .gcode-label { color: rgba(201, 162, 39, 0.8); }
-.mode-key.heat-off:not(.is-engaged):not(.is-applied) { border-color: rgba(196, 95, 160, 0.35); }
-/* Dark magenta at rest — NOT the copper it used to inherit from the danger
-   variant, which read as an alarm and collided with the pending dot. */
-.mode-key.heat-off:not(.is-engaged):not(.is-applied) .gcode-label { color: rgba(196, 95, 160, 0.7); }
+/* Every key rests NEUTRAL. Each used to rest in a dim version of its own colour
+   so the three read as a family, which meant four tools showed TWELVE lit
+   buttons before anything was happening — the identity of a key is not news,
+   and it was being announced continuously in the loudest channel available.
+   The label and the fixed column already say which key is which, and neither
+   of those moves.
+
+   Colour is now spent only where something IS happening: the armed step below,
+   the engaged fill, the arrival halo. Nothing at rest.
+
+   This is why the ARMED rung had to get louder in the same pass. It used to be
+   an alpha step against a coloured rest, which is the quietest change in a
+   sequence whose middle step is the one that matters. */
+.mode-key:not(.is-engaged):not(.is-applied) { border-color: color-mix(in srgb, var(--silk) 22%, transparent); }
+.mode-key:not(.is-engaged):not(.is-applied) .gcode-label { color: var(--silk-dim); }
+/* Off has NO rest rule of its own, deliberately. It briefly had one, to fix a
+   real split: the fan card's Off is a full-size .gcode-btn rather than a
+   .mode-key, so while the rest colours were scoped to .mode-key it fell through
+   to the danger variant and rested RED, then engaged MAGENTA — one key, two
+   hues, depending on which component drew it.
+
+   Resting every key neutral fixes that split at the root instead: there is now
+   no rest colour for a caller to miss, in any component, and Off's single hue
+   (--magenta, on --btn-accent) appears only when it is the mode the machine is
+   in. The danger variant is off all three heater keys — a cold heater is not
+   an alarm. */
 /* The bed has no S key. Its slot is held open so A and O stay in the tools'
    columns — the same empty-cell discipline the heater table uses.
    ONE definition, shared by the Control card's rows and the Tools table's
@@ -2127,7 +2152,7 @@
 
 .ctl-wrap { display: flex; flex-wrap: nowrap; gap: 8px; }
 .ctl-name { font: 600 calc(13px + var(--fs-bump))/1 var(--font-display); text-transform: uppercase; letter-spacing: 0.03em; color: var(--silk); min-width: 74px; }
-.ctl-name small { color: var(--copper); margin-left: 5px; font-weight: 600; }
+.ctl-name small { color: var(--accent); margin-left: 5px; font-weight: 600; }
 
 /* heater / fan / factor rows */
 .heater-list { display: flex; flex-direction: column; gap: 10px; }
@@ -2396,7 +2421,7 @@
 .jog-center {
 	grid-area: 2 / 2; display: flex; flex-direction: column; align-items: center; justify-content: center;
 	border: 1px dashed var(--hairline); border-radius: var(--radius);
-	font: 700 calc(17px + var(--fs-bump))/1 var(--font-display); color: var(--copper-bright); font-variant-numeric: tabular-nums;
+	font: 700 calc(17px + var(--fs-bump))/1 var(--font-display); color: var(--accent-bright); font-variant-numeric: tabular-nums;
 }
 .jog-center small { font-size: calc(10px + var(--fs-bump)); color: var(--silk-dim); font-weight: 600; margin-top: 3px; letter-spacing: 0.06em; }
 .jog-zlabel { font: 700 calc(12px + var(--fs-bump))/1 var(--font-display); letter-spacing: 0.1em; color: var(--silk-dim); }
@@ -2407,7 +2432,7 @@
 	padding: 6px 10px; cursor: pointer;
 }
 .chip-btn:hover { color: var(--silk); }
-.chip-btn.active { color: var(--mask-900); background: var(--copper); border-color: var(--copper); }
+.chip-btn.active { color: var(--mask-900); background: var(--accent); border-color: var(--accent); }
 .feed-field { color: var(--silk-dim); font-size: calc(12px + var(--fs-bump)); display: inline-flex; align-items: center; gap: 4px; }
 .jog-row .gcode-btn, .extrude-row .gcode-btn { padding: 7px 14px; }
 .jog-row .gcode-label { font-variant-numeric: tabular-nums; }
@@ -2513,10 +2538,10 @@
 	   two files apart, with the rest ellipsised. */
 	min-width: 96px;
 }
-.file-row .file-name:hover { color: var(--copper-bright); }
-.file-name.is-dir { color: var(--copper-bright); font-weight: 600; }
-.file-ico { color: var(--copper); margin-right: 8px; font-size: calc(11px + var(--fs-bump)); }
-.file-row.active { background: var(--mask-500); box-shadow: inset 3px 0 0 var(--copper); }
+.file-row .file-name:hover { color: var(--accent-bright); }
+.file-name.is-dir { color: var(--accent-bright); font-weight: 600; }
+.file-ico { color: var(--accent); margin-right: 8px; font-size: calc(11px + var(--fs-bump)); }
+.file-row.active { background: var(--mask-500); box-shadow: inset 3px 0 0 var(--accent); }
 .run-btn {
 	font: 600 calc(11px + var(--fs-bump))/1 var(--font-display); letter-spacing: 0.06em; text-transform: uppercase;
 	color: var(--silk-dim); background: var(--mask-700); border: 1px solid var(--hairline); border-radius: 5px;
@@ -2556,7 +2581,7 @@
 }
 /* Header action buttons stay within the 28px header. */
 .card-actions .btn { padding: 3px 10px; font-size: calc(12px + var(--fs-bump)); }
-.btn.primary { background: rgba(217, 133, 59, 0.16); border-color: var(--copper); color: var(--copper-bright); }
+.btn.primary { background: rgba(217, 133, 59, 0.16); border-color: var(--accent); color: var(--accent-bright); }
 .btn.primary:hover:not(:disabled) { background: rgba(217, 133, 59, 0.26); }
 .editor-host { position: relative; flex: 1; min-height: 0; border: 1px solid var(--hairline); border-radius: var(--radius); overflow: hidden; }
 .editor-mount { position: absolute; inset: 0; }
@@ -2573,7 +2598,7 @@
 	flex: 1; min-width: 0; background: var(--mask-900); border: 1px solid var(--hairline); border-radius: 5px;
 	color: var(--silk); padding: 7px 10px; font: 400 calc(13px + var(--fs-bump))/1 system-ui, sans-serif;
 }
-.om-filter:focus { outline: none; border-color: var(--copper); }
+.om-filter:focus { outline: none; border-color: var(--accent); }
 .om-count { font: 600 calc(11px + var(--fs-bump))/1 var(--font-display); letter-spacing: 0.08em; text-transform: uppercase; color: var(--silk-dim); white-space: nowrap; }
 
 .om-tree, .om-children { list-style: none; margin: 0; padding: 0; }
@@ -2587,7 +2612,7 @@
 .om-row:hover { background: var(--mask-500); }
 .om-toggle {
 	width: 16px; height: 16px; flex: none; padding: 0; cursor: pointer;
-	background: none; border: none; color: var(--copper); font-size: calc(10px + var(--fs-bump)); line-height: 1;
+	background: none; border: none; color: var(--accent); font-size: calc(10px + var(--fs-bump)); line-height: 1;
 }
 .om-leafdot { width: 16px; flex: none; }
 .om-key { color: var(--silk); }
@@ -2623,7 +2648,7 @@
 	width: min(520px, 100%);
 	box-sizing: border-box;
 	background: var(--mask-700);
-	border: 1px solid var(--copper);
+	border: 1px solid var(--accent);
 	border-radius: var(--radius);
 	box-shadow: 0 18px 48px rgba(0, 0, 0, 0.55);
 	padding: 18px 20px 16px;
@@ -2677,7 +2702,7 @@
 	font-variant-numeric: tabular-nums;
 	padding: 8px 10px;
 }
-.mbox-input:focus-visible { outline: 2px solid var(--copper-bright); outline-offset: 1px; }
+.mbox-input:focus-visible { outline: 2px solid var(--accent-bright); outline-offset: 1px; }
 
 .mbox-error {
 	margin: 0 0 12px;
@@ -2695,8 +2720,8 @@
 }
 .mbox-btn { min-width: 96px; }
 .mbox-default {
-	border-color: var(--copper);
-	color: var(--copper-bright);
+	border-color: var(--accent);
+	color: var(--accent-bright);
 }
 
 /* Offset up out of the card so it can't be hit while reaching for OK. */
@@ -2735,7 +2760,7 @@
 	border: 1px solid var(--hairline); border-radius: 5px; padding: 6px 8px; min-width: 0; width: 180px;
 }
 .fb-input.grow { flex: 1; width: auto; }
-.fb-input:focus { outline: none; border-color: var(--copper); }
+.fb-input:focus { outline: none; border-color: var(--accent); }
 
 /* Always in the layout, only sometimes visible — an error must not reflow the
    list underneath it (uniformity/positional stability is a hard rule here). */
@@ -2767,7 +2792,7 @@
 .fb-uploading b { color: var(--silk); }
 .fb-up-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 45%; flex: 0 1 auto; }
 .fb-progress { flex: 1; height: 6px; min-width: 60px; background: var(--mask-900); border-radius: 3px; overflow: hidden; }
-.fb-progress-fill { display: block; height: 100%; background: var(--copper); transition: width 0.1s linear; }
+.fb-progress-fill { display: block; height: 100%; background: var(--accent); transition: width 0.1s linear; }
 .fb-up-pct { font-variant-numeric: tabular-nums; min-width: 34px; text-align: right; color: var(--silk); }
 
 /* ---------- firmware update (M997) ---------- */
@@ -2780,7 +2805,7 @@
 .fw-warn ul { margin: 0; padding-left: 18px; }
 .fw-warn li { margin: 3px 0; line-height: 1.45; }
 .fw-warn b { color: var(--silk); }
-.fw-warn code { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; color: var(--copper-bright); }
+.fw-warn code { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; color: var(--accent-bright); }
 
 .fw-table { width: 100%; border-collapse: collapse; font-size: calc(13px + var(--fs-bump)); }
 .fw-table th {
@@ -2792,12 +2817,12 @@
 .fw-board { color: var(--silk); font-weight: 600; }
 .fw-num { font-variant-numeric: tabular-nums; color: var(--silk); }
 .fw-file { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: calc(12px + var(--fs-bump)); color: var(--silk-dim); }
-.fw-check { accent-color: var(--copper); width: 15px; height: 15px; cursor: pointer; }
+.fw-check { accent-color: var(--accent); width: 15px; height: 15px; cursor: pointer; }
 .fw-actions { margin-top: 12px; }
 .btn-danger.armed { background: var(--fault); color: #fff; border-color: var(--fault); }
-/* Drop zone: a copper dashed outline while a file is dragged over the browser,
+/* Drop zone: an accent dashed outline while a file is dragged over the browser,
    so the target reads as a place to drop. Inset so it never shifts the rows. */
-.fb-dragging { outline: 2px dashed var(--copper); outline-offset: -4px; border-radius: var(--radius); }
+.fb-dragging { outline: 2px dashed var(--accent); outline-offset: -4px; border-radius: var(--radius); }
 
 /* Editor controls, in-body (the compose conversion moved them out of the card
    header: they read the editor's own dirty/status state, which a registry's
@@ -2828,13 +2853,13 @@
 	color: var(--silk-dim);
 }
 .rail-palette:hover { background: var(--mask-700); color: var(--silk); }
-/* Open reads exactly like aria-current does one group up — copper text and the
+/* Open reads exactly like aria-current does one group up — accent text and the
    same inset rule — so the rail has one visual language for "this is the live
    one" rather than two. */
 .rail-palette[aria-pressed="true"] {
 	background: var(--mask-700);
-	color: var(--copper);
-	box-shadow: inset 2px 0 0 var(--copper);
+	color: var(--accent);
+	box-shadow: inset 2px 0 0 var(--accent);
 }
 .palette-glyph { display: block; }
 
@@ -2915,7 +2940,7 @@
 .layout-toolbar { display: flex; gap: 10px; justify-content: flex-end; align-items: flex-start; }
 .compose-drawer {
 	position: absolute; right: 0; top: calc(100% + 6px); z-index: 40; width: 340px;
-	background: var(--mask-700); border: 1px solid var(--copper); border-radius: var(--radius);
+	background: var(--mask-700); border: 1px solid var(--accent); border-radius: var(--radius);
 	padding: 12px; display: flex; flex-direction: column; gap: 10px;
 	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
 	/* Never taller than the viewport: on short screens the tail sections
@@ -2942,7 +2967,7 @@
 	display: flex; align-items: center; gap: 7px; font-size: calc(12.5px + var(--fs-bump)); color: var(--silk);
 	padding: 3px 2px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.compose-card input { accent-color: var(--copper); }
+.compose-card input { accent-color: var(--accent); }
 .compose-hidden { flex-wrap: wrap; }
 
 /* Card authoring (B2): the JSON editor inside the drawer. */
@@ -2958,7 +2983,7 @@
 	font: 400 calc(12px + var(--fs-bump))/1.5 ui-monospace, "Cascadia Code", Consolas, monospace;
 	tab-size: 2;
 }
-.compose-json:focus { outline: none; border-color: var(--copper); }
+.compose-json:focus { outline: none; border-color: var(--accent); }
 
 /* ---------- card studio (B2.5): the GUI card editor ---------- */
 .studio-backdrop {
@@ -2968,7 +2993,7 @@
 }
 .studio {
 	width: min(1060px, 96vw); max-height: 92vh; overflow-y: auto; scrollbar-width: none;
-	background: var(--mask-700); border: 1px solid var(--copper); border-radius: var(--radius);
+	background: var(--mask-700); border: 1px solid var(--accent); border-radius: var(--radius);
 	padding: 16px; display: flex; flex-direction: column; gap: 12px;
 	box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
 }
@@ -2995,7 +3020,7 @@
 .studio-row { border: 1px dashed var(--hairline); border-radius: var(--radius); padding: 8px; display: flex; flex-direction: column; gap: 6px; }
 .studio-rowhead { display: flex; gap: 6px; align-items: center; }
 .st-inputref { color: var(--silk-dim); font-size: calc(12.5px + var(--fs-bump)); }
-.st-refname { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; color: var(--copper-bright); }
+.st-refname { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; color: var(--accent-bright); }
 /* The preview is the REAL renderer with pointer events off — visible worn
    codes, nothing sendable from a preview. */
 .studio-preview { display: flex; flex-direction: column; gap: 6px; position: sticky; top: 0; }
@@ -3011,7 +3036,7 @@
 .import-code { display: flex; align-items: baseline; gap: 10px; }
 .import-code code {
 	font: 400 calc(12px + var(--fs-bump))/1.5 ui-monospace, "Cascadia Code", Consolas, monospace;
-	color: var(--copper-bright); white-space: pre-wrap; overflow-wrap: anywhere;
+	color: var(--accent-bright); white-space: pre-wrap; overflow-wrap: anywhere;
 }
 .import-label { color: var(--silk); font-size: calc(12.5px + var(--fs-bump)); min-width: 90px; }
 .import-embedded { border: 1px dashed var(--hairline); border-radius: var(--radius); padding: 8px; display: flex; flex-direction: column; gap: 6px; }
@@ -3023,7 +3048,7 @@
 	font: 600 calc(11px + var(--fs-bump))/1 var(--font-display); letter-spacing: 0.06em; text-transform: uppercase;
 	color: var(--silk-dim); cursor: pointer; user-select: none;
 }
-.macro-autoconfirm input { accent-color: var(--copper); cursor: pointer; margin: 0; }
+.macro-autoconfirm input { accent-color: var(--accent); cursor: pointer; margin: 0; }
 .macro-autoconfirm:hover { color: var(--silk); }
 /* The hint swaps between two different-length strings; reserving the row's
    height keeps the list below it from twitching when the mode changes. */
@@ -3110,7 +3135,7 @@
 
 /* The height floor is ENGAGED: while you drag a card shorter, the frame has
    hit its hard minimum (header + resize grip + 50%) and won't go lower. A
-   copper edge confirms the stop you're already feeling. Toggled only while the
+   accent edge confirms the stop you're already feeling. Toggled only while the
    bottom edge is pushed against the floor — never at rest and never during a
    width-only resize (the earlier at-min border did both, which read as a
    spurious warning).
@@ -3122,7 +3147,7 @@
    its top. The border is inside the element's box, so no ancestor clip can
    reach it, at any grid position; it also avoids the 1px bloom an outset ring
    added on snap (border-box unchanged → no reflow, no shift). */
-.card.at-limit { border-color: var(--copper); }
+.card.at-limit { border-color: var(--accent); }
 
 /* Equal-width control grid. Used where labels vary in length and a ragged
    flex-wrap would leave no two buttons sharing a width or an edge. */
@@ -3193,10 +3218,10 @@
 /* The per-fan pin toggle — the "this one" glow language, shared with the
    modal mode buttons. */
 .fan-pin.is-engaged {
-	background: var(--copper-bright);
-	border-color: var(--copper-bright);
+	background: var(--accent-bright);
+	border-color: var(--accent-bright);
 	color: var(--mask-900);
-	box-shadow: 0 0 0 1px var(--copper-bright), 0 0 10px color-mix(in srgb, var(--copper-bright) 45%, transparent);
+	box-shadow: 0 0 0 1px var(--accent-bright), 0 0 10px color-mix(in srgb, var(--accent-bright) 45%, transparent);
 }
 
 /* ---------- pinned commands ---------- */
@@ -3213,7 +3238,7 @@
 	color: var(--silk); padding: 0 8px;
 	font: 400 calc(12px + var(--fs-bump))/1 ui-monospace, "Cascadia Code", "SF Mono", Menlo, Consolas, monospace;
 }
-.pin-cmd:focus-visible { outline: none; border-color: var(--copper); }
+.pin-cmd:focus-visible { outline: none; border-color: var(--accent); }
 /* An enabled row is being re-sent — its command reads as live. */
 .pin-row.on .pin-cmd { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 45%, var(--hairline)); }
 .pin-toggle { display: inline-flex; align-items: center; cursor: pointer; flex: 0 0 auto; }
@@ -3256,17 +3281,17 @@
 .speed-input::-webkit-slider-thumb {
 	-webkit-appearance: none;
 	width: 14px; height: 14px; border-radius: 50%;
-	background: var(--copper-bright); border: 1px solid var(--mask-900);
+	background: var(--accent-bright); border: 1px solid var(--mask-900);
 	margin-top: -5px; /* centre the 14px thumb on the 6px track */
 	cursor: grab;
 }
 .speed-input::-moz-range-thumb {
 	width: 14px; height: 14px; border-radius: 50%;
-	background: var(--copper-bright); border: 1px solid var(--mask-900);
+	background: var(--accent-bright); border: 1px solid var(--mask-900);
 	cursor: grab;
 }
 .speed-input:active::-webkit-slider-thumb { cursor: grabbing; }
-.speed-input:focus-visible { outline: 2px solid var(--copper-bright); outline-offset: 3px; border-radius: 4px; }
+.speed-input:focus-visible { outline: 2px solid var(--accent-bright); outline-offset: 3px; border-radius: 4px; }
 
 /* Stops sit ON the bar. The layer ignores pointer events so dragging the track
    still works; only the dots themselves are clickable. */
@@ -3281,9 +3306,9 @@
 	background: var(--mask-500); border: 1px solid var(--silk-dim);
 	cursor: pointer; pointer-events: auto;
 }
-.speed-stop:hover { background: var(--copper); border-color: var(--copper-bright); }
+.speed-stop:hover { background: var(--accent); border-color: var(--accent-bright); }
 /* The stop the machine is actually sitting on. */
-.speed-stop.current { background: var(--copper-bright); border-color: var(--copper-bright); }
+.speed-stop.current { background: var(--accent-bright); border-color: var(--accent-bright); }
 
 .speed-value {
 	font: 600 calc(13px + var(--fs-bump))/1 var(--font-display); color: var(--silk);
@@ -3298,7 +3323,7 @@
 	font: 600 calc(11px + var(--fs-bump))/1 var(--font-display); letter-spacing: 0.06em; text-transform: uppercase;
 	color: var(--silk-dim); cursor: pointer; user-select: none;
 }
-.filament-macros input { accent-color: var(--copper); cursor: pointer; margin: 0; }
+.filament-macros input { accent-color: var(--accent); cursor: pointer; margin: 0; }
 .filament-macros:hover { color: var(--silk); }
 .filament-macros-hint {
 	font: 400 calc(11px + var(--fs-bump))/16px var(--font-body); letter-spacing: 0; text-transform: none;
@@ -3375,13 +3400,13 @@
 /* An empty/loading message is prose, not a row: it spans the track list rather
    than being dealt into the first column. */
 .filament-note { grid-column: 1 / -1; }
-/* The tool a manual feed will move. A wash across the row plus a copper name,
+/* The tool a manual feed will move. A wash across the row plus an accent name,
    because the Feed row below carries no tool of its own — this IS the answer
    to "which extruder do those two buttons move".
    A background and a text colour only: no border, no padding, so marking a row
    cannot change its height and the rows stay on the Tools card's pitch. */
 .filament-row.is-current { background: rgba(240, 160, 80, 0.08); border-radius: 4px; }
-.filament-row.is-current .ctl-name { color: var(--copper-bright); }
+.filament-row.is-current .ctl-name { color: var(--accent-bright); }
 /* The manual-feed footer. Its two fields share the picker's track — the widest
    one, and the only one that can hold a pair without adding a column, which is
    what --fil-value-w above is sized for: 48 + "mm" + 70 + "F" and the gaps
@@ -3436,9 +3461,9 @@
 	max-width: 200px;
 	flex: 1;
 }
-.filament-pick:focus-visible { outline: none; border-color: var(--copper); }
+.filament-pick:focus-visible { outline: none; border-color: var(--accent); }
 .filament-loaded {
-	font: 600 calc(12px + var(--fs-bump))/1 var(--font-display); color: var(--copper-bright);
+	font: 600 calc(12px + var(--fs-bump))/1 var(--font-display); color: var(--accent-bright);
 	/* Flips between a name and an em dash on every load — reserved so the row
 	   geometry never depends on what is loaded. */
 	min-width: 76px; text-align: right;
@@ -3545,11 +3570,11 @@
 	transition: transform 80ms ease, background 80ms ease;
 }
 .hm-dot:hover { background: #fff; transform: translate(-50%, -50%) scale(1.5); }
-.hm-dot:focus-visible { outline: 2px solid var(--copper-bright); outline-offset: 2px; }
+.hm-dot:focus-visible { outline: 2px solid var(--accent-bright); outline-offset: 2px; }
 /* A point carrying an unsaved re-probe. */
 .hm-dot.edited { background: var(--ok); border-color: var(--mask-900); }
 .hm-dot.selected {
-	background: var(--copper-bright); border-color: var(--mask-900);
+	background: var(--accent-bright); border-color: var(--mask-900);
 	transform: translate(-50%, -50%) scale(1.6);
 	box-shadow: 0 0 0 2px rgba(240, 160, 80, 0.35);
 }
@@ -3557,7 +3582,7 @@
 .hm-detail { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
 .hm-result { display: flex; flex-direction: column; gap: 6px; width: 100%; }
 .hm-line { margin: 0; font: 400 calc(13px + var(--fs-bump))/1.4 var(--font-body); color: var(--silk); font-variant-numeric: tabular-nums; }
-.hm-line b { color: var(--copper-bright); }
+.hm-line b { color: var(--accent-bright); }
 .hm-reply {
 	margin: 0; padding: 6px 8px; max-height: 72px; overflow: auto;
 	background: var(--mask-900); border: 1px solid var(--hairline); border-radius: 5px;
@@ -3615,12 +3640,12 @@
    text), so "this is the current mode" looks the same everywhere. */
 .fb-tool.is-engaged,
 .fb-tool.is-engaged:hover:not(:disabled) {
-	background: var(--copper-bright);
-	border-color: var(--copper-bright);
+	background: var(--accent-bright);
+	border-color: var(--accent-bright);
 	color: var(--mask-900);
 	box-shadow:
-		0 0 0 1px var(--copper-bright),
-		0 0 12px color-mix(in srgb, var(--copper-bright) 45%, transparent);
+		0 0 0 1px var(--accent-bright),
+		0 0 12px color-mix(in srgb, var(--accent-bright) 45%, transparent);
 }
 
 /* The 3D surface. Fills whatever the panel gives it — the canvas is sized by
@@ -3681,14 +3706,14 @@
 .obj-row { display: flex; align-items: center; gap: 8px; height: var(--ctl-h); }
 /* Fixed width: the marker appears and disappears as printing moves between
    objects, and must not shift the name beside it. */
-.obj-mark { width: 12px; text-align: center; color: var(--copper-bright); font-size: calc(11px + var(--fs-bump)); }
+.obj-mark { width: 12px; text-align: center; color: var(--accent-bright); font-size: calc(11px + var(--fs-bump)); }
 .obj-name {
 	flex: 1; min-width: 0;
 	font: 400 calc(13px + var(--fs-bump))/1 var(--font-body); color: var(--silk);
 	overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .obj-row.cancelled .obj-name { color: var(--silk-dim); text-decoration: line-through; }
-.obj-row.current .obj-name { color: var(--copper-bright); font-weight: 600; }
+.obj-row.current .obj-name { color: var(--accent-bright); font-weight: 600; }
 .obj-state {
 	font: 600 calc(10px + var(--fs-bump))/1 var(--font-display); letter-spacing: 0.08em; text-transform: uppercase;
 	color: var(--fault);
@@ -3789,9 +3814,20 @@
    --edge-w is set by edgeScroll.ts from the SAME edgeWidth() the wheel handler
    uses, so the lit area is exactly the area that responds. A literal here would
    be a second opinion about where the strip is. */
-/* --accent-blue and a 0.15s ease, the same as .panel-scroll-nub above: both are
+/* The accent at a 0.15s ease, the same as .panel-scroll-nub above: both are
    scroll affordances that appear on hover, so they are the same cue and must
-   not read as two different ones. Copper is for state and for controls.
+   not read as two different ones.
+
+   These used to be --accent-blue, a token kept distinct from the accent so an
+   affordance would not read as state. That separation is not available on a
+   cyan accent — any blue cue lands in the same family — so the token was folded
+   into --accent-bright rather than kept as a distinction the palette can no
+   longer draw.
+
+   The channels below are --accent-bright SPELT OUT, and they are the one copy
+   of a token value in this file. The alpha animates, which needs the colour
+   split from its alpha, and rgba() cannot take a hex token for its channels.
+   If --accent-bright moves, these move with it.
 
    Registered so the alpha can ANIMATE. A bare custom property is a string to
    the transition engine and would snap; @property types it as a number, and a
@@ -3810,13 +3846,13 @@
 	   target obvious rather than merely present. */
 	background-image:
 		linear-gradient(to right,
-			rgba(90, 169, 230, var(--edge-ghost-a)) 0%,
-			rgba(90, 169, 230, calc(var(--edge-ghost-a) * 0.62)) 45%,
-			rgba(90, 169, 230, 0) 100%),
+			rgba(92, 224, 238, var(--edge-ghost-a)) 0%,
+			rgba(92, 224, 238, calc(var(--edge-ghost-a) * 0.62)) 45%,
+			rgba(92, 224, 238, 0) 100%),
 		linear-gradient(to left,
-			rgba(90, 169, 230, var(--edge-ghost-a)) 0%,
-			rgba(90, 169, 230, calc(var(--edge-ghost-a) * 0.62)) 45%,
-			rgba(90, 169, 230, 0) 100%);
+			rgba(92, 224, 238, var(--edge-ghost-a)) 0%,
+			rgba(92, 224, 238, calc(var(--edge-ghost-a) * 0.62)) 45%,
+			rgba(92, 224, 238, 0) 100%);
 	background-size: var(--edge-w, 0) 100%, var(--edge-w, 0) 100%;
 	background-position: left center, right center;
 	background-repeat: no-repeat;
@@ -3830,19 +3866,19 @@
 
 /* A drag on any member carries all of them rigidly, so the set has to be
    readable as a SET from across the canvas — otherwise you cannot tell what a
-   drag is about to move. Copper, not the scroll cue's blue: this is state, and
-   it is the same copper the armed-write and pressed-control states already
+   drag is about to move. The accent, not the scroll cue's blue: this is state, and
+   it is the same accent the armed-write and pressed-control states already
    mean by it.
 
    Outline rather than border or box-shadow: it is drawn outside the box and
    takes no space, so picking a card up cannot move it or its neighbours by a
    pixel. A border would resize every selected card the moment it was chosen. */
 .card.panel.picked {
-	outline: 1px solid var(--copper);
+	outline: 1px solid var(--accent);
 	outline-offset: -1px;
 }
 .panel-grip.picked {
-	color: var(--copper-bright);
+	color: var(--accent-bright);
 	/* No background or size change: the grip is a pointer target mid-gesture and
 	   must not move or grow under the cursor that is about to press it. */
 }

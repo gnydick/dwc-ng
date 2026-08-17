@@ -3,25 +3,65 @@
 `dashboard-comp.html` is a static design comp (open directly in a browser). It is
 the visual reference for the real SolidJS UI — not app code, not part of any build.
 
-## Direction: "solder mask & silkscreen"
+## Direction: "hard anodize" (2026-08-17)
 
-The palette is the Duet board itself: deep blue solder-mask surfaces, white
-silkscreen text, copper accents. Structure labels are PCB-style reference
-designators — and every designator is a **real RRF object-model key**
-(`T0`, `heater0`, `fan0`, `move.axes`), never invented.
+The ground is the machine's own surface: hard-anodized graphite, bead-blasted
+aluminium text, and one cool accent that is used nowhere else. Structure labels
+remain PCB-style reference designators — and every designator is still a **real
+RRF object-model key** (`T0`, `heater0`, `fan0`, `move.axes`), never invented.
+
+**Supersedes "solder mask & silkscreen"** (deep blue surfaces, copper accent),
+which shipped until 2026-08-17. It was replaced for a measured reason, not a
+preference: six tokens sat inside a **39° hue arc** at 47–63% lightness, so
+`--accent` (28°) and `--t-warm` (34°) were 6° apart. The colour meaning "you may
+press this" and the colour meaning "this is heating up" were the same colour.
+Running the project's own `deltaE` (`util/colorDistance.ts`) across the chrome,
+the operator's thermal ramp and the chart series found **20 pairs under the
+codebase's own `MIN_SEPARATION` of 25**.
+
+The ramp owns the warm arc and belongs to the operator (`thermalColors`), so a
+collision there cannot be fixed by moving it — separation that depends on the
+operator not changing a setting is not separation. **The accent moves instead**,
+28° → 188°, putting 152° between it and the whole warm arc. Nothing warm on
+screen is interactive; nothing cyan is thermal.
+
+The neutral ground does a second job: `--silk-dim` is 7% saturated here, so
+`--t-cold` (209°, 25%) separates from it by *chroma* at the same lightness. On
+the blue ground the two were 2° apart and a cold reading looked like a disabled
+label.
+
+The one rule the palette is built on: **colour marks what is happening, never
+what a thing is.** A control at rest is neutral no matter what it does.
+
+Navy remains available in the palette lab (dev only) — `?ground=navy`.
 
 ## Tokens
 
 | Token | Value | Use |
 |---|---|---|
-| `--mask-900` | `#0B1626` | page background |
-| `--mask-700` | `#122238` | cards |
-| `--mask-500` | `#1B3350` | raised / tracks |
-| `--silk` | `#E9EEF4` | primary text |
-| `--silk-dim` | `#8FA3B8` | secondary text, labels |
-| `--copper` / `--copper-bright` | `#D9853B` / `#F0A050` | accent, interactive, progress |
-| `--ok` / `--fault` / `--gold` | `#6FBF8F` / `#E05C4A` / `#C9A227` | semantic states only |
+| `--mask-900` | `#15171B` | page background |
+| `--mask-700` | `#1E2128` | cards |
+| `--mask-500` | `#2A2E37` | raised / tracks |
+| `--silk` | `#E8EAEE` | primary text |
+| `--silk-dim` | `#8A9099` | secondary text, labels |
+| `--accent` / `--accent-bright` | `#2FC4D4` / `#5CE0EE` | accent, interactive, progress |
+| `--ok` / `--fault` / `--gold` | `#57C07A` / `#E5645A` / `#C9A227` | semantic states only |
+| `--magenta` | `#A97FD6` | Off, as a state rather than an alarm |
+| `--face-*` | `#313640` → `#262A32` | the gradient a pressable control is cut from |
 | `--t-cold` → `--t-warm` → `--t-hot` | `#6E8CA8` → `#E0A458` → `#EF7B45` | thermal-keyed numerals |
+
+`--accent` / `--accent-bright` were `--copper` / `--copper-bright` until this
+pass. The name had stopped describing the value, and a token whose name says one
+colour while it holds another is a trap for the next person mixing a palette.
+`--accent` names what the token is *for*, which is what survives a re-ground.
+
+`--face-*` were six literal hex values inside `app.css` until this pass, which
+made the button face the one large surface no palette could reach: every token
+above could change and the buttons stayed navy.
+
+`--accent-blue` (`#5CE0EE`) is now the same value as `--accent-bright` and has
+two uses, both scroll-shadow insets. It is a leftover of the old palette and
+should be folded into `--accent-bright`.
 
 ## Type
 
@@ -34,11 +74,21 @@ designators — and every designator is a **real RRF object-model key**
 ## Signature elements (spend boldness here, nowhere else)
 
 1. **Thermal-keyed numerals** — temperature readouts colored by actual heat
-   (cold steel-blue → amber → glowing orange). Color encodes data.
-2. **Trace progress bar** — job progress drawn as a copper trace terminating
+   (cold steel-blue → amber → glowing orange). Color encodes data. On the
+   anodize ground this is the *only* warm colour in the UI, which is what the
+   accent moved out of the warm arc to protect.
+2. **Trace progress bar** — job progress drawn as an accent trace terminating
    in a via pad.
+3. **The mode-key ladder** — a heater key carries five independent facts at
+   once, each on its own channel: label + fixed column say *which key*, a 2 px
+   inset border says *armed* (press 1 landed), a solid fill says *engaged*
+   (this is the mode), a thermally-coloured halo says *arrival*, and a corner
+   dot says the setpoint field holds an unwritten value. Rest is neutral. Four
+   tools used to show twelve permanently-lit buttons with the machine idle.
+   Nothing on this ladder moves geometry — colour, fill and shadow only — so a
+   key cannot shift under the pointer when it changes state.
 
-Everything else stays quiet: hairline borders at `rgba(233,238,244,.09)`,
+Everything else stays quiet: hairline borders at `rgba(232,234,238,.10)`,
 6 px radius, no gradients on surfaces, no decorative motion. Only animation is
 the state-badge pulse, disabled under `prefers-reduced-motion`.
 

@@ -2,7 +2,7 @@ import uPlot from "uplot";
 import "uplot/dist/uPlot.min.css";
 import { createEffect, onCleanup, onMount } from "solid-js";
 import type { AlignedData } from "../om/temperature.ts";
-
+import { token, tokenAlpha } from "./themeColors.ts";
 /**
  * Per-layer print-time chart. Bars, since layers are discrete: one bar per
  * completed layer, its height the seconds that layer took. Same imperative
@@ -14,9 +14,13 @@ export function LayerChart(props: { data: () => AlignedData; height?: number }) 
 	let plotEl!: HTMLDivElement;
 	let plot: uPlot | undefined;
 
-	const AXIS = "#8fa3b8"; // --silk-dim
-	const GRID = "rgba(143,163,184,0.10)";
-	const BAR = "#5aa9e6"; // --accent-blue, distinct from the heater/bed palette
+	// Read, not copied — see charts/themeColors.ts. The bar takes the accent
+	// because layer times are the only series here: this chart has no palette of
+	// its own to collide with, unlike the temperature chart's per-heater lines.
+	const AXIS = token("--silk-dim", "#8a9099");
+	const GRID = tokenAlpha("--silk-dim", 0.1, "#8a9099");
+	const BAR = token("--accent-bright", "#5ce0ee");
+	const BAR_FILL = tokenAlpha("--accent-bright", 0.35, "#5ce0ee");
 	const height = (): number => props.height ?? 180;
 
 	/** Compact seconds → "1m 20s" / "45s" for the y-axis ticks. */
@@ -54,7 +58,7 @@ export function LayerChart(props: { data: () => AlignedData; height?: number }) 
 				{
 					label: "Time",
 					stroke: BAR,
-					fill: "rgba(90,169,230,0.35)",
+					fill: BAR_FILL,
 					// Discrete layers read as bars, not a line.
 					paths: uPlot.paths.bars!({ size: [0.7, 40] }),
 					points: { show: false },
