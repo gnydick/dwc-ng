@@ -66,13 +66,38 @@ export interface EagerMeasurement {
 	readonly assets: ReadonlyArray<{ readonly url: string; readonly bytes: number }>
 }
 
-/** Sum the eager assets on disk. A referenced file that is missing throws — a
- *  budget computed over a partial build would under-report and pass. */
+/**
+ * The base Vite baked in, recovered from an asset URL rather than from the env.
+ *
+ * A URL in index.html is `<base>assets/<file>`, so everything up to and
+ * including the last slash before `assets/` IS the base: "/" for a root build,
+ * "/ng/" for a sidecar one. Reading DWC_BASE here instead would compare an
+ * intention with itself — the same reasoning manifest.ts gives for checking the
+ * built HTML rather than the variable.
+ */
+function bakedBase(url: string): string {
+	const i = url.indexOf("/assets/")
+	return i === -1 ? "/" : url.slice(0, i + 1)
+}
+
+/**
+ * Sum the eager assets on disk. A referenced file that is missing throws — a
+ * budget computed over a partial build would under-report and pass.
+ *
+ * Paths are resolved by stripping the BAKED BASE, not just a leading slash.
+ * With `DWC_BASE=/ng/` the old form looked for `dist/ng/assets/...` while the
+ * files sit at `dist/assets/...`, so this threw ENOENT on a perfectly good
+ * dist — and because cli.ts measures before it validates, that ENOENT masked
+ * assertBaseMatchesLayout, which would have named the actual mistake and how to
+ * fix it. A budget gate must not be able to hide a guard.
+ */
 export function measureEager(distDir: string): EagerMeasurement {
 	const html = readFileSync(join(distDir, "index.html"), "utf8")
-	const assets = eagerAssets(html).map(url => ({
+	const urls = eagerAssets(html)
+	const base = urls.length > 0 ? bakedBase(urls[0]!) : "/"
+	const assets = urls.map(url => ({
 		url,
-		bytes: statSync(join(distDir, url.replace(/^\//, ""))).size,
+		bytes: statSync(join(distDir, url.startsWith(base) ? url.slice(base.length) : url.replace(/^\//, ""))).size,
 	}))
 	return {
 		bytes: assets.reduce((n, a) => n + a.bytes, 0) + Buffer.byteLength(html),
