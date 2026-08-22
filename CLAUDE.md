@@ -77,7 +77,7 @@ with no rework above the connector abstraction.
 - Scaling features should work universally. Interface cards should
   not need resizing or layout updated. ✅ Met (2026-08-21): one global unit
   `--u` (`shell/scale.ts`, `data-scale` on `<html>`), every layout-space
-  length `n * var(--u))`, zero-layout decorations (borders/hairlines as
+  length `calc(n * var(--u))`, zero-layout decorations (borders/hairlines as
   inset box-shadow, never `border:`), enforced by a build-failing px lint
   (`test/unit-lengths.test.ts`) and a Card Lab scale sweep asserting equal
   cell floors at 0.75/1.5 for every card. See
