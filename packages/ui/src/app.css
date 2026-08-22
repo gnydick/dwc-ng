@@ -2954,7 +2954,15 @@ input[type="checkbox"] {
 .fw-board { color: var(--silk); font-weight: 600; }
 .fw-num { font-variant-numeric: tabular-nums; color: var(--silk); }
 .fw-file { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: calc(3.5 * var(--u)); color: var(--silk-dim); }
-.fw-check { accent-color: var(--accent); width: calc(3.75 * var(--u)); height: calc(3.75 * var(--u)); cursor: pointer; }
+/* input[type="checkbox"].fw-check, not .fw-check alone: the base
+   input[type="checkbox"] rule (declared earlier in this file, over
+   every checkbox in the app) is (0,1,1) and this class alone was only
+   (0,1,0), so the base rule silently won and shrank this deliberately-
+   larger 3.75u checkbox to 13px at default scale -- a real visual
+   regression caught in fix-round-1 review. Repeating the element +
+   attribute selector raises this rule to (0,2,1), which outranks the
+   base rule regardless of source order, so the deliberate size wins. */
+input[type="checkbox"].fw-check { accent-color: var(--accent); width: calc(3.75 * var(--u)); height: calc(3.75 * var(--u)); cursor: pointer; }
 .fw-actions { margin-top: calc(3 * var(--u)); }
 .btn-danger.armed { background: var(--fault); color: #fff; box-shadow: inset 0 0 0 1px var(--fault); }
 /* Drop zone: an accent dashed outline while a file is dragged over the browser,
