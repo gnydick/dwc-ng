@@ -97,6 +97,14 @@ export const GAP_PX = 0;
  * scrolls horizontally instead of shrinking every card to fit. What it DOES
  * track is drawn through unitPx() at scale 1, same as rows (see PanelCanvas.tsx).
  *
+ * NOTHING DRAWS FROM IT. Since PanelCanvas.tsx emits `repeat(GRID_COLS,
+ * var(--u))`, this constant has no runtime consumer at all — it is
+ * documentation of the stored format, and the assertion in test/scale.test.ts
+ * that it equals ROW_UNIT_PX (and the default --u) is what keeps that
+ * documentation true. Kept rather than deleted because the saved format's
+ * column unit is a real fact that deserves a name; do not reach for it as if
+ * it were a drawing metric.
+ *
  * @invariant grid-metrics-single-source
  * @rung 7  generated, not mirrored — PanelCanvas.tsx emits
  *          `repeat(${GRID_COLS}, var(--u))` and `grid-auto-rows: var(--u)`,
@@ -432,6 +440,36 @@ export function resolveGroupMove(
 export function clampToStop(rawSpan: number, minSpan: number): { span: number; atLimit: boolean } {
 	if (rawSpan >= minSpan) return { span: rawSpan, atLimit: false };
 	return { span: minSpan, atLimit: true };
+}
+
+/** The grip's height expressed in units, NOT measured off the element.
+ *  `.panel-resize-grip` is a deliberately non-scaling 16px pointer target
+ *  (`px-ok` in app.css), so measuring it puts a constant into a floor that is
+ *  otherwise all `u` — and the floor then lands on a different number of
+ *  stored cells at every scale. 4u is 16px at the default unit, so the stop
+ *  is unchanged at scale 1 and now genuinely invariant across steps. */
+const GRIP_U = 4;
+
+/**
+ * The chrome floor for a vertical resize, in STORED GRID CELLS: the header
+ * plus the resize-grip foot plus 50% (operator's spec), plus the card's own
+ * bottom gutter, divided by the drawn unit.
+ *
+ * Pure and exported so the arithmetic can be checked without a DOM. THE
+ * point of it: every term is either a measured length that scales with `u`
+ * (the header) or a multiple of `u` itself, so the quotient — and therefore
+ * the stop in cells — is the same number at every scale step.
+ *
+ * NOT a separate @invariant declaration: this is the resize stop's half of
+ * `dev/card-floor-scale-invariant` (dev/layoutAudit.ts), which already states
+ * the property and carries its own debt. What is new here is the enforcement
+ * — test/panel-canvas.test.ts drives this at three units with proportional
+ * headers and asserts ONE cell count, plus a source-text guard that
+ * startResize does not reintroduce a `.panel-resize-grip` measurement.
+ */
+export function resizeHardFloor(headPx: number, unit: number, gutterPx: number): number {
+	const floorPx = (headPx + GRIP_U * unit) * 1.5;
+	return Math.max(1, Math.ceil((floorPx + gutterPx) / unit));
 }
 
 /** How near a scroll container's edge the pointer must be before a resize
@@ -1629,15 +1667,16 @@ export function createPanelCanvas(
 		const cardEl = grip.closest<HTMLElement>(".card");
 		const gutterPx = cardEl ? parseFloat(getComputedStyle(cardEl).marginBottom || "0") : 0;
 		const headPx = cardEl?.querySelector<HTMLElement>(".card-head")?.getBoundingClientRect().height ?? 0;
-		const footPx = cardEl?.querySelector<HTMLElement>(".panel-resize-grip")?.getBoundingClientRect().height ?? 0;
-		const floorPx = (headPx + footPx) * 1.5;
-		// Read once per drag; same reason as startMove. Both floors are measured
-		// in pixels and converted here, so both track the scale: at a smaller
-		// scale the header is shorter AND the unit is smaller, and the stop
-		// stays the same physical size rather than drifting. Named `unit`, not
+		// Read once per drag; same reason as startMove. Named `unit`, not
 		// `unitPx`, so the local read cannot shadow the exported function.
 		const unit = unitPx();
-		const hardFloor = Math.max(1, Math.ceil((floorPx + gutterPx) / unit));
+		// The grip term is DECLARED in units (resizeHardFloor's GRIP_U), not
+		// measured off `.panel-resize-grip`. The grip is a fixed 16px pointer
+		// target on purpose, so measuring it wrote a scale-independent constant
+		// into a floor whose other terms all scale — and the stop then landed on
+		// a different cell count at every step (22/20/18 at 0.75/1/1.5). The
+		// header IS measured, and it does scale, so the quotient holds.
+		const hardFloor = resizeHardFloor(headPx, unit, gutterPx);
 		// The declared floor for cards whose content can be absent — see
 		// PanelDefault.minRowSpan. Every rung is a Math.max, so the order they
 		// are written in does not matter and the header floor is genuinely the

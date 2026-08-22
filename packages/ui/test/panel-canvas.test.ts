@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import {
 	GRID_COLS, clampRect, rectsOverlap, collidesWithAny, hasCollisions, inBounds,
 	tryMove, tryResize, defaultCanvas, parseStoredCanvas, serializeCanvas, mergeCanvas,
-	clampToStop, growToDefaults, reflow,
+	clampToStop, growToDefaults, reflow, resizeHardFloor,
 } from "../src/shell/panelCanvas.ts";
 
 const rect = (col: number, row: number, colSpan: number, rowSpan: number) => ({ col, row, colSpan, rowSpan });
@@ -567,4 +567,42 @@ test("contentColSpan and headerColSpan convert through unitPx(), not the stored 
 		assert.ok(!/\/\s*(COL|ROW)_UNIT_PX/.test(body), `${fn} divides by a stored-format constant`);
 	}
 	assert.ok(!src.includes("rowUnitPx"), "rowUnitPx was renamed to unitPx — no stragglers");
+});
+
+/**
+ * The resize hard floor must land on the SAME number of stored cells at every
+ * scale step. Each triple below is one step: the drawn unit, and the header
+ * height that unit produces (the header is all `u`, so it scales with it),
+ * and the card's bottom gutter (--sp-stack = 2u).
+ *
+ * It used to measure `.panel-resize-grip` — a deliberately non-scaling 16px
+ * pointer target — so a scale-independent constant sat inside a floor whose
+ * other terms scaled, and the stop was 22/20/18 cells at 0.75/1/1.5.
+ */
+test("resizeHardFloor: the same cell count at every scale", () => {
+	const cells = [
+		resizeHardFloor(36, 4, 8),   // scale 1
+		resizeHardFloor(27, 3, 6),   // 0.75
+		resizeHardFloor(54, 6, 12),  // 1.5
+	];
+	assert.deepEqual(cells, [22, 22, 22], "the floor drifts with the scale");
+});
+
+test("resizeHardFloor never returns less than one cell", () => {
+	assert.equal(resizeHardFloor(0, 4, 0), 6); // 4u grip × 1.5 = 24px = 6 cells
+	assert.ok(resizeHardFloor(0, 1e6, 0) >= 1);
+});
+
+test("startResize takes its grip term from resizeHardFloor, not from a measurement", () => {
+	// Source-text guard, same shape as the contentColSpan check above: the
+	// floor is only invariant while the grip term is DECLARED in units. A
+	// `.panel-resize-grip` measurement inside startResize would put a fixed
+	// 16px back into it and nothing else would fail.
+	const src = readFileSync(fileURLToPath(new URL("../src/shell/panelCanvas.ts", import.meta.url)), "utf8");
+	const start = src.indexOf("const startResize");
+	assert.ok(start > 0, "startResize not found");
+	const body = src.slice(start, src.indexOf("\n\t};", start));
+	assert.ok(!/querySelector[^\n]*panel-resize-grip/.test(body),
+		"startResize measures the grip again — the floor drifts with the scale");
+	assert.ok(body.includes("resizeHardFloor("), "startResize must use the pure floor");
 });
