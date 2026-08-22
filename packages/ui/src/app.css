@@ -203,10 +203,12 @@
 .chip-hot   { color: var(--t-hot); box-shadow: inset 0 0 0 1px rgba(239, 123, 69, 0.45); }
 .chip-fault { color: var(--fault); box-shadow: inset 0 0 0 1px rgba(224, 92, 74, 0.5); }
 .chip-busy  { color: var(--accent-bright); box-shadow: inset 0 0 0 1px rgba(217, 133, 59, 0.5); }
-/* NOT converted (Task 5): box-shadow can only draw a solid stroke, so the
-   dashed style has no zero-layout equivalent — a real border, replacing
-   (not layering on) .chip's box-shadow, 2px larger than a solid chip. */
-.chip-quiet { box-shadow: none; border: 1px dashed var(--hairline); }
+/* outline, not box-shadow: outline supports dashed and, in Chromium/Edge,
+   follows border-radius — so the dashed variant costs no layout space either,
+   same as every solid ring above. Cancels .chip's inset ring (box-shadow: none)
+   rather than layering under it, so there is exactly one dashed ring, not a
+   dashed ring drawn over a solid one. */
+.chip-quiet { box-shadow: none; outline: 1px dashed var(--hairline); outline-offset: -1px; }
 
 .wordmark {
 	font-family: var(--font-display);
@@ -664,11 +666,6 @@
 	appearance: none;
 	background: none;
 	border: none;
-	/* NOT converted to an inset box-shadow (Task 5): box-shadow can only draw a
-	   solid stroke, and this dotted underline is the affordance that reads as
-	   "toggle," not a rule — a solid line would lose that meaning. Left as a
-	   real border; still counted by the px lint as known, un-ratcheted debt. */
-	border-bottom: 1px dotted var(--accent);
 	padding: 0;
 	cursor: pointer;
 	text-align: left;
@@ -677,8 +674,25 @@
 	   this the dotted underline runs the full 88px slot and reads as a rule
 	   rather than as an affordance on the word. */
 	align-self: flex-start;
+	/* Positions the ::after underline below — needed because the underline is
+	   no longer a real border (see ::after: outline can't do one-sided lines,
+	   and dotted has no box-shadow equivalent at all). */
+	position: relative;
 }
-.speed-toggle:hover { color: var(--silk); border-bottom-color: var(--silk); }
+/* The dotted underline itself, as an absolutely positioned pseudo-element
+   rather than a border: an outline always draws all four sides, so it can't
+   make a one-sided rule, and box-shadow can't draw a dotted stroke at all.
+   Absolutely positioned content contributes nothing to layout (same reason
+   .gcode-canvas and .thumb-img are inset:0/absolute), so this costs no more
+   layout space than the outline conversions above. */
+.speed-toggle::after {
+	content: "";
+	position: absolute;
+	left: 0; right: 0; bottom: 0;
+	border-bottom: 1px dotted var(--accent); /* px-ok: absolutely positioned — zero layout space */
+}
+.speed-toggle:hover { color: var(--silk); }
+.speed-toggle:hover::after { border-bottom-color: var(--silk); }
 .speed-val {
 	font-family: var(--font-display);
 	font-weight: 600;
@@ -1173,12 +1187,9 @@
 .lab-pill:hover { color: var(--silk); }
 .lab-pill[aria-pressed="true"] { color: var(--accent-bright); box-shadow: inset 0 0 0 1px var(--accent); background: rgba(217, 133, 59, 0.1); }
 .lab-note { font-size: calc(3.5 * var(--u)); color: var(--silk-dim); font-style: italic; }
-/* NOT converted (Task 5): box-shadow can only draw a solid stroke, so the
-   dashed style that marks a custom pill has no zero-layout equivalent. Dev-only
-   (card lab) — a real 1px border, replacing (not layering on) .lab-pill's
-   box-shadow, so a custom pill is 2px larger than its siblings rather than
-   double-ringed; that footprint mismatch is confined to this dev tool. */
-.lab-pill-custom { box-shadow: none; border: 1px dashed var(--hairline); }
+/* outline, not box-shadow: dashed and zero-layout, same as .chip-quiet above.
+   Cancels .lab-pill's inset ring rather than layering under it. */
+.lab-pill-custom { box-shadow: none; outline: 1px dashed var(--hairline); outline-offset: -1px; }
 .lab-pill-new { color: var(--ok); box-shadow: inset 0 0 0 1px rgba(111, 191, 143, 0.5); }
 .lab-canvas { padding-bottom: 240px; }
 
@@ -1565,7 +1576,12 @@
 
 .detail-body { display: grid; grid-template-columns: 160px 1fr; gap: 18px; align-items: start; }
 .thumb-frame {
-	width: 160px; height: 160px; box-shadow: inset 0 0 0 1px var(--hairline); border-radius: var(--radius);
+	/* outline, not box-shadow: .thumb-img fills the content box flush (160x160,
+	   object-fit: contain but still covering the full box), so an inset shadow
+	   would paint UNDER it and never be seen. outline paints after descendants
+	   (painting-order step 10), like a border did, and is exempt from the px
+	   lint (zero layout space) the same way box-shadow is. */
+	width: 160px; height: 160px; outline: 1px solid var(--hairline); outline-offset: -1px; border-radius: var(--radius);
 	background: var(--mask-900); display: flex; align-items: center; justify-content: center; overflow: hidden;
 	background-image: linear-gradient(45deg, var(--mask-700) 25%, transparent 25%), linear-gradient(-45deg, var(--mask-700) 25%, transparent 25%),
 		linear-gradient(45deg, transparent 75%, var(--mask-700) 75%), linear-gradient(-45deg, transparent 75%, var(--mask-700) 75%);
@@ -1592,7 +1608,10 @@
 /* flex-shrink:0 is load-bearing: in a card too short for its content the bar
    is the only child with no intrinsic text height, so it collapses to ~1px
    and the print silently looks like it has no progress at all. */
-.progress { position: relative; height: 22px; flex: 0 0 22px; min-height: 22px; background: var(--mask-900); border-radius: var(--radius); overflow: hidden; margin: 4px 0 12px; box-shadow: inset 0 0 0 1px var(--hairline); }
+/* outline, not box-shadow: .progress-fill is height:100% and opaque, so an
+   inset shadow would paint under it and disappear as soon as the bar has any
+   fill. outline paints above descendants and is zero-layout, like border was. */
+.progress { position: relative; height: 22px; flex: 0 0 22px; min-height: 22px; background: var(--mask-900); border-radius: var(--radius); overflow: hidden; margin: 4px 0 12px; outline: 1px solid var(--hairline); outline-offset: -1px; }
 .progress-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-bright)); transition: width 0.4s ease; }
 .progress-label { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font: 600 calc(3.5 * var(--u))/1 "Rajdhani", sans-serif; color: var(--silk); }
 .job-active-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
@@ -1749,7 +1768,11 @@
 
    Carries NO scale token itself, on purpose — the control you use to escape
    a scale you dislike must not shrink along with it. */
-.scale-toggle { display: inline-flex; box-shadow: inset 0 0 0 1px var(--hairline); border-radius: var(--radius); overflow: hidden; }
+/* outline, not box-shadow: the active segment's opaque background reaches the
+   group's own edge (no gap between buttons), so a container-level inset shadow
+   would be painted over there. outline paints above descendants and is
+   zero-layout. */
+.scale-toggle { display: inline-flex; outline: 1px solid var(--hairline); outline-offset: -1px; border-radius: var(--radius); overflow: hidden; }
 .scale-opt {
 	font-family: var(--font-display); font-weight: 600; font-size: 13.5px; /* px-ok: hit target — must not follow the scale it controls */
 	letter-spacing: 0.06em;
@@ -1762,7 +1785,9 @@
 .scale-opt.active { color: var(--mask-900); background: var(--accent); }
 
 /* ---------- dev Mock/Real backend toggle ---------- */
-.backend-toggle { display: inline-flex; box-shadow: inset 0 0 0 1px var(--hairline); border-radius: var(--radius); overflow: hidden; }
+/* outline, not box-shadow: same reasoning as .scale-toggle above — the active
+   segment's opaque background reaches the group's own edge. */
+.backend-toggle { display: inline-flex; outline: 1px solid var(--hairline); outline-offset: -1px; border-radius: var(--radius); overflow: hidden; }
 .backend-opt {
 	font-family: var(--font-display); font-weight: 600; font-size: calc(3.375 * var(--u)); letter-spacing: 0.08em; text-transform: uppercase;
 	color: var(--silk-dim); background: none; border: none; padding: 6px 11px; cursor: pointer;
@@ -2092,25 +2117,25 @@
    raises and the Current cell shows as a badge. Listed warm-then-hot so the
    hotter band wins when a reading is past both. */
 .mode-key.is-engaged.over-warm {
-	border-color: var(--t-warm);
 	box-shadow:
 		inset 0 1px 0 rgba(233, 238, 244, 0.07),
 		0 0 0 1px var(--t-warm),
-		0 0 11px -1px var(--t-warm);
+		0 0 11px -1px var(--t-warm),
+		inset 0 0 0 1px var(--t-warm);
 }
 .mode-key.is-engaged.over-hot {
-	border-color: var(--fault);
 	box-shadow:
 		inset 0 1px 0 rgba(233, 238, 244, 0.07),
 		0 0 0 1px var(--fault),
-		0 0 13px -1px var(--fault);
+		0 0 13px -1px var(--fault),
+		inset 0 0 0 1px var(--fault);
 }
 /* Your value landed; the next press is the one that acts on it. Full-strength
    accent lettering on the resting ground — brighter than at rest, dimmer than
    engaged — so the middle of the two-click sequence is visible instead of
    looking exactly like having done nothing. Colour only, like every other
    state here: nothing about the box moves. */
-.mode-key.is-applied:not(.is-engaged) { border-color: var(--btn-accent); }
+.mode-key.is-applied:not(.is-engaged) { --gcode-border: var(--btn-accent); }
 .mode-key.is-applied:not(.is-engaged) .gcode-label { color: var(--btn-accent); }
 /* 2px optically, via an INSET SHADOW rather than border-width, so the box never
    changes size and a row of keys cannot reflow when one arms under your finger.
@@ -2139,7 +2164,7 @@
    This is why the ARMED rung had to get louder in the same pass. It used to be
    an alpha step against a coloured rest, which is the quietest change in a
    sequence whose middle step is the one that matters. */
-.mode-key:not(.is-engaged):not(.is-applied) { border-color: color-mix(in srgb, var(--silk) 22%, transparent); }
+.mode-key:not(.is-engaged):not(.is-applied) { --gcode-border: color-mix(in srgb, var(--silk) 22%, transparent); }
 .mode-key:not(.is-engaged):not(.is-applied) .gcode-label { color: var(--silk-dim); }
 /* Off has NO rest rule of its own, deliberately. It briefly had one, to fix a
    real split: the fan card's Off is a full-size .gcode-btn rather than a
@@ -2446,11 +2471,7 @@
 .pos-yn { grid-area: 3 / 2; }
 .jog-center {
 	grid-area: 2 / 2; display: flex; flex-direction: column; align-items: center; justify-content: center;
-	/* NOT converted (Task 5): box-shadow can only draw a solid stroke, no dashed
-	   equivalent exists. Also moot for the zero-layout invariant here — this box
-	   is a fixed 60x60 grid cell (.jog-xy's own explicit px tracks), so the 2px
-	   the border occupies cannot drift any card's floor. */
-	border: 1px dashed var(--hairline); border-radius: var(--radius);
+	outline: 1px dashed var(--hairline); outline-offset: -1px; border-radius: var(--radius);
 	font: 700 calc(4.75 * var(--u))/1 var(--font-display); color: var(--accent-bright); font-variant-numeric: tabular-nums;
 }
 .jog-center small { font-size: calc(3 * var(--u)); color: var(--silk-dim); font-weight: 600; margin-top: 3px; letter-spacing: 0.06em; }
@@ -2613,7 +2634,10 @@
 .card-actions .btn { padding: 3px 10px; font-size: calc(3.5 * var(--u)); }
 .btn.primary { background: rgba(217, 133, 59, 0.16); box-shadow: inset 0 0 0 1px var(--accent); color: var(--accent-bright); }
 .btn.primary:hover:not(:disabled) { background: rgba(217, 133, 59, 0.26); }
-.editor-host { position: relative; flex: 1; min-height: 0; box-shadow: inset 0 0 0 1px var(--hairline); border-radius: var(--radius); overflow: hidden; }
+/* outline, not box-shadow: .editor-mount is absolutely positioned inset:0 with
+   an opaque .cm-editor background, so an inset shadow would paint under it and
+   never show. outline paints above descendants and is zero-layout. */
+.editor-host { position: relative; flex: 1; min-height: 0; outline: 1px solid var(--hairline); outline-offset: -1px; border-radius: var(--radius); overflow: hidden; }
 .editor-mount { position: absolute; inset: 0; }
 .editor-mount .cm-editor { height: 100%; }
 .editor-overlay {
@@ -3047,9 +3071,7 @@
 .st-template { flex: 1; font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: calc(3.5 * var(--u)); }
 .st-variant { width: 90px; }
 .st-stamp { font-size: calc(3.5 * var(--u)); white-space: nowrap; }
-/* NOT converted (Task 5): box-shadow can only draw a solid stroke, no dashed
-   equivalent exists. */
-.studio-row { border: 1px dashed var(--hairline); border-radius: var(--radius); padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+.studio-row { outline: 1px dashed var(--hairline); outline-offset: -1px; border-radius: var(--radius); padding: 8px; display: flex; flex-direction: column; gap: 6px; }
 .studio-rowhead { display: flex; gap: 6px; align-items: center; }
 .st-inputref { color: var(--silk-dim); font-size: calc(3.625 * var(--u)); }
 .st-refname { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; color: var(--accent-bright); }
@@ -3071,9 +3093,7 @@
 	color: var(--accent-bright); white-space: pre-wrap; overflow-wrap: anywhere;
 }
 .import-label { color: var(--silk); font-size: calc(3.625 * var(--u)); min-width: 90px; }
-/* NOT converted (Task 5): box-shadow can only draw a solid stroke, no dashed
-   equivalent exists. */
-.import-embedded { border: 1px dashed var(--hairline); border-radius: var(--radius); padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+.import-embedded { outline: 1px dashed var(--hairline); outline-offset: -1px; border-radius: var(--radius); padding: 8px; display: flex; flex-direction: column; gap: 6px; }
 
 /* Macros: AutoConfirm — visible wherever the Run buttons are, so the mode can
    always be read off the screen rather than remembered. */
@@ -3579,7 +3599,10 @@
 	width: auto;
 	max-width: 100%;
 	margin-inline: auto;
-	box-shadow: inset 0 0 0 1px var(--hairline); border-radius: var(--radius);
+	/* outline, not box-shadow: .hm-canvas is 100%/100% and opaque, so an inset
+	   shadow would paint under it and never show. outline paints above
+	   descendants and is zero-layout. */
+	outline: 1px solid var(--hairline); outline-offset: -1px; border-radius: var(--radius);
 	overflow: hidden;
 }
 .hm-canvas {
