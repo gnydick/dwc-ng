@@ -1,5 +1,5 @@
 /**
- * Vellum — the light theme. Reached by data-theme="vellum" on <html>, which
+ * Vellum â€” the light theme. Reached by data-theme="vellum" on <html>, which
  * shell/theme.ts is the only writer of. index.css owns the default (graphite)
  * on :root; this file holds ONLY the override block, so deleting it leaves the
  * UI byte-identical to the default.
