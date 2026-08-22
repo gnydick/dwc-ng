@@ -152,8 +152,9 @@ any screen usefully and the goal is readability, not magnification.
 ### The lint — one pipeline for the invariant
 
 A `node:test` in `packages/ui/test/unit-lengths.test.ts` that reads every
-`.css`, `.ts`, `.tsx` under `packages/ui/src` and **fails the build** on any
-`<number>px` token unless:
+`.css`, `.ts`, `.tsx` under `packages/ui/src` and **fails `pnpm test`** on any
+absolute-unit token — `px`, `PX`, `vh`, `vw`, `rem`, `pt`, `in`, `cm`, `mm`,
+`pc`, or a `` `${n}px` `` template — unless:
 
 1. it is the value of an exempt property — `border-radius`, `box-shadow`,
    `outline`, `outline-offset`, `text-shadow`, `filter`, `backdrop-filter`;
@@ -165,10 +166,15 @@ A `node:test` in `packages/ui/test/unit-lengths.test.ts` that reads every
    `edgeScroll.ts`; `1px` in hairline `box-shadow` forms is already exempt by
    rule 1.
 
-A `border: 1px` anywhere fails. A new `min-height: 150px` fails. There is no
-second way to write a length, so the invariant cannot be bypassed by
-forgetting it — rung 7 on the enforcement ladder: the forbidden thing is not
-discouraged, it is a build error.
+A `border: 1px` anywhere fails. A new `min-height: 150px` fails. A
+`max-height: 52vh` fails. There is no second way to write a length, so the
+invariant cannot be bypassed by forgetting it.
+
+**Rung 4, not 7 — corrected 2026-08-21.** This originally claimed rung 7 and
+"a build error", and it is neither: `pnpm build` is `tsc -b && vite build` and
+never runs `node:test`, and the repo has no CI and no git hook. The lint is as
+strong as described; the *gate* is "someone ran `pnpm test`", which is a lint,
+which is rung 4. See the follow-up at the end of this document.
 
 The lint is written **first**, red against today's source (≈870 hits), and the
 migration is done when it is green. That makes the migration's completeness a
@@ -192,15 +198,33 @@ foreground browser like the existing audit (jsdom has no layout engine).
 ### Pixel identity at scale 1
 
 Before/after the CSS pass, a screenshot diff of each composed screen at
-`data-scale` absent must be identical. This is the falsifying check for "the
-default renders exactly as before": it can fail, and if the migration mis-
-converts a single value it will.
+`data-scale` absent was the falsifying check for "the default renders exactly
+as before": it can fail, and if the migration mis-converts a single value it
+will.
+
+**It did fail, in eight places, and this is the measured truth rather than the
+plan.** The migration is NOT pixel-identical at scale 1. Every difference below
+was deliberate — each is a defect the pass had to fix in order to make the
+length scale at all — and each is recorded here so nobody re-derives them as
+regressions:
+
+| Where | Scale-1 delta | Why it was accepted |
+|---|---|---|
+| Borders throughout | 2px → the hairline is now an inset `box-shadow` | `border:` occupies layout space, which is the whole defect; a shadow ring does not |
+| `.om-tree` | `max-height: 52vh` → flex-fill | a viewport fraction inside a card is a floor that moves with the window, not with `u` |
+| `.field input`, `.console-form input` | gained an explicit width plus a `min-width` floor | they used to size from the intrinsic default, which is font-metric-derived and does not follow `u` |
+| `.heat-table td` | padding +0.5px per side | `--sp-cell` rounds to the nearest half-unit; the alternative was a literal |
+| `.fw-warn` | text 3px left; gold bar 2px wide | the bar was a `border-left`, now an inset ring, and the text sits against the ring instead of the border box |
+| `.mode-key.is-applied` ring | 2px → 1px, **restored to 2px in the 2026-08-21 review pass** | the wholesale `box-shadow` restatement lost a layer; the dead `--gcode-border` it set was deleted at the same time |
+| `input[type=checkbox]` | now an explicit size, Chromium-identical | the UA default differs between engines, so "identical" was only ever true on one; on Firefox this is a visible change |
+| Speed slider thumb / track / stops | unchanged at scale 1, and now **frozen in px** | pointer targets; 3.5u is 10.5px at 0.75, which is not a target. `SpeedSlider.stopOffset()` carries the same 14px and says so |
+
 
 ## Testing
 
 | Check | Host | Fails when |
 |---|---|---|
-| `unit-lengths.test.ts` | `pnpm test` | any non-exempt px token exists |
+| `unit-lengths.test.ts` | `pnpm test` | any non-exempt absolute-unit token exists (px/PX/vh/vw/rem/pt/in/cm/mm/pc, `` `${n}px` `` included) |
 | `scale.test.ts` (port of `density.test.ts`) | `pnpm test` | default has a CSS block; a step lacks `--u`; `--u` not monotonic in scale; old pitch key maps wrongly; migrations use `unitPx()` instead of the frozen constant |
 | `panel-canvas.test.ts` additions | `pnpm test` | `contentColSpan` divides by a literal; stored format changes |
 | Card Lab scale sweep | Edge, foreground | any card's cell floor differs between 0.75 and 1.5 |
@@ -238,3 +262,26 @@ converts a single value it will.
   sweep is that rounding. A card exactly at its floor may show up to 1 cell
   (≤ 6px) of slack at some scales; the resize stop rounds up, so it cannot
   clip.
+
+## Follow-ups
+
+Out of scope for the ten migration tasks, and open as of the 2026-08-21
+review pass:
+
+- **Composed default `rowSpan`s are too small for this machine, at every
+  scale.** `compose/screens.ts` ships defaults sized for a smaller printer;
+  on the 7-axis / 4-tool toolchanger the Fans, Extruders, Movement, Firmware
+  update and Object model cards all open shorter than their content. This is
+  not a scaling defect — the floors ARE scale-invariant, they are simply
+  below the content — but it is what an operator sees first on a fresh
+  layout, so it reads as one.
+- **Promote the Card Lab scale sweep to CI.** It is the only check that can
+  see a pixel hiding behind a script-set inline style or a third-party
+  stylesheet, and it is manual (`dev/card-floor-scale-invariant`, rung 4).
+  The same CDP driver already used for the floor sweep would serve.
+- **Promote `ui/unit-lengths` from rung 4 to 6.** The lint is a `node:test`;
+  `pnpm build` is `tsc -b && vite build` and never runs it, and this repo has
+  no CI and no git hook, so the gate is "someone ran `pnpm test`". Running it
+  from a pre-push hook or in CI makes it mechanically unavoidable. The debt
+  ceiling was raised 21 → 22 to record the honest rating
+  (`packages/invariants/debt-ceiling.json`).
