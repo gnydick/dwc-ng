@@ -17,7 +17,14 @@ cells = [
 md("""# Duet 3 6HC driver tuning — accelerometer analysis
 Data: `runs/dataset.csv` (one row per trial × speed × window × axis) and raw M956 captures in `runs/<trial>/*.csv`.
 Regenerate the dataset with `python dataset.py`. Needs numpy + matplotlib only."""),
-code("""import csv
+code("""import csv, os, sys
+# run from anywhere: find tools/accel (the kernel may start at the repo root)
+for cand in (os.getcwd(), os.path.join(os.getcwd(), 'tools', 'accel'), os.path.join(os.getcwd(), '..', '..', 'tools', 'accel')):
+    if os.path.exists(os.path.join(cand, 'accel.py')):
+        os.chdir(os.path.abspath(cand)); break
+else:
+    raise FileNotFoundError('tools/accel not found from ' + os.getcwd())
+if os.getcwd() not in sys.path: sys.path.insert(0, os.getcwd())
 import numpy as np
 import matplotlib.pyplot as plt
 from accel import parse_capture, spectrum          # same analysis code the runner uses
