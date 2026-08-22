@@ -109,17 +109,7 @@
 	--face-lo-fail: #2b201f;
 	--font-display: "Rajdhani", "Segoe UI", system-ui, sans-serif;
 	--font-body: system-ui, "Segoe UI", Roboto, sans-serif;
-	/* Added to EVERY font-size in the app, which is why every one of them is a
-	   calc(). There was no type scale — 108 literal px values between 9 and 22 —
-	   so a global change meant 108 edits and a global revert meant 108 more.
-	   One number now, and it is the only place text size changes.
-
-	   It does NOT resize anything else. Card floors follow on their own because
-	   they are measured from rendered content (contentRowSpan), but control
-	   heights and the fixed column tracks are literals and have to be checked
-	   against a bump — see --ctl-h and the *-col-* widths. */
-	--fs-bump: 2px;
-	--radius: 6px;
+	--radius: 6px; /* px-ok: radius never occupies layout space */
 
 	/* One control height for the whole UI. Every button, input and chip is
 	   exactly this tall, so a row of controls has a knowable height and a card
@@ -127,40 +117,37 @@
 	   SEVEN distinct control heights (25/27/30/31/32/46/60) - three of them
 	   coming from the same component depending on whether its stamp showed.
 	   The jog pad is the one deliberate exception, at exactly 2x. */
-	--ctl-h: calc(28px + var(--fs-bump));
-	--ctl-gap: 8px;
+	--ctl-h: calc(7.5 * var(--u));
+	--ctl-gap: calc(2 * var(--u));
 
-	/* ---------- density: the baseline ("1.27 mm" lead pitch) ----------
-	   Every spacing value the UI spends more than once. These are the values
-	   app.css used to write as literals, unchanged — so with no data-pitch
-	   attribute on <html> the UI renders exactly as it always has.
+	/* ---------- spacing: n × --u ----------
+	   Every spacing value the UI spends more than once, each n × --u. These
+	   used to be independent px literals with their own density-pitch override
+	   blocks; now they scale with everything else and the only override is
+	   --u itself (shell/scale.ts, the [data-scale] blocks below).
 
-	   There is deliberately NO [data-pitch="127"] block below. The default
-	   pitch IS the absence of an override, so the baseline is written down in
-	   exactly one place and cannot drift from the pitch that claims to be it.
-
-	   Vertical values stay on even multiples wherever the 4px canvas quantum
+	   Vertical values stay on even multiples wherever the --u canvas quantum
 	   (shell/panelCanvas.ts ROW_UNIT_PX) can see them: a card is only ever
 	   fittable to its content when the content totals land on that grid. */
-	--sp-card-x: 16px;   /* card body side padding */
-	--sp-card-t: 6px;    /* card body top padding (the sticky head parks here) */
-	--sp-card-b: 8px;    /* card body bottom padding */
-	--sp-head-h: 36px;   /* card header height — a hard number, not line-height */
-	--sp-flow: 8px;      /* vertical rhythm between blocks inside a card */
-	--sp-row: 7px;       /* data row padding (DRO) */
-	--sp-cell: 8px;      /* table cell padding (heaters) */
-	--sp-list: 9px;      /* file/list row padding */
-	--sp-field: 6px;     /* settings field row padding */
-	--sp-stack: 8px;     /* gutter between stacked cards on the canvas */
-	--sp-gutter: 12px;   /* page side gutter */
-	--sp-gutter-b: 14px; /* page bottom gutter */
-	--sp-rail-py: 14px;  /* nav rail vertical padding */
-	--sp-rail-gap: 18px; /* nav rail block gap */
-	--sp-nav-py: 8px;    /* nav item padding */
-	--sp-chip-py: 4px;
-	--sp-chip-px: 12px;
-	--sp-pre-py: 7px;    /* preflight strip padding */
-	--sp-input-py: 7px;  /* free-standing inputs and ghost buttons */
+	--sp-card-x: calc(4 * var(--u));    /* card body side padding */
+	--sp-card-t: calc(1.5 * var(--u));  /* card body top padding (the sticky head parks here) */
+	--sp-card-b: calc(2 * var(--u));    /* card body bottom padding */
+	--sp-head-h: calc(9 * var(--u));    /* card header height — a hard number, not line-height */
+	--sp-flow: calc(2 * var(--u));      /* vertical rhythm between blocks inside a card */
+	--sp-row: calc(1.75 * var(--u));    /* data row padding (DRO) */
+	--sp-cell: calc(2 * var(--u));      /* table cell padding (heaters) */
+	--sp-list: calc(2.25 * var(--u));   /* file/list row padding */
+	--sp-field: calc(1.5 * var(--u));   /* settings field row padding */
+	--sp-stack: calc(2 * var(--u));     /* gutter between stacked cards on the canvas */
+	--sp-gutter: calc(3 * var(--u));    /* page side gutter */
+	--sp-gutter-b: calc(3.5 * var(--u)); /* page bottom gutter */
+	--sp-rail-py: calc(3.5 * var(--u)); /* nav rail vertical padding */
+	--sp-rail-gap: calc(4.5 * var(--u)); /* nav rail block gap */
+	--sp-nav-py: calc(2 * var(--u));    /* nav item padding */
+	--sp-chip-py: calc(1 * var(--u));
+	--sp-chip-px: calc(3 * var(--u));
+	--sp-pre-py: calc(1.75 * var(--u)); /* preflight strip padding */
+	--sp-input-py: calc(1.75 * var(--u)); /* free-standing inputs and ghost buttons */
 
 	/* THE unit. Every layout-space length in the UI is n × this (see
 	   test/unit-lengths.test.ts, which fails the build on a px literal
@@ -168,51 +155,6 @@
 	   (shell/panelCanvas.ts ROW_UNIT_PX / COL_UNIT_PX): at scale 1 one drawn
 	   cell is one stored cell and the canvas renders exactly as it always has. */
 	--u: 4px;
-}
-
-/* ---------- density overrides ----------
-   Air only. Type sizes are IDENTICAL at every pitch on purpose: the complaint
-   is padding, and you read this screen standing at the machine, so legibility
-   is not the thing to spend. Likewise the grab handles, the resize grips and
-   the e-stop carry no density token — density buys rows from air, never from
-   things you have to hit. --ctl-h is the one target that moves, and it stops
-   at 20px, which is still a comfortable pointer target. */
-
-/* 0.80 mm — snug. About a quarter of the air. */
-:root[data-pitch="080"] {
-	--ctl-h: calc(24px + var(--fs-bump)); --ctl-gap: 6px;
-	--sp-card-x: 12px; --sp-card-t: 4px; --sp-card-b: 6px;
-	--sp-head-h: 28px; --sp-flow: 6px;
-	--sp-row: 5px; --sp-cell: 6px; --sp-list: 6px; --sp-field: 4px;
-	--sp-stack: 8px; --sp-gutter: 10px; --sp-gutter-b: 10px;
-	--sp-rail-py: 10px; --sp-rail-gap: 12px; --sp-nav-py: 6px;
-	--sp-chip-py: 3px; --sp-chip-px: 10px; --sp-pre-py: 5px;
-	--sp-input-py: 5px;
-}
-
-/* 0.50 mm — dense. About half the air. */
-:root[data-pitch="050"] {
-	--ctl-h: calc(20px + var(--fs-bump)); --ctl-gap: 4px;
-	--sp-card-x: 10px; --sp-card-t: 2px; --sp-card-b: 4px;
-	--sp-head-h: 24px; --sp-flow: 4px;
-	--sp-row: 3px; --sp-cell: 4px; --sp-list: 4px; --sp-field: 3px;
-	--sp-stack: 4px; --sp-gutter: 8px; --sp-gutter-b: 8px;
-	--sp-rail-py: 8px; --sp-rail-gap: 10px; --sp-nav-py: 4px;
-	--sp-chip-py: 2px; --sp-chip-px: 8px; --sp-pre-py: 3px;
-	--sp-input-py: 4px;
-}
-
-/* 0.40 mm — fine. The practical floor: below this the hairlines start
-   touching the glyphs and the rows stop reading as rows. */
-:root[data-pitch="040"] {
-	--ctl-h: calc(20px + var(--fs-bump)); --ctl-gap: 4px;
-	--sp-card-x: 8px; --sp-card-t: 2px; --sp-card-b: 2px;
-	--sp-head-h: 20px; --sp-flow: 2px;
-	--sp-row: 2px; --sp-cell: 2px; --sp-list: 3px; --sp-field: 2px;
-	--sp-stack: 4px; --sp-gutter: 6px; --sp-gutter-b: 6px;
-	--sp-rail-py: 6px; --sp-rail-gap: 8px; --sp-nav-py: 3px;
-	--sp-chip-py: 1px; --sp-chip-px: 7px; --sp-pre-py: 2px;
-	--sp-input-py: 3px;
 }
 
 /* ---------- UI scale ----------
@@ -247,7 +189,7 @@ body {
 	background: var(--mask-900);
 	color: var(--silk);
 	font-family: var(--font-body);
-	font-size: calc(14px + var(--fs-bump));
+	font-size: calc(4 * var(--u));
 	line-height: 1.45;
 	min-height: 100vh;
 }

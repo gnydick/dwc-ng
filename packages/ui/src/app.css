@@ -30,7 +30,7 @@
 	border-radius: var(--radius);
 	font-family: var(--font-display);
 	font-weight: 600;
-	font-size: calc(14px + var(--fs-bump));
+	font-size: calc(4 * var(--u));
 	letter-spacing: 0.06em;
 	text-transform: uppercase;
 	color: var(--silk-dim);
@@ -59,7 +59,7 @@
 .rail-tools:empty { display: none; }
 
 .rail .machine-id {
-	font-size: calc(11.5px + var(--fs-bump));
+	font-size: calc(3.375 * var(--u));
 	color: var(--silk-dim);
 	padding-left: 10px;
 	line-height: 1.6;
@@ -68,7 +68,7 @@
    only when two tabs disagree about what they are running. Tabular so two
    stamps can be compared digit by digit. */
 .rail .build-id {
-	font-size: calc(10px + var(--fs-bump));
+	font-size: calc(3 * var(--u));
 	opacity: 0.55;
 	font-variant-numeric: tabular-nums;
 	letter-spacing: 0.02em;
@@ -130,7 +130,7 @@
 .ghost-btn {
 	font-family: var(--font-display);
 	font-weight: 600;
-	font-size: calc(12.5px + var(--fs-bump));
+	font-size: calc(3.625 * var(--u));
 	letter-spacing: 0.1em;
 	text-transform: uppercase;
 	color: var(--silk-dim);
@@ -144,7 +144,7 @@
 .estop {
 	font-family: var(--font-display);
 	font-weight: 700;
-	font-size: calc(14px + var(--fs-bump));
+	font-size: 16px; /* px-ok: hit target — must not follow the scale it controls */
 	letter-spacing: 0.18em;
 	color: #fff;
 	background: var(--fault);
@@ -154,7 +154,7 @@
 }
 .estop:hover { background: #ea6c5a; }
 .estop:active { transform: translateY(1px); box-shadow: 0 1px 0 #8f3527; }
-.estop small { display: block; font-size: calc(9px + var(--fs-bump)); font-weight: 600; letter-spacing: 0.1em; opacity: 0.8; }
+.estop small { display: block; font-size: calc(2.75 * var(--u)); font-weight: 600; letter-spacing: 0.1em; opacity: 0.8; }
 /* The STOP did not reach the board (network failure): colour-only alarm on
    fixed geometry — the button must never move or resize under the finger. */
 .estop-failed {
@@ -188,7 +188,7 @@
 	gap: 7px;
 	font-family: var(--font-display);
 	font-weight: 700;
-	font-size: calc(12.5px + var(--fs-bump));
+	font-size: calc(3.625 * var(--u));
 	letter-spacing: 0.12em;
 	text-transform: uppercase;
 	border: 1px solid var(--hairline);
@@ -208,7 +208,7 @@
 .wordmark {
 	font-family: var(--font-display);
 	font-weight: 700;
-	font-size: calc(18px + var(--fs-bump));
+	font-size: calc(5 * var(--u));
 	letter-spacing: 0.04em;
 	padding-left: 10px;
 	display: flex;
@@ -222,7 +222,7 @@
 	background: none;
 	border: none;
 	color: var(--silk-dim);
-	font-size: calc(20px + var(--fs-bump));
+	font-size: calc(5.5 * var(--u));
 	line-height: 1;
 	padding: 2px 6px;
 	cursor: pointer;
@@ -240,7 +240,7 @@
 	background: none;
 	border: 1px solid var(--hairline);
 	color: var(--silk);
-	font-size: calc(16px + var(--fs-bump));
+	font-size: calc(4.5 * var(--u));
 	line-height: 1;
 	width: 30px;
 	height: 30px;
@@ -312,7 +312,7 @@
 .card-title {
 	font-family: var(--font-display);
 	font-weight: 600;
-	font-size: calc(13px + var(--fs-bump));
+	font-size: calc(3.75 * var(--u));
 	letter-spacing: 0.16em;
 	text-transform: uppercase;
 	color: var(--silk-dim);
@@ -358,7 +358,7 @@
 	border: 1px solid var(--hairline);
 	border-radius: 4px;
 	color: var(--silk-dim);
-	font-size: calc(11px + var(--fs-bump));
+	font-size: calc(3.25 * var(--u));
 	line-height: 1;
 	padding: 2px 6px;
 	cursor: grab;
@@ -372,7 +372,7 @@
 	border: 1px solid var(--hairline);
 	border-radius: 4px;
 	color: var(--silk-dim);
-	font-size: calc(11px + var(--fs-bump));
+	font-size: calc(3.25 * var(--u));
 	line-height: 1;
 	padding: 2px 6px;
 	cursor: pointer;
@@ -450,7 +450,7 @@
 .layout-reset {
 	font-family: var(--font-display);
 	font-weight: 600;
-	font-size: calc(11px + var(--fs-bump));
+	font-size: calc(3.25 * var(--u));
 	letter-spacing: 0.12em;
 	text-transform: uppercase;
 	color: var(--silk-dim);
@@ -461,7 +461,7 @@
 .des {
 	font-family: var(--font-display);
 	font-weight: 600;
-	font-size: calc(11px + var(--fs-bump));
+	font-size: calc(3.25 * var(--u));
 	letter-spacing: 0.08em;
 	color: var(--silk-dim);
 	border: 1px solid var(--hairline);
@@ -476,7 +476,7 @@
 .card-tip {
 	font-family: var(--font-display);
 	font-weight: 600;
-	font-size: calc(11px + var(--fs-bump));
+	font-size: calc(3.25 * var(--u));
 	letter-spacing: 0.08em;
 	color: var(--silk-dim);
 	border: 1px solid var(--hairline);
@@ -509,7 +509,7 @@
    as the reading crossed a digit or picked up a minus sign, moving all seven
    rows. 100px is measured — "-99999.99mm" renders 99px at this face and size,
    past anything a machine coordinate reaches. */
-:root { --dro-val-w: calc(100px + 2 * var(--fs-col)); }
+:root { --dro-val-w: calc(29 * var(--u)); }
 .dro-list {
 	display: grid;
 	/* axis (+ role) | reading | homed tag */
@@ -541,7 +541,7 @@
 .dro-axis {
 	font-family: var(--font-display);
 	font-weight: 700;
-	font-size: calc(19px + var(--fs-bump));
+	font-size: calc(5.25 * var(--u));
 	color: var(--silk-dim);
 }
 .dro-row.unhomed .dro-axis { color: var(--gold); }
@@ -553,7 +553,7 @@
 	margin-left: 8px;
 	font-family: var(--font-display);
 	font-weight: 600;
-	font-size: calc(11px + var(--fs-bump));
+	font-size: calc(3.25 * var(--u));
 	letter-spacing: 0.06em;
 	text-transform: uppercase;
 	color: var(--accent);
@@ -565,13 +565,13 @@
 	font-weight: 600;
 	/* Matched to the axis label (.dro-axis, 19px) by request — the value no
 	   longer towers over the letter it belongs to. */
-	font-size: calc(19px + var(--fs-bump));
+	font-size: calc(5.25 * var(--u));
 	line-height: 1;
 	text-align: right;
 	font-variant-numeric: tabular-nums;
 }
 .dro-row.unhomed .dro-val { color: var(--silk-dim); }
-.dro-val small { font-size: calc(11px + var(--fs-bump)); color: var(--silk-dim); margin-left: 3px; }
+.dro-val small { font-size: calc(3.25 * var(--u)); color: var(--silk-dim); margin-left: 3px; }
 
 /* Horizontal Position layout (orientationToggle) — same data, arranged as a
    row of compact per-axis cells instead of a stack of rows. */
@@ -585,7 +585,7 @@
 .dro-h-axis {
 	font-family: var(--font-display);
 	font-weight: 700;
-	font-size: calc(14px + var(--fs-bump));
+	font-size: calc(4 * var(--u));
 	color: var(--silk-dim);
 }
 .dro-h-cell.unhomed .dro-h-axis { color: var(--gold); }
@@ -593,7 +593,7 @@
 	font-family: var(--font-display);
 	font-weight: 600;
 	/* Matched to the horizontal axis label (.dro-h-axis, 14px). */
-	font-size: calc(14px + var(--fs-bump));
+	font-size: calc(4 * var(--u));
 	line-height: 1;
 	font-variant-numeric: tabular-nums;
 	/* RESERVED width so a moving axis (the value changes every poll, and its
@@ -604,7 +604,7 @@
 	width: 66px;
 }
 .dro-h-cell.unhomed .dro-h-val { color: var(--silk-dim); }
-.dro-h-val small { font-size: calc(9px + var(--fs-bump)); color: var(--silk-dim); margin-left: 2px; }
+.dro-h-val small { font-size: calc(2.75 * var(--u)); color: var(--silk-dim); margin-left: 2px; }
 
 /* Live move speeds (move.currentMove) — a fixed three-slot footer. Same
    reserved-width discipline as .dro-h-val above: these values change every
@@ -631,7 +631,7 @@
 .speed-foot-tag {
 	font-family: var(--font-display);
 	font-weight: 700;
-	font-size: calc(10px + var(--fs-bump));
+	font-size: calc(3 * var(--u));
 	letter-spacing: 0.1em;
 	text-transform: uppercase;
 	color: var(--silk-dim);
@@ -650,7 +650,7 @@
 .speed-label {
 	font-family: var(--font-display);
 	font-weight: 600;
-	font-size: calc(10px + var(--fs-bump));
+	font-size: calc(3 * var(--u));
 	letter-spacing: 0.06em;
 	text-transform: uppercase;
 	color: var(--silk-dim);
@@ -676,18 +676,18 @@
 .speed-val {
 	font-family: var(--font-display);
 	font-weight: 600;
-	font-size: calc(15px + var(--fs-bump));
+	font-size: calc(4.25 * var(--u));
 	line-height: 1;
 	font-variant-numeric: tabular-nums;
 	white-space: nowrap;
 }
-.speed-val small { font-size: calc(10px + var(--fs-bump)); color: var(--silk-dim); margin-left: 3px; }
+.speed-val small { font-size: calc(3 * var(--u)); color: var(--silk-dim); margin-left: 3px; }
 
 .homed-tag {
 	justify-self: end;
 	font-family: var(--font-display);
 	font-weight: 600;
-	font-size: calc(10.5px + var(--fs-bump));
+	font-size: calc(3.125 * var(--u));
 	letter-spacing: 0.12em;
 	text-transform: uppercase;
 	white-space: nowrap;
@@ -722,24 +722,24 @@
    separate numbers that agreed by coincidence, and stopped agreeing at a
    different density. Subtraction cannot disagree. */
 :root {
-	--tool-col-heater: calc(152px + var(--fs-col));
-	--tool-col-active: calc(70px + var(--fs-col));
-	--tool-col-standby: calc(56px + var(--fs-col));
-	--tool-col-current: calc(58px + var(--fs-col));
-	--tool-col-set: calc(156px + var(--fs-col));
+	--tool-col-heater: calc(40 * var(--u));
+	--tool-col-active: calc(19.5 * var(--u));
+	--tool-col-standby: calc(16 * var(--u));
+	--tool-col-current: calc(16.5 * var(--u));
+	--tool-col-set: calc(41 * var(--u));
 }
 /* 152 + 70 + 56 + 58 + 156 = 492. Heater | Active | Standby | Current | Set.
    No Filament column on either tool card: loading a material is the Extruders
    card's job — it owns the pickers, the macros and the All buttons — and a
    second picker here was the same control in two places. */
 :root {
-	/* Extra width per column at a given --fs-bump. 4x is the measured growth of
-	   a tabular-numeric field per px of type: the widest reading is 44px at
-	   12px text and 52px at 14px. Applied to all five columns AND to the total,
-	   so the sum invariant the test pins holds by construction rather than by
-	   two numbers happening to agree. */
-	--fs-col: calc(4 * var(--fs-bump));
-	--heat-table-w: calc(492px + 5 * var(--fs-col));
+	/* Extra width per column at a given --u. 2u is the measured growth of
+	   a tabular-numeric field per size step: the widest reading is 44px at
+	   12px text and 52px at 14px, the type sizes --u: 3px and --u: 4px produced.
+	   Applied to all five columns AND to the total, so the sum invariant the
+	   test pins holds by construction rather than by two numbers happening to
+	   agree. */
+	--heat-table-w: calc(133 * var(--u));
 }
 .heat-table {
 	width: 100%;
@@ -781,13 +781,13 @@
 .heat-input {
 	/* Tracks column 3, the cell it sits in. Declared apart once, and the
 	   field overflowed its own cell by 2px. */
-	width: calc(56px + var(--fs-col));
+	width: calc(16 * var(--u));
 	padding: var(--sp-chip-py) 6px;
 	background: var(--mask-900);
 	border: 1px solid var(--hairline);
 	border-radius: 4px;
 	color: var(--silk);
-	font: 600 calc(13px + var(--fs-bump))/1 var(--font-display);
+	font: 600 calc(3.75 * var(--u))/1 var(--font-display);
 	font-variant-numeric: tabular-nums;
 	text-align: right;
 }
@@ -804,7 +804,7 @@
 	min-width: 88px;
 	height: var(--ctl-h);
 	box-sizing: border-box;
-	font-size: calc(12px + var(--fs-bump));
+	font-size: calc(3.5 * var(--u));
 	/* The cells are baseline-aligned; a select's baseline is its bottom edge, so
 	   left alone it added 3px of descender space and made every tool row taller
 	   than the bed's. */
@@ -820,7 +820,7 @@
 .heat-table th {
 	font-family: var(--font-display);
 	font-weight: 600;
-	font-size: calc(10.5px + var(--fs-bump));
+	font-size: calc(3.125 * var(--u));
 	letter-spacing: 0.14em;
 	text-transform: uppercase;
 	color: var(--silk-dim);
@@ -858,7 +858,7 @@
 .heat-name {
 	font-family: var(--font-display);
 	font-weight: 600;
-	font-size: calc(15px + var(--fs-bump));
+	font-size: calc(4.25 * var(--u));
 	display: grid;
 	/* designator | dock dot | name. The name track is minmax(0,1fr), NOT a fixed
 	   width: it takes whatever the Heater column has left, so it can neither
@@ -884,7 +884,7 @@
 .heat-name .tool-select .gcode-label {
 	overflow: hidden;
 	text-overflow: ellipsis;
-	font-size: calc(13px + var(--fs-bump));
+	font-size: calc(3.75 * var(--u));
 	text-transform: none;
 }
 .heat-name span.heat-tool { display: flex; align-items: center; min-height: var(--ctl-h); }
@@ -902,23 +902,23 @@
 .heat-cur {
 	font-family: var(--font-display);
 	font-weight: 600;
-	font-size: calc(15px + var(--fs-bump));
+	font-size: calc(4.25 * var(--u));
 	line-height: 1;
 }
-.heat-cur small { font-size: calc(11px + var(--fs-bump)); color: var(--silk-dim); }
+.heat-cur small { font-size: calc(3.25 * var(--u)); color: var(--silk-dim); }
 
 .t-cold { color: var(--t-cold); }
 .t-warm { color: var(--t-warm); }
 .t-hot  { color: var(--t-hot); text-shadow: 0 0 14px rgba(239, 123, 69, 0.35); }
 
-.heat-set { color: var(--silk-dim); font-size: calc(13px + var(--fs-bump)); }
+.heat-set { color: var(--silk-dim); font-size: calc(3.75 * var(--u)); }
 
 .heat-set b { color: var(--silk); font-weight: 600; }
 
 .heat-state {
 	font-family: var(--font-display);
 	font-weight: 600;
-	font-size: calc(10.5px + var(--fs-bump));
+	font-size: calc(3.125 * var(--u));
 	letter-spacing: 0.12em;
 	text-transform: uppercase;
 	color: var(--silk-dim);
@@ -975,7 +975,7 @@
 	align-items: baseline;
 	gap: 8px;
 	color: var(--silk-dim);
-	font-size: calc(12.5px + var(--fs-bump));
+	font-size: calc(3.625 * var(--u));
 	font-variant-numeric: tabular-nums;
 }
 .heat-h-meta b { color: var(--silk); font-weight: 600; }
@@ -992,17 +992,17 @@
 .job-line .fname {
 	font-family: var(--font-display);
 	font-weight: 600;
-	font-size: calc(15px + var(--fs-bump));
+	font-size: calc(4.25 * var(--u));
 	overflow-wrap: anywhere;
 }
 .job-line .pct {
 	margin-left: auto;
 	font-family: var(--font-display);
 	font-weight: 700;
-	font-size: calc(22px + var(--fs-bump));
+	font-size: calc(6 * var(--u));
 	color: var(--accent-bright);
 }
-.job-empty { color: var(--silk-dim); font-size: calc(13px + var(--fs-bump)); }
+.job-empty { color: var(--silk-dim); font-size: calc(3.75 * var(--u)); }
 
 /* A job whose metadata could not be read. Deliberately NOT .job-empty: an
    unreadable file used to look exactly like an unselected one, in the same muted
@@ -1010,7 +1010,7 @@
 .job-error { display: flex; flex-direction: column; gap: 10px; }
 .job-error-summary {
 	color: var(--fault);
-	font-size: calc(13px + var(--fs-bump));
+	font-size: calc(3.75 * var(--u));
 	font-weight: 600;
 }
 /* The machine's own words. Monospace because that is what they are — a
@@ -1021,7 +1021,7 @@
 	color: var(--silk-dim);
 	/* The console's own stack, not a new one: this IS console output, just
 	   surfaced where the operator was looking when it happened. */
-	font: 400 calc(12px + var(--fs-bump))/1.45 ui-monospace, "Cascadia Code", Consolas, monospace;
+	font: 400 calc(3.5 * var(--u))/1.45 ui-monospace, "Cascadia Code", Consolas, monospace;
 	/* Machine output is frequently multi-line, and HTML would collapse those
 	   breaks into spaces — running a two-line diagnostic together into one
 	   sentence that reads like neither of them. pre-wrap keeps the machine's own
@@ -1056,7 +1056,7 @@
 	grid-template-columns: 10px 1fr auto;
 	align-items: center;
 	gap: 10px;
-	font-size: calc(13px + var(--fs-bump));
+	font-size: calc(3.75 * var(--u));
 }
 .sensor-dot {
 	display: inline-block;
@@ -1077,7 +1077,7 @@
 .sensor-h-table th {
 	font-family: var(--font-display);
 	font-weight: 700;
-	font-size: calc(15px + var(--fs-bump));
+	font-size: calc(4.25 * var(--u));
 	color: var(--silk);
 	text-align: left;
 	white-space: nowrap;
@@ -1089,7 +1089,7 @@
 	padding: 9px 22px 0 0;
 	font-family: var(--font-body);
 	font-weight: 400;
-	font-size: calc(13px + var(--fs-bump));
+	font-size: calc(3.75 * var(--u));
 	color: var(--silk-dim);
 }
 .sensor-h-table td.ok { color: var(--ok); }
@@ -1098,7 +1098,7 @@
 .sensor-state {
 	font-family: var(--font-display);
 	font-weight: 600;
-	font-size: calc(10.5px + var(--fs-bump));
+	font-size: calc(3.125 * var(--u));
 	letter-spacing: 0.08em;
 	text-transform: uppercase;
 	color: var(--silk-dim);
@@ -1125,7 +1125,7 @@
 	display: grid;
 	grid-template-columns: 62px 1fr;
 	gap: 12px;
-	font-size: calc(12.5px + var(--fs-bump));
+	font-size: calc(3.625 * var(--u));
 }
 .console-line time { color: var(--silk-dim); font-variant-numeric: tabular-nums; }
 /* Replies are often multi-line (M115, a height-map dump, a tool report) and
@@ -1134,9 +1134,9 @@
 .console-text {
 	white-space: pre-wrap;
 	overflow-wrap: anywhere;
-	font: 400 calc(12px + var(--fs-bump))/1.45 ui-monospace, "Cascadia Code", Consolas, monospace;
+	font: 400 calc(3.5 * var(--u))/1.45 ui-monospace, "Cascadia Code", Consolas, monospace;
 }
-.console-empty { color: var(--silk-dim); font-size: calc(12.5px + var(--fs-bump)); }
+.console-empty { color: var(--silk-dim); font-size: calc(3.625 * var(--u)); }
 
 /* Firmware-authored severity (the Error:/Warning: prefixes RRF emits). Colour
    the reply text so a fault stands out in a fast-scrolling log; the timestamp
@@ -1148,20 +1148,20 @@
 .card-lab { display: flex; flex-direction: column; }
 .lab-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
 .lab-cap {
-	font-family: var(--font-display); font-weight: 700; font-size: calc(11px + var(--fs-bump));
+	font-family: var(--font-display); font-weight: 700; font-size: calc(3.25 * var(--u));
 	letter-spacing: 0.12em; text-transform: uppercase; color: var(--silk-dim);
 	min-width: 42px;
 }
 .lab-pills { display: flex; flex-wrap: wrap; gap: 6px; }
 .lab-pill {
-	font-family: var(--font-display); font-weight: 600; font-size: calc(12.5px + var(--fs-bump));
+	font-family: var(--font-display); font-weight: 600; font-size: calc(3.625 * var(--u));
 	letter-spacing: 0.04em; color: var(--silk-dim);
 	background: var(--mask-700); border: 1px solid var(--hairline); border-radius: var(--radius);
 	padding: 5px 11px;
 }
 .lab-pill:hover { color: var(--silk); }
 .lab-pill[aria-pressed="true"] { color: var(--accent-bright); border-color: var(--accent); background: rgba(217, 133, 59, 0.1); }
-.lab-note { font-size: calc(12px + var(--fs-bump)); color: var(--silk-dim); font-style: italic; }
+.lab-note { font-size: calc(3.5 * var(--u)); color: var(--silk-dim); font-style: italic; }
 .lab-pill-custom { border-style: dashed; }
 .lab-pill-new { color: var(--ok); border-color: rgba(111, 191, 143, 0.5); }
 .lab-canvas { padding-bottom: 240px; }
@@ -1178,7 +1178,7 @@
 .console-form button {
 	font-family: var(--font-display);
 	font-weight: 600;
-	font-size: calc(12px + var(--fs-bump));
+	font-size: calc(3.5 * var(--u));
 	letter-spacing: 0.1em;
 	text-transform: uppercase;
 	color: var(--accent-bright);
@@ -1234,7 +1234,7 @@
 	display: grid;
 	place-items: center;
 	color: var(--silk-dim);
-	font-size: calc(11.5px + var(--fs-bump));
+	font-size: calc(3.375 * var(--u));
 	text-align: center;
 	padding: 8px;
 }
@@ -1246,7 +1246,7 @@
 
 /* ---------- settings ---------- */
 
-.hint { color: var(--silk-dim); font-size: calc(12.5px + var(--fs-bump)); margin-bottom: 10px; }
+.hint { color: var(--silk-dim); font-size: calc(3.625 * var(--u)); margin-bottom: 10px; }
 .hint.unsaved { color: var(--gold); }
 
 .field {
@@ -1266,7 +1266,7 @@
 .field-label {
 	font-family: var(--font-display);
 	font-weight: 700;
-	font-size: calc(14px + var(--fs-bump));
+	font-size: calc(4 * var(--u));
 	color: var(--silk-dim);
 	min-width: 58px;
 	font-variant-numeric: tabular-nums;
@@ -1287,14 +1287,14 @@
 	display: inline-flex;
 	align-items: center;
 	gap: 6px;
-	font-size: calc(12.5px + var(--fs-bump));
+	font-size: calc(3.625 * var(--u));
 	color: var(--silk-dim);
 }
 
 .link-btn {
 	font-family: var(--font-display);
 	font-weight: 600;
-	font-size: calc(11px + var(--fs-bump));
+	font-size: calc(3.25 * var(--u));
 	letter-spacing: 0.1em;
 	text-transform: uppercase;
 	color: var(--accent-bright);
@@ -1305,7 +1305,7 @@
 .primary-btn {
 	font-family: var(--font-display);
 	font-weight: 600;
-	font-size: calc(12.5px + var(--fs-bump));
+	font-size: calc(3.625 * var(--u));
 	letter-spacing: 0.1em;
 	text-transform: uppercase;
 	color: var(--mask-900);
@@ -1361,7 +1361,7 @@
    ("8888-88-88 88:88"), so 92px cannot clip any real date. min-width rather
    than a fixed width so a fallback font (Rajdhani failing to load) grows the
    box instead of truncating the stamp. */
-.field-label.stamp { flex: 0 0 auto; min-width: 92px; white-space: nowrap; font-size: calc(12px + var(--fs-bump)); }
+.field-label.stamp { flex: 0 0 auto; min-width: 92px; white-space: nowrap; font-size: calc(3.5 * var(--u)); }
 
 /* ---------- responsive ---------- */
 
@@ -1426,20 +1426,20 @@
 	   Only two columns are touched, because only two have slack: the picker
 	   measures 87 (min-width 88) inside 120, and the widest reading is 44
 	   inside 58. Heater/Active/Standby/Set are already at their contents. */
-	.heat-table { --heat-table-w: calc(484px + 5 * var(--fs-col)); }
+	.heat-table { --heat-table-w: calc(131 * var(--u)); }
 	/* Only Current has measured slack at this width; the setpoint fields are at
 	   their inputs and Set is at its three keys. Overriding the TOKEN keeps one
 	   declaration site — the rule above never changes. 152 + 70 + 56 + 50 + 156 = 484. */
-	.heat-table { --tool-col-current: calc(50px + var(--fs-col)); }
+	.heat-table { --tool-col-current: calc(14.5 * var(--u)); }
 	.heat-table .col-current { padding-right: 6px; }
 	/* Same two columns, narrow: 152 + 50 = 202. */
 	.heat-table.info-only { min-width: 202px; }
 	/* tighten headers so labels ("STANDBY") fit their narrower columns */
-	.heat-table th { font-size: calc(9.5px + var(--fs-bump)); letter-spacing: 0.05em; }
+	.heat-table th { font-size: calc(2.875 * var(--u)); letter-spacing: 0.05em; }
 }
 
 .btn {
-	font: 600 calc(13px + var(--fs-bump))/1 "Rajdhani", system-ui, sans-serif;
+	font: 600 calc(3.75 * var(--u))/1 "Rajdhani", system-ui, sans-serif;
 	letter-spacing: 0.03em;
 	text-transform: uppercase;
 	color: var(--silk);
@@ -1462,13 +1462,13 @@
 
 .crumbs { display: flex; align-items: center; gap: 4px; margin-bottom: 10px; flex-wrap: nowrap; }
 .crumb {
-	font: 600 calc(12px + var(--fs-bump))/1 "Rajdhani", system-ui, sans-serif;
+	font: 600 calc(3.5 * var(--u))/1 "Rajdhani", system-ui, sans-serif;
 	text-transform: uppercase; letter-spacing: 0.04em;
 	color: var(--silk-dim); background: none; border: none; padding: 3px 5px; cursor: pointer; border-radius: 4px;
 }
 .crumb:hover { color: var(--silk); background: var(--mask-500); }
 .crumb.active { color: var(--accent-bright); }
-.crumb-sep { color: var(--silk-dim); font-size: calc(12px + var(--fs-bump)); }
+.crumb-sep { color: var(--silk-dim); font-size: calc(3.5 * var(--u)); }
 
 /* The list fills the CARD and scrolls inside it. It used to cap at 62vh — a
    slice of the VIEWPORT, which has nothing to do with the card it lives in: on
@@ -1530,11 +1530,11 @@
 	align-items: center; gap: 10px;
 	background: none; border: none; border-bottom: 1px solid var(--hairline);
 	padding: var(--sp-list) 6px; cursor: pointer; text-align: left; color: var(--silk);
-	font: 400 calc(14px + var(--fs-bump))/1.2 system-ui, sans-serif;
+	font: 400 calc(4 * var(--u))/1.2 system-ui, sans-serif;
 }
 .file-row:hover { background: var(--mask-500); }
 .file-row.selected { background: var(--mask-500); box-shadow: inset 3px 0 0 var(--accent); }
-.file-icon { color: var(--silk-dim); font-size: calc(12px + var(--fs-bump)); width: 14px; text-align: center; }
+.file-icon { color: var(--silk-dim); font-size: calc(3.5 * var(--u)); width: 14px; text-align: center; }
 .file-row.dir .file-icon { color: var(--accent); }
 .file-row.dir .file-name { color: var(--accent-bright); }
 /* min-width: the ellipsis is inert without it — see the .file-row .file-name
@@ -1542,7 +1542,7 @@
    one long filename set its card's minimum width (operator's call, 2026-07-30:
    "i'm fine with encroaching over file names in any of the file lists"). */
 .file-name { flex: 1; min-width: 96px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.file-meta { color: var(--silk-dim); font-size: calc(12px + var(--fs-bump)); font-variant-numeric: tabular-nums; }
+.file-meta { color: var(--silk-dim); font-size: calc(3.5 * var(--u)); font-variant-numeric: tabular-nums; }
 .file-date { width: 120px; text-align: right; }
 
 .detail-body { display: grid; grid-template-columns: 160px 1fr; gap: 18px; align-items: start; }
@@ -1554,7 +1554,7 @@
 	background-size: 16px 16px; background-position: 0 0, 0 8px, 8px -8px, -8px 0;
 }
 .thumb-img { width: 160px; height: 160px; object-fit: contain; image-rendering: auto; }
-.thumb-placeholder { color: var(--silk-dim); font-size: calc(12px + var(--fs-bump)); }
+.thumb-placeholder { color: var(--silk-dim); font-size: calc(3.5 * var(--u)); }
 
 /* minmax on the value track, and nowrap values — the pair is what stops this
    card REFLOWING. As `auto 1fr` with wrapping values, narrowing the Job details
@@ -1565,9 +1565,9 @@
    zero the values would shrink to nothing and a metadata card whose metadata is
    invisible is not a narrower card. 96px, then ellipsis. */
 .meta-grid { display: grid; grid-template-columns: auto minmax(96px, 1fr); gap: 6px 14px; margin: 0; }
-.meta-grid dt { color: var(--silk-dim); font-size: calc(12px + var(--fs-bump)); text-transform: uppercase; letter-spacing: 0.03em; white-space: nowrap; }
+.meta-grid dt { color: var(--silk-dim); font-size: calc(3.5 * var(--u)); text-transform: uppercase; letter-spacing: 0.03em; white-space: nowrap; }
 .meta-grid dd {
-	margin: 0; color: var(--silk); font-size: calc(14px + var(--fs-bump)); font-variant-numeric: tabular-nums;
+	margin: 0; color: var(--silk); font-size: calc(4 * var(--u)); font-variant-numeric: tabular-nums;
 	white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 
@@ -1576,7 +1576,7 @@
    and the print silently looks like it has no progress at all. */
 .progress { position: relative; height: 22px; flex: 0 0 22px; min-height: 22px; background: var(--mask-900); border-radius: var(--radius); overflow: hidden; margin: 4px 0 12px; border: 1px solid var(--hairline); }
 .progress-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-bright)); transition: width 0.4s ease; }
-.progress-label { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font: 600 calc(12px + var(--fs-bump))/1 "Rajdhani", sans-serif; color: var(--silk); }
+.progress-label { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font: 600 calc(3.5 * var(--u))/1 "Rajdhani", sans-serif; color: var(--silk); }
 .job-active-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
 /* Facts and the two job actions share one row: Pause/Cancel belong beside the
    numbers they act on, not stranded at the bottom of the card. The buttons are
@@ -1592,13 +1592,13 @@
    9 → 10). tabular-nums evens the digits but not the string length, so
    reserve each slot — otherwise the row shuffles for the whole print. */
 .fact { display: flex; flex-direction: column; gap: 2px; min-width: 104px; }
-.fact-label { color: var(--silk-dim); font-size: calc(11px + var(--fs-bump)); text-transform: uppercase; letter-spacing: 0.04em; }
-.fact-val { color: var(--silk); font-size: calc(15px + var(--fs-bump)); font-variant-numeric: tabular-nums; }
+.fact-label { color: var(--silk-dim); font-size: calc(3.25 * var(--u)); text-transform: uppercase; letter-spacing: 0.04em; }
+.fact-val { color: var(--silk); font-size: calc(4.25 * var(--u)); font-variant-numeric: tabular-nums; }
 
 /* The estimate-source breakdown under the facts: subordinate to the headline
    "Remaining", so muted and small. Each source keeps a reserved width for the
    same reason the facts do — the value changes length every tick. */
-.est-sources { display: flex; align-items: baseline; gap: 14px; margin-top: 8px; font-size: calc(12px + var(--fs-bump)); }
+.est-sources { display: flex; align-items: baseline; gap: 14px; margin-top: 8px; font-size: calc(3.5 * var(--u)); }
 .est-cap { color: var(--silk-dim); text-transform: uppercase; letter-spacing: 0.04em; }
 .est-src { display: inline-flex; align-items: baseline; gap: 5px; min-width: 92px; }
 .est-name { color: var(--silk-dim); text-transform: capitalize; }
@@ -1644,14 +1644,14 @@
 .gcode-viewer-modes-ghost { top: 36px; right: 8px; }
 .gcode-viewer-modes-travel { top: 64px; right: 8px; }
 .gcode-viewer-modes .mode-btn {
-	font-size: calc(11px + var(--fs-bump)); padding: 4px 8px; border-radius: var(--radius);
+	font-size: calc(3.25 * var(--u)); padding: 4px 8px; border-radius: var(--radius);
 	border: 1px solid var(--hairline); background: var(--mask-700); color: var(--silk-dim);
 }
 .gcode-viewer-modes .mode-btn.active { color: var(--silk); border-color: var(--accent); }
 .gcode-viewer-modes .mode-btn:disabled { opacity: 0.35; cursor: not-allowed; }
 .gcode-overlay {
 	position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
-	color: var(--silk-dim); font-size: calc(13px + var(--fs-bump)); text-align: center; padding: 12px;
+	color: var(--silk-dim); font-size: calc(3.75 * var(--u)); text-align: center; padding: 12px;
 }
 .gcode-overlay.err { color: var(--fault); }
 
@@ -1683,13 +1683,13 @@
 
 /* Reserved width + tabular so "#6e8ca8" and "#fff" don't move the row. */
 .color-hex {
-	font: 400 calc(12px + var(--fs-bump))/1 ui-monospace, Consolas, monospace;
+	font: 400 calc(3.5 * var(--u))/1 ui-monospace, Consolas, monospace;
 	font-variant-numeric: tabular-nums;
 	color: var(--silk-dim);
 	width: 66px;
 	flex: none;
 }
-.color-range { font-size: calc(11.5px + var(--fs-bump)); color: var(--silk-dim); flex: none; }
+.color-range { font-size: calc(3.375 * var(--u)); color: var(--silk-dim); flex: none; }
 /* A statement of fact, not an error: the pick still stands. Gold, not red —
    red would read as "rejected", and nothing here is rejected. */
 /* Sits immediately after the Reset button, left-aligned, in the flow.
@@ -1700,7 +1700,7 @@
 .color-clash {
 	font-family: var(--font-display);
 	font-weight: 600;
-	font-size: calc(11px + var(--fs-bump));
+	font-size: calc(3.25 * var(--u));
 	letter-spacing: 0.04em;
 	color: var(--gold);
 	/* A RESERVED box, always present and always this wide — empty when there is
@@ -1732,7 +1732,7 @@
    a scale you dislike must not shrink along with it. */
 .scale-toggle { display: inline-flex; border: 1px solid var(--hairline); border-radius: var(--radius); overflow: hidden; }
 .scale-opt {
-	font-family: var(--font-display); font-weight: 600; font-size: calc(11.5px + var(--fs-bump));
+	font-family: var(--font-display); font-weight: 600; font-size: 13.5px; /* px-ok: hit target — must not follow the scale it controls */
 	letter-spacing: 0.06em;
 	color: var(--silk-dim); background: none; border: none;
 	padding: 6px 9px; cursor: pointer;
@@ -1745,7 +1745,7 @@
 /* ---------- dev Mock/Real backend toggle ---------- */
 .backend-toggle { display: inline-flex; border: 1px solid var(--hairline); border-radius: var(--radius); overflow: hidden; }
 .backend-opt {
-	font-family: var(--font-display); font-weight: 600; font-size: calc(11.5px + var(--fs-bump)); letter-spacing: 0.08em; text-transform: uppercase;
+	font-family: var(--font-display); font-weight: 600; font-size: calc(3.375 * var(--u)); letter-spacing: 0.08em; text-transform: uppercase;
 	color: var(--silk-dim); background: none; border: none; padding: 6px 11px; cursor: pointer;
 }
 .backend-opt + .backend-opt { border-left: 1px solid var(--hairline); }
@@ -1758,7 +1758,7 @@
 /* Arm control: only shown on the real board. Fixed slot so swapping
    "Writes locked" ↔ "⚠ Writes armed" can't shove the Camera/STOP buttons. */
 .arm-btn {
-	font: 600 calc(11px + var(--fs-bump))/1 var(--font-display); letter-spacing: 0.08em; text-transform: uppercase;
+	font: 600 calc(3.25 * var(--u))/1 var(--font-display); letter-spacing: 0.08em; text-transform: uppercase;
 	color: var(--silk-dim); background: var(--mask-500);
 	border: 1px solid var(--hairline); border-radius: var(--radius);
 	padding: 7px 10px; cursor: pointer; white-space: nowrap;
@@ -1845,16 +1845,16 @@
 /* The legend's geometry, declared rather than discovered. Both the rows and
    the card's floor above read these two numbers, so the floor is exact by
    construction instead of matching a measurement until something shifts.
-   28 + the bump is 30px at the default --fs-bump: 2px, which is what the rows
-   measured before they were pinned. */
-:root { --legend-row-h: calc(28px + var(--fs-bump)); }
+   7.5u is 30px at the default --u: 4px, which is what the rows measured
+   before they were pinned. */
+:root { --legend-row-h: calc(7.5 * var(--u)); }
 .temp-chart-legend .u-legend {
 	color: var(--silk-dim);
 	/* One step up the scale the rest of the app uses (12 -> 13, the size the
 	   card bodies read at). This legend is the only place the live temperature
 	   is named alongside its number, so it was the smallest text carrying the
 	   most-read value on the screen. */
-	font-size: calc(13px + var(--fs-bump));
+	font-size: calc(3.75 * var(--u));
 	font-family: var(--font-display);
 	display: flex;
 	flex-direction: column;
@@ -1926,9 +1926,9 @@
 	background: linear-gradient(180deg, var(--face-lo) 0%, var(--face-hi) 100%);
 }
 .gcode-btn:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: none; }
-.gcode-label { font: 600 calc(12.5px + var(--fs-bump))/1 var(--font-display); letter-spacing: 0.04em; text-transform: uppercase; }
+.gcode-label { font: 600 calc(3.625 * var(--u))/1 var(--font-display); letter-spacing: 0.04em; text-transform: uppercase; }
 .gcode-cmd {
-	font: 400 calc(10.5px + var(--fs-bump))/1 ui-monospace, "Cascadia Code", "SF Mono", Menlo, Consolas, monospace;
+	font: 400 calc(3.125 * var(--u))/1 ui-monospace, "Cascadia Code", "SF Mono", Menlo, Consolas, monospace;
 	color: var(--silk-dim); white-space: nowrap; opacity: 0.75;
 }
 .gcode-go { border-color: rgba(111, 191, 143, 0.55); }
@@ -2151,7 +2151,7 @@
 .heat-modes .heat-off { grid-column: 3; }
 
 .ctl-wrap { display: flex; flex-wrap: nowrap; gap: 8px; }
-.ctl-name { font: 600 calc(13px + var(--fs-bump))/1 var(--font-display); text-transform: uppercase; letter-spacing: 0.03em; color: var(--silk); min-width: 74px; }
+.ctl-name { font: 600 calc(3.75 * var(--u))/1 var(--font-display); text-transform: uppercase; letter-spacing: 0.03em; color: var(--silk); min-width: 74px; }
 .ctl-name small { color: var(--accent); margin-left: 5px; font-weight: 600; }
 
 /* heater / fan / factor rows */
@@ -2232,7 +2232,7 @@
 .heat-rows-head > span {
 	font-family: var(--font-display);
 	font-weight: 600;
-	font-size: calc(10.5px + var(--fs-bump));
+	font-size: calc(3.125 * var(--u));
 	letter-spacing: 0.14em;
 	text-transform: uppercase;
 	color: var(--silk-dim);
@@ -2243,7 +2243,7 @@
 /* The reading. Fixed cell, tabular figures, right-aligned on the decimal side
    so the column cannot breathe as the number climbs. */
 .heat-read {
-	font: 600 calc(13px + var(--fs-bump))/1 var(--font-display);
+	font: 600 calc(3.75 * var(--u))/1 var(--font-display);
 	font-variant-numeric: tabular-nums;
 	text-align: right;
 	white-space: nowrap;
@@ -2256,9 +2256,9 @@
    :not() keeps this rule from re-styling them by virtue of the wrapper. */
 .temp-field input:not(.heat-input), .feed-field input {
 	width: 66px; background: var(--mask-900); border: 1px solid var(--hairline); border-radius: 5px;
-	color: var(--silk); padding: 6px 8px; font: 600 calc(14px + var(--fs-bump))/1 var(--font-display); font-variant-numeric: tabular-nums;
+	color: var(--silk); padding: 6px 8px; font: 600 calc(4 * var(--u))/1 var(--font-display); font-variant-numeric: tabular-nums;
 }
-.deg { color: var(--silk-dim); font-size: calc(12px + var(--fs-bump)); }
+.deg { color: var(--silk-dim); font-size: calc(3.5 * var(--u)); }
 .btn-cluster { display: flex; gap: 6px; margin-left: auto; }
 
 /* Horizontal Fans layout (orientationToggle) — same .heater-ctl rows, just
@@ -2412,7 +2412,7 @@
 .jog-xy { display: grid; grid-template-columns: repeat(3, 60px); grid-template-rows: repeat(3, 60px); gap: 8px; }
 .jog-z  { display: grid; grid-template-rows: 60px 18px 60px; gap: 8px; justify-items: center; align-items: center; }
 .jog-key { width: 100%; height: 100%; padding: 0; align-items: center; justify-content: center; text-align: center; }
-.jog-key .gcode-label { font-size: calc(18px + var(--fs-bump)); letter-spacing: 0.02em; }
+.jog-key .gcode-label { font-size: calc(5 * var(--u)); letter-spacing: 0.02em; }
 .jog-z .jog-key { width: 60px; }
 .pos-yp { grid-area: 1 / 2; }
 .pos-xn { grid-area: 2 / 1; }
@@ -2421,19 +2421,19 @@
 .jog-center {
 	grid-area: 2 / 2; display: flex; flex-direction: column; align-items: center; justify-content: center;
 	border: 1px dashed var(--hairline); border-radius: var(--radius);
-	font: 700 calc(17px + var(--fs-bump))/1 var(--font-display); color: var(--accent-bright); font-variant-numeric: tabular-nums;
+	font: 700 calc(4.75 * var(--u))/1 var(--font-display); color: var(--accent-bright); font-variant-numeric: tabular-nums;
 }
-.jog-center small { font-size: calc(10px + var(--fs-bump)); color: var(--silk-dim); font-weight: 600; margin-top: 3px; letter-spacing: 0.06em; }
-.jog-zlabel { font: 700 calc(12px + var(--fs-bump))/1 var(--font-display); letter-spacing: 0.1em; color: var(--silk-dim); }
+.jog-center small { font-size: calc(3 * var(--u)); color: var(--silk-dim); font-weight: 600; margin-top: 3px; letter-spacing: 0.06em; }
+.jog-zlabel { font: 700 calc(3.5 * var(--u))/1 var(--font-display); letter-spacing: 0.1em; color: var(--silk-dim); }
 .jog-aux { display: flex; flex-direction: column; gap: 6px; }
 .chip-btn {
-	font: 600 calc(12px + var(--fs-bump))/1 var(--font-display); text-transform: uppercase; letter-spacing: 0.03em;
+	font: 600 calc(3.5 * var(--u))/1 var(--font-display); text-transform: uppercase; letter-spacing: 0.03em;
 	color: var(--silk-dim); background: var(--mask-500); border: 1px solid var(--hairline); border-radius: 5px;
 	padding: 6px 10px; cursor: pointer;
 }
 .chip-btn:hover { color: var(--silk); }
 .chip-btn.active { color: var(--mask-900); background: var(--accent); border-color: var(--accent); }
-.feed-field { color: var(--silk-dim); font-size: calc(12px + var(--fs-bump)); display: inline-flex; align-items: center; gap: 4px; }
+.feed-field { color: var(--silk-dim); font-size: calc(3.5 * var(--u)); display: inline-flex; align-items: center; gap: 4px; }
 .jog-row .gcode-btn, .extrude-row .gcode-btn { padding: 7px 14px; }
 .jog-row .gcode-label { font-variant-numeric: tabular-nums; }
 
@@ -2524,7 +2524,7 @@
 /* ---------- Macros view + file editor ---------- */
 .file-row .file-name {
 	flex: 1; background: none; border: none; color: inherit; cursor: pointer; text-align: left;
-	font: 400 calc(14px + var(--fs-bump))/1.2 system-ui, sans-serif; padding: 4px 0;
+	font: 400 calc(4 * var(--u))/1.2 system-ui, sans-serif; padding: 4px 0;
 	overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 	/* The ellipsis above did NOTHING without this. A flex item's automatic
 	   minimum size is its min-content width, so the name refused to go below the
@@ -2540,10 +2540,10 @@
 }
 .file-row .file-name:hover { color: var(--accent-bright); }
 .file-name.is-dir { color: var(--accent-bright); font-weight: 600; }
-.file-ico { color: var(--accent); margin-right: 8px; font-size: calc(11px + var(--fs-bump)); }
+.file-ico { color: var(--accent); margin-right: 8px; font-size: calc(3.25 * var(--u)); }
 .file-row.active { background: var(--mask-500); box-shadow: inset 3px 0 0 var(--accent); }
 .run-btn {
-	font: 600 calc(11px + var(--fs-bump))/1 var(--font-display); letter-spacing: 0.06em; text-transform: uppercase;
+	font: 600 calc(3.25 * var(--u))/1 var(--font-display); letter-spacing: 0.06em; text-transform: uppercase;
 	color: var(--silk-dim); background: var(--mask-700); border: 1px solid var(--hairline); border-radius: 5px;
 	padding: 5px 10px; cursor: pointer; white-space: nowrap;
 	/* "▶ Run" (55px) and "Confirm" (66px) differ, and this is a two-step
@@ -2558,12 +2558,12 @@
    letterspaced-uppercase like a normal title), and Revert/Save/Close live in
    the header's float-right zone. */
 .editor-card .card-title {
-	font: 600 calc(12.5px + var(--fs-bump))/1 ui-monospace, "Cascadia Code", Consolas, monospace;
+	font: 600 calc(3.625 * var(--u))/1 ui-monospace, "Cascadia Code", Consolas, monospace;
 	text-transform: none; letter-spacing: 0; color: var(--silk);
 	overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;
 }
-.editor-dirty { font: 600 calc(10.5px + var(--fs-bump))/1 var(--font-display); text-transform: uppercase; letter-spacing: 0.1em; color: var(--gold); }
-.editor-msg { font-size: calc(12px + var(--fs-bump)); color: var(--silk-dim); white-space: nowrap; }
+.editor-dirty { font: 600 calc(3.125 * var(--u))/1 var(--font-display); text-transform: uppercase; letter-spacing: 0.1em; color: var(--gold); }
+.editor-msg { font-size: calc(3.5 * var(--u)); color: var(--silk-dim); white-space: nowrap; }
 .editor-msg.err { color: var(--fault); }
 /* A restored draft or a file that moved on the board. Allowed to shrink and
    ellipsize: the bar's buttons keep their size, the sentence gives way. */
@@ -2573,14 +2573,14 @@
    ends, and the readout is fixed-width with tabular figures — "9 of 9" going to
    "10 of 12" must not shift Revert/Save/Close under an aimed pointer. */
 .editor-steps { display: flex; align-items: center; gap: 4px; margin-right: auto; flex: 0 0 auto; }
-.editor-bar .btn.step { padding: 3px 8px; min-width: 28px; line-height: 1; font-size: calc(11px + var(--fs-bump)); }
+.editor-bar .btn.step { padding: 3px 8px; min-width: 28px; line-height: 1; font-size: calc(3.25 * var(--u)); }
 .editor-step-count {
-	font: 500 calc(11px + var(--fs-bump))/1 var(--font-display);
+	font: 500 calc(3.25 * var(--u))/1 var(--font-display);
 	color: var(--silk-dim); font-variant-numeric: tabular-nums;
 	min-width: 8ch; text-align: center; white-space: nowrap;
 }
 /* Header action buttons stay within the 28px header. */
-.card-actions .btn { padding: 3px 10px; font-size: calc(12px + var(--fs-bump)); }
+.card-actions .btn { padding: 3px 10px; font-size: calc(3.5 * var(--u)); }
 .btn.primary { background: rgba(217, 133, 59, 0.16); border-color: var(--accent); color: var(--accent-bright); }
 .btn.primary:hover:not(:disabled) { background: rgba(217, 133, 59, 0.26); }
 .editor-host { position: relative; flex: 1; min-height: 0; border: 1px solid var(--hairline); border-radius: var(--radius); overflow: hidden; }
@@ -2588,7 +2588,7 @@
 .editor-mount .cm-editor { height: 100%; }
 .editor-overlay {
 	position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
-	color: var(--silk-dim); background: var(--mask-900); font-size: calc(13px + var(--fs-bump));
+	color: var(--silk-dim); background: var(--mask-900); font-size: calc(3.75 * var(--u));
 }
 .editor-overlay.err { color: var(--fault); padding: 16px; text-align: center; }
 
@@ -2596,23 +2596,23 @@
 .om-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
 .om-filter {
 	flex: 1; min-width: 0; background: var(--mask-900); border: 1px solid var(--hairline); border-radius: 5px;
-	color: var(--silk); padding: 7px 10px; font: 400 calc(13px + var(--fs-bump))/1 system-ui, sans-serif;
+	color: var(--silk); padding: 7px 10px; font: 400 calc(3.75 * var(--u))/1 system-ui, sans-serif;
 }
 .om-filter:focus { outline: none; border-color: var(--accent); }
-.om-count { font: 600 calc(11px + var(--fs-bump))/1 var(--font-display); letter-spacing: 0.08em; text-transform: uppercase; color: var(--silk-dim); white-space: nowrap; }
+.om-count { font: 600 calc(3.25 * var(--u))/1 var(--font-display); letter-spacing: 0.08em; text-transform: uppercase; color: var(--silk-dim); white-space: nowrap; }
 
 .om-tree, .om-children { list-style: none; margin: 0; padding: 0; }
 .om-tree { max-height: 52vh; overflow-y: auto; scrollbar-width: none; }
 .om-tree::-webkit-scrollbar { display: none; }
 .om-row {
 	display: flex; align-items: center; gap: 8px; padding: 3px 4px; border-radius: 4px;
-	font: 400 calc(12.5px + var(--fs-bump))/1.5 ui-monospace, "Cascadia Code", Consolas, monospace;
+	font: 400 calc(3.625 * var(--u))/1.5 ui-monospace, "Cascadia Code", Consolas, monospace;
 	font-variant-numeric: tabular-nums;
 }
 .om-row:hover { background: var(--mask-500); }
 .om-toggle {
 	width: 16px; height: 16px; flex: none; padding: 0; cursor: pointer;
-	background: none; border: none; color: var(--accent); font-size: calc(10px + var(--fs-bump)); line-height: 1;
+	background: none; border: none; color: var(--accent); font-size: calc(3 * var(--u)); line-height: 1;
 }
 .om-leafdot { width: 16px; flex: none; }
 .om-key { color: var(--silk); }
@@ -2665,7 +2665,7 @@
 .mbox-title {
 	font-family: var(--font-display);
 	font-weight: 700;
-	font-size: calc(18px + var(--fs-bump));
+	font-size: calc(5 * var(--u));
 	letter-spacing: 0.02em;
 	color: var(--silk);
 }
@@ -2673,7 +2673,7 @@
 .mbox-src {
 	margin-right: auto;
 	align-self: center;
-	font-size: calc(11px + var(--fs-bump));
+	font-size: calc(3.25 * var(--u));
 	color: var(--silk-dim);
 	font-variant-numeric: tabular-nums;
 	white-space: nowrap;
@@ -2682,7 +2682,7 @@
 .mbox-message {
 	margin: 0 0 14px;
 	color: var(--silk);
-	font-size: calc(14px + var(--fs-bump));
+	font-size: calc(4 * var(--u));
 	line-height: 1.5;
 	white-space: pre-wrap;
 	overflow-wrap: anywhere;
@@ -2707,7 +2707,7 @@
 .mbox-error {
 	margin: 0 0 12px;
 	color: var(--fault);
-	font-size: calc(13px + var(--fs-bump));
+	font-size: calc(3.75 * var(--u));
 }
 
 .mbox-actions {
@@ -2746,7 +2746,7 @@
 	min-height: 30px;
 }
 .fb-tool {
-	font: 600 calc(11px + var(--fs-bump))/1 var(--font-display); letter-spacing: 0.06em; text-transform: uppercase;
+	font: 600 calc(3.25 * var(--u))/1 var(--font-display); letter-spacing: 0.06em; text-transform: uppercase;
 	color: var(--silk-dim); background: var(--mask-700); border: 1px solid var(--hairline);
 	border-radius: 5px; padding: 6px 10px; cursor: pointer; white-space: nowrap;
 }
@@ -2755,7 +2755,7 @@
 .fb-tool:disabled { opacity: 0.4; cursor: not-allowed; }
 
 .fb-input {
-	font: 400 calc(13px + var(--fs-bump))/1 ui-monospace, "Cascadia Code", Consolas, monospace;
+	font: 400 calc(3.75 * var(--u))/1 ui-monospace, "Cascadia Code", Consolas, monospace;
 	color: var(--silk); background: var(--mask-900);
 	border: 1px solid var(--hairline); border-radius: 5px; padding: 6px 8px; min-width: 0; width: 180px;
 }
@@ -2766,14 +2766,14 @@
    list underneath it (uniformity/positional stability is a hard rule here). */
 .fb-msg {
 	margin: 0 0 8px; min-height: 16px;
-	font: 400 calc(12px + var(--fs-bump))/16px var(--font-body); color: var(--fault);
+	font: 400 calc(3.5 * var(--u))/16px var(--font-body); color: var(--fault);
 	overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 	visibility: hidden;
 }
 .fb-msg.show { visibility: visible; }
 
 .fb-act {
-	font: 600 calc(11px + var(--fs-bump))/1 var(--font-display); letter-spacing: 0.06em; text-transform: uppercase;
+	font: 600 calc(3.25 * var(--u))/1 var(--font-display); letter-spacing: 0.06em; text-transform: uppercase;
 	color: var(--silk-dim); background: var(--mask-700); border: 1px solid var(--hairline);
 	border-radius: 5px; padding: 5px 8px; cursor: pointer; white-space: nowrap;
 	/* "Delete" (46px) and "Confirm" (56px) differ; this is a two-step confirm,
@@ -2788,7 +2788,7 @@
 
 /* Upload: the native picker is hidden; the "↑ Upload" fb-tool opens it. */
 .fb-file-input { display: none; }
-.fb-uploading { display: flex; align-items: center; gap: 10px; margin: 0 0 8px; font-size: calc(12.5px + var(--fs-bump)); color: var(--silk-dim); }
+.fb-uploading { display: flex; align-items: center; gap: 10px; margin: 0 0 8px; font-size: calc(3.625 * var(--u)); color: var(--silk-dim); }
 .fb-uploading b { color: var(--silk); }
 .fb-up-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 45%; flex: 0 1 auto; }
 .fb-progress { flex: 1; height: 6px; min-width: 60px; background: var(--mask-900); border-radius: 3px; overflow: hidden; }
@@ -2799,7 +2799,7 @@
 .fw-warn {
 	background: var(--mask-900); border: 1px solid var(--hairline); border-left: 3px solid var(--gold);
 	border-radius: var(--radius); padding: 10px 12px; margin-bottom: 12px;
-	font-size: calc(12.5px + var(--fs-bump)); color: var(--silk-dim);
+	font-size: calc(3.625 * var(--u)); color: var(--silk-dim);
 }
 .fw-warn p { margin: 0 0 6px; color: var(--silk); font-weight: 600; }
 .fw-warn ul { margin: 0; padding-left: 18px; }
@@ -2807,16 +2807,16 @@
 .fw-warn b { color: var(--silk); }
 .fw-warn code { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; color: var(--accent-bright); }
 
-.fw-table { width: 100%; border-collapse: collapse; font-size: calc(13px + var(--fs-bump)); }
+.fw-table { width: 100%; border-collapse: collapse; font-size: calc(3.75 * var(--u)); }
 .fw-table th {
-	text-align: left; font-size: calc(11px + var(--fs-bump)); text-transform: uppercase; letter-spacing: 0.04em;
+	text-align: left; font-size: calc(3.25 * var(--u)); text-transform: uppercase; letter-spacing: 0.04em;
 	color: var(--silk-dim); font-weight: 600; padding: 4px 8px; border-bottom: 1px solid var(--hairline);
 }
 .fw-table td { padding: 6px 8px; border-bottom: 1px solid var(--mask-900); }
 .fw-table tr.fw-sel td { background: var(--mask-500); }
 .fw-board { color: var(--silk); font-weight: 600; }
 .fw-num { font-variant-numeric: tabular-nums; color: var(--silk); }
-.fw-file { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: calc(12px + var(--fs-bump)); color: var(--silk-dim); }
+.fw-file { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: calc(3.5 * var(--u)); color: var(--silk-dim); }
 .fw-check { accent-color: var(--accent); width: 15px; height: 15px; cursor: pointer; }
 .fw-actions { margin-top: 12px; }
 .btn-danger.armed { background: var(--fault); color: #fff; border-color: var(--fault); }
@@ -2964,7 +2964,7 @@
 	border-top: 1px solid var(--hairline); border-bottom: 1px solid var(--hairline); padding: 8px 0;
 }
 .compose-card {
-	display: flex; align-items: center; gap: 7px; font-size: calc(12.5px + var(--fs-bump)); color: var(--silk);
+	display: flex; align-items: center; gap: 7px; font-size: calc(3.625 * var(--u)); color: var(--silk);
 	padding: 3px 2px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .compose-card input { accent-color: var(--accent); }
@@ -2980,7 +2980,7 @@
 	width: 100%; min-height: 220px; resize: vertical;
 	background: var(--mask-900); color: var(--silk);
 	border: 1px solid var(--hairline); border-radius: 5px; padding: 8px;
-	font: 400 calc(12px + var(--fs-bump))/1.5 ui-monospace, "Cascadia Code", Consolas, monospace;
+	font: 400 calc(3.5 * var(--u))/1.5 ui-monospace, "Cascadia Code", Consolas, monospace;
 	tab-size: 2;
 }
 .compose-json:focus { outline: none; border-color: var(--accent); }
@@ -2998,7 +2998,7 @@
 	box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
 }
 .studio-head { display: flex; gap: 8px; align-items: center; }
-.studio-name { flex: 1; font-size: calc(14px + var(--fs-bump)); }
+.studio-name { flex: 1; font-size: calc(4 * var(--u)); }
 .studio-body { display: grid; grid-template-columns: 1fr 380px; gap: 16px; align-items: start; }
 .studio-edit { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .studio-json { min-height: 340px; }
@@ -3014,12 +3014,12 @@
 .st-rowlabel { flex: 1; }
 .st-addinput { width: 100px; }
 .st-btnlabel { width: 110px; }
-.st-template { flex: 1; font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: calc(12px + var(--fs-bump)); }
+.st-template { flex: 1; font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: calc(3.5 * var(--u)); }
 .st-variant { width: 90px; }
-.st-stamp { font-size: calc(12px + var(--fs-bump)); white-space: nowrap; }
+.st-stamp { font-size: calc(3.5 * var(--u)); white-space: nowrap; }
 .studio-row { border: 1px dashed var(--hairline); border-radius: var(--radius); padding: 8px; display: flex; flex-direction: column; gap: 6px; }
 .studio-rowhead { display: flex; gap: 6px; align-items: center; }
-.st-inputref { color: var(--silk-dim); font-size: calc(12.5px + var(--fs-bump)); }
+.st-inputref { color: var(--silk-dim); font-size: calc(3.625 * var(--u)); }
 .st-refname { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; color: var(--accent-bright); }
 /* The preview is the REAL renderer with pointer events off — visible worn
    codes, nothing sendable from a preview. */
@@ -3030,22 +3030,22 @@
 
 /* ---------- import review (B3) ---------- */
 .import-dialog { width: min(640px, 94vw); }
-.import-title { font-family: var(--font-display); font-weight: 600; font-size: calc(14px + var(--fs-bump)); color: var(--silk); }
+.import-title { font-family: var(--font-display); font-weight: 600; font-size: calc(4 * var(--u)); color: var(--silk); }
 .import-review { display: flex; flex-direction: column; gap: 8px; }
 .import-sect { display: flex; flex-direction: column; gap: 3px; }
 .import-code { display: flex; align-items: baseline; gap: 10px; }
 .import-code code {
-	font: 400 calc(12px + var(--fs-bump))/1.5 ui-monospace, "Cascadia Code", Consolas, monospace;
+	font: 400 calc(3.5 * var(--u))/1.5 ui-monospace, "Cascadia Code", Consolas, monospace;
 	color: var(--accent-bright); white-space: pre-wrap; overflow-wrap: anywhere;
 }
-.import-label { color: var(--silk); font-size: calc(12.5px + var(--fs-bump)); min-width: 90px; }
+.import-label { color: var(--silk); font-size: calc(3.625 * var(--u)); min-width: 90px; }
 .import-embedded { border: 1px dashed var(--hairline); border-radius: var(--radius); padding: 8px; display: flex; flex-direction: column; gap: 6px; }
 
 /* Macros: AutoConfirm — visible wherever the Run buttons are, so the mode can
    always be read off the screen rather than remembered. */
 .macro-autoconfirm {
 	display: flex; align-items: center; gap: 8px; margin-bottom: 10px;
-	font: 600 calc(11px + var(--fs-bump))/1 var(--font-display); letter-spacing: 0.06em; text-transform: uppercase;
+	font: 600 calc(3.25 * var(--u))/1 var(--font-display); letter-spacing: 0.06em; text-transform: uppercase;
 	color: var(--silk-dim); cursor: pointer; user-select: none;
 }
 .macro-autoconfirm input { accent-color: var(--accent); cursor: pointer; margin: 0; }
@@ -3053,7 +3053,7 @@
 /* The hint swaps between two different-length strings; reserving the row's
    height keeps the list below it from twitching when the mode changes. */
 .macro-autoconfirm-hint {
-	font: 400 calc(11px + var(--fs-bump))/16px var(--font-body); letter-spacing: 0; text-transform: none;
+	font: 400 calc(3.25 * var(--u))/16px var(--font-body); letter-spacing: 0; text-transform: none;
 	color: var(--silk-dim); opacity: 0.75; min-height: 16px;
 }
 
@@ -3064,11 +3064,11 @@
 	background: rgba(224, 92, 74, 0.08);
 	border: 1px solid rgba(224, 92, 74, 0.35); border-radius: 6px;
 }
-.fb-warn-line { margin: 0; font: 400 calc(12.5px + var(--fs-bump))/1.45 var(--font-body); color: var(--silk); }
+.fb-warn-line { margin: 0; font: 400 calc(3.625 * var(--u))/1.45 var(--font-body); color: var(--silk); }
 .fb-warn-line b { color: var(--fault); font-weight: 600; }
 .fb-warn-confirm {
 	display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
-	font: 400 calc(12px + var(--fs-bump))/1 var(--font-body); color: var(--silk-dim);
+	font: 400 calc(3.5 * var(--u))/1 var(--font-body); color: var(--silk-dim);
 }
 .fb-warn-confirm b { color: var(--silk); font-family: ui-monospace, "Cascadia Code", Consolas, monospace; }
 
@@ -3082,7 +3082,7 @@
 
 .tool-p input { width: 62px; }
 .tool-p-decode {
-	font: 400 calc(11.5px + var(--fs-bump))/16px var(--font-body); color: var(--silk-dim);
+	font: 400 calc(3.375 * var(--u))/16px var(--font-body); color: var(--silk-dim);
 	/* Decodes to strings of differing length; reserve the line so the tool
 	   buttons below never shift as the value is typed. */
 	min-height: 16px; min-width: 150px;
@@ -3094,7 +3094,7 @@
 .rel-key { padding: 6px 10px; }
 /* Fixed width so the row's geometry does not depend on axis-letter width, and
    so adding an axis cannot reflow the keys already under the operator's finger. */
-.rel-key .gcode-label { font-size: calc(12px + var(--fs-bump)); min-width: 18px; text-align: center; }
+.rel-key .gcode-label { font-size: calc(3.5 * var(--u)); min-width: 18px; text-align: center; }
 
 /* ---------- one control height, everywhere ---------- */
 /* Each of these previously picked its own height out of its padding and
@@ -3131,7 +3131,7 @@
 /* Room for the grab handle, title and header buttons; 36px stays on the 4px
    rhythm. */
 .card-head { padding-top: 0; margin-bottom: var(--sp-flow); height: var(--sp-head-h); flex: 0 0 var(--sp-head-h); }
-.card-title { font-size: calc(12px + var(--fs-bump)); }
+.card-title { font-size: calc(3.5 * var(--u)); }
 
 /* The height floor is ENGAGED: while you drag a card shorter, the frame has
    hit its hard minimum (header + resize grip + 50%) and won't go lower. A
@@ -3183,7 +3183,7 @@
    tabular figures: this updates on every poll and must not shove the row
    (same rule as .speed-value). Dim at zero, silk when an offset is live. */
 .baby-applied {
-	font: 600 calc(13px + var(--fs-bump))/1 var(--font-display);
+	font: 600 calc(3.75 * var(--u))/1 var(--font-display);
 	color: var(--silk-dim);
 	font-variant-numeric: tabular-nums;
 	min-width: 44px;
@@ -3197,24 +3197,24 @@
    same x on every fan row — with or without a tacho. */
 .fan-readouts { display: inline-flex; align-items: baseline; gap: 8px; flex: 0 0 auto; }
 .fan-actual {
-	font: 600 calc(13px + var(--fs-bump))/1 var(--font-display);
+	font: 600 calc(3.75 * var(--u))/1 var(--font-display);
 	color: var(--silk);
 	font-variant-numeric: tabular-nums;
 	width: 40px;
 	text-align: right;
 }
-.fan-actual small { font-size: calc(9px + var(--fs-bump)); color: var(--silk-dim); margin-left: 2px; }
+.fan-actual small { font-size: calc(2.75 * var(--u)); color: var(--silk-dim); margin-left: 2px; }
 /* FIXED width, not min-width: a min-width GROWS for a 4–5 digit rpm and shoves
    the columns; a fixed width holds. Always rendered (empty when no tacho) so a
    tacho-less fan reserves the same slot and its input lines up. */
 .fan-rpm {
-	font: 600 calc(13px + var(--fs-bump))/1 var(--font-display);
+	font: 600 calc(3.75 * var(--u))/1 var(--font-display);
 	color: var(--silk);
 	font-variant-numeric: tabular-nums;
 	width: 62px;
 	text-align: right;
 }
-.fan-rpm small { font-size: calc(9px + var(--fs-bump)); color: var(--silk-dim); margin-left: 3px; }
+.fan-rpm small { font-size: calc(2.75 * var(--u)); color: var(--silk-dim); margin-left: 3px; }
 /* The per-fan pin toggle — the "this one" glow language, shared with the
    modal mode buttons. */
 .fan-pin.is-engaged {
@@ -3227,7 +3227,7 @@
 /* ---------- pinned commands ---------- */
 .pins { display: flex; flex-direction: column; gap: 8px; }
 .pins-head { display: flex; align-items: center; gap: 10px; }
-.pins-status { font: 600 calc(10.5px + var(--fs-bump))/1 var(--font-display); letter-spacing: 0.08em; text-transform: uppercase; color: var(--silk-dim); }
+.pins-status { font: 600 calc(3.125 * var(--u))/1 var(--font-display); letter-spacing: 0.08em; text-transform: uppercase; color: var(--silk-dim); }
 .pins-status.live { color: var(--ok); }
 .pin-list { display: flex; flex-direction: column; gap: 6px; }
 .pin-row { display: flex; align-items: center; gap: 8px; }
@@ -3236,7 +3236,7 @@
 	height: var(--ctl-h); box-sizing: border-box;
 	background: var(--mask-900); border: 1px solid var(--hairline); border-radius: 5px;
 	color: var(--silk); padding: 0 8px;
-	font: 400 calc(12px + var(--fs-bump))/1 ui-monospace, "Cascadia Code", "SF Mono", Menlo, Consolas, monospace;
+	font: 400 calc(3.5 * var(--u))/1 ui-monospace, "Cascadia Code", "SF Mono", Menlo, Consolas, monospace;
 }
 .pin-cmd:focus-visible { outline: none; border-color: var(--accent); }
 /* An enabled row is being re-sent — its command reads as live. */
@@ -3311,7 +3311,7 @@
 .speed-stop.current { background: var(--accent-bright); border-color: var(--accent-bright); }
 
 .speed-value {
-	font: 600 calc(13px + var(--fs-bump))/1 var(--font-display); color: var(--silk);
+	font: 600 calc(3.75 * var(--u))/1 var(--font-display); color: var(--silk);
 	font-variant-numeric: tabular-nums;
 	/* Reserved: "0%" and "200%" differ in width and this updates every poll. */
 	min-width: 46px; text-align: right;
@@ -3320,13 +3320,13 @@
 /* ---------- filament (M701 / M702 / M703) ---------- */
 .filament-macros {
 	display: flex; align-items: center; gap: 8px;
-	font: 600 calc(11px + var(--fs-bump))/1 var(--font-display); letter-spacing: 0.06em; text-transform: uppercase;
+	font: 600 calc(3.25 * var(--u))/1 var(--font-display); letter-spacing: 0.06em; text-transform: uppercase;
 	color: var(--silk-dim); cursor: pointer; user-select: none;
 }
 .filament-macros input { accent-color: var(--accent); cursor: pointer; margin: 0; }
 .filament-macros:hover { color: var(--silk); }
 .filament-macros-hint {
-	font: 400 calc(11px + var(--fs-bump))/16px var(--font-body); letter-spacing: 0; text-transform: none;
+	font: 400 calc(3.25 * var(--u))/16px var(--font-body); letter-spacing: 0; text-transform: none;
 	color: var(--silk-dim); opacity: 0.75;
 	/* Two strings of different length; reserve the line so the rows below hold still. */
 	min-height: 16px; min-width: 148px;
@@ -3447,7 +3447,7 @@
 	height: var(--ctl-h); box-sizing: border-box;
 	background: var(--mask-900); color: var(--silk);
 	border: 1px solid var(--hairline); border-radius: 5px;
-	padding: 0 6px; font: 400 calc(12.5px + var(--fs-bump))/1 var(--font-body); cursor: pointer;
+	padding: 0 6px; font: 400 calc(3.625 * var(--u))/1 var(--font-body); cursor: pointer;
 	/* NOT min-width: 0. A select that admits it can be zero wide tells the
 	   width detent (panelCanvas contentColSpan) that this card fits in almost
 	   nothing, so the snap lands somewhere useless and the card can be dragged
@@ -3463,7 +3463,7 @@
 }
 .filament-pick:focus-visible { outline: none; border-color: var(--accent); }
 .filament-loaded {
-	font: 600 calc(12px + var(--fs-bump))/1 var(--font-display); color: var(--accent-bright);
+	font: 600 calc(3.5 * var(--u))/1 var(--font-display); color: var(--accent-bright);
 	/* Flips between a name and an em dash on every load — reserved so the row
 	   geometry never depends on what is loaded. */
 	min-width: 76px; text-align: right;
@@ -3489,7 +3489,7 @@
 .fil-row.active { background: var(--mask-900); }
 /* Loaded filaments can't be renamed or deleted — say why, don't just grey out. */
 .fil-loaded {
-	font: 600 calc(10px + var(--fs-bump))/1 var(--font-display);
+	font: 600 calc(3 * var(--u))/1 var(--font-display);
 	text-transform: uppercase;
 	letter-spacing: 0.06em;
 	color: var(--ok);
@@ -3502,14 +3502,14 @@
 
 .fil-edit { display: flex; flex-direction: column; gap: 6px; flex: 1; min-height: 0; }
 .fil-tabs { display: flex; align-items: center; gap: 6px; }
-.fil-path { color: var(--silk-dim); font-size: calc(12px + var(--fs-bump)); margin-left: auto; font-variant-numeric: tabular-nums; }
+.fil-path { color: var(--silk-dim); font-size: calc(3.5 * var(--u)); margin-left: auto; font-variant-numeric: tabular-nums; }
 
 /* Speed slider send feedback. Colour only — the row's geometry is fixed so a
    refusal cannot move the track the pointer is still over. */
 .speed-value.is-sent { color: var(--ok); }
 .speed-value.is-failed { color: var(--fault); }
 .speed-error {
-	font: 600 calc(10px + var(--fs-bump))/1 var(--font-display); letter-spacing: 0.08em; text-transform: uppercase;
+	font: 600 calc(3 * var(--u))/1 var(--font-display); letter-spacing: 0.08em; text-transform: uppercase;
 	color: var(--fault);
 	/* Was min-width: 52px, reserved so a failure could appear without moving the
 	   row. It still cannot move the row — `visibility: hidden` already keeps the
@@ -3526,7 +3526,7 @@
 /* ---------- height map ---------- */
 .hm-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; height: var(--ctl-h); }
 .hm-msg {
-	font: 400 calc(12px + var(--fs-bump))/16px var(--font-body); color: var(--silk-dim);
+	font: 400 calc(3.5 * var(--u))/16px var(--font-body); color: var(--silk-dim);
 	/* Reserved: this appears and disappears and must not move the grid. */
 	min-height: 16px; flex: 1; min-width: 0;
 	overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -3581,12 +3581,12 @@
 
 .hm-detail { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
 .hm-result { display: flex; flex-direction: column; gap: 6px; width: 100%; }
-.hm-line { margin: 0; font: 400 calc(13px + var(--fs-bump))/1.4 var(--font-body); color: var(--silk); font-variant-numeric: tabular-nums; }
+.hm-line { margin: 0; font: 400 calc(3.75 * var(--u))/1.4 var(--font-body); color: var(--silk); font-variant-numeric: tabular-nums; }
 .hm-line b { color: var(--accent-bright); }
 .hm-reply {
 	margin: 0; padding: 6px 8px; max-height: 72px; overflow: auto;
 	background: var(--mask-900); border: 1px solid var(--hairline); border-radius: 5px;
-	font: 400 calc(11px + var(--fs-bump))/1.4 ui-monospace, "Cascadia Code", Consolas, monospace;
+	font: 400 calc(3.25 * var(--u))/1.4 ui-monospace, "Cascadia Code", Consolas, monospace;
 	color: var(--silk-dim); white-space: pre-wrap;
 }
 .hm-actions { display: flex; gap: 8px; }
@@ -3597,7 +3597,7 @@
 .mesh-card { display: flex; flex-direction: column; gap: 10px; }
 .mesh-pick { display: flex; align-items: center; gap: 8px; }
 .mesh-label {
-	font: 600 calc(10.5px + var(--fs-bump))/1 var(--font-display);
+	font: 600 calc(3.125 * var(--u))/1 var(--font-display);
 	letter-spacing: 0.14em;
 	text-transform: uppercase;
 	color: var(--silk-dim);
@@ -3617,7 +3617,7 @@
 /* What the machine is compensating with NOW. Always present, so gaining or
    losing a mesh cannot reflow the controls under it. */
 .mesh-status {
-	font: 600 calc(11px + var(--fs-bump))/1.4 var(--font-display);
+	font: 600 calc(3.25 * var(--u))/1.4 var(--font-display);
 	letter-spacing: 0.06em;
 	text-transform: uppercase;
 	color: var(--silk-dim);
@@ -3656,7 +3656,7 @@
    layout and cannot push the surface around as the factor changes. */
 .hm-3d-note {
 	position: absolute; left: 8px; bottom: 6px; margin: 0;
-	font: 600 calc(10.5px + var(--fs-bump))/1 var(--font-display);
+	font: 600 calc(3.125 * var(--u))/1 var(--font-display);
 	letter-spacing: 0.08em; text-transform: uppercase;
 	color: var(--silk-dim);
 	background: color-mix(in srgb, var(--mask-900) 72%, transparent);
@@ -3671,7 +3671,7 @@
 	align-items: center;
 	gap: 8px;
 	margin-top: 8px;
-	font: 600 calc(10.5px + var(--fs-bump))/1 var(--font-display);
+	font: 600 calc(3.125 * var(--u))/1 var(--font-display);
 	font-variant-numeric: tabular-nums;
 	color: var(--silk-dim);
 }
@@ -3688,7 +3688,7 @@
    the reply underneath. */
 .hm-derive {
 	margin: 0;
-	font: 400 calc(11px + var(--fs-bump))/1.4 ui-monospace, "Cascadia Code", "SF Mono", Menlo, Consolas, monospace;
+	font: 400 calc(3.25 * var(--u))/1.4 ui-monospace, "Cascadia Code", "SF Mono", Menlo, Consolas, monospace;
 	font-variant-numeric: tabular-nums;
 	color: var(--silk-dim);
 }
@@ -3706,23 +3706,23 @@
 .obj-row { display: flex; align-items: center; gap: 8px; height: var(--ctl-h); }
 /* Fixed width: the marker appears and disappears as printing moves between
    objects, and must not shift the name beside it. */
-.obj-mark { width: 12px; text-align: center; color: var(--accent-bright); font-size: calc(11px + var(--fs-bump)); }
+.obj-mark { width: 12px; text-align: center; color: var(--accent-bright); font-size: calc(3.25 * var(--u)); }
 .obj-name {
 	flex: 1; min-width: 0;
-	font: 400 calc(13px + var(--fs-bump))/1 var(--font-body); color: var(--silk);
+	font: 400 calc(3.75 * var(--u))/1 var(--font-body); color: var(--silk);
 	overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .obj-row.cancelled .obj-name { color: var(--silk-dim); text-decoration: line-through; }
 .obj-row.current .obj-name { color: var(--accent-bright); font-weight: 600; }
 .obj-state {
-	font: 600 calc(10px + var(--fs-bump))/1 var(--font-display); letter-spacing: 0.08em; text-transform: uppercase;
+	font: 600 calc(3 * var(--u))/1 var(--font-display); letter-spacing: 0.08em; text-transform: uppercase;
 	color: var(--fault);
 }
 
 /* A compact icon control in the float-right zone (e.g. Camera's hide ✕). */
 .card-act {
 	background: none; border: 1px solid transparent; border-radius: 4px;
-	color: var(--silk-dim); font-size: calc(13px + var(--fs-bump)); line-height: 1;
+	color: var(--silk-dim); font-size: calc(3.75 * var(--u)); line-height: 1;
 	padding: 1px 6px; cursor: pointer;
 }
 .card-act:hover { color: var(--silk); border-color: var(--hairline); }
@@ -3739,7 +3739,7 @@
 /* ---------- layer times chart ---------- */
 .layer-summary {
 	display: flex; gap: 16px; margin-bottom: 8px;
-	font: 400 calc(12px + var(--fs-bump))/1 var(--font-body); color: var(--silk-dim);
+	font: 400 calc(3.5 * var(--u))/1 var(--font-body); color: var(--silk-dim);
 	font-variant-numeric: tabular-nums;
 }
 .layer-summary b { color: var(--silk); font-weight: 600; }
@@ -3774,14 +3774,14 @@
 	grid-template-columns: max-content 1fr;
 	gap: var(--sp-cell) var(--ctl-gap);
 	margin: var(--sp-flow) 0 0;
-	font: 400 calc(12.5px + var(--fs-bump))/1.4 var(--font-body);
+	font: 400 calc(3.625 * var(--u))/1.4 var(--font-body);
 }
 .layout-audit-grid dt { color: var(--silk-dim); }
 .layout-audit-grid dd { margin: 0; color: var(--silk); font-variant-numeric: tabular-nums; }
 .layout-audit-grid dd.bad { color: var(--fault); font-weight: 600; }
-.layout-audit-table { width: 100%; border-collapse: collapse; margin-top: var(--sp-flow); font: 400 calc(12px + var(--fs-bump))/1.4 var(--font-body); }
+.layout-audit-table { width: 100%; border-collapse: collapse; margin-top: var(--sp-flow); font: 400 calc(3.5 * var(--u))/1.4 var(--font-body); }
 .layout-audit-table th {
-	font: 600 calc(10.5px + var(--fs-bump))/1 var(--font-display); letter-spacing: 0.14em; text-transform: uppercase;
+	font: 600 calc(3.125 * var(--u))/1 var(--font-display); letter-spacing: 0.14em; text-transform: uppercase;
 	color: var(--silk-dim); text-align: left; padding: 0 var(--ctl-gap) var(--sp-cell) 0;
 }
 .layout-audit-table td { padding: var(--sp-cell) var(--ctl-gap) var(--sp-cell) 0; border-top: 1px solid var(--hairline); font-variant-numeric: tabular-nums; }

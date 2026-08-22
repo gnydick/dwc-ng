@@ -63,12 +63,16 @@ function withoutMediaBlocks(css: string): string {
 	return out;
 }
 
-/** role -> declared px width, resolving var(--tool-col-*) against :root. */
+// Tokens are declared as `calc(N * var(--u))`; N × the default --u (4px) is the
+// px-equivalent these tests reason about — comparable to the pre-scaling literals.
+const BASE_U = 4;
+
+/** role -> declared px-equivalent width, resolving var(--tool-col-*) against :root. */
 function columnWidths(css: string): Map<string, number> {
 	const tokens = new Map<string, number>();
-	for (const [, role, px] of css.matchAll(/--tool-col-([a-z]+):\s*(?:calc\()?(\d+)px/g)) {
+	for (const [, role, mult] of css.matchAll(/--tool-col-([a-z]+):\s*calc\(([\d.]+)\s*\*\s*var\(--u\)\)/g)) {
 		// LAST wins, matching the cascade — the narrow block overrides.
-		tokens.set(role!, Number(px));
+		tokens.set(role!, Number(mult) * BASE_U);
 	}
 	const widths = new Map<string, number>();
 	const rule = /\.heat-table \.col-([a-z]+)\s*\{([^}]*)\}/g;
@@ -86,9 +90,9 @@ function columnWidths(css: string): Map<string, number> {
 
 /** The last `--heat-table-w` declared in a stretch of CSS. */
 function declaredTableWidth(css: string): number {
-	const all = [...css.matchAll(/--heat-table-w:\s*(?:calc\()?(\d+)px/g)];
+	const all = [...css.matchAll(/--heat-table-w:\s*calc\(([\d.]+)\s*\*\s*var\(--u\)\)/g)];
 	assert.ok(all.length > 0, "no --heat-table-w declaration");
-	return Number(all[all.length - 1]![1]);
+	return Number(all[all.length - 1]![1]) * BASE_U;
 }
 
 const COLUMN_ROLES = ["heater", "active", "standby", "current", "set"] as const;
@@ -163,13 +167,13 @@ test("no load-bearing layout property is carried by a positional selector", () =
 
 test("the narrow-viewport widths sum to the --heat-table-w it restates", () => {
 	// The narrow block overrides only the TOKEN (`.heat-table { --tool-col-current:
-	// 50px; }`), not the `.col-current` rule — that rule now carries only
-	// padding-right in this block, so it has no width of its own to hand
-	// columnWidths(narrow). Resolve the real cascade instead: base widths,
+	// calc(14.5 * var(--u)); }`), not the `.col-current` rule — that rule now
+	// carries only padding-right in this block, so it has no width of its own to
+	// hand columnWidths(narrow). Resolve the real cascade instead: base widths,
 	// with any token the narrow block redeclares taking precedence.
 	const widths = columnWidths(base);
-	for (const [, role, px] of narrow.matchAll(/--tool-col-([a-z]+):\s*(?:calc\()?(\d+)px/g)) {
-		widths.set(role!, Number(px));
+	for (const [, role, mult] of narrow.matchAll(/--tool-col-([a-z]+):\s*calc\(([\d.]+)\s*\*\s*var\(--u\)\)/g)) {
+		widths.set(role!, Number(mult) * BASE_U);
 	}
 	const sum = [...widths.values()].reduce((a, b) => a + b, 0);
 	assert.equal(sum, declaredTableWidth(narrow));
@@ -217,9 +221,9 @@ test("every tool column token has exactly one BASE declaration", () => {
 	// but there must be exactly one place the default is set, or "one
 	// declaration" is a claim rather than a fact.
 	for (const role of COLUMN_ROLES) {
-		// `calc(152px + var(--fs-col))` — the base literal plus the type-bump
-		// allowance. Still exactly one declaration; it just is not a bare length.
-		const decl = new RegExp(`--tool-col-${role}:\\s*(?:calc\\()?\\d+px`, "g");
+		// `calc(40 * var(--u))` — n × the global unit. Still exactly one
+		// declaration; it just is not a bare length.
+		const decl = new RegExp(`--tool-col-${role}:\\s*calc\\([\\d.]+\\s*\\*\\s*var\\(--u\\)\\)`, "g");
 		const hits = [...base.matchAll(decl)];
 		assert.equal(hits.length, 1, `--tool-col-${role} declared ${hits.length} times in the base cascade, expected 1`);
 	}

@@ -18,7 +18,7 @@ import { fileURLToPath } from "node:url";
  * BASELINE is the debt ratchet: it is the number of violations on the day the
  * lint landed, and each migration task lowers it. It may never go up.
  */
-const BASELINE = 698; // set to the measured count in Step 3
+const BASELINE = 495; // set to the measured count in Step 3
 
 const SRC = fileURLToPath(new URL("../src", import.meta.url));
 
