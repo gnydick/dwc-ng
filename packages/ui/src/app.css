@@ -1723,24 +1723,24 @@
 	text-overflow: ellipsis;
 }
 
-/* ---------- density (lead pitch) toggle ----------
+/* ---------- UI scale toggle ----------
    Its own classes rather than the backend toggle's: the two sit side by side
    and mean completely different things, and one is a hazard control. Sharing
    a class would let a change to either quietly restyle the other.
 
-   Carries NO density token itself, on purpose — the control you use to escape
-   a density you dislike must not shrink along with it. */
-.pitch-toggle { display: inline-flex; border: 1px solid var(--hairline); border-radius: var(--radius); overflow: hidden; }
-.pitch-opt {
+   Carries NO scale token itself, on purpose — the control you use to escape
+   a scale you dislike must not shrink along with it. */
+.scale-toggle { display: inline-flex; border: 1px solid var(--hairline); border-radius: var(--radius); overflow: hidden; }
+.scale-opt {
 	font-family: var(--font-display); font-weight: 600; font-size: calc(11.5px + var(--fs-bump));
 	letter-spacing: 0.06em;
 	color: var(--silk-dim); background: none; border: none;
 	padding: 6px 9px; cursor: pointer;
 	font-variant-numeric: tabular-nums;
 }
-.pitch-opt + .pitch-opt { border-left: 1px solid var(--hairline); }
-.pitch-opt:hover { color: var(--silk); background: var(--mask-700); }
-.pitch-opt.active { color: var(--mask-900); background: var(--accent); }
+.scale-opt + .scale-opt { border-left: 1px solid var(--hairline); }
+.scale-opt:hover { color: var(--silk); background: var(--mask-700); }
+.scale-opt.active { color: var(--mask-900); background: var(--accent); }
 
 /* ---------- dev Mock/Real backend toggle ---------- */
 .backend-toggle { display: inline-flex; border: 1px solid var(--hairline); border-radius: var(--radius); overflow: hidden; }

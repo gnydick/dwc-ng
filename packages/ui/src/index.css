@@ -169,6 +169,13 @@
 	   rewritten. Chosen from the LEAST-shrinking card, not the average — see
 	   rowUnitPx's comment: slack is a blemish, clipping is a bug. */
 	--row-unit: 4px;
+
+	/* THE unit. Every layout-space length in the UI is n × this (see
+	   test/unit-lengths.test.ts, which fails the build on a px literal
+	   anywhere else). 4px because it is also the stored grid cell
+	   (shell/panelCanvas.ts ROW_UNIT_PX / COL_UNIT_PX): at scale 1 one drawn
+	   cell is one stored cell and the canvas renders exactly as it always has. */
+	--u: 4px;
 }
 
 /* ---------- density overrides ----------
@@ -224,6 +231,26 @@
 	   would shorten cards whose controls had stopped shrinking — the clip this
 	   whole token is chosen to avoid. */
 	--row-unit: 2.8px;
+}
+
+/* ---------- UI scale ----------
+   Readability, not zoom (shell/scale.ts). Each step sets ONLY --u; every
+   other length is derived. There is deliberately no [data-scale="100"] block:
+   the default is the absence of an override. */
+:root[data-scale="075"] {
+	--u: 3px;
+}
+:root[data-scale="0875"] {
+	--u: 3.5px;
+}
+:root[data-scale="1125"] {
+	--u: 4.5px;
+}
+:root[data-scale="125"] {
+	--u: 5px;
+}
+:root[data-scale="150"] {
+	--u: 6px;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }

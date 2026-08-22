@@ -30,14 +30,14 @@ import './index.css'
 import App from './App.tsx'
 import { probeTransport } from '@dwc-ng/connector'
 import { initialBackend, pinnedTransport } from './dev/backend.ts'
-import { applyStoredPitch } from './shell/density.ts'
+import { applyStoredScale } from './shell/scale.ts'
 
 const root = document.getElementById('app')!
 
-// Before ANY render, and before the awaited transport probe below: the density
+// Before ANY render, and before the awaited transport probe below: the scale
 // attribute drives CSS custom properties, so applying it after first paint
 // would show one frame at the default spacing and then reflow the whole page.
-applyStoredPitch()
+applyStoredScale()
 
 // Palette lab (dev-only): repaints the chrome from a floating switcher so a
 // palette can be judged against real machine data. Same before-first-paint

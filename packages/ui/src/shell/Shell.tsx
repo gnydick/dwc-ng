@@ -4,7 +4,7 @@ import { cmd } from "../control/commands.ts";
 import { createRouter, LAB_ROUTE } from "./router.ts";
 import { navHidden, setNavHidden } from "./navState.ts";
 import { setRailSlot } from "./railSlot.ts";
-import { PITCHES, pitch, setPitch } from "./density.ts";
+import { SCALES, scale, setScale } from "./scale.ts";
 import { BUILD_ID } from "./buildId.ts";
 import { installEdgeScroll } from "./edgeScroll.ts";
 import {
@@ -149,7 +149,7 @@ export default function Shell() {
 					</Show>
 
 					<div class="preflight-actions">
-						<DensityToggle />
+						<ScaleToggle />
 						<Show when={import.meta.env.DEV}><BackendToggle /></Show>
 						<button
 							class="ghost-btn"
@@ -199,29 +199,26 @@ export default function Shell() {
 }
 
 /**
- * How much air the layout spends, as a component lead pitch (see
- * shell/density.ts). A per-device display preference — it changes CSS custom
- * properties on <html> and nothing else, so it sends no code, touches no
- * config overlay, and cannot mark anything unsaved.
- *
- * Card ROW SPANS are not touched: a card keeps the height you gave it, so at a
- * tighter pitch its content simply stops filling it. Resize or reset a card to
- * take the space back.
+ * How large the UI draws (see shell/scale.ts). A per-device display
+ * preference — it changes one custom property on <html> and nothing else, so
+ * it sends no code, touches no config overlay, and cannot mark anything
+ * unsaved. Card geometry is stored in unit cells, so every card follows the
+ * unit and no layout needs re-dragging at any step.
  */
-function DensityToggle() {
+function ScaleToggle() {
 	return (
-		<div class="pitch-toggle" role="group" aria-label="Spacing density" title="Spacing density — a display preference for this browser">
-			<For each={PITCHES}>
-				{p => (
+		<div class="scale-toggle" role="group" aria-label="UI scale" title="UI scale — a display preference for this browser">
+			<For each={SCALES}>
+				{s => (
 					<button
 						type="button"
-						class="pitch-opt"
-						classList={{ active: pitch() === p.id }}
-						aria-pressed={pitch() === p.id}
-						title={`${p.label} mm — ${p.note}`}
-						onClick={() => setPitch(p.id)}
+						class="scale-opt"
+						classList={{ active: scale() === s.id }}
+						aria-pressed={scale() === s.id}
+						title={`${s.label}%`}
+						onClick={() => setScale(s.id)}
 					>
-						{p.label}
+						{s.label}
 					</button>
 				)}
 			</For>
