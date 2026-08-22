@@ -7,7 +7,7 @@
 	   fixed ~2500px grid track) — without it, a flex sibling like the header
 	   would stretch to that width too and its right-aligned content would
 	   render off-screen. */
-	grid-template-columns: 188px minmax(0, 1fr);
+	grid-template-columns: calc(47 * var(--u)) minmax(0, 1fr);
 	min-height: 100vh;
 }
 
@@ -16,17 +16,17 @@
 .rail {
 	box-shadow: inset -1px 0 0 var(--hairline);
 	/* Tight right gutter — the nav text no longer floats far off the divider. */
-	padding: var(--sp-rail-py) 6px var(--sp-rail-py) 12px;
+	padding: var(--sp-rail-py) calc(1.5 * var(--u)) var(--sp-rail-py) calc(3 * var(--u));
 	display: flex;
 	flex-direction: column;
 	gap: var(--sp-rail-gap);
 }
 
-.rail nav { display: flex; flex-direction: column; gap: 2px; }
+.rail nav { display: flex; flex-direction: column; gap: calc(0.5 * var(--u)); }
 
 .rail nav a {
 	display: block;
-	padding: var(--sp-nav-py) 10px;
+	padding: var(--sp-nav-py) calc(2.5 * var(--u));
 	border-radius: var(--radius);
 	font-family: var(--font-display);
 	font-weight: 600;
@@ -61,7 +61,7 @@
 .rail .machine-id {
 	font-size: calc(3.375 * var(--u));
 	color: var(--silk-dim);
-	padding-left: 10px;
+	padding-left: calc(2.5 * var(--u));
 	line-height: 1.6;
 }
 /* Quieter than the machine identity above it — this is a diagnostic, wanted
@@ -117,7 +117,7 @@
    clamps colSpan to GRID_COLS but leaves rowSpan unbounded). Trailing padding
    extends the scrollable area past the last panel so there is always somewhere
    to drag/resize into, and it grows the scroll range rather than the content. */
-.view-scroll .panel-canvas { padding-bottom: 720px; }
+.view-scroll .panel-canvas { padding-bottom: calc(180 * var(--u)); }
 
 /* No scrollbar chrome. The canvas is a fixed 624×4px = 2496px wide and
    is meant to be panned/scrolled, but the bars themselves are visual noise on
@@ -125,7 +125,7 @@
 .view-scroll { scrollbar-width: none; -ms-overflow-style: none; }
 .view-scroll::-webkit-scrollbar { width: 0; height: 0; }
 
-.preflight-actions { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.preflight-actions { margin-left: auto; display: flex; align-items: center; gap: calc(2.5 * var(--u)); }
 
 .ghost-btn {
 	font-family: var(--font-display);
@@ -136,7 +136,7 @@
 	color: var(--silk-dim);
 	box-shadow: inset 0 0 0 1px var(--hairline);
 	border-radius: var(--radius);
-	padding: var(--sp-input-py) 12px;
+	padding: var(--sp-input-py) calc(3 * var(--u));
 }
 .ghost-btn:hover { color: var(--silk); background: var(--mask-700); }
 .ghost-btn[aria-pressed="true"] { color: var(--accent-bright); box-shadow: inset 0 0 0 1px var(--accent); }
@@ -149,11 +149,11 @@
 	color: #fff;
 	background: var(--fault);
 	border-radius: var(--radius);
-	padding: 6px 16px;
+	padding: 6px 16px; /* px-ok: hit target — must not follow the scale it controls */
 	box-shadow: 0 2px 0 #8f3527;
 }
 .estop:hover { background: #ea6c5a; }
-.estop:active { transform: translateY(1px); box-shadow: 0 1px 0 #8f3527; }
+.estop:active { transform: translateY(1px); /* px-ok: hit target — must not follow the scale it controls */ box-shadow: 0 1px 0 #8f3527; }
 .estop small { display: block; font-size: 11px; /* px-ok: hit target — must not follow the scale it controls */ font-weight: 600; letter-spacing: 0.1em; opacity: 0.8; }
 /* The STOP did not reach the board (network failure): colour-only alarm on
    fixed geometry — the button must never move or resize under the finger. */
@@ -173,7 +173,7 @@
 .preflight {
 	display: flex;
 	align-items: center;
-	gap: 10px;
+	gap: calc(2.5 * var(--u));
 	/* Slimmer header + smaller gap to the cards — the top gutter was eating a
 	   lot of vertical space above the first row. */
 	padding: var(--sp-pre-py) 0;
@@ -185,7 +185,7 @@
 .chip {
 	display: inline-flex;
 	align-items: center;
-	gap: 7px;
+	gap: calc(1.75 * var(--u));
 	font-family: var(--font-display);
 	font-weight: 700;
 	font-size: calc(3.625 * var(--u));
@@ -196,7 +196,7 @@
 	padding: var(--sp-chip-py) var(--sp-chip-px);
 	color: var(--silk-dim);
 }
-.chip .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.chip .dot { width: calc(1.75 * var(--u)); height: calc(1.75 * var(--u)); border-radius: 50%; background: currentColor; }
 
 .chip-ok    { color: var(--ok); box-shadow: inset 0 0 0 1px rgba(111, 191, 143, 0.4); }
 .chip-warn  { color: var(--gold); box-shadow: inset 0 0 0 1px rgba(201, 162, 39, 0.45); }
@@ -215,7 +215,7 @@
 	font-weight: 700;
 	font-size: calc(5 * var(--u));
 	letter-spacing: 0.04em;
-	padding-left: 10px;
+	padding-left: calc(2.5 * var(--u));
 	display: flex;
 	align-items: center;
 }
@@ -229,7 +229,7 @@
 	color: var(--silk-dim);
 	font-size: calc(5.5 * var(--u));
 	line-height: 1;
-	padding: 2px 6px;
+	padding: calc(0.5 * var(--u)) calc(1.5 * var(--u));
 	cursor: pointer;
 	border-radius: var(--radius);
 }
@@ -247,8 +247,8 @@
 	color: var(--silk);
 	font-size: calc(4.5 * var(--u));
 	line-height: 1;
-	width: 30px;
-	height: 30px;
+	width: calc(7.5 * var(--u));
+	height: calc(7.5 * var(--u));
 	cursor: pointer;
 	border-radius: var(--radius);
 	flex: none;
@@ -290,7 +290,7 @@
 	/* Deliberately NOT a density token: .card is only ever emitted with .panel
 	   (shell/Panel.tsx), and .card.panel below zeroes this. Tokenizing an
 	   unreachable declaration would suggest a density knob that does nothing. */
-	padding: 12px 16px;
+	padding: calc(3 * var(--u)) calc(4 * var(--u));
 }
 
 /* Sticky within .panel-body's own scroll — stays put while everything
@@ -299,8 +299,8 @@
 .card-head {
 	display: flex;
 	align-items: center;
-	gap: 8px;
-	margin-bottom: 8px;
+	gap: calc(2 * var(--u));
+	margin-bottom: calc(2 * var(--u));
 	position: sticky;
 	top: 0;
 	z-index: 1;
@@ -310,8 +310,8 @@
    the sacred grip cluster, pinned to the edge. The grip is a REAL child now,
    not a floating overlay, so nothing can sit to its right by construction —
    no reserved padding, no :has() bump. */
-.card-head-right { margin-left: auto; display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
-.card-actions { display: flex; align-items: center; gap: 6px; }
+.card-head-right { margin-left: auto; display: flex; align-items: center; gap: calc(2 * var(--u)); flex: 0 0 auto; }
+.card-actions { display: flex; align-items: center; gap: calc(1.5 * var(--u)); }
 .card-actions > * { flex: 0 0 auto; }
 
 .card-title {
@@ -355,7 +355,7 @@
 .panel-tools {
 	display: flex;
 	align-items: center;
-	gap: 4px;
+	gap: calc(1 * var(--u));
 }
 
 .panel-grip {
@@ -365,7 +365,7 @@
 	color: var(--silk-dim);
 	font-size: calc(3.25 * var(--u));
 	line-height: 1;
-	padding: 2px 6px;
+	padding: calc(0.5 * var(--u)) calc(1.5 * var(--u));
 	cursor: grab;
 	touch-action: none;
 }
@@ -379,7 +379,7 @@
 	color: var(--silk-dim);
 	font-size: calc(3.25 * var(--u));
 	line-height: 1;
-	padding: 2px 6px;
+	padding: calc(0.5 * var(--u)) calc(1.5 * var(--u));
 	cursor: pointer;
 	/* Always visible, like the grab handle beside it. Hover-only made the
 	   control undiscoverable — you had to already know it was there. */
@@ -388,10 +388,10 @@
 
 .panel-resize-grip {
 	position: absolute;
-	right: -1px;
-	bottom: -1px;
-	width: 16px;
-	height: 16px;
+	right: -1px; /* px-ok: hit target — must not follow the scale it controls */
+	bottom: -1px; /* px-ok: hit target — must not follow the scale it controls */
+	width: 16px; /* px-ok: hit target — must not follow the scale it controls */
+	height: 16px; /* px-ok: hit target — must not follow the scale it controls */
 	z-index: 2;
 	cursor: nwse-resize;
 	touch-action: none;
@@ -399,10 +399,10 @@
 .panel-resize-grip::before {
 	content: "";
 	position: absolute;
-	right: 4px;
-	bottom: 4px;
-	width: 8px;
-	height: 8px;
+	right: 4px; /* px-ok: hit target — must not follow the scale it controls */
+	bottom: 4px; /* px-ok: hit target — must not follow the scale it controls */
+	width: 8px; /* px-ok: hit target — must not follow the scale it controls */
+	height: 8px; /* px-ok: hit target — must not follow the scale it controls */
 	box-shadow: inset -2px 0 0 var(--silk-dim), inset 0 -2px 0 var(--silk-dim);
 	opacity: 0.5;
 }
@@ -416,7 +416,7 @@
 	position: absolute;
 	left: 0;
 	right: 0;
-	height: 18px;
+	height: calc(4.5 * var(--u));
 	z-index: 2;
 	background: none;
 	border: none;
@@ -442,7 +442,7 @@
 }
 .panel-scroll-nub:active { opacity: 1; filter: brightness(1.3); }
 
-.console-panel .console-history { flex: 1; max-height: none; min-height: 0; margin-bottom: 8px; }
+.console-panel .console-history { flex: 1; max-height: none; min-height: 0; margin-bottom: calc(2 * var(--u)); }
 .console-panel { display: flex; flex-direction: column; }
 /* No min-height here. It used to restate `0`, and being the more specific
    selector it beat the floor .cam-body declares — so the floor lives in one
@@ -450,7 +450,7 @@
 .cam-panel .cam-body { flex: 1; }
 .cam-panel { display: flex; flex-direction: column; }
 
-.layout-toolbar { display: flex; justify-content: flex-end; margin-bottom: 8px; }
+.layout-toolbar { display: flex; justify-content: flex-end; margin-bottom: calc(2 * var(--u)); }
 .layout-reset {
 	font-family: var(--font-display);
 	font-weight: 600;
@@ -458,7 +458,7 @@
 	letter-spacing: 0.12em;
 	text-transform: uppercase;
 	color: var(--silk-dim);
-	padding: 4px 2px;
+	padding: calc(1 * var(--u)) calc(0.5 * var(--u));
 }
 .layout-reset:hover { color: var(--silk); }
 
@@ -470,7 +470,7 @@
 	color: var(--silk-dim);
 	box-shadow: inset 0 0 0 1px var(--hairline);
 	border-radius: 3px;
-	padding: 1px 6px 0;
+	padding: calc(0.25 * var(--u)) calc(1.5 * var(--u)) 0;
 	white-space: nowrap;
 }
 
@@ -485,7 +485,7 @@
 	color: var(--silk-dim);
 	box-shadow: inset 0 0 0 1px var(--hairline);
 	border-radius: 3px;
-	padding: 1px 6px 0;
+	padding: calc(0.25 * var(--u)) calc(1.5 * var(--u)) 0;
 	white-space: nowrap;
 }
 .card-tip:hover { color: var(--silk); box-shadow: inset 0 0 0 1px var(--accent); }
@@ -517,13 +517,13 @@
 .dro-list {
 	display: grid;
 	/* axis (+ role) | reading | homed tag */
-	grid-template-columns: max-content var(--dro-val-w) 66px;
+	grid-template-columns: max-content var(--dro-val-w) calc(16.5 * var(--u));
 	/* Column gutter only. Row separation is each row's own padding and rule; a
 	   row-gap would put a space between the rule and the next row's text. The
 	   subgrid rows inherit these gutters, so the gap lives HERE and nowhere
 	   else — a gap restated on .dro-row would silently override the inherited
 	   one and shift the tracks out from under the header alignment. */
-	gap: 0 12px;
+	gap: 0 calc(3 * var(--u));
 	justify-content: start;
 }
 .dro-row {
@@ -554,7 +554,7 @@
    inherited .dro-axis (19px bold) and rendered welded on — "UZ motor 1",
    "CCoupler". Same idiom as the jog controls' role tag. */
 .dro-role {
-	margin-left: 8px;
+	margin-left: calc(2 * var(--u));
 	font-family: var(--font-display);
 	font-weight: 600;
 	font-size: calc(3.25 * var(--u));
@@ -575,7 +575,7 @@
 	font-variant-numeric: tabular-nums;
 }
 .dro-row.unhomed .dro-val { color: var(--silk-dim); }
-.dro-val small { font-size: calc(3.25 * var(--u)); color: var(--silk-dim); margin-left: 3px; }
+.dro-val small { font-size: calc(3.25 * var(--u)); color: var(--silk-dim); margin-left: calc(0.75 * var(--u)); }
 
 /* Horizontal Position layout (orientationToggle) — same data, arranged as a
    row of compact per-axis cells instead of a stack of rows. */
@@ -584,8 +584,8 @@
    re-flow every other card had removed — and it put the coupler alone on a
    second line away from the axes it belongs with. A fixed count breaks in the
    same place always: X Y Z C, then U V W (see cellAxes in PositionCard). */
-.dro-h-row { display: grid; grid-template-columns: repeat(4, max-content); gap: 14px 22px; justify-content: start; }
-.dro-h-cell { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+.dro-h-row { display: grid; grid-template-columns: repeat(4, max-content); gap: calc(3.5 * var(--u)) calc(5.5 * var(--u)); justify-content: start; }
+.dro-h-cell { display: flex; flex-direction: column; align-items: flex-start; gap: calc(0.5 * var(--u)); }
 .dro-h-axis {
 	font-family: var(--font-display);
 	font-weight: 700;
@@ -605,10 +605,10 @@
 	   flex-wrap row — the "position card moves around in landscape" jitter.
 	   Wide enough for a signed value like "-098.20mm"; the axis labels are
 	   static, so the cell width is now stable whatever the machine does. */
-	width: 66px;
+	width: calc(16.5 * var(--u));
 }
 .dro-h-cell.unhomed .dro-h-val { color: var(--silk-dim); }
-.dro-h-val small { font-size: calc(2.75 * var(--u)); color: var(--silk-dim); margin-left: 2px; }
+.dro-h-val small { font-size: calc(2.75 * var(--u)); color: var(--silk-dim); margin-left: calc(0.5 * var(--u)); }
 
 /* Live move speeds (move.currentMove) — a fixed three-slot footer. Same
    reserved-width discipline as .dro-h-val above: these values change every
@@ -627,7 +627,7 @@
 	   this needs is now simply part of the card's declared minimum, which is
 	   what a minimum is for. */
 	flex-wrap: nowrap;
-	gap: 14px;
+	gap: calc(3.5 * var(--u));
 	margin-top: var(--sp-flow);
 	padding-top: var(--sp-flow);
 	box-shadow: inset 0 1px 0 var(--hairline);
@@ -644,11 +644,11 @@
 .speed-cell {
 	display: flex;
 	flex-direction: column;
-	gap: 2px;
+	gap: calc(0.5 * var(--u));
 	/* Fixed, not auto: "Requested" and "Flow" differ in width, and the toggle
 	   swaps between "Extrusion" and "Flow" on click. An auto column would move
 	   the neighbouring cells on every toggle and on every digit-count change. */
-	flex: 0 0 88px;
+	flex: 0 0 calc(22 * var(--u));
 	min-width: 0;
 }
 .speed-label {
@@ -701,7 +701,7 @@
 	font-variant-numeric: tabular-nums;
 	white-space: nowrap;
 }
-.speed-val small { font-size: calc(3 * var(--u)); color: var(--silk-dim); margin-left: 3px; }
+.speed-val small { font-size: calc(3 * var(--u)); color: var(--silk-dim); margin-left: calc(0.75 * var(--u)); }
 
 .homed-tag {
 	justify-self: end;
@@ -772,9 +772,9 @@
    inserting or removing one shifts nothing — which is the entire content of
    regression class (f). Sum: 152 + 70 + 56 + 58 + 156 = 492. */
 .heat-table .col-heater { width: var(--tool-col-heater); }
-.heat-table .col-active { width: var(--tool-col-active); padding-left: 14px; }
+.heat-table .col-active { width: var(--tool-col-active); padding-left: calc(3.5 * var(--u)); }
 .heat-table .col-standby { width: var(--tool-col-standby); }
-.heat-table .col-current { width: var(--tool-col-current); padding-right: 14px; }
+.heat-table .col-current { width: var(--tool-col-current); padding-right: calc(3.5 * var(--u)); }
 .heat-table .col-set { width: var(--tool-col-set); }
 /* @invariant column-width-by-role
    @rung 4  static analysis — test/heat-table-columns.test.ts parses this file
@@ -797,12 +797,12 @@
    Current is the second cell rather than the fourth. Under role classes that
    fact needs no restatement of any OTHER column's width — which is what the
    positional version got wrong. 152 + 58 = 210. */
-.heat-table.info-only { min-width: 210px; }
+.heat-table.info-only { min-width: calc(52.5 * var(--u)); }
 .heat-input {
 	/* Tracks column 3, the cell it sits in. Declared apart once, and the
 	   field overflowed its own cell by 2px. */
 	width: calc(16 * var(--u));
-	padding: var(--sp-chip-py) 6px;
+	padding: var(--sp-chip-py) calc(1.5 * var(--u));
 	background: var(--mask-900);
 	border: 0;
 	box-shadow: inset 0 0 0 1px var(--hairline);
@@ -822,7 +822,7 @@
 	max-width: 100%;
 	/* Same reason as .filament-pick: a zero-width floor would let the card's
 	   width detent snap far below anything readable. */
-	min-width: 88px;
+	min-width: calc(22 * var(--u));
 	height: var(--ctl-h);
 	box-sizing: border-box;
 	font-size: calc(3.5 * var(--u));
@@ -889,9 +889,9 @@
 	   width: it takes whatever the Heater column has left, so it can neither
 	   overflow into Filament on a narrow card nor leave a hole on a wide one.
 	   The air before the picker is the Filament column's own left gutter. */
-	grid-template-columns: 56px 12px minmax(0, 1fr);
+	grid-template-columns: calc(14 * var(--u)) calc(3 * var(--u)) minmax(0, 1fr);
 	align-items: center;
-	gap: 8px;
+	gap: calc(2 * var(--u));
 }
 .heat-tool { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Grid items stretch by default, which inflated the designator's bordered box
@@ -905,7 +905,7 @@
 /* The name-as-selector. Sized to the 84px track (a long tool name ellipsises
    rather than widening the column) and height-matched by the plain-label case
    below, so a bed row is exactly as tall as a tool row. */
-.heat-name .tool-select { width: 100%; padding: 0 8px; overflow: hidden; }
+.heat-name .tool-select { width: 100%; padding: 0 calc(2 * var(--u)); overflow: hidden; }
 .heat-name .tool-select .gcode-label {
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -920,7 +920,7 @@
    does not move" rule forbids, because the card then "fits" at any width by
    silently rearranging itself. The floor is 322 and the card is sized from it.
    It does not bind anyway — the table beside it declares 598. */
-.heat-deselect { display: flex; align-items: center; gap: 10px; flex-wrap: nowrap; margin: 0 0 var(--sp-flow); }
+.heat-deselect { display: flex; align-items: center; gap: calc(2.5 * var(--u)); flex-wrap: nowrap; margin: 0 0 var(--sp-flow); }
 
 /* Same size as the tool label it sits in a row with — the reading is a peer of
    the name, not a headline. */
@@ -957,10 +957,10 @@
    the confirm you didn't mean to reach. */
 .heat-reset {
 	display: inline-block;
-	min-width: 68px;
+	min-width: calc(17 * var(--u));
 	text-align: inherit;
-	padding: 2px 6px;
-	margin: -2px -6px;
+	padding: calc(0.5 * var(--u)) calc(1.5 * var(--u));
+	margin: calc(-0.5 * var(--u)) calc(-1.5 * var(--u));
 	background: none;
 	box-shadow: inset 0 0 0 1px transparent;
 	border-radius: 4px;
@@ -969,13 +969,13 @@
 	letter-spacing: inherit;
 	text-transform: inherit;
 }
-.heat-reset:hover { box-shadow: inset 0 0 0 1px rgba(224, 92, 74, 0.5); }
+.heat-reset:hover { box-shadow: inset 0 0 0 1px rgba(224, 92, 74, 0.5); /* px-ok: box-shadow is exempt; the lint's property-scan reads this one-line rule's own pseudo-class as the property name */ }
 .heat-reset.armed {
 	box-shadow: inset 0 0 0 1px var(--fault);
 	background: rgba(224, 92, 74, 0.14);
 	color: var(--silk);
 }
-.heat-reset:focus-visible { outline: 2px solid var(--accent-bright); outline-offset: 1px; }
+.heat-reset:focus-visible { outline: 2px solid var(--accent-bright); outline-offset: 1px; /* px-ok: outline/outline-offset are exempt; the lint's property-scan reads this one-line rule's own pseudo-class as the property name */ }
 
 /* Horizontal Tools & Heaters layout (orientationToggle) — one compact block
    per tool/bed instead of a table row. */
@@ -993,12 +993,12 @@
    place content still re-flowed: the per-tool cells wrapped, so the card
    appeared to "fit" at any width while silently rearranging itself, and the
    measured minimum was whatever arrangement it happened to be in. */
-.heat-h-row { display: flex; flex-wrap: nowrap; gap: 18px; min-width: 306px; }
-.heat-h-cell { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 90px; }
+.heat-h-row { display: flex; flex-wrap: nowrap; gap: calc(4.5 * var(--u)); min-width: calc(76.5 * var(--u)); }
+.heat-h-cell { display: flex; flex-direction: column; align-items: flex-start; gap: calc(1 * var(--u)); min-width: calc(22.5 * var(--u)); }
 .heat-h-meta {
 	display: flex;
 	align-items: baseline;
-	gap: 8px;
+	gap: calc(2 * var(--u));
 	color: var(--silk-dim);
 	font-size: calc(3.625 * var(--u));
 	font-variant-numeric: tabular-nums;
@@ -1010,7 +1010,7 @@
 .job-line {
 	display: flex;
 	align-items: baseline;
-	gap: 10px;
+	gap: calc(2.5 * var(--u));
 	flex-wrap: wrap;
 	font-variant-numeric: tabular-nums;
 }
@@ -1032,7 +1032,7 @@
 /* A job whose metadata could not be read. Deliberately NOT .job-empty: an
    unreadable file used to look exactly like an unselected one, in the same muted
    grey, which is how a failure came to read as "nothing here yet". */
-.job-error { display: flex; flex-direction: column; gap: 10px; }
+.job-error { display: flex; flex-direction: column; gap: calc(2.5 * var(--u)); }
 .job-error-summary {
 	color: var(--fault);
 	font-size: calc(3.75 * var(--u));
@@ -1063,9 +1063,9 @@
    compact on purpose so it rides inline and never needs its own column. */
 .dock-dot {
 	display: inline-block;
-	width: 8px;
-	height: 8px;
-	margin-left: 7px;
+	width: calc(2 * var(--u));
+	height: calc(2 * var(--u));
+	margin-left: calc(1.75 * var(--u));
 	border-radius: 50%;
 	vertical-align: middle;
 	box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 18%, transparent);
@@ -1075,18 +1075,18 @@
 
 /* ---------- sensors (Machine view) ---------- */
 
-.sensor-list { display: flex; flex-direction: column; gap: 8px; }
+.sensor-list { display: flex; flex-direction: column; gap: calc(2 * var(--u)); }
 .sensor-row {
 	display: grid;
-	grid-template-columns: 10px 1fr auto;
+	grid-template-columns: calc(2.5 * var(--u)) 1fr auto;
 	align-items: center;
-	gap: 10px;
+	gap: calc(2.5 * var(--u));
 	font-size: calc(3.75 * var(--u));
 }
 .sensor-dot {
 	display: inline-block;
-	width: 8px;
-	height: 8px;
+	width: calc(2 * var(--u));
+	height: calc(2 * var(--u));
 	border-radius: 50%;
 	vertical-align: middle;
 }
@@ -1106,12 +1106,12 @@
 	color: var(--silk);
 	text-align: left;
 	white-space: nowrap;
-	padding: 0 22px 8px 0;
+	padding: 0 calc(5.5 * var(--u)) calc(2 * var(--u)) 0;
 	box-shadow: inset 0 -1px 0 var(--hairline);
 }
-.sensor-h-table th .sensor-dot { margin-right: 7px; }
+.sensor-h-table th .sensor-dot { margin-right: calc(1.75 * var(--u)); }
 .sensor-h-table td {
-	padding: 9px 22px 0 0;
+	padding: calc(2.25 * var(--u)) calc(5.5 * var(--u)) 0 0;
 	font-family: var(--font-body);
 	font-weight: 400;
 	font-size: calc(3.75 * var(--u));
@@ -1134,11 +1134,11 @@
 /* ---------- console (body used by shell/ConsolePanel.tsx) ---------- */
 
 .console-history {
-	max-height: 220px;
+	max-height: calc(55 * var(--u));
 	overflow-y: auto;
 	display: flex;
 	flex-direction: column;
-	gap: 5px;
+	gap: calc(1.25 * var(--u));
 	padding-bottom: var(--sp-flow);
 	margin-bottom: var(--sp-flow);
 	box-shadow: inset 0 -1px 0 var(--hairline);
@@ -1148,8 +1148,8 @@
 
 .console-line {
 	display: grid;
-	grid-template-columns: 62px 1fr;
-	gap: 12px;
+	grid-template-columns: calc(15.5 * var(--u)) 1fr;
+	gap: calc(3 * var(--u));
 	font-size: calc(3.625 * var(--u));
 }
 .console-line time { color: var(--silk-dim); font-variant-numeric: tabular-nums; }
@@ -1171,18 +1171,18 @@
 
 /* ---------- dev: card lab ---------- */
 .card-lab { display: flex; flex-direction: column; }
-.lab-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.lab-bar { display: flex; align-items: center; gap: calc(3 * var(--u)); flex-wrap: wrap; margin-bottom: calc(3 * var(--u)); }
 .lab-cap {
 	font-family: var(--font-display); font-weight: 700; font-size: calc(3.25 * var(--u));
 	letter-spacing: 0.12em; text-transform: uppercase; color: var(--silk-dim);
-	min-width: 42px;
+	min-width: calc(10.5 * var(--u));
 }
-.lab-pills { display: flex; flex-wrap: wrap; gap: 6px; }
+.lab-pills { display: flex; flex-wrap: wrap; gap: calc(1.5 * var(--u)); }
 .lab-pill {
 	font-family: var(--font-display); font-weight: 600; font-size: calc(3.625 * var(--u));
 	letter-spacing: 0.04em; color: var(--silk-dim);
 	background: var(--mask-700); box-shadow: inset 0 0 0 1px var(--hairline); border-radius: var(--radius);
-	padding: 5px 11px;
+	padding: calc(1.25 * var(--u)) calc(2.75 * var(--u));
 }
 .lab-pill:hover { color: var(--silk); }
 .lab-pill[aria-pressed="true"] { color: var(--accent-bright); box-shadow: inset 0 0 0 1px var(--accent); background: rgba(217, 133, 59, 0.1); }
@@ -1191,16 +1191,16 @@
    Cancels .lab-pill's inset ring rather than layering under it. */
 .lab-pill-custom { box-shadow: none; outline: 1px dashed var(--hairline); outline-offset: -1px; }
 .lab-pill-new { color: var(--ok); box-shadow: inset 0 0 0 1px rgba(111, 191, 143, 0.5); }
-.lab-canvas { padding-bottom: 240px; }
+.lab-canvas { padding-bottom: calc(60 * var(--u)); }
 
-.console-form { display: flex; gap: 8px; flex: 0 0 auto; }
+.console-form { display: flex; gap: calc(2 * var(--u)); flex: 0 0 auto; }
 .console-form input {
 	flex: 1;
 	background: var(--mask-900);
 	border: 0;
 	box-shadow: inset 0 0 0 1px var(--hairline);
 	border-radius: var(--radius);
-	padding: var(--sp-input-py) 10px;
+	padding: var(--sp-input-py) calc(2.5 * var(--u));
 }
 .console-form input::placeholder { color: var(--silk-dim); }
 .console-form button {
@@ -1212,7 +1212,7 @@
 	color: var(--accent-bright);
 	box-shadow: inset 0 0 0 1px var(--accent);
 	border-radius: var(--radius);
-	padding: var(--sp-input-py) 14px;
+	padding: var(--sp-input-py) calc(3.5 * var(--u));
 }
 .console-form button:hover { background: rgba(217, 133, 59, 0.12); }
 
@@ -1227,7 +1227,7 @@
 	   its rendered height, so the body counted for nothing and the card could be
 	   dragged shut over its own picture. Same 100px as the toolpath viewer: the
 	   point below which a camera frame stops being worth looking at. */
-	min-height: 100px;
+	min-height: calc(25 * var(--u));
 	/* The WIDTH half of the same statement, and it has to be containment rather
 	   than a min-width because the problem is the opposite one: the picture
 	   reports a floor that is far too LARGE.
@@ -1257,14 +1257,14 @@
 	   176 is the nearest whole column (44 x 4px). So the widest ordinary frame
 	   stays exactly as worth looking at as the height floor already promised,
 	   and one decision governs both axes instead of two unrelated numbers. */
-	min-width: 176px;
+	min-width: calc(44 * var(--u));
 	background: radial-gradient(120% 90% at 65% 30%, #16283f 0%, #0a1220 70%);
 	display: grid;
 	place-items: center;
 	color: var(--silk-dim);
 	font-size: calc(3.375 * var(--u));
 	text-align: center;
-	padding: 8px;
+	padding: calc(2 * var(--u));
 }
 .cam-body a { color: var(--accent-bright); }
 .cam-body img { width: 100%; height: 100%; object-fit: cover; cursor: zoom-in; }
@@ -1274,13 +1274,13 @@
 
 /* ---------- settings ---------- */
 
-.hint { color: var(--silk-dim); font-size: calc(3.625 * var(--u)); margin-bottom: 10px; }
+.hint { color: var(--silk-dim); font-size: calc(3.625 * var(--u)); margin-bottom: calc(2.5 * var(--u)); }
 .hint.unsaved { color: var(--gold); }
 
 .field {
 	display: flex;
 	align-items: center;
-	gap: 10px;
+	gap: calc(2.5 * var(--u));
 	padding: var(--sp-field) 0;
 }
 /* Rule BETWEEN rows. Keyed off adjacency, not :first-of-type — fields are
@@ -1296,7 +1296,7 @@
 	font-weight: 700;
 	font-size: calc(4 * var(--u));
 	color: var(--silk-dim);
-	min-width: 58px;
+	min-width: calc(14.5 * var(--u));
 	font-variant-numeric: tabular-nums;
 }
 
@@ -1307,15 +1307,15 @@
 	border: 0;
 	box-shadow: inset 0 0 0 1px var(--hairline);
 	border-radius: var(--radius);
-	padding: var(--sp-field) 10px;
+	padding: var(--sp-field) calc(2.5 * var(--u));
 }
 .field input::placeholder { color: var(--silk-dim); }
-.field input[type="number"] { max-width: 90px; }
+.field input[type="number"] { max-width: calc(22.5 * var(--u)); }
 
 .check {
 	display: inline-flex;
 	align-items: center;
-	gap: 6px;
+	gap: calc(1.5 * var(--u));
 	font-size: calc(3.625 * var(--u));
 	color: var(--silk-dim);
 }
@@ -1340,7 +1340,7 @@
 	color: var(--mask-900);
 	background: var(--accent-bright);
 	border-radius: var(--radius);
-	padding: 8px 18px;
+	padding: calc(2 * var(--u)) calc(4.5 * var(--u));
 }
 .primary-btn:disabled { opacity: 0.4; cursor: default; }
 .primary-btn:not(:disabled):hover { background: var(--accent); }
@@ -1348,13 +1348,13 @@
 .save-bar {
 	display: flex;
 	align-items: center;
-	gap: 14px;
-	padding: 12px 0;
+	gap: calc(3.5 * var(--u));
+	padding: calc(3 * var(--u)) 0;
 }
 /* Fixed slot: the status swaps between "All changes saved." and "Unsaved
    changes" (different widths). Without a reserved width it would shove the
    Save button sideways on every edit — the one control you're aiming for. */
-.save-bar .hint { margin: 0; min-width: 132px; }
+.save-bar .hint { margin: 0; min-width: calc(33 * var(--u)); }
 /* The armed name field swaps in where the Save button was, so the bar is
    wider while naming. Wrap rather than overflow — the card is only 24 columns
    and the field must not push Cancel off the edge at mobile width. */
@@ -1363,12 +1363,12 @@
    the bar wrapped, and Reset dropped to the next line and back — a delete-ish
    control shifting under the pointer as a side effect of starting a save. It
    owns the second line now, so its position depends on nothing above it. */
-.save-bar { flex-direction: column; align-items: flex-end; row-gap: 8px; }
-.save-actions { display: flex; flex-wrap: nowrap; align-items: center; gap: 8px; row-gap: 8px; width: 100%; }
+.save-bar { flex-direction: column; align-items: flex-end; row-gap: calc(2 * var(--u)); }
+.save-actions { display: flex; flex-wrap: nowrap; align-items: center; gap: calc(2 * var(--u)); row-gap: calc(2 * var(--u)); width: 100%; }
 .save-bar .reset-all { margin-left: 0; }
 /* Shrinkable, with a floor: a field narrower than this can't show a name
    worth reading, and one that grows unbounded shoves the buttons around. */
-.save-bar .save-label { flex: 1 1 160px; min-width: 120px; max-width: 320px; }
+.save-bar .save-label { flex: 1 1 calc(40 * var(--u)); min-width: calc(30 * var(--u)); max-width: calc(80 * var(--u)); }
 /* .link-btn carries margin-left:auto, which is how "Reset everything" pins to
    the right edge. Cancel is a link-btn too, so it inherited that and the free
    space split BETWEEN them — measured live at a 260px gap, leaving Cancel
@@ -1390,7 +1390,7 @@
    ("8888-88-88 88:88"), so 92px cannot clip any real date. min-width rather
    than a fixed width so a fallback font (Rajdhani failing to load) grows the
    box instead of truncating the stamp. */
-.field-label.stamp { flex: 0 0 auto; min-width: 92px; white-space: nowrap; font-size: calc(3.5 * var(--u)); }
+.field-label.stamp { flex: 0 0 auto; min-width: calc(23 * var(--u)); white-space: nowrap; font-size: calc(3.5 * var(--u)); }
 
 /* ---------- responsive ---------- */
 
@@ -1404,7 +1404,7 @@
 		flex-direction: row;
 		align-items: center;
 		box-shadow: inset 0 -1px 0 var(--hairline);
-		padding: 12px 16px;
+		padding: calc(3 * var(--u)) calc(4 * var(--u));
 		overflow-x: auto;
 	}
 	.rail nav { flex-direction: row; margin-bottom: 0; }
@@ -1459,9 +1459,9 @@
 	   their inputs and Set is at its three keys. Overriding the TOKEN keeps one
 	   declaration site — the rule above never changes. 152 + 70 + 56 + 50 + 156 = 484. */
 	.heat-table { --tool-col-current: calc(14.5 * var(--u)); }
-	.heat-table .col-current { padding-right: 6px; }
+	.heat-table .col-current { padding-right: calc(1.5 * var(--u)); }
 	/* Same two columns, narrow: 152 + 50 = 202. */
-	.heat-table.info-only { min-width: 202px; }
+	.heat-table.info-only { min-width: calc(50.5 * var(--u)); }
 	/* tighten headers so labels ("STANDBY") fit their narrower columns */
 	.heat-table th { font-size: calc(2.875 * var(--u)); letter-spacing: 0.05em; }
 }
@@ -1474,25 +1474,25 @@
 	background: var(--mask-500);
 	box-shadow: inset 0 0 0 1px var(--hairline);
 	border-radius: var(--radius);
-	padding: 9px 16px;
+	padding: calc(2.25 * var(--u)) calc(4 * var(--u));
 	cursor: pointer;
 }
-.btn:hover { box-shadow: inset 0 0 0 1px var(--accent); color: var(--accent-bright); }
+.btn:hover { box-shadow: inset 0 0 0 1px var(--accent); color: var(--accent-bright); /* px-ok: box-shadow is exempt; the lint's property-scan reads this one-line rule's own pseudo-class as the property name */ }
 .btn:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: inset 0 0 0 1px var(--hairline); color: var(--silk-dim); }
 .btn-go { background: rgba(111, 191, 143, 0.14); box-shadow: inset 0 0 0 1px rgba(111, 191, 143, 0.45); color: var(--ok); }
 .btn-go:hover:not(:disabled) { background: rgba(111, 191, 143, 0.24); box-shadow: inset 0 0 0 1px var(--ok); color: var(--ok); }
 .btn-danger { color: var(--fault); box-shadow: inset 0 0 0 1px rgba(224, 92, 74, 0.4); }
 .btn-danger:hover { background: rgba(224, 92, 74, 0.16); box-shadow: inset 0 0 0 1px var(--fault); color: var(--fault); }
-.btn-row { display: flex; gap: 10px; align-items: center; margin-top: 14px; }
+.btn-row { display: flex; gap: calc(2.5 * var(--u)); align-items: center; margin-top: calc(3.5 * var(--u)); }
 /* "Pause" and "Resume" are different widths; without a reserved slot the
    destructive Cancel button next to it slides when the job changes state. */
-.job-toggle { min-width: 96px; }
+.job-toggle { min-width: calc(24 * var(--u)); }
 
-.crumbs { display: flex; align-items: center; gap: 4px; margin-bottom: 10px; flex-wrap: nowrap; }
+.crumbs { display: flex; align-items: center; gap: calc(1 * var(--u)); margin-bottom: calc(2.5 * var(--u)); flex-wrap: nowrap; }
 .crumb {
 	font: 600 calc(3.5 * var(--u))/1 "Rajdhani", system-ui, sans-serif;
 	text-transform: uppercase; letter-spacing: 0.04em;
-	color: var(--silk-dim); background: none; border: none; padding: 3px 5px; cursor: pointer; border-radius: 4px;
+	color: var(--silk-dim); background: none; border: none; padding: calc(0.75 * var(--u)) calc(1.25 * var(--u)); cursor: pointer; border-radius: 4px;
 }
 .crumb:hover { color: var(--silk); background: var(--mask-500); }
 .crumb.active { color: var(--accent-bright); }
@@ -1531,7 +1531,7 @@
 	   still a file browser and not just a toolbar. Nothing inside can state
 	   this — the list is deliberately allowed to shrink to nothing so it can
 	   scroll — so the container has to. */
-	min-height: 140px;
+	min-height: calc(35 * var(--u));
 }
 .file-list::-webkit-scrollbar { display: none; }
 /* GRID, not flex, and the difference is the whole reason a file card can be
@@ -1552,42 +1552,42 @@
 .file-row {
 	width: 100%;
 	display: grid;
-	grid-template-columns: minmax(96px, 1fr);
+	grid-template-columns: minmax(calc(24 * var(--u)), 1fr);
 	grid-auto-flow: column;
 	grid-auto-columns: auto;
-	align-items: center; gap: 10px;
+	align-items: center; gap: calc(2.5 * var(--u));
 	background: none;
 	box-shadow: inset 0 -1px 0 var(--hairline);
-	padding: var(--sp-list) 6px; cursor: pointer; text-align: left; color: var(--silk);
+	padding: var(--sp-list) calc(1.5 * var(--u)); cursor: pointer; text-align: left; color: var(--silk);
 	font: 400 calc(4 * var(--u))/1.2 system-ui, sans-serif;
 }
 .file-row:hover { background: var(--mask-500); }
 .file-row.selected { background: var(--mask-500); box-shadow: inset 0 -1px 0 var(--hairline), inset 3px 0 0 var(--accent); }
-.file-icon { color: var(--silk-dim); font-size: calc(3.5 * var(--u)); width: 14px; text-align: center; }
+.file-icon { color: var(--silk-dim); font-size: calc(3.5 * var(--u)); width: calc(3.5 * var(--u)); text-align: center; }
 .file-row.dir .file-icon { color: var(--accent); }
 .file-row.dir .file-name { color: var(--accent-bright); }
 /* min-width: the ellipsis is inert without it — see the .file-row .file-name
    block below for why. Every file list truncates long names rather than letting
    one long filename set its card's minimum width (operator's call, 2026-07-30:
    "i'm fine with encroaching over file names in any of the file lists"). */
-.file-name { flex: 1; min-width: 96px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-name { flex: 1; min-width: calc(24 * var(--u)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .file-meta { color: var(--silk-dim); font-size: calc(3.5 * var(--u)); font-variant-numeric: tabular-nums; }
-.file-date { width: 120px; text-align: right; }
+.file-date { width: calc(30 * var(--u)); text-align: right; }
 
-.detail-body { display: grid; grid-template-columns: 160px 1fr; gap: 18px; align-items: start; }
+.detail-body { display: grid; grid-template-columns: calc(40 * var(--u)) 1fr; gap: calc(4.5 * var(--u)); align-items: start; }
 .thumb-frame {
 	/* outline, not box-shadow: .thumb-img fills the content box flush (160x160,
 	   object-fit: contain but still covering the full box), so an inset shadow
 	   would paint UNDER it and never be seen. outline paints after descendants
 	   (painting-order step 10), like a border did, and is exempt from the px
 	   lint (zero layout space) the same way box-shadow is. */
-	width: 160px; height: 160px; outline: 1px solid var(--hairline); outline-offset: -1px; border-radius: var(--radius);
+	width: calc(40 * var(--u)); height: calc(40 * var(--u)); outline: 1px solid var(--hairline); outline-offset: -1px; border-radius: var(--radius);
 	background: var(--mask-900); display: flex; align-items: center; justify-content: center; overflow: hidden;
 	background-image: linear-gradient(45deg, var(--mask-700) 25%, transparent 25%), linear-gradient(-45deg, var(--mask-700) 25%, transparent 25%),
 		linear-gradient(45deg, transparent 75%, var(--mask-700) 75%), linear-gradient(-45deg, transparent 75%, var(--mask-700) 75%);
-	background-size: 16px 16px; background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+	background-size: calc(4 * var(--u)) calc(4 * var(--u)); background-position: 0 0, 0 calc(2 * var(--u)), calc(2 * var(--u)) calc(-2 * var(--u)), calc(-2 * var(--u)) 0;
 }
-.thumb-img { width: 160px; height: 160px; object-fit: contain; image-rendering: auto; }
+.thumb-img { width: calc(40 * var(--u)); height: calc(40 * var(--u)); object-fit: contain; image-rendering: auto; }
 .thumb-placeholder { color: var(--silk-dim); font-size: calc(3.5 * var(--u)); }
 
 /* minmax on the value track, and nowrap values — the pair is what stops this
@@ -1598,7 +1598,7 @@
    A floor rather than min-width: 0, for the reason the file rows have one: at
    zero the values would shrink to nothing and a metadata card whose metadata is
    invisible is not a narrower card. 96px, then ellipsis. */
-.meta-grid { display: grid; grid-template-columns: auto minmax(96px, 1fr); gap: 6px 14px; margin: 0; }
+.meta-grid { display: grid; grid-template-columns: auto minmax(calc(24 * var(--u)), 1fr); gap: calc(1.5 * var(--u)) calc(3.5 * var(--u)); margin: 0; }
 .meta-grid dt { color: var(--silk-dim); font-size: calc(3.5 * var(--u)); text-transform: uppercase; letter-spacing: 0.03em; white-space: nowrap; }
 .meta-grid dd {
 	margin: 0; color: var(--silk); font-size: calc(4 * var(--u)); font-variant-numeric: tabular-nums;
@@ -1611,33 +1611,33 @@
 /* outline, not box-shadow: .progress-fill is height:100% and opaque, so an
    inset shadow would paint under it and disappear as soon as the bar has any
    fill. outline paints above descendants and is zero-layout, like border was. */
-.progress { position: relative; height: 22px; flex: 0 0 22px; min-height: 22px; background: var(--mask-900); border-radius: var(--radius); overflow: hidden; margin: 4px 0 12px; outline: 1px solid var(--hairline); outline-offset: -1px; }
+.progress { position: relative; height: calc(5.5 * var(--u)); flex: 0 0 calc(5.5 * var(--u)); min-height: calc(5.5 * var(--u)); background: var(--mask-900); border-radius: var(--radius); overflow: hidden; margin: calc(1 * var(--u)) 0 calc(3 * var(--u)); outline: 1px solid var(--hairline); outline-offset: -1px; }
 .progress-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-bright)); transition: width 0.4s ease; }
 .progress-label { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font: 600 calc(3.5 * var(--u))/1 "Rajdhani", sans-serif; color: var(--silk); }
-.job-active-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.job-active-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: calc(2 * var(--u)); }
 /* Facts and the two job actions share one row: Pause/Cancel belong beside the
    numbers they act on, not stranded at the bottom of the card. The buttons are
    anchored to the right edge by margin-left:auto rather than by the facts'
    width, so a fact gaining a character cannot slide Cancel under the pointer.
    Wraps on a narrow card, where the buttons drop below instead of squeezing. */
-.job-facts-row { display: flex; align-items: center; gap: 16px; flex-wrap: nowrap; }
+.job-facts-row { display: flex; align-items: center; gap: calc(4 * var(--u)); flex-wrap: nowrap; }
 .job-facts-row .job-facts { flex: 1 1 auto; min-width: 0; }
 .job-actions { margin-top: 0; margin-left: auto; flex: none; }
 
-.job-facts { display: flex; gap: 22px; flex-wrap: nowrap; }
+.job-facts { display: flex; gap: calc(5.5 * var(--u)); flex-wrap: nowrap; }
 /* Live values gain and lose characters every tick ("59s" → "1m 0s", layer
    9 → 10). tabular-nums evens the digits but not the string length, so
    reserve each slot — otherwise the row shuffles for the whole print. */
-.fact { display: flex; flex-direction: column; gap: 2px; min-width: 104px; }
+.fact { display: flex; flex-direction: column; gap: calc(0.5 * var(--u)); min-width: calc(26 * var(--u)); }
 .fact-label { color: var(--silk-dim); font-size: calc(3.25 * var(--u)); text-transform: uppercase; letter-spacing: 0.04em; }
 .fact-val { color: var(--silk); font-size: calc(4.25 * var(--u)); font-variant-numeric: tabular-nums; }
 
 /* The estimate-source breakdown under the facts: subordinate to the headline
    "Remaining", so muted and small. Each source keeps a reserved width for the
    same reason the facts do — the value changes length every tick. */
-.est-sources { display: flex; align-items: baseline; gap: 14px; margin-top: 8px; font-size: calc(3.5 * var(--u)); }
+.est-sources { display: flex; align-items: baseline; gap: calc(3.5 * var(--u)); margin-top: calc(2 * var(--u)); font-size: calc(3.5 * var(--u)); }
 .est-cap { color: var(--silk-dim); text-transform: uppercase; letter-spacing: 0.04em; }
-.est-src { display: inline-flex; align-items: baseline; gap: 5px; min-width: 92px; }
+.est-src { display: inline-flex; align-items: baseline; gap: calc(1.25 * var(--u)); min-width: calc(23 * var(--u)); }
 .est-name { color: var(--silk-dim); text-transform: capitalize; }
 .est-val { color: var(--silk); font-variant-numeric: tabular-nums; }
 
@@ -1664,8 +1664,8 @@
 .gcode-viewer {
 	position: relative;
 	flex: 1 1 0;
-	min-height: 100px;
-	min-width: 364px;
+	min-height: calc(25 * var(--u));
+	min-width: calc(91 * var(--u));
 	width: 100%;
 }
 /* Absolutely positioned, so the bitmap contributes NOTHING to intrinsic size.
@@ -1674,21 +1674,21 @@
 .gcode-canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
 .gcode-viewer-modes {
 	position: absolute; z-index: 1;
-	display: flex; gap: 4px;
+	display: flex; gap: calc(1 * var(--u));
 }
-.gcode-viewer-modes-color { top: 8px; left: 8px; }
-.gcode-viewer-modes-reveal { top: 8px; right: 8px; }
-.gcode-viewer-modes-ghost { top: 36px; right: 8px; }
-.gcode-viewer-modes-travel { top: 64px; right: 8px; }
+.gcode-viewer-modes-color { top: calc(2 * var(--u)); left: calc(2 * var(--u)); }
+.gcode-viewer-modes-reveal { top: calc(2 * var(--u)); right: calc(2 * var(--u)); }
+.gcode-viewer-modes-ghost { top: calc(9 * var(--u)); right: calc(2 * var(--u)); }
+.gcode-viewer-modes-travel { top: calc(16 * var(--u)); right: calc(2 * var(--u)); }
 .gcode-viewer-modes .mode-btn {
-	font-size: calc(3.25 * var(--u)); padding: 4px 8px; border-radius: var(--radius);
+	font-size: calc(3.25 * var(--u)); padding: calc(1 * var(--u)) calc(2 * var(--u)); border-radius: var(--radius);
 	box-shadow: inset 0 0 0 1px var(--hairline); background: var(--mask-700); color: var(--silk-dim);
 }
 .gcode-viewer-modes .mode-btn.active { color: var(--silk); box-shadow: inset 0 0 0 1px var(--accent); }
 .gcode-viewer-modes .mode-btn:disabled { opacity: 0.35; cursor: not-allowed; }
 .gcode-overlay {
 	position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
-	color: var(--silk-dim); font-size: calc(3.75 * var(--u)); text-align: center; padding: 12px;
+	color: var(--silk-dim); font-size: calc(3.75 * var(--u)); text-align: center; padding: calc(3 * var(--u));
 }
 .gcode-overlay.err { color: var(--fault); }
 
@@ -1704,7 +1704,7 @@
 .color-swatch {
 	appearance: none;
 	-webkit-appearance: none;
-	width: 34px;
+	width: calc(8.5 * var(--u));
 	height: var(--ctl-h);
 	flex: none;
 	padding: 0;
@@ -1714,17 +1714,17 @@
 	background: none;
 	cursor: pointer;
 }
-.color-swatch::-webkit-color-swatch-wrapper { padding: 2px; }
+.color-swatch::-webkit-color-swatch-wrapper { padding: calc(0.5 * var(--u)); }
 .color-swatch::-webkit-color-swatch { border: none; border-radius: 3px; }
 .color-swatch::-moz-color-swatch { border: none; border-radius: 3px; }
-.color-swatch:hover { box-shadow: inset 0 0 0 1px var(--accent); }
+.color-swatch:hover { box-shadow: inset 0 0 0 1px var(--accent); /* px-ok: box-shadow is exempt; the lint's property-scan reads this one-line rule's own pseudo-class as the property name */ }
 
 /* Reserved width + tabular so "#6e8ca8" and "#fff" don't move the row. */
 .color-hex {
 	font: 400 calc(3.5 * var(--u))/1 ui-monospace, Consolas, monospace;
 	font-variant-numeric: tabular-nums;
 	color: var(--silk-dim);
-	width: 66px;
+	width: calc(16.5 * var(--u));
 	flex: none;
 }
 .color-range { font-size: calc(3.375 * var(--u)); color: var(--silk-dim); flex: none; }
@@ -1755,7 +1755,7 @@
 	   colours happened to be close — a stop that shifts under you as you edit.
 	   Same discipline as .filament-loaded: reserve the space, let the content
 	   come and go inside it. */
-	flex: 0 0 140px;
+	flex: 0 0 calc(35 * var(--u));
 	white-space: nowrap;
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -1777,7 +1777,7 @@
 	font-family: var(--font-display); font-weight: 600; font-size: 13.5px; /* px-ok: hit target — must not follow the scale it controls */
 	letter-spacing: 0.06em;
 	color: var(--silk-dim); background: none; border: none;
-	padding: 6px 9px; cursor: pointer;
+	padding: 6px 9px; /* px-ok: hit target — must not follow the scale it controls */ cursor: pointer;
 	font-variant-numeric: tabular-nums;
 }
 .scale-opt + .scale-opt { box-shadow: inset 1px 0 0 var(--hairline); }
@@ -1790,7 +1790,7 @@
 .backend-toggle { display: inline-flex; outline: 1px solid var(--hairline); outline-offset: -1px; border-radius: var(--radius); overflow: hidden; }
 .backend-opt {
 	font-family: var(--font-display); font-weight: 600; font-size: calc(3.375 * var(--u)); letter-spacing: 0.08em; text-transform: uppercase;
-	color: var(--silk-dim); background: none; border: none; padding: 6px 11px; cursor: pointer;
+	color: var(--silk-dim); background: none; border: none; padding: calc(1.5 * var(--u)) calc(2.75 * var(--u)); cursor: pointer;
 }
 .backend-opt + .backend-opt { box-shadow: inset 1px 0 0 var(--hairline); }
 .backend-opt:hover:not(:disabled) { color: var(--silk); background: var(--mask-700); }
