@@ -62,6 +62,28 @@ def shaper_impulses(kind, f, zeta):
     return np.array(A), np.array(T)
 
 
+def convolve_shapers(A1, T1, A2, T2):
+    """Two impulse trains applied in series = one train with every pairwise (amplitude product, delay sum)."""
+    acc = {}
+    for a1, t1 in zip(A1, T1):
+        for a2, t2 in zip(A2, T2):
+            t = round(t1 + t2, 9); acc[t] = acc.get(t, 0.0) + a1 * a2
+    T = np.array(sorted(acc)); A = np.array([acc[t] for t in T])
+    return A / A.sum(), T
+
+
+def zv_impulses(f, zeta):
+    s = math.sqrt(1 - zeta * zeta); k = math.exp(-zeta * math.pi / s)
+    return np.array([1 / (1 + k), k / (1 + k)]), np.array([0.0, 0.5 / (f * s)])
+
+
+def custom_two_mode(m1, m2):
+    """ZV(mode1) convolved with ZV(mode2): 4 impulses nulling both. Returns (A, T, M593 line)."""
+    A, T = convolve_shapers(*zv_impulses(m1["f"], m1["zeta"]), *zv_impulses(m2["f"], m2["zeta"]))
+    H = ":".join(f"{a:.4f}" for a in A[:-1]); Tt = ":".join(f"{t:.5f}" for t in T[1:])
+    return A, T, f'M593 P"custom" H{H} T{Tt}'
+
+
 def residual(A, T, f_m, zeta_m):
     """Residual vibration fraction (0..1) of an impulse train against a mode (f_m, zeta_m)."""
     wn = 2 * math.pi * f_m
@@ -273,11 +295,17 @@ def do_verify(board, accel, name, n, repeats, log=print, candidates=None):
     seen = set()
     if candidates:
         modes = rk["modes"]
-        for spec in candidates:                    # "zvdd:52:0.1"
-            kind, F, S = spec.split(":"); F, S = float(F), float(S)
-            A, T = shaper_impulses(kind, F, S)
-            cands.append({"shaper": kind, "F": F, "S": S, "residual": {a: residual(A, T, m["f"], m["zeta"]) for a, m in modes.items()},
-                          "worst": 0.0, "duration_ms": float(T[-1] * 1000)})
+        for spec in candidates:                    # "zvdd:52:0.1" or "custom" (ZV x ZV of the two fitted modes)
+            if spec == "custom":
+                (a1, m1), (a2, m2) = sorted(modes.items())[:2]
+                A, T, line = custom_two_mode(m1, m2)
+                cands.append({"shaper": "custom", "F": 0.0, "S": 0.0, "code": line,
+                              "residual": {a: residual(A, T, m["f"], m["zeta"]) for a, m in modes.items()}, "duration_ms": float(T[-1] * 1000)})
+            else:
+                kind, F, S = spec.split(":"); F, S = float(F), float(S)
+                A, T = shaper_impulses(kind, F, S)
+                cands.append({"shaper": kind, "F": F, "S": S, "residual": {a: residual(A, T, m["f"], m["zeta"]) for a, m in modes.items()},
+                              "duration_ms": float(T[-1] * 1000)})
             cands[-1]["worst"] = max(cands[-1]["residual"].values())
     for r in ([] if candidates else rk["ranking"]):
         key = r["shaper"]
@@ -289,7 +317,7 @@ def do_verify(board, accel, name, n, repeats, log=print, candidates=None):
     results = []
     try:
         for c in cands:
-            code = f'M593 P"{c["shaper"]}" F{c["F"]:.1f} S{c["S"]:.2f}'
+            code = c.get("code") or f'M593 P"{c["shaper"]}" F{c["F"]:g} S{c["S"]:g}'
             log(f"== {code}  (predicted worst {100 * c['worst']:.1f}%)")
             rep = board.code(code)
             if rep: log(f"  {rep}")

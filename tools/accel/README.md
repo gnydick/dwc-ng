@@ -84,3 +84,5 @@ Fingerprint (6 stops per axis): **X 18.1 Hz ζ 0.127 0.05 g; Y 51.6 Hz ζ 0.075 
 Long shapers split the decel into ~28 ms steps that excite a 38 Hz mode (the 3.6 docs' "artefacts
 at direction changes"); the impulse-residual model cannot see that — always verify. RRF's MZV has its
 amplitudes reversed vs Klipper's and leaves ~16 % at exact tuning; never ranks well.
+| custom ZV(18)⊗ZV(52), 37 ms | 0 / 0 % | X 38 Hz artefact 0.07 g, Y 0.025 g — loses to ei2 |
+| ei2 F52 S0.075 | | identical to S0.1: X silent, Y 0.028 g |
