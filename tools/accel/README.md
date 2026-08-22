@@ -44,3 +44,24 @@ Caveats: phase stepping disables stall detection (the Y endstop here is
 motorStallAny - homing needs M970 Y0 around it); lower current needs a
 skip test at 24000 mm/s^2 before adopting. Config changes (M350, M970)
 unhome X/Y; the runner stores tool position and re-asserts it with G92.
+
+### Cross designs (suite-cross-2026-08-22.sh) + repeats — 250 Hz g @100 mm/s
+
+Noise band: baseline x5 = 1.32–1.55 (±8%). The 50 mm/s response drifted
+0.45→0.94 over the session, so only 100 mm/s comparisons are trusted.
+
+| | phase off | phase k500 | k1000 | k2000 |
+|---|---|---|---|---|
+| 2000 mA | 1.55 | 0.39 | 0.51 | 0.67 |
+| 1600 mA | 0.39 | 0.32 | 0.31 | 0.32 |
+| 1400 mA | 0.19 | 0.25 | 0.30 | 0.31 |
+| 1200 mA | 0.19 | 0.17 | 0.23 | 0.20 |
+
+- current x hysteresis x off-time at 1400/1600 mA: all 0.28–0.55, no effect.
+- **phase k1000 x 64 µsteps I1: 0.25 / 0.16 / 0.18 at 2000 mA** (x3) — the best
+  full-current result, 8x below baseline; 64 µsteps alone and phase alone did
+  not get there. At 1400 mA: 0.11 / 0.11 (14x).
+- Floor ~0.1–0.2 g regardless of settings: that is the mechanical residual.
+
+Data: runs/dataset.csv (python dataset.py regenerates), raw CSVs per trial
+in runs/<trial>/, older DWC-plugin captures in runs/board-archive/.
