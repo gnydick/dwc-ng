@@ -69,12 +69,22 @@ test("legacy density pitches map onto scale steps, unknown → null", () => {
 });
 
 test("the scale control, the resize grip and the e-stop do not scale", () => {
-	for (const selector of [".scale-opt {", ".panel-resize-grip {", ".estop {"]) {
-		const start = appCss.indexOf(selector);
-		assert.ok(start >= 0, `${selector} not found in app.css`);
-		const block = appCss.slice(start, appCss.indexOf("}", start));
-		assert.ok(!block.includes("var(--u)") && !block.includes("var(--sp-") && !block.includes("var(--ctl-h)"),
-			`${selector} must not scale — it is how you escape a scale you dislike`);
+	// Covers not just the base rule but every descendant/pseudo rule too
+	// (.estop small, .estop:hover, .scale-opt.active, …) — the ruling's intent
+	// is the rendered hit target, and a scaled descendant defeats that just as
+	// much as a scaled base rule would. `(?![\w-])` on the prefix excludes an
+	// unrelated class that merely shares the prefix textually (.estop-failed
+	// is NOT a descendant of .estop).
+	const ruleRe = /([^{}]+)\{([^{}]*)\}/g;
+	const rules = [...appCss.matchAll(ruleRe)].map(([, sel, body]) => ({ sel: sel!.trim(), body: body! }));
+	for (const prefix of ["scale-opt", "panel-resize-grip", "estop"]) {
+		const ownSelector = new RegExp(`^\\.${prefix}(?![\\w-])`);
+		const matches = rules.filter(r => r.sel.split(",").some(part => ownSelector.test(part.trim())));
+		assert.ok(matches.length > 0, `no rule for .${prefix} found in app.css`);
+		for (const { sel, body } of matches) {
+			assert.ok(!body.includes("var(--u)") && !body.includes("var(--sp-") && !body.includes("var(--ctl-h)"),
+				`${sel} must not scale — it is how you escape a scale you dislike`);
+		}
 	}
 });
 

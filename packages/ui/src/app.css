@@ -154,7 +154,7 @@
 }
 .estop:hover { background: #ea6c5a; }
 .estop:active { transform: translateY(1px); box-shadow: 0 1px 0 #8f3527; }
-.estop small { display: block; font-size: calc(2.75 * var(--u)); font-weight: 600; letter-spacing: 0.1em; opacity: 0.8; }
+.estop small { display: block; font-size: 11px; /* px-ok: hit target — must not follow the scale it controls */ font-weight: 600; letter-spacing: 0.1em; opacity: 0.8; }
 /* The STOP did not reach the board (network failure): colour-only alarm on
    fixed geometry — the button must never move or resize under the finger. */
 .estop-failed {
