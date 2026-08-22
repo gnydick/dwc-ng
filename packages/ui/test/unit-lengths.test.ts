@@ -18,7 +18,7 @@ import { fileURLToPath } from "node:url";
  * BASELINE is the debt ratchet: it is the number of violations on the day the
  * lint landed, and each migration task lowers it. It may never go up.
  */
-const BASELINE = 726; // set to the measured count in Step 3
+const BASELINE = 698; // set to the measured count in Step 3
 
 const SRC = fileURLToPath(new URL("../src", import.meta.url));
 
@@ -52,25 +52,48 @@ export function findPxHits(file: string, raw: string): { hits: Hit[]; allowed: H
 	const isCss = file.endsWith(".css");
 	const lines = raw.split("\n");
 	// Comments are blanked line-preservingly so reported line numbers are real.
-	const scan = stripBlockComments(raw).split("\n");
-	for (let i = 0; i < scan.length; i++) {
-		const line = scan[i]!;
+	let scan = stripBlockComments(raw);
+	// For TS/TSX, also blank // comments but not :// in URLs (limitation: /path//file incorrectly blanks).
+	if (!isCss) {
+		scan = scan.replace(/(?<!:)\/\/.*$/gm, m => m.replace(/./g, " "));
+	}
+	const scanLines = scan.split("\n");
+	for (let i = 0; i < scanLines.length; i++) {
+		const line = scanLines[i]!;
 		if (!/\d(\.\d+)?px\b/.test(line)) continue;
 		const original = lines[i]!;
 		if (/px-ok:/.test(original)) { allowed.push({ file, line: i + 1, text: original.trim() }); continue; }
 		if (/^\s*@media\b/.test(line)) continue;
 		if (file.endsWith("index.css") && /^\s*--u:\s*[\d.]+px;/.test(line)) continue;
+
+		let isHit = false;
 		if (isCss) {
-			const prop = /^\s*(?:--[\w-]+|[a-z-]+)\s*:/.exec(line)?.[0].replace(/[:\s]/g, "");
-			if (prop && EXEMPT_PROPS.includes(prop)) continue;
+			// CSS: split on ; and check each declaration separately.
+			// A line is a hit if ANY non-exempt declaration contains px.
+			const declarations = line.split(";");
+			for (const decl of declarations) {
+				if (!/\d(\.\d+)?px\b/.test(decl)) continue;
+				const prop = /(?:--[\w-]+|[a-z-]+)\s*:/.exec(decl)?.[0].replace(/[:\s]/g, "");
+				if (prop && EXEMPT_PROPS.includes(prop)) continue;
+				isHit = true;
+				break;
+			}
 		} else {
-			// TS/TSX: the property name is the nearest `name:` or `"name":` before the px.
-			const before = line.slice(0, line.search(/\d(\.\d+)?px\b/));
-			const prop = /([a-zA-Z-]+)"?\s*:\s*[^:]*$/.exec(before)?.[1]
-				?.replace(/([A-Z])/g, c => "-" + c.toLowerCase());
-			if (prop && EXEMPT_PROPS.includes(prop)) continue;
+			// TS/TSX: check each px occurrence independently.
+			// The property name is the nearest `name:` or `"name":` BEFORE each px.
+			const pxMatches = [...line.matchAll(/\d(\.\d+)?px\b/g)];
+			for (const match of pxMatches) {
+				const before = line.slice(0, match.index);
+				const prop = /([a-zA-Z-]+)"?\s*:\s*[^:]*$/.exec(before)?.[1]
+					?.replace(/([A-Z])/g, c => "-" + c.toLowerCase());
+				if (prop && EXEMPT_PROPS.includes(prop)) continue;
+				isHit = true;
+				break;
+			}
 		}
-		hits.push({ file, line: i + 1, text: original.trim() });
+		if (isHit) {
+			hits.push({ file, line: i + 1, text: original.trim() });
+		}
 	}
 	return { hits, allowed };
 }
@@ -103,6 +126,32 @@ test("findPxHits: exempt properties, px-ok markers and @media preludes are not h
 test("findPxHits: a blanked comment keeps line numbers", () => {
 	const r = findPxHits("x.css", "/* 1px\n2px */\nf { gap: 8px; }");
 	assert.deepEqual(r.hits.map(h => h.line), [3]);
+});
+
+test("findPxHits: CSS with multiple declarations is a hit if ANY is not exempt", () => {
+	// border-radius is exempt, but padding is not — line is a hit
+	const r = findPxHits("x.css", "x { border-radius: 5px; padding: 6px 10px; }");
+	assert.equal(r.hits.length, 1);
+	assert.ok(r.hits[0]!.text.includes("padding"));
+});
+
+test("findPxHits: CSS with all-exempt declarations is not a hit", () => {
+	// Both border-radius and box-shadow are exempt — line is not a hit
+	const r = findPxHits("x.css", "y { border-radius: 5px; box-shadow: 0 0 0 1px red; }");
+	assert.equal(r.hits.length, 0);
+});
+
+test("findPxHits: TS // comments are blanked and not counted", () => {
+	// The comment "// was 36px" is not a px hit
+	const r = findPxHits("x.ts", "const a = 1; // was 36px");
+	assert.equal(r.hits.length, 0);
+});
+
+test("findPxHits: in TS, each px is judged by its own property", () => {
+	// boxShadow (first 1px) is exempt; padding (8px) is not — line is a hit
+	const r = findPxHits("x.ts", '{ boxShadow: "0 0 0 1px red", padding: "8px" }');
+	assert.equal(r.hits.length, 1);
+	assert.ok(r.hits[0]!.text.includes("padding"));
 });
 
 test(`layout-space px literals do not exceed the ratchet baseline (${BASELINE})`, () => {
