@@ -18,7 +18,7 @@ import { fileURLToPath } from "node:url";
  * BASELINE is the debt ratchet: it is the number of violations on the day the
  * lint landed, and each migration task lowers it. It may never go up.
  */
-const BASELINE = 275; // set to the measured count in Step 3
+const BASELINE = 269; // set to the measured count in Step 3
 
 const SRC = fileURLToPath(new URL("../src", import.meta.url));
 
@@ -68,12 +68,25 @@ export function findPxHits(file: string, raw: string): { hits: Hit[]; allowed: H
 
 		let isHit = false;
 		if (isCss) {
-			// CSS: split on ; and check each declaration separately.
+			// CSS: strip any selector prefix first — a one-line rule like
+			// `.foo:hover { box-shadow: …px…; }` otherwise leaves the selector
+			// (with its own pseudo-class) in the first split fragment, and the
+			// property regex below would match `foo:hover`'s "foo" as if it were
+			// the declaration's property name instead of the real one.
+			const body = line.includes("{") ? line.slice(line.lastIndexOf("{") + 1) : line;
+			// Split on ; and check each declaration separately.
 			// A line is a hit if ANY non-exempt declaration contains px.
-			const declarations = line.split(";");
+			const declarations = body.split(";");
 			for (const decl of declarations) {
 				if (!/\d(\.\d+)?px\b/.test(decl)) continue;
-				const prop = /(?:--[\w-]+|[a-z-]+)\s*:/.exec(decl)?.[0].replace(/[:\s]/g, "");
+				// Anchored to the declaration's start: on its own this still isn't
+				// enough (a selector fragment with no property would just leave
+				// `prop` undefined, and the `if (prop && …)` guard falls through to
+				// a hit) — it's the selector-prefix strip above that actually fixes
+				// the false positive; the anchor stops a stray `word:` mid-value
+				// (e.g. inside a url() or a custom ident) from being misread as
+				// the property.
+				const prop = /^\s*(--[\w-]+|[a-z-]+)\s*:/.exec(decl)?.[1];
 				if (prop && EXEMPT_PROPS.includes(prop)) continue;
 				isHit = true;
 				break;
@@ -139,6 +152,20 @@ test("findPxHits: CSS with all-exempt declarations is not a hit", () => {
 	// Both border-radius and box-shadow are exempt — line is not a hit
 	const r = findPxHits("x.css", "y { border-radius: 5px; box-shadow: 0 0 0 1px red; }");
 	assert.equal(r.hits.length, 0);
+});
+
+test("findPxHits: a one-line pseudo-class rule with only an exempt declaration is not a hit", () => {
+	// Regression: the selector's OWN pseudo-class (`hover`) used to be misread as
+	// the declaration's property name, so an otherwise-exempt box-shadow line
+	// counted as a hit. `x:hover { … }` on one line must not trip on `x:hover`.
+	const r = findPxHits("x.css", "x:hover { box-shadow: 0 0 0 1px red; }");
+	assert.equal(r.hits.length, 0);
+});
+
+test("findPxHits: a one-line pseudo-class rule IS a hit when it also carries a real non-exempt px", () => {
+	const r = findPxHits("x.css", "y:hover { box-shadow: 0 0 0 1px red; padding: 8px; }");
+	assert.equal(r.hits.length, 1);
+	assert.ok(r.hits[0]!.text.includes("padding"));
 });
 
 test("findPxHits: TS // comments are blanked and not counted", () => {
