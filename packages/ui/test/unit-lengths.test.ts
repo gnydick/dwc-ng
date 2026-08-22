@@ -77,10 +77,21 @@ export function findPxHits(file: string, raw: string): { hits: Hit[]; allowed: H
 		// bookkeeping mutates `pendingProp` for the NEXT line.
 		const incomingPendingProp = pendingProp;
 		if (isCss) {
-			const body = line.includes("{") ? line.slice(line.lastIndexOf("{") + 1) : line;
-			const trimmedBody = body.trimEnd();
-			if (trimmedBody === "" || trimmedBody.endsWith(";") || trimmedBody.endsWith("}")) {
+			const hasBrace = line.includes("{");
+			const body = hasBrace ? line.slice(line.lastIndexOf("{") + 1) : line;
+			const trimmedEnd = body.trimEnd();
+			// A fully blank line — whitespace only, OR a block comment that was
+			// blanked to spaces by stripBlockComments — is NOT a declaration
+			// terminator. A comment (or blank line) sitting between "box-shadow:"
+			// and its first value must leave pendingProp untouched; only an actual
+			// `;`/`}` ends a declaration, and only a bare `{` with nothing after it
+			// (a fresh rule opener) starts clean with nothing pending.
+			const isBlank = body.trim() === "";
+			if (trimmedEnd.endsWith(";") || trimmedEnd.endsWith("}")) {
 				pendingProp = undefined;
+			} else if (isBlank) {
+				if (hasBrace) pendingProp = undefined;
+				// else: blank/whitespace/comment-only line — leave pendingProp as is.
 			} else {
 				const declarations = body.split(";");
 				const lastFrag = declarations[declarations.length - 1]!;
@@ -231,6 +242,31 @@ test("findPxHits: the same multi-line shape under a non-exempt property IS a hit
 	const css = ".a {\n\tpadding:\n\t\t0 0 0 1px red,\n\t\t0 0 4px blue;\n}";
 	const r = findPxHits("x.css", css);
 	assert.deepEqual(r.hits.map(h => h.line), [3, 4]);
+});
+
+test("findPxHits: a blank line INSIDE a multi-line exempt declaration does not clear pendingProp", () => {
+	// Regression (fix round 1): pendingProp used to be cleared whenever a
+	// line's trimmed body was empty — which also fired on a bare blank line
+	// sitting between "box-shadow:" and its first value, not just on a real
+	// declaration/rule terminator. That dropped the carried property and
+	// miscounted the value line below as a hit.
+	const css = ".a {\n\tbox-shadow:\n\n\t\t0 0 4px red;\n}";
+	const r = findPxHits("x.css", css);
+	assert.equal(r.hits.length, 0);
+});
+
+test("findPxHits: a comment-only line INSIDE a multi-line exempt declaration does not clear pendingProp", () => {
+	// Same regression, via a block comment: stripBlockComments blanks it to
+	// spaces, which is indistinguishable from a blank line to the old check.
+	const css = ".a {\n\tbox-shadow:\n\t/* comment */\n\t\t0 0 4px red;\n}";
+	const r = findPxHits("x.css", css);
+	assert.equal(r.hits.length, 0);
+});
+
+test("findPxHits: the same blank/comment-interrupted shape under a non-exempt property IS a hit on the value line", () => {
+	const css = ".a {\n\tpadding:\n\t/* comment */\n\t\t0 0 4px red;\n}";
+	const r = findPxHits("x.css", css);
+	assert.deepEqual(r.hits.map(h => h.line), [4]);
 });
 
 test("layout-space px literals: zero", () => {
