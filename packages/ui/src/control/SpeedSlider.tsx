@@ -117,11 +117,21 @@ export function SpeedSlider(props: { currentPct: number }) {
 		void send(dragged);
 	};
 
-	/** Thumb width — stops line up with where the thumb centre can actually reach. */
+	/**
+	 * Thumb width, so the stops line up with where the thumb CENTRE can
+	 * actually reach: half a thumb is unreachable travel at either end.
+	 *
+	 * A literal 14, deliberately, and the one number here that must not be
+	 * written in `u`: the thumb is a frozen pointer target
+	 * (`.speed-input::-webkit-slider-thumb`, app.css — `px-ok: hit target`),
+	 * so an offset in `u` would walk away from it at every scale but 1 and
+	 * the dots would stop marking the values they name. Change one and you
+	 * must change the other; each says so.
+	 */
 	const THUMB_PX = 14;
 	const stopOffset = (stop: number): string => {
 		const fraction = scale().max === 0 ? 0 : stop / scale().max;
-		return `calc(${THUMB_PX / 2}px + ${fraction} * (100% - ${THUMB_PX}px))`;
+		return `calc(${THUMB_PX / 2}px + ${fraction} * (100% - ${THUMB_PX}px))`; // px-ok: mirrors the frozen 14px thumb in app.css
 	};
 
 	return (

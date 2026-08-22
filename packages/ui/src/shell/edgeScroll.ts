@@ -162,7 +162,7 @@ export function installEdgeScroll(getPage: () => HTMLElement | null): () => void
 		if (inner === null) return;
 		const rect = inner.getBoundingClientRect();
 		if (!isGoverned(rect.width, rect.height)) return;
-		inner.style.setProperty("--edge-w", `${edgeWidth(rect.width)}px`);
+		inner.style.setProperty("--edge-w", `${edgeWidth(rect.width)}px`); // px-ok: pointer physics — the edge zone is a distance the hand travels
 		inner.setAttribute("data-edge-scroll", "");
 		marked = inner;
 	};

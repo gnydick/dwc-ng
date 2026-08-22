@@ -8,7 +8,7 @@
 	   would stretch to that width too and its right-aligned content would
 	   render off-screen. */
 	grid-template-columns: calc(47 * var(--u)) minmax(0, 1fr);
-	min-height: 100vh;
+	min-height: 100vh; /* px-ok: viewport-bound shell, not card content */
 }
 
 /* ---------- rail ---------- */
@@ -82,7 +82,7 @@
 	flex-direction: column;
 	/* CAP the height (was min-height) so a tall view scrolls INSIDE .view-scroll
 	   rather than growing .main and handing the scrollbar to the document. */
-	height: 100vh;
+	height: 100vh; /* px-ok: viewport-bound shell, not card content */
 	min-height: 0;
 	min-width: 0;
 }
@@ -2012,7 +2012,24 @@ input[type="checkbox"] {
 	font-variant-numeric: tabular-nums;
 	text-align: right;
 }
-.temp-chart-legend .u-legend .u-marker { border-radius: 2px; }
+/* uPlot's own stylesheet, again — the same class of defect as the `.u-inline
+   tr` margin zeroed above, and for the same reason invisible: the px lint
+   never reads node_modules. Two residual literals land inside this card:
+
+     .u-legend .u-marker { margin-right: 4px }
+     .u-series > *       { padding: 4px }
+
+   Both are horizontal contributions to the legend's column widths, so at a
+   smaller --u they are a growing fraction of a shrinking row — a card floor
+   that drifts with the scale. Restated here in u at exactly their scale-1
+   values, so scale 1 renders identically and every other step follows.
+
+   `.u-title` in that sheet carries an 18px font-size; this chart is built
+   without a title (charts/TemperatureChart.tsx passes no `title`), so nothing
+   renders it and there is nothing to restate. The `.temp-chart .u-title`
+   colour rule above is inert for the same reason. */
+.temp-chart-legend .u-legend .u-marker { border-radius: 2px; margin-right: calc(1 * var(--u)); }
+.temp-chart-legend .u-legend tr > * { padding: calc(1 * var(--u)); }
 .temp-chart .u-select { background: rgba(217, 133, 59, 0.12); }
 
 /* ---------- Control view (controls wear their G-code) ---------- */
@@ -2148,8 +2165,8 @@ input[type="checkbox"] {
    their tracks from it; a literal in two places would drift and the two banks
    would stop matching. Re-measure it if the label text or the face changes. */
 /* Measured: "STAND" is 36px at that face; + 4px padding a side + 1px border a
-   side = 46. The label font is a fixed size, so this does not move with the
-   density pitch. */
+   side = 46, i.e. 11.5u. Written in u like the label beside it, so the key and
+   its text scale together. */
 :root { --mode-key-w: calc(11.5 * var(--u)); }
 .mode-key {
 	width: 100%;
@@ -2206,18 +2223,24 @@ input[type="checkbox"] {
    engaged — so the middle of the two-click sequence is visible instead of
    looking exactly like having done nothing. Colour only, like every other
    state here: nothing about the box moves. */
-.mode-key.is-applied:not(.is-engaged) { --gcode-border: var(--btn-accent); }
 .mode-key.is-applied:not(.is-engaged) .gcode-label { color: var(--btn-accent); }
-/* 2px optically, via an INSET SHADOW rather than border-width, so the box never
-   changes size and a row of keys cannot reflow when one arms under your finger.
+/* 2px, via an INSET SHADOW rather than border-width, so the box never changes
+   size and a row of keys cannot reflow when one arms under your finger.
    Against a neutral rest this is the loudest step on the ladder short of the
    engaged fill — which is correct, because it is the step that says the next
    press will switch the mode rather than write a number.
 
+   The ring is stated HERE, at its real width, and this state no longer sets
+   --gcode-border: it replaces box-shadow wholesale, so the variable the base
+   .gcode-btn ring reads could never reach the paint — a declaration that
+   looked like the source of this ring while contributing nothing, and it is
+   how the ring quietly became 1px during the unit migration with the comment
+   above still claiming 2.
+
    setpointCommit.ts permits the emitted G-code to depend on `armed` only while
    the key DISPLAYS which of the two it will send. It requires a display, not a
    hue; weight is a display. */
-.mode-key.is-applied:not(.is-engaged) { box-shadow: inset 0 0 0 1px var(--btn-accent); }
+.mode-key.is-applied:not(.is-engaged) { box-shadow: inset 0 0 0 2px var(--btn-accent); }
 /* Resting: dark green, nothing to do. Scoped to :not(.is-engaged) — this rule
    sits after the shared engaged rule, so without the guard it would repaint an
    ARRIVED key's label back to green on its own green ground and hide the word.
@@ -2306,7 +2329,7 @@ input[type="checkbox"] {
 	   there. */
 	grid-template-columns: max-content calc(19.5 * var(--u)) calc(19.5 * var(--u)) calc(15 * var(--u)) max-content;
 	/* --ctl-gap, not a literal: the Filament card's rows use the same token, so
-	   the two cards keep the same row pitch at every density. */
+	   the two cards keep the same row pitch at every scale. */
 	gap: var(--ctl-gap) calc(2 * var(--u));
 	align-items: center;
 }
@@ -2411,7 +2434,7 @@ input[type="checkbox"] {
 /* --ctl-gap, not a literal 12px. The Homing card is ONE grid on --ctl-gap, so
    its head row and axis rows sit 24px apart; this column's 12px put Movement's
    step row 32px above its first axis and every row below it half a row out of
-   step with Homing beside it. Same token, same pitch, and it tracks density
+   step with Homing beside it. Same token, same pitch, and it tracks the scale
    instead of holding still while everything around it shrinks. */
 /* Two columns, not a stack: the jog table is only as wide as its own keys, so
    everything else has somewhere to BE — beside the axis rows rather than
@@ -2603,7 +2626,7 @@ input[type="checkbox"] {
 	   pair of "− 1" buttons grew to 300px apiece — a stretch of empty ground
 	   that reads as importance the control does not have, and that puts the two
 	   directions absurdly far apart for what is meant to be a quick nudge.
-	   Fixed and generous instead: wide enough for "− 100" at any density.
+	   Fixed and generous instead: wide enough for "− 100" at any scale.
 
 	   EXACTLY three tracks, because each row spends exactly three items via
 	   display:contents — a fourth track (added to soak up the slack) made every
@@ -2617,8 +2640,9 @@ input[type="checkbox"] {
 }
 /* Measured, not guessed: the widest label a jog key can ever carry is "− 100"
    at 29.6px on this face, and the button spends 28px on padding either side.
-   62px fits that with a couple of px to spare at the loosest density and is
-   still a comfortable pointer target — 92px was a third of it empty ground. */
+   62px (15.5u) fits that with a couple of px to spare at scale 1 and is still
+   a comfortable pointer target — 92px was a third of it empty ground. The
+   label is written in u too, so the fit holds at every step. */
 :root { --jog-key-w: calc(15.5 * var(--u)); }
 /* ONE row pitch for every card that is a LIST OF ROWS SEPARATED BY A HAIRLINE:
    Tools, Tools & heaters, Extruders, Fans. Each drew its rows differently —
@@ -2631,8 +2655,8 @@ input[type="checkbox"] {
    rows carry a rule between them, and a line wants air on both sides or it
    reads as attached to the row below it.
 
-   Derived from --ctl-h and --sp-cell, both of which scale with the density
-   pitch, so all four cards keep the same pitch AND the same scaling rate. */
+   Derived from --ctl-h and --sp-cell, both of which are n × --u, so all four
+   cards keep the same pitch AND the same scaling rate at every scale step. */
 :root { --tool-row-h: calc(var(--ctl-h) + 2 * var(--sp-cell)); }
 .jog-table .jog-row { display: contents; }
 /* Fill the track rather than hug the label, so the two columns read as columns. */
@@ -2822,7 +2846,7 @@ input[type="checkbox"] {
 	line-height: 1.5;
 	white-space: pre-wrap;
 	overflow-wrap: anywhere;
-	max-height: 40vh;
+	max-height: 40vh; /* px-ok: viewport-bound overlay, not card content */
 	overflow-y: auto;
 }
 
@@ -3006,7 +3030,10 @@ input[type="checkbox"].fw-check { accent-color: var(--accent); width: calc(3.75 
 	color: var(--accent);
 	box-shadow: inset 2px 0 0 var(--accent);
 }
-.palette-glyph { display: block; }
+/* 4.5u — 18px at scale 1, which is what the width/height attributes on the
+   <svg> used to hard-code. The glyph sits in a row with scaling text, so it
+   scales with it; the viewBox keeps the drawing's proportions either way. */
+.palette-glyph { display: block; width: calc(4.5 * var(--u)); height: calc(4.5 * var(--u)); }
 
 /* Full rail width, so the entry behaves like the nav links above it: the hover
    fill spans the column instead of hugging a 38px icon.
@@ -3079,7 +3106,7 @@ input[type="checkbox"].fw-check { accent-color: var(--accent); width: calc(3.75 
 		top: auto;
 		bottom: calc(2 * var(--u));
 		width: auto;
-		max-height: 70vh;
+		max-height: 70vh; /* px-ok: viewport-bound overlay, not card content */
 	}
 }
 .layout-toolbar { display: flex; gap: calc(2.5 * var(--u)); justify-content: flex-end; align-items: flex-start; }
@@ -3090,7 +3117,7 @@ input[type="checkbox"].fw-check { accent-color: var(--accent); width: calc(3.75 
 	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45), inset 0 0 0 1px var(--accent);
 	/* Never taller than the viewport: on short screens the tail sections
 	   (New screen, etc.) used to clip off-screen with no way to reach them. */
-	max-height: calc(100vh - 35 * var(--u));
+	max-height: calc(100vh - 35 * var(--u)); /* px-ok: viewport-bound overlay, not card content */
 	overflow-y: auto; scrollbar-width: none;
 }
 .compose-drawer::-webkit-scrollbar { width: 0; }
@@ -3137,7 +3164,8 @@ input[type="checkbox"].fw-check { accent-color: var(--accent); width: calc(3.75 
 	display: flex; align-items: center; justify-content: center; padding: calc(6 * var(--u));
 }
 .studio {
-	width: min(calc(265 * var(--u)), 96vw); max-height: 92vh; overflow-y: auto; scrollbar-width: none;
+	width: min(calc(265 * var(--u)), 96vw); max-height: 92vh; /* px-ok: viewport-bound overlay, not card content */
+	overflow-y: auto; scrollbar-width: none;
 	background: var(--mask-700); border-radius: var(--radius);
 	padding: calc(4 * var(--u)); display: flex; flex-direction: column; gap: calc(3 * var(--u));
 	box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55), inset 0 0 0 1px var(--accent);
@@ -3174,7 +3202,7 @@ input[type="checkbox"].fw-check { accent-color: var(--accent); width: calc(3.75 
 .studio-delete { margin-left: auto; }
 
 /* ---------- import review (B3) ---------- */
-.import-dialog { width: min(calc(160 * var(--u)), 94vw); }
+.import-dialog { width: min(calc(160 * var(--u)), 94vw); } /* px-ok: viewport-bound overlay, not card content */
 .import-title { font-family: var(--font-display); font-weight: 600; font-size: calc(4 * var(--u)); color: var(--silk); }
 .import-review { display: flex; flex-direction: column; gap: calc(2 * var(--u)); }
 .import-sect { display: flex; flex-direction: column; gap: calc(0.75 * var(--u)); }
@@ -3416,23 +3444,37 @@ input[type="checkbox"].fw-check { accent-color: var(--accent); width: calc(3.75 
 	/* 18px of the 28px row: leaves the bottom clear for the stops. */
 	width: 100%; height: calc(4.5 * var(--u)); margin: 0; background: none; cursor: pointer;
 }
+/* The track and the thumb are PSEUDO-ELEMENTS of a replaced control: they
+   occupy no layout space of their own — .speed-input's own height is the row's
+   only contribution — and the thumb is a POINTER TARGET. Frozen at their
+   scale-1 sizes: at 0.75 a 3.5u thumb is 10.5px, which is under half the
+   comfortable target size and the hardest thing on this card to grab. A hit
+   target must not shrink with a readability preference.
+   SpeedSlider.tsx's stopOffset() carries the SAME 14px, and says so. */
 .speed-input::-webkit-slider-runnable-track {
-	height: calc(1.5 * var(--u)); border-radius: 3px;
+	height: 6px; /* px-ok: hit target — must not follow the scale it controls */
+	border-radius: 3px;
 	background: var(--mask-900); box-shadow: inset 0 0 0 1px var(--hairline);
 }
 .speed-input::-moz-range-track {
-	height: calc(1.5 * var(--u)); border-radius: 3px;
+	height: 6px; /* px-ok: hit target — must not follow the scale it controls */
+	border-radius: 3px;
 	background: var(--mask-900); box-shadow: inset 0 0 0 1px var(--hairline);
 }
 .speed-input::-webkit-slider-thumb {
 	-webkit-appearance: none;
-	width: calc(3.5 * var(--u)); height: calc(3.5 * var(--u)); border-radius: 50%;
+	width: 14px; height: 14px; /* px-ok: hit target — must not follow the scale it controls */
+	border-radius: 50%;
 	background: var(--accent-bright); box-shadow: inset 0 0 0 1px var(--mask-900);
-	margin-top: calc(-1.25 * var(--u)); /* centre the 14px thumb on the 6px track */
+	margin-top: -5px; /* px-ok: hit target — must not follow the scale it controls */
+	/* Pulls the 14px thumb up over the 6px track. One px above dead centre,
+	   which is where it has always drawn — the track sits low in the 18px
+	   input and the extra px reads level against the stops below it. */
 	cursor: grab;
 }
 .speed-input::-moz-range-thumb {
-	width: calc(3.5 * var(--u)); height: calc(3.5 * var(--u)); border-radius: 50%;
+	width: 14px; height: 14px; /* px-ok: hit target — must not follow the scale it controls */
+	border-radius: 50%;
 	background: var(--accent-bright); box-shadow: inset 0 0 0 1px var(--mask-900);
 	cursor: grab;
 }
@@ -3443,10 +3485,20 @@ input[type="checkbox"].fw-check { accent-color: var(--accent); width: calc(3.75 
    still works; only the dots themselves are clickable. */
 /* A tick row under the bar. The layer ignores pointer events so it can never
    steal a drag; only the dots themselves are clickable. */
-.speed-stops { position: absolute; left: 0; right: 0; bottom: 0; height: calc(2.25 * var(--u)); pointer-events: none; }
+/* Absolutely positioned and therefore zero-layout, like the thumb above, and
+   for the same reason frozen: each dot is a click target, and 1.75u is 5.25px
+   at 0.75 — a target you cannot hit. The row that holds them is frozen too,
+   or a fixed 7px dot hangs out of a box that shrank around it. */
+.speed-stops {
+	position: absolute; left: 0; right: 0; bottom: 0;
+	height: 9px; /* px-ok: hit target — must not follow the scale it controls */
+	pointer-events: none;
+}
 .speed-stop {
-	position: absolute; top: calc(0.25 * var(--u));
-	width: calc(1.75 * var(--u)); height: calc(1.75 * var(--u)); padding: 0;
+	position: absolute;
+	top: 1px; /* px-ok: hit target — must not follow the scale it controls */
+	width: 7px; height: 7px; /* px-ok: hit target — must not follow the scale it controls */
+	padding: 0;
 	transform: translateX(-50%);
 	border-radius: 50%;
 	background: var(--mask-500); box-shadow: inset 0 0 0 1px var(--silk-dim);
@@ -4047,7 +4099,7 @@ input[type="checkbox"].fw-check { accent-color: var(--accent); width: calc(3.75 
 	left: 0;
 	top: 0;
 	z-index: 2;
-	max-height: calc(100vh - 35 * var(--u));
+	max-height: calc(100vh - 35 * var(--u)); /* px-ok: viewport-bound lab rail, not card content */
 	overflow-y: auto;
 	scrollbar-width: none;
 	background: var(--mask-900);

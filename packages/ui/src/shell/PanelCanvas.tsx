@@ -18,8 +18,10 @@ import { GAP_PX, GRID_COLS, ROW_GAP_PX } from "./panelCanvas.ts";
 const GRID_STYLE: JSX.CSSProperties = {
 	"grid-template-columns": `repeat(${GRID_COLS}, var(--u))`,
 	"grid-auto-rows": "var(--u)",
-	"column-gap": `${GAP_PX}px`,
-	"row-gap": `${ROW_GAP_PX}px`,
+	// Both constants are 0 (the gutters live on the card, not on the grid — see
+	// GRID_COLS), and zero is zero at every scale.
+	"column-gap": `${GAP_PX}px`, // px-ok: GAP_PX is 0
+	"row-gap": `${ROW_GAP_PX}px`, // px-ok: ROW_GAP_PX is 0
 };
 
 /** The 48-column grid container a view renders its <Panel>s into. */

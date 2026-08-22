@@ -8,18 +8,30 @@ import { fileURLToPath } from "node:url";
  * THE invariant behind "cards never need resizing after a scale change":
  * every length that occupies layout space is n × var(--u). A pixel literal in
  * a layout-space property is a fixed term in some card's floor, and that floor
- * then drifts with scale. So px is a build error here, not a style nit.
+ * then drifts with scale. So px fails this suite, not a style nit.
+ *
+ * NOT build-failing, despite how the rule reads elsewhere: `pnpm build` is
+ * `tsc -b && vite build` and never runs node:test. `pnpm test` is the gate, and
+ * nothing in this repo yet runs `pnpm test` for you (no CI, no hook) — see the
+ * @debt on the unit-lengths invariant in src/index.css.
+ *
+ * Absolute units, not just px: PX, vh, vw, rem, pt, in, cm, mm, pc all pin a
+ * length to something other than --u. `em` is deliberately absent — it is
+ * relative to the font size, which is itself written in u, so an em length
+ * already follows the scale. A `${n}px` template in TSX counts too: it reaches
+ * the DOM as a px length without ever appearing as `14px` in the source, which
+ * is exactly how the SpeedSlider thumb offset went stale unseen.
  *
  * Exempt: properties that never occupy layout space. Anything else that must
- * stay in screen px (pointer physics, breakpoints) says so on the line with
- * `px-ok: <reason>`, and every such line is printed so the allowlist is
- * visible, not silent.
+ * stay in screen px (pointer physics, breakpoints, viewport-bound overlays)
+ * says so on the line with `px-ok: <reason>`, and every such line is printed so
+ * the allowlist is visible, not silent.
  *
  * BASELINE was the debt ratchet while the migration was in progress: it
  * started at the count of violations on the day the lint landed, and each
  * migration task lowered it. Task 8 (2026-08-21) drove it to zero and the
  * ratchet mechanism was retired in favour of the hard assertion below — a
- * literal now fails the build the moment it lands, not just when someone
+ * literal now fails this suite the moment it lands, not just when someone
  * remembers to re-measure the baseline.
  */
 
@@ -46,9 +58,34 @@ function walk(dir: string, out: string[] = []): string[] {
 
 const stripBlockComments = (s: string): string => s.replace(/\/\*[\s\S]*?\*\//g, m => m.replace(/[^\n]/g, " "));
 
+/**
+ * Units that pin a length to something other than --u.
+ *
+ * `em`/`%`/`ch` are absent on purpose: they are relative to the font size or
+ * the parent box, both of which are already written in u, so they follow the
+ * scale for free. `rem` is NOT — it is relative to the root font size, which
+ * is not a scale token — so it is on the list.
+ *
+ * `PX` is here because CSS units are case-insensitive and `10PX` renders
+ * identically to `10px`; a lint that only sees the lowercase spelling is one
+ * shift key away from being bypassed by accident.
+ */
+const ABS_UNITS = "px|PX|vh|vw|rem|pt|in|cm|mm|pc";
+
+/**
+ * A length token: a number followed by one of those units, OR a closed
+ * template hole followed by `px` (`` `${n}px` ``). The template form is the
+ * one that is invisible to a naive search of the source — the string `14px`
+ * never appears — and it is exactly how SpeedSlider's thumb offset kept
+ * emitting a stale constant after the CSS beside it had moved to u.
+ */
+const TOKEN_SRC = `(?:\\d(?:\\.\\d+)?(?:${ABS_UNITS})|\\}px)\\b`;
+const hasToken = (s: string): boolean => new RegExp(TOKEN_SRC).test(s);
+const allTokens = (s: string): RegExpMatchArray[] => [...s.matchAll(new RegExp(TOKEN_SRC, "g"))];
+
 export interface Hit { file: string; line: number; text: string }
 
-/** Every `<number>px` token that is not exempt. Pure over file text so it can be unit-tested. */
+/** Every absolute-unit token that is not exempt. Pure over file text so it can be unit-tested. */
 export function findPxHits(file: string, raw: string): { hits: Hit[]; allowed: Hit[] } {
 	const hits: Hit[] = [];
 	const allowed: Hit[] = [];
@@ -99,7 +136,7 @@ export function findPxHits(file: string, raw: string): { hits: Hit[]; allowed: H
 				pendingProp = ownProp ?? incomingPendingProp;
 			}
 		}
-		if (!/\d(\.\d+)?px\b/.test(line)) continue;
+		if (!hasToken(line)) continue;
 		const original = lines[i]!;
 		if (/px-ok:/.test(original)) { allowed.push({ file, line: i + 1, text: original.trim() }); continue; }
 		if (/^\s*@media\b/.test(line)) continue;
@@ -118,7 +155,7 @@ export function findPxHits(file: string, raw: string): { hits: Hit[]; allowed: H
 			const declarations = body.split(";");
 			for (let d = 0; d < declarations.length; d++) {
 				const decl = declarations[d]!;
-				if (!/\d(\.\d+)?px\b/.test(decl)) continue;
+				if (!hasToken(decl)) continue;
 				// Anchored to the declaration's start: on its own this still isn't
 				// enough (a selector fragment with no property would just leave
 				// `prop` undefined, and the `if (prop && …)` guard falls through to
@@ -136,9 +173,12 @@ export function findPxHits(file: string, raw: string): { hits: Hit[]; allowed: H
 				break;
 			}
 		} else {
-			// TS/TSX: check each px occurrence independently.
-			// The property name is the nearest `name:` or `"name":` BEFORE each px.
-			const pxMatches = [...line.matchAll(/\d(\.\d+)?px\b/g)];
+			// TS/TSX: check each token occurrence independently.
+			// The property name is the nearest `name:` or `"name":` BEFORE it —
+			// and a `${…}px` template hole is a token like any other, judged by
+			// the same property, so `boxShadow: \`0 0 0 ${n}px red\`` stays exempt
+			// while `width: \`${n}px\`` is a hit.
+			const pxMatches = allTokens(line);
 			for (const match of pxMatches) {
 				const before = line.slice(0, match.index);
 				const prop = /([a-zA-Z-]+)"?\s*:\s*[^:]*$/.exec(before)?.[1]
@@ -223,6 +263,43 @@ test("findPxHits: in TS, each px is judged by its own property", () => {
 	const r = findPxHits("x.ts", '{ boxShadow: "0 0 0 1px red", padding: "8px" }');
 	assert.equal(r.hits.length, 1);
 	assert.ok(r.hits[0]!.text.includes("padding"));
+});
+
+test("findPxHits: a `${n}px` template in TS is a hit", () => {
+	// The string `14px` never appears in the source; the length still reaches
+	// the DOM. This is the shape that let SpeedSlider's thumb offset go stale.
+	const r = findPxHits("x.ts", "const s = `${x}px`;");
+	assert.equal(r.hits.length, 1);
+});
+
+test("findPxHits: a `${n}px` template under an exempt property is not a hit", () => {
+	const r = findPxHits("x.ts", "const s = { boxShadow: `0 0 0 ${n}px red` };");
+	assert.equal(r.hits.length, 0);
+});
+
+test("findPxHits: vh is a layout-space token", () => {
+	// Viewport units pin a length to the screen, not to --u — the same defect
+	// as px, one step further removed.
+	const r = findPxHits("x.css", ".a { height: 52vh; }");
+	assert.equal(r.hits.length, 1);
+});
+
+test("findPxHits: uppercase PX is a hit", () => {
+	// CSS units are case-insensitive; 10PX renders exactly like 10px.
+	const r = findPxHits("x.css", ".a { width: 10PX; }");
+	assert.equal(r.hits.length, 1);
+});
+
+test("findPxHits: the other absolute units are hits too", () => {
+	for (const v of ["1rem", "12pt", "1in", "2cm", "10mm", "1pc", "80vw"]) {
+		const r = findPxHits("x.css", `.a { width: ${v}; }`);
+		assert.equal(r.hits.length, 1, `${v} should be a hit`);
+	}
+});
+
+test("findPxHits: em and % are NOT hits — they already follow the scale", () => {
+	const r = findPxHits("x.css", ".a { width: 50%; letter-spacing: 0.04em; }");
+	assert.equal(r.hits.length, 0);
 });
 
 test("findPxHits: a multi-line box-shadow declaration carries its property across continuation lines", () => {

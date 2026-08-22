@@ -174,10 +174,16 @@ export function ComposedScreen(props: { screenId: string }) {
  * ten times it looked right and at its real 18px the two faintest dabs
  * disappeared into the navy entirely, leaving a bean with two dots. Contrast a
  * 1.1px-radius circle needs is not contrast a 200px preview shows.
+ *
+ * NO width/height ATTRIBUTES. The glyph occupies layout space beside a label
+ * that scales, so its size is `calc(4.5 * var(--u))` in CSS (.palette-glyph)
+ * — 18px at scale 1, the value the attributes used to hard-code. An HTML
+ * attribute is not CSS, so the px lint could never have seen that pair; the
+ * viewBox alone fixes the drawing's proportions.
  */
 function PaletteIcon() {
 	return (
-		<svg class="palette-glyph" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+		<svg class="palette-glyph" viewBox="0 0 24 24" aria-hidden="true">
 			<path
 				d="M12 3.2c-4.9 0-8.8 3.5-8.8 7.8 0 4.3 3.9 7.8 8.8 7.8a1.45 1.45 0 0 0 1.1-2.4 1.5 1.5 0 0 1 1.1-2.5h1.7c2.7 0 4.9-2.2 4.9-4.9 0-3.8-3.9-5.8-8.8-5.8Z"
 				fill="none"
