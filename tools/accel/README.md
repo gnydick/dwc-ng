@@ -22,3 +22,25 @@ CoreXY motor isolation: `--axis XY` drives only motor A (driver 0.1),
   1000 mA ≈ 0.04 g. Strongly nonlinear → current-driven instability.
 - Hysteresis on 3.6.3/TMC5160 takes the two-value form `Y<start>:<end>`; a
   third value is rejected ("Bad hysteresis setting").
+
+### Full suite (suite-2026-08-22.sh), 250 Hz peak amplitude in g at 50 / 100 mm/s, pure X
+
+| knob | values tried | result |
+|---|---|---|
+| baseline | F3 B1 Y5:0 U31, 16 I1, 2000 mA | 0.45 / 1.55 |
+| off-time F | 1 (rejected), 2, 4, 5, 8 | 0.36-0.54 / 1.19-1.44 — noise |
+| blanking B | 0, 2, 3 | 0.28-0.38 / 1.36-1.66 — noise |
+| hysteresis Y | 1:0 2:0 3:1 3:3 4:8 6:6 7:3 8:5 8:12 | 0.46-0.81 / 1.21-1.69 — noise |
+| iRun cap U | 12 (fw warns), 16, 20, 24 | 0.60-0.64 / 1.29-1.47 — noise |
+| thigh H | 0 | 0.45 / 1.34 — noise |
+| microstepping | 8 I1, 32 I1, 64 I1, 16 I0, 64 I0 | 0.49-0.96 / 1.29-1.69 — no better, 64/I0 worse at 50 |
+| **phase stepping** M970 + M970.1 k | 250, 500, **1000**, 2000, 4000 | 0.44/0.34, 0.34/0.40, **0.20/0.37**, 0.17/0.47, 0.22/1.26 |
+| **current** M906 | 1800, 1600, 1500, 1400, 1200 | 0.39/0.75, 0.23/0.39, 0.16/0.27, 0.16/0.19, 0.11/0.19 |
+| phase k1000 + current | 1600, 1200 | 0.30/0.26, 0.32/0.26 |
+
+Only two things work: phase stepping (4x at full current, k=1000 default best)
+and lowering current (6-8x at 1400-1500 mA). Combining them does not stack.
+Caveats: phase stepping disables stall detection (the Y endstop here is
+motorStallAny - homing needs M970 Y0 around it); lower current needs a
+skip test at 24000 mm/s^2 before adopting. Config changes (M350, M970)
+unhome X/Y; the runner stores tool position and re-asserts it with G92.

@@ -46,6 +46,13 @@ class Board:
                 return None
             raise
 
+    def axes(self):
+        """{letter: (userPosition, homed)} for all axes."""
+        with urllib.request.urlopen(f"{self.base}/machine/model?key=move.axes&flags=d3", timeout=10) as r:
+            j = json.load(r)
+        axes = (j.get("move") or {}).get("axes") or j.get("axes") or []
+        return {a["letter"]: (a["userPosition"], a["homed"]) for a in axes}
+
     def status(self):
         with urllib.request.urlopen(f"{self.base}/machine/model?key=state.status&flags=d1", timeout=10) as r:
             j = json.load(r)
@@ -144,7 +151,7 @@ def cmd_run(args):
 
     # Anything that changes motor current or driver registers in --setup must be
     # undone in --restore; a trial that leaves the machine altered is a bug.
-    for code in ("M906", "M569", "M913", "M350"):
+    for code in ("M906", "M569", "M913", "M350", "M970"):
         if any(x.upper().startswith(code) for x in args.setup) and not any(x.upper().startswith(code) for x in args.restore):
             sys.exit(f"--setup uses {code} but --restore does not; refusing to run")
     speeds = [float(s) for s in args.speeds.split(",")]
@@ -168,9 +175,29 @@ def cmd_run(args):
                 "XY": f"X{args.x + d} Y{args.y + d}",      # CoreXY: motor A only
                 "X-Y": f"X{args.x + d} Y{args.y - d}"}[args.axis]  # CoreXY: motor B only
 
+    # Driver/stepper config changes can unhome X/Y. Remember where we are and
+    # re-assert it with G92 (user position, no motion) if a homed flag drops.
+    stored = board.axes()
+    if not (stored.get("X", (0, False))[1] and stored.get("Y", (0, False))[1]):
+        sys.exit("X/Y not homed, refusing to run")
+
+    def rehome_if_needed(when):
+        # DSF's object model lags a config change by a few hundred ms; poll.
+        lost = []
+        for _ in range(8):
+            time.sleep(0.25)
+            now = board.axes()
+            lost = [ax for ax in "XY" if not now[ax][1]]
+            if lost:
+                break
+        if lost:
+            print(f"  {when}: {''.join(lost)} unhomed by config change -> G92 X{stored['X'][0]:g} Y{stored['Y'][0]:g}")
+            send(f"G92 X{stored['X'][0]:g} Y{stored['Y'][0]:g}")
+
     try:
         for s in args.setup:
             send(s)
+        rehome_if_needed("after setup")
         send("G90")
         send(f"G1 X{args.x} Y{args.y} F6000")
         send("M400")
@@ -204,6 +231,7 @@ def cmd_run(args):
                 send(s)
             except Exception as e:  # noqa: BLE001
                 print(f"RESTORE FAILED: {s}: {e}")
+        rehome_if_needed("after restore")
 
     summary = {"trial": args.trial, "started": time.strftime("%Y-%m-%dT%H:%M:%S"),
                "axis": args.axis, "from": [args.x, args.y], "dist": args.dist, "accel": args.accel,
