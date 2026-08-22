@@ -65,3 +65,22 @@ Noise band: baseline x5 = 1.32–1.55 (±8%). The 50 mm/s response drifted
 
 Data: runs/dataset.csv (python dataset.py regenerates), raw CSVs per trial
 in runs/<trial>/, older DWC-plugin captures in runs/board-archive/.
+
+## Input shaping (shaping.py) — 2026-08-22
+
+`python shaping.py ring|fit|rank|verify|all --name <run>`; envelope X 10–320 / Y 20–260 is a hard refusal.
+Note: on RRF 3.6.3 `M956 A2` delivered the whole move, so the stop is detected from the data.
+
+Fingerprint (6 stops per axis): **X 18.1 Hz ζ 0.127 0.05 g; Y 51.6 Hz ζ 0.075 0.10 g.**
+
+| M593 | predicted X/Y residual | measured X/Y |
+|---|---|---|
+| zvdd F17.5 S0.2 | 0 / 0 % | WORSE: new 38 Hz ring 0.08–0.12 g both axes |
+| zvddd F17.5 S0.2 | 0 / 0 % | WORSE: 38 Hz ring 0.10 g |
+| zvd F52 S0.1 | 63 / 0 % | X silent, Y 0.03 g (15 Hz remnant) |
+| zvdd F52 S0.1 | 50 / 0 % | X silent, Y 0.03 g |
+| **ei2 F52 S0.1** | 43 / 1 % | **X silent, Y 0.03 g** — recommended (±39 % band covers tool-mass changes) |
+
+Long shapers split the decel into ~28 ms steps that excite a 38 Hz mode (the 3.6 docs' "artefacts
+at direction changes"); the impulse-residual model cannot see that — always verify. RRF's MZV has its
+amplitudes reversed vs Klipper's and leaves ~16 % at exact tuning; never ranks well.

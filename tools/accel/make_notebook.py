@@ -91,7 +91,42 @@ plt.subplot(1,3,1); grid((2000,1600,1400,1200), (500,1000,2000), lambda i,k: f'A
 plt.subplot(1,3,2); grid((2000,1400), (16,32,64), lambda i,m: f'C_ms{m}_i{i}', 'mA', 'µsteps (phase k1000)'); plt.title('C: µstep × current')
 plt.subplot(1,3,3); grid((1400,1600), ('1_0_f3','5_0_f3','8_5_f3','1_0_f8','5_0_f8','8_5_f8'), lambda i,y: f'B_i{i}_y{y}', 'mA', 'Y:F'); plt.title('B: hysteresis/off-time × current')
 plt.tight_layout()"""),
-md("## 6. Scratch — look at any raw capture\nChange `trial`/`speed`; `axis` 0=X 1=Y 2=Z."),
+md("""## 7. Input shaping - ringing fingerprint, predicted vs measured
+From `shaping.py` (`runs/ring/<name>/`). Hard stops on X and Y; free decay fitted for frequency + damping; every RRF shaper simulated; top candidates verified on the machine."""),
+code("""import json
+from shaping import shaper_impulses, residual, SHAPERS, detect_stop
+R = 'runs/ring/ring1'
+fp = json.load(open(f'{R}/fingerprint.json')); ver = json.load(open(f'{R}/verify.json'))['results']
+modes = {a: v for a, v in fp['fingerprint'].items() if v}
+print({a: f"{m['f']:.1f} Hz  zeta {m['zeta']:.3f}  {m['peak_g']:.3f} g" for a, m in modes.items()})
+
+# one decay per axis, raw + envelope
+fig, ax = plt.subplots(1, 2, figsize=(12, 3.5))
+for k, axis in enumerate('XY'):
+    c = next(c for c in json.load(open(f'{R}/ring.json'))['captures'] if c['axis']==axis and c['dir']=='+' and c['rep']==0)
+    rate, _, d = parse_capture(open(f"{R}/{c['csv']}").read()); t = np.arange(len(d))/rate
+    ts = detect_stop(d[:, k], rate)
+    ax[k].plot(t, d[:, k], lw=.6); ax[k].axvline(ts, color='k', ls='--', lw=.8, label=f'stop {ts:.3f}s')
+    ax[k].set_xlim(ts-0.05, ts+0.3); ax[k].set_title(f'{axis} stop: ring at {modes[axis]["f"]:.1f} Hz'); ax[k].set_xlabel('s'); ax[k].set_ylabel('g'); ax[k].legend()"""),
+code("""# residual-vs-frequency curves for the verified candidates, with the measured modes marked
+f = np.arange(8, 90, 0.25)
+plt.figure(figsize=(10, 4))
+for v in ver:
+    A, T = shaper_impulses(v['shaper'], v['F'], v['S'])
+    plt.plot(f, [100*residual(A, T, x, 0.1) for x in f], label=f"{v['shaper']} F{v['F']:g}  ({T[-1]*1000:.0f} ms)")
+for a, m in modes.items():
+    plt.axvline(m['f'], color='k', ls=':', lw=.8); plt.text(m['f'], 95, f' {a} {m["f"]:.0f} Hz', fontsize=8)
+plt.ylim(0, 100); plt.xlabel('mode frequency (Hz)'); plt.ylabel('predicted residual %'); plt.legend(fontsize=8); plt.grid(alpha=.3)"""),
+code("""# predicted vs measured residual per candidate (measured = post-shaping ring peak / unshaped ring peak)
+labels = [v['code'].replace('M593 ', '') for v in ver]
+x = np.arange(len(ver)); w = 0.2
+plt.figure(figsize=(11, 4))
+for i, (a, col) in enumerate((('X', 'C0'), ('Y', 'C1'))):
+    plt.bar(x + (i-1.5)*w, [100*v['predicted'][a] for v in ver], w, color=col, alpha=.4, label=f'{a} predicted')
+    plt.bar(x + (i+0.5)*w, [100*v['measured'][a] for v in ver], w, color=col, label=f'{a} measured')
+plt.xticks(x, labels, rotation=15, fontsize=8); plt.ylabel('% of unshaped ringing'); plt.axhline(100, color='k', lw=.6)
+plt.legend(); plt.grid(axis='y', alpha=.3); plt.title('17.5 Hz shapers measured WORSE (new 38 Hz artefact); the 52 Hz Y-only ones silence X too')"""),
+md("## 8. Scratch — look at any raw capture\nChange `trial`/`speed`; `axis` 0=X 1=Y 2=Z."),
 code("""trial, speed, axis = 'baseline', 100.0, 0
 r = next(r for r in cruise_x if r['trial']==trial and r['speed']==speed)
 rate, ov, data = parse_capture(open(r['csv']).read()); t = np.arange(len(data))/rate

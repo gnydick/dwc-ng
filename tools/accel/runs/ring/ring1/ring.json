@@ -1,0 +1,108 @@
+{
+  "name": "ring1",
+  "x0": 120,
+  "y0": 120,
+  "dist": 60,
+  "speed": 200,
+  "accel": 6000.0,
+  "t_stop": 0.03333333333333333,
+  "started": "2026-08-22T15:18:49",
+  "captures": [
+    {
+      "axis": "X",
+      "dir": "+",
+      "rep": 0,
+      "csv": "ring1_Xp0.csv",
+      "rate": 1376,
+      "overflows": 0
+    },
+    {
+      "axis": "X",
+      "dir": "+",
+      "rep": 1,
+      "csv": "ring1_Xp1.csv",
+      "rate": 1379,
+      "overflows": 0
+    },
+    {
+      "axis": "X",
+      "dir": "+",
+      "rep": 2,
+      "csv": "ring1_Xp2.csv",
+      "rate": 1378,
+      "overflows": 0
+    },
+    {
+      "axis": "X",
+      "dir": "-",
+      "rep": 0,
+      "csv": "ring1_Xm0.csv",
+      "rate": 1379,
+      "overflows": 0
+    },
+    {
+      "axis": "X",
+      "dir": "-",
+      "rep": 1,
+      "csv": "ring1_Xm1.csv",
+      "rate": 1380,
+      "overflows": 0
+    },
+    {
+      "axis": "X",
+      "dir": "-",
+      "rep": 2,
+      "csv": "ring1_Xm2.csv",
+      "rate": 1375,
+      "overflows": 0
+    },
+    {
+      "axis": "Y",
+      "dir": "+",
+      "rep": 0,
+      "csv": "ring1_Yp0.csv",
+      "rate": 1379,
+      "overflows": 0
+    },
+    {
+      "axis": "Y",
+      "dir": "+",
+      "rep": 1,
+      "csv": "ring1_Yp1.csv",
+      "rate": 1383,
+      "overflows": 0
+    },
+    {
+      "axis": "Y",
+      "dir": "+",
+      "rep": 2,
+      "csv": "ring1_Yp2.csv",
+      "rate": 1380,
+      "overflows": 0
+    },
+    {
+      "axis": "Y",
+      "dir": "-",
+      "rep": 0,
+      "csv": "ring1_Ym0.csv",
+      "rate": 1379,
+      "overflows": 0
+    },
+    {
+      "axis": "Y",
+      "dir": "-",
+      "rep": 1,
+      "csv": "ring1_Ym1.csv",
+      "rate": 1375,
+      "overflows": 0
+    },
+    {
+      "axis": "Y",
+      "dir": "-",
+      "rep": 2,
+      "csv": "ring1_Ym2.csv",
+      "rate": 1376,
+      "overflows": 0
+    }
+  ]
+}
