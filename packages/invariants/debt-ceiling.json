@@ -1,4 +1,5 @@
 {
-	"ceiling": 21,
-	"redFlagCeiling": 5
+	"ceiling": 22,
+	"redFlagCeiling": 5,
+	"note": "21 -> 22 on 2026-08-21 for ui/unit-lengths, re-rated 7 -> 4. Nothing regressed: the lint is exactly as strong as it was, but it is a node:test that `pnpm build` never runs and no CI or hook runs for anyone, so 'build-failing' overstated it. The +1 is that honesty, not new debt. It comes back off the moment `pnpm test` runs on the path to main."
 }

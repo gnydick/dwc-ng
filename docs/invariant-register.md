@@ -21,7 +21,7 @@ and invariant claim mentions 13 -> 23, so no mechanism was deleted and no
 claim was lost in the gap. From here the ratchets make a dropped rung visible
 in the diff that drops it.
 
-**Totals:** 86 invariants · 65 at rung 6 or above · 21 below rung 6 (ceiling 21).
+**Totals:** 86 invariants · 64 at rung 6 or above · 22 below rung 6 (ceiling 22).
 
 ## bed
 
@@ -767,7 +767,7 @@ in the diff that drops it.
 
 **Why.** the geometry engine computes spans in cells while the browser lays them out in pixels. When those were two facts, a card's computed position and its painted position could differ by a whole column with nothing failing — and the arithmetic looks right in both places
 
-`packages/ui/src/shell/panelCanvas.ts:100`
+`packages/ui/src/shell/panelCanvas.ts:108`
 
 ### `shell/reflow-preserves-reading-order` — rung 6
 
@@ -777,7 +777,7 @@ in the diff that drops it.
 
 **Debt — promotion.** promote by making the placement order a value produced once and consumed by the loop, so a future caller cannot iterate the state directly and place out of order.
 
-`packages/ui/src/shell/panelCanvas.ts:1044`
+`packages/ui/src/shell/panelCanvas.ts:1082`
 
 ### `shell/reflow-terminates` — rung 3
 
@@ -787,7 +787,7 @@ in the diff that drops it.
 
 **Debt — promotion.** make the loop consume a bounded, strictly-increasing cursor rather than mutating a candidate in place — then "a push that advances nothing" has no encoding and the argument stops needing to be believed.
 
-`packages/ui/src/shell/panelCanvas.ts:1056`
+`packages/ui/src/shell/panelCanvas.ts:1094`
 
 ### `shell/stream-dies-with-its-element` — rung 7
 
@@ -839,11 +839,13 @@ in the diff that drops it.
 
 `packages/ui/src/app.css:1467`
 
-### `ui/unit-lengths` — rung 7
+### `ui/unit-lengths` — rung 4
 
-**Mechanism.** build-failing lint — test/unit-lengths.test.ts reads every .css/.ts/.tsx under src and fails the build on any bare px token, unless it is the value of an exempt property (border-radius, box-shadow, outline, outline-offset, text-shadow, filter, backdrop-filter), sits inside a @media prelude, is one of the --u definitions right here, or the line carries a `px-ok: <reason>` marker — every marker is printed, so the allowlist is a visible, reviewable list rather than a silent one. There is no second way to write a length, so a new `min-height: 150px` fails the build exactly like a `border: 1px` does
+**Mechanism.** test-suite-failing lint — test/unit-lengths.test.ts reads every .css/.ts/.tsx under src and fails the test suite on any bare px (or PX/vh/vw/rem/pt/in/cm/mm/pc) token, unless it is the value of an exempt property (border-radius, box-shadow, outline, outline-offset, text-shadow, filter, backdrop-filter), sits inside a @media prelude, is one of the --u definitions right here, or the line carries a `px-ok: <reason>` marker — every marker is printed, so the allowlist is a visible, reviewable list rather than a silent one. There is no second way to write a length, so a new `min-height: 150px` fails the suite exactly like a `border: 1px` does
 
 **Why.** a card's minimum size, measured in stored grid cells, must be the same number at every UI scale (CLAUDE.md: "Interface cards should not need resizing or layout updated"). One px literal inside a card is a fixed term in the sum that is its floor, so that floor drifts with scale while everything else in the card does not — the defect the density-pitch mechanism this replaces could not avoid, because it left every absolute-px floor untouched (measured, docs/superpowers/specs/2026-08-21-global-unit-scaling-design.md).
+
+**Debt — promotion.** NOT build-failing, despite how it reads. `pnpm build` is `tsc -b && vite build` and never runs node:test; this repo has no CI and no git hook, so the gate is "someone ran `pnpm test`". Promote by running `pnpm test` from a pre-push hook or in CI → rung 6 (mechanically unavoidable on the path to main). Blocked on there being no CI in this repo.
 
 `packages/ui/src/index.css:157`
 
