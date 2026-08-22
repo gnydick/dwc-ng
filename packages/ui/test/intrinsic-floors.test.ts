@@ -113,14 +113,17 @@ test("the DRO rows share ONE track list via subgrid", () => {
  * needs its own ceiling or it fills the whole thing.
  */
 test("the Extruders value track is fixed and clears its widest occupant", () => {
-	const token = /--fil-value-w:\s*(\d+)px/.exec(appCss);
+	// Declared as `calc(N * var(--u))` — n × the global unit, same convention as
+	// --dro-val-w above. Checked at the default --u (4px).
+	const token = /--fil-value-w:\s*calc\(([\d.]+)\s*\*\s*var\(--u\)\)/.exec(appCss);
 	assert.ok(token, "no --fil-value-w token");
+	const px = Number(token[1]) * 4;
 	// 148: the pair's width after its boxes were trimmed to bring this card's
 	// minimum (512) onto the Tools card's (500) — they sit side by side.
-	assert.ok(Number(token[1]) >= 148, `value track ${token[1]}px is under the feed pair's 148px`);
+	assert.ok(px >= 148, `value track ${px}px is under the feed pair's 148px`);
 
 	assert.match(ruleBody(".filament-list"), /grid-template-columns:[^;]*var\(--fil-value-w\)/);
-	assert.match(ruleBody(".filament-row .filament-pick"), /max-width:\s*\d+px/);
+	assert.match(ruleBody(".filament-row .filament-pick"), /max-width:\s*(\d+px|calc\([\d.]+\s*\*\s*var\(--u\)\))/);
 });
 
 /**

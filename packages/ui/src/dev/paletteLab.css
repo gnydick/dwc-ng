@@ -184,39 +184,39 @@
 /* ---------- the switcher ---------- */
 .plab {
 	position: fixed;
-	left: 10px;
-	bottom: 10px;
+	left: calc(2.5 * var(--u));
+	bottom: calc(2.5 * var(--u));
 	z-index: 9000;
 	display: flex;
 	flex-direction: column;
-	gap: 7px;
-	padding: 10px 12px 10px 10px;
+	gap: calc(1.75 * var(--u));
+	padding: calc(2.5 * var(--u)) calc(3 * var(--u)) calc(2.5 * var(--u)) calc(2.5 * var(--u));
 	border-radius: 6px;
-	border: 1px solid var(--hairline);
+	border: calc(0.25 * var(--u)) solid var(--hairline);
 	background: var(--mask-700);
 	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
 	font-family: var(--font-display);
 }
-.plab-row { display: flex; align-items: center; gap: 5px; }
+.plab-row { display: flex; align-items: center; gap: calc(1.25 * var(--u)); }
 .plab-lab {
-	font: 700 9px/1 var(--font-display);
+	font: 700 calc(2.25 * var(--u))/1 var(--font-display);
 	text-transform: uppercase;
 	letter-spacing: 0.14em;
 	color: var(--silk-dim);
-	width: 44px;
+	width: calc(11 * var(--u));
 	flex: none;
 }
 .plab button {
 	appearance: none;
-	border: 1px solid var(--hairline);
+	border: calc(0.25 * var(--u)) solid var(--hairline);
 	border-radius: 3px;
 	background: transparent;
 	color: var(--silk-dim);
 	cursor: pointer;
-	font: 700 9.5px/1 var(--font-display);
+	font: 700 calc(2.375 * var(--u))/1 var(--font-display);
 	text-transform: uppercase;
 	letter-spacing: 0.08em;
-	padding: 6px 8px;
+	padding: calc(1.5 * var(--u)) calc(2 * var(--u));
 }
 .plab button[aria-pressed="true"] {
 	color: var(--mask-900);
@@ -228,8 +228,8 @@
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
-	gap: 10px;
-	font: 700 8.5px/1 var(--font-display);
+	gap: calc(2.5 * var(--u));
+	font: 700 calc(2.125 * var(--u))/1 var(--font-display);
 	letter-spacing: 0.16em;
 	text-transform: uppercase;
 	color: var(--silk-dim);
