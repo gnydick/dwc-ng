@@ -27,7 +27,7 @@
  */
 import { render } from 'solid-js/web'
 import './index.css'
-import './theme-vellum.css'
+import './theme-graphite.css'
 import App from './App.tsx'
 import { probeTransport } from '@dwc-ng/connector'
 import { initialBackend, pinnedTransport } from './dev/backend.ts'
@@ -40,7 +40,7 @@ const root = document.getElementById('app')!
 // attribute drives CSS custom properties, so applying it after first paint
 // would show one frame at the default spacing and then reflow the whole page.
 applyStoredScale()
-// Same reasoning for the theme: one frame of graphite before vellum is a flash.
+// Same reasoning for the theme: one frame of vellum before graphite is a flash.
 applyStoredTheme()
 
 // Palette lab (dev-only): repaints the chrome from a floating switcher so a

@@ -15,7 +15,7 @@
  *
  * The DEFAULT of each axis is the ABSENCE of its attribute, never a block that
  * restates today's values. index.css stays the single place the shipped palette
- * is written down, so the "Anodize" and "Quiet" buttons here cannot drift from
+ * is written down, so the "Vellum" and "Quiet" buttons here cannot drift from
  * what main renders, and deleting this feature leaves the UI byte-identical.
  *
  * Because ids are parsed tolerantly, promoting a ground migrates itself: a
@@ -43,7 +43,7 @@ interface Option {
  * as something broken.
  */
 const GROUNDS: Option[] = [
-	{ id: "", label: "Anodize", title: "What ships today — neutral graphite, accent clear of the warm arc" },
+	{ id: "", label: "Vellum", title: "What ships today — the default theme; Graphite is on the preflight strip" },
 	{ id: "navy", label: "Navy", title: "The previous ground — solder mask & silkscreen" },
 	{ id: "green", label: "Green", title: "The other real mask colour; copper accent kept" },
 	{ id: "instrument", label: "Instr", title: "No chromatic accent at all — interactive is white at weight" },

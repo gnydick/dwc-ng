@@ -97,7 +97,6 @@ test("heaterSeries paints from the light palette when asked for the light ground
 	};
 	assert.deepEqual(heaterSeries(model, {}, "light").map(s => s.stroke), [BED_COLOR_LIGHT, TOOL_COLORS_LIGHT[0], CHAMBER_COLOR_LIGHT]);
 	assert.deepEqual(heaterSeries(model, {}, "dark").map(s => s.stroke), [BED_COLOR, TOOL_COLORS[0], CHAMBER_COLOR]);
-	assert.deepEqual(heaterSeries(model).map(s => s.stroke), heaterSeries(model, {}, "dark").map(s => s.stroke));
-	// A user override wins on either ground.
+		// A user override wins on either ground.
 	assert.equal(heaterSeries(model, { "1": "#123456" }, "light")[1]!.stroke, "#123456");
 });

@@ -8,7 +8,7 @@
  * draws in is not one).
  *
  * The mechanism is one attribute on <html>, data-theme. index.css holds the
- * shipped palette on :root and theme-vellum.css holds one override block per
+ * shipped palette on :root and theme-graphite.css holds one override block per
  * non-default theme, so:
  *
  *   - the default is the ABSENCE of an override. The shipped palette is written
@@ -34,15 +34,15 @@ export interface Theme {
 	ground: Ground;
 }
 
-/** theme-vellum.css is the authority on what a theme IS; this list is the
+/** theme-graphite.css is the authority on what a theme IS; this list is the
  *  authority on which exist. An id listed here with no CSS block renders as the
  *  default — it cannot render as something broken. */
 export const THEMES: readonly Theme[] = [
-	{ id: "graphite", label: "Graphite", title: "Dark — neutral graphite, cyan accent", ground: "dark" },
 	{ id: "vellum", label: "Vellum", title: "Light — paper ground, ink text, copper accent", ground: "light" },
+	{ id: "graphite", label: "Graphite", title: "Dark — neutral graphite, cyan accent", ground: "dark" },
 ] as const;
 
-export const DEFAULT_THEME = "graphite";
+export const DEFAULT_THEME = "vellum";
 
 const KEY = "dwc-ng.theme";
 

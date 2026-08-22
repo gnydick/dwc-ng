@@ -7,7 +7,7 @@ import { THEMES, DEFAULT_THEME, parseTheme, groundOf } from "../src/shell/theme.
 const read = (rel: string): string =>
 	readFileSync(fileURLToPath(new URL(rel, import.meta.url)), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
 const indexCss = read("../src/index.css");
-const themeCss = read("../src/theme-vellum.css");
+const themeCss = read("../src/theme-graphite.css");
 const labCss = read("../src/dev/paletteLab.css");
 const labTs = readFileSync(fileURLToPath(new URL("../src/dev/paletteLab.ts", import.meta.url)), "utf8");
 
@@ -42,11 +42,27 @@ test("every non-default theme has a shipped :root[data-theme] block that repaint
 });
 
 test("each theme says which ground the chart palette is solved for", () => {
-	assert.equal(groundOf(DEFAULT_THEME), "dark");
-	assert.equal(groundOf("vellum"), "light");
+	assert.equal(DEFAULT_THEME, "vellum");
+	assert.equal(groundOf(DEFAULT_THEME), "light");
+	assert.equal(groundOf("graphite"), "dark");
+	assert.equal(groundOf("garbage"), "light"); // unknown -> default
 });
 
-test("vellum is shipped, so it is no longer a dev-only lab ground", () => {
-	assert.ok(!labCss.includes(`data-ground="vellum"`));
-	assert.ok(!labTs.includes(`"vellum"`));
+test("the shipped :root palette IS vellum, and graphite is the override", () => {
+	const root = indexCss.slice(indexCss.indexOf(":root {"), indexCss.indexOf("}", indexCss.indexOf(":root {")));
+	assert.ok(root.includes("--mask-700: #f2f5f9"), "index.css :root should carry the vellum card");
+	const g = themeCss.slice(themeCss.indexOf(':root[data-theme="graphite"]'));
+	assert.ok(g.includes("--mask-700: #1e2128"), "graphite block should carry the graphite card");
+});
+
+test("the dev lab's dark grounds restate the dark thermal ramp, since the shipped one is mixed for paper", () => {
+	for (const id of ["navy", "green", "instrument"]) assert.ok(labCss.includes(`data-ground="${id}"`), id);
+	assert.ok(/data-ground[^{]*\{[^}]*--t-cold:\s*#6e8ca8/.test(labCss), "no lab rule sets the dark --t-cold");
+});
+
+test("shipped themes are not also dev-only lab grounds", () => {
+	for (const t of THEMES) {
+		assert.ok(!labCss.includes(`data-ground="${t.id}"`), t.id);
+		assert.ok(!labTs.includes(`id: "${t.id}"`), t.id);
+	}
 });

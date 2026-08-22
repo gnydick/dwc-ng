@@ -88,8 +88,11 @@ export interface HeaterSeries {
  */
 export function heaterSeries(
 	model: HeaterSeriesModel,
-	overrides: HeaterColorOverrides = {},
-	ground: PaletteGround = "dark",
+	overrides: HeaterColorOverrides,
+	/** Required, no default: which ground is "normal" is the theme's decision
+	 *  (shell/theme.ts groundOf), and a default here would be a second copy
+	 *  of it that could drift. */
+	ground: PaletteGround,
 ): HeaterSeries[] {
 	const [bedColor, chamberColor, toolColors] = ground === "light"
 		? [BED_COLOR_LIGHT, CHAMBER_COLOR_LIGHT, TOOL_COLORS_LIGHT]

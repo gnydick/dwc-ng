@@ -4046,13 +4046,13 @@ input[type="checkbox"].fw-check { accent-color: var(--accent); width: calc(3.75 
 	   target obvious rather than merely present. */
 	background-image:
 		linear-gradient(to right,
-			rgba(92, 224, 238, var(--edge-ghost-a)) 0%,
-			rgba(92, 224, 238, calc(var(--edge-ghost-a) * 0.62)) 45%,
-			rgba(92, 224, 238, 0) 100%),
+			color-mix(in srgb, var(--accent-bright) calc(var(--edge-ghost-a) * 100%), transparent) 0%,
+			color-mix(in srgb, var(--accent-bright) calc(var(--edge-ghost-a) * 62%), transparent) 45%,
+			transparent 100%),
 		linear-gradient(to left,
-			rgba(92, 224, 238, var(--edge-ghost-a)) 0%,
-			rgba(92, 224, 238, calc(var(--edge-ghost-a) * 0.62)) 45%,
-			rgba(92, 224, 238, 0) 100%);
+			color-mix(in srgb, var(--accent-bright) calc(var(--edge-ghost-a) * 100%), transparent) 0%,
+			color-mix(in srgb, var(--accent-bright) calc(var(--edge-ghost-a) * 62%), transparent) 45%,
+			transparent 100%);
 	background-size: var(--edge-w, 0) 100%, var(--edge-w, 0) 100%;
 	background-position: left center, right center;
 	background-repeat: no-repeat;

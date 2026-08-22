@@ -65,8 +65,8 @@ test("nearestCollision ignores malformed entries rather than throwing", () => {
 // ---- overrides ----
 
 test("an override replaces exactly one line and leaves the others derived", () => {
-	const base = heaterSeries(model(4));
-	const withOverride = heaterSeries(model(4), { "2": "#ff00ff" });
+	const base = heaterSeries(model(4), {}, "dark");
+	const withOverride = heaterSeries(model(4), { "2": "#ff00ff" }, "dark");
 	assert.equal(withOverride[2]!.stroke, "#ff00ff");
 	assert.equal(withOverride[2]!.label, base[2]!.label, "an override must not rename the series");
 	for (const i of [0, 1, 3]) {
@@ -77,20 +77,20 @@ test("an override replaces exactly one line and leaves the others derived", () =
 test("overriding a tool does NOT renumber the palette for the tools after it", () => {
 	// The regression this guards: if the palette counter skipped overridden
 	// heaters, clearing one override would recolour every line after it.
-	const base = heaterSeries(model(5));
-	const withOverride = heaterSeries(model(5), { "1": "#ff00ff" });
+	const base = heaterSeries(model(5), {}, "dark");
+	const withOverride = heaterSeries(model(5), { "1": "#ff00ff" }, "dark");
 	assert.equal(withOverride[2]!.stroke, base[2]!.stroke);
 	assert.equal(withOverride[3]!.stroke, base[3]!.stroke);
 	assert.equal(withOverride[4]!.stroke, base[4]!.stroke);
 });
 
 test("the bed can be overridden too", () => {
-	assert.equal(heaterSeries(model(3))[0]!.stroke, BED_COLOR);
-	assert.equal(heaterSeries(model(3), { "0": "#123456" })[0]!.stroke, "#123456");
+	assert.equal(heaterSeries(model(3), {}, "dark")[0]!.stroke, BED_COLOR);
+	assert.equal(heaterSeries(model(3), { "0": "#123456" }, "dark")[0]!.stroke, "#123456");
 });
 
 test("no overrides is identical to the derived palette", () => {
-	assert.deepEqual(heaterSeries(model(4), {}), heaterSeries(model(4)));
+	assert.deepEqual(heaterSeries(model(4), {}, "dark"), heaterSeries(model(4), {}, "dark"));
 });
 
 // ---- parsing at the untrusted boundary ----

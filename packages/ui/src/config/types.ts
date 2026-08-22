@@ -154,15 +154,16 @@ export interface ThermalColors {
 }
 
 /**
- * Shipped thermal ramp — steel blue → amber → glowing orange. These are the
+ * Shipped thermal ramp, mixed for the vellum ground — slate blue → burnt amber
+ * → brick. These are the
  * same values index.css declares for --t-cold/--t-warm/--t-hot; the overlay
  * overwrites those custom properties at runtime, so this object and the
  * stylesheet must agree. index.css cites this constant for that reason.
  */
 export const DEFAULT_THERMAL_COLORS: ThermalColors = {
-	cold: "#6e8ca8",
-	warm: "#e0a458",
-	hot: "#ef7b45",
+	cold: "#3f6485",
+	warm: "#9a5f0a",
+	hot: "#c2380f",
 };
 
 export interface UiConfig {

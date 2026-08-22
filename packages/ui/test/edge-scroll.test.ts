@@ -109,33 +109,25 @@ test("the hover ghost is sized by the same --edge-w the handler sets", () => {
  * hover, so they must read as ONE cue. A scroll hint in one colour beside a
  * scroll hint in another says they are different things when they are not.
  *
- * The expected colour is DERIVED from index.css rather than written here.
- * These two cues used to be pinned to a literal #5AA9E6 (--accent-blue, since
- * folded into --accent-bright), and when the ground moved from navy to anodize
- * this test was asserting a colour the palette no longer contained — it failed
- * for the right reason but named the wrong one. Deriving means the test pins
- * the COUPLING, which is the actual invariant, and a future palette change
- * cannot make it stale.
+ * Both take the colour FROM THE TOKEN. These two cues used to be pinned to a
+ * literal #5AA9E6, and when the ground moved from navy to anodize this test
+ * was asserting a colour the palette no longer contained. The ghost then
+ * restated --accent-bright's channels inside rgba() to carry an animating
+ * alpha — a copy this test pinned to the token's value, which held only
+ * while there was ONE palette. With themes (shell/theme.ts) the token changes
+ * under a running page, so the copy became a bug: the one cue that would
+ * stay cyan on paper. color-mix() carries the alpha without a copy.
  */
 test("both scroll cues wear the same colour", () => {
-	const accent = /--accent-bright:\s*#([0-9a-f]{6})\s*;/i.exec(indexCss);
-	assert.ok(accent, "index.css has no --accent-bright to derive the cue colour from");
-	const n = parseInt(accent[1]!, 16);
-	const [r, g, b] = [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+	assert.ok(/--accent-bright:/.test(indexCss), "index.css has no --accent-bright");
 
 	const nub = /\.panel-scroll-nub\.up\s*\{([^}]*)\}/.exec(appCss);
 	assert.ok(nub, "no .panel-scroll-nub.up rule");
 	assert.match(nub[1]!, /var\(--accent-bright\)/, "the nub should take the accent from the token");
 
-	// The gradient needs rgba() to carry an animating alpha, so it restates the
-	// channels — the one place a token value is copied. Pinned to the token's
-	// own value so the copy cannot drift away from it.
 	const ghost = /\[data-edge-scroll\]\s*\{([^}]*)\}/.exec(appCss)![1]!;
-	assert.match(
-		ghost,
-		new RegExp(`rgba\\(\\s*${r},\\s*${g},\\s*${b},`),
-		`the ghost's channels are not --accent-bright (#${accent[1]} = ${r}, ${g}, ${b})`,
-	);
+	assert.match(ghost, /var\(--accent-bright\)/, "the ghost should take the accent from the token");
+	assert.doesNotMatch(ghost, /rgba?\(\s*\d/, "the ghost must not restate a token's channels as a literal");
 });
 
 /**

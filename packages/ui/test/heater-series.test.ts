@@ -32,13 +32,13 @@ test("the bed's colour is not a member of the tool palette at all", () => {
 });
 
 test("every series on a 4-tool toolchanger gets a distinct colour", () => {
-	const series = heaterSeries(toolchanger);
+	const series = heaterSeries(toolchanger, {}, "dark");
 	const colors = series.map(s => s.stroke);
 	assert.equal(new Set(colors).size, colors.length, `duplicate colour in ${JSON.stringify(colors)}`);
 });
 
 test("the bed keeps its own colour and label", () => {
-	const series = heaterSeries(toolchanger);
+	const series = heaterSeries(toolchanger, {}, "dark");
 	assert.equal(series[0]!.label, "Bed");
 	assert.equal(series[0]!.stroke, BED_COLOR);
 });
@@ -47,7 +47,7 @@ test("tool colours start at the top of the palette even though the bed holds ind
 	// The regression: indexing the palette by HEATER index skipped the first
 	// colour (the bed sits there) and pushed the fourth tool onto the gold that
 	// collides with the bed.
-	const series = heaterSeries(toolchanger);
+	const series = heaterSeries(toolchanger, {}, "dark");
 	assert.deepEqual(series.slice(1).map(s => s.stroke), TOOL_COLORS.slice(0, 4));
 });
 
@@ -57,14 +57,14 @@ test("a bed at a non-zero index still does not shift the tool palette", () => {
 		bedHeaters: [2],
 		chamberHeaters: [],
 		tools: [tool(0, "T0", [0]), tool(1, "T1", [1])],
-	});
+	}, {}, "dark");
 	assert.deepEqual(series.map(s => s.stroke), [TOOL_COLORS[0], TOOL_COLORS[1], BED_COLOR]);
 });
 
 // --- labelling ---
 
 test("tool heaters take their tool's name", () => {
-	const series = heaterSeries(toolchanger);
+	const series = heaterSeries(toolchanger, {}, "dark");
 	assert.deepEqual(series.map(s => s.label), ["Bed", "T0", "T1", "T2", "T3"]);
 });
 
@@ -74,7 +74,7 @@ test("an unnamed tool falls back to its number, not the heater index", () => {
 		bedHeaters: [0],
 		chamberHeaters: [],
 		tools: [tool(3, "", [1])],
-	});
+	}, {}, "dark");
 	assert.equal(series[1]!.label, "Tool 3");
 });
 
@@ -84,7 +84,7 @@ test("a heater belonging to no tool is labelled by its own index", () => {
 		bedHeaters: [0],
 		chamberHeaters: [],
 		tools: [],
-	});
+	}, {}, "dark");
 	assert.equal(series[1]!.label, "Heater 1");
 });
 
@@ -94,7 +94,7 @@ test("a chamber heater is named and coloured as a chamber, not as a tool", () =>
 		bedHeaters: [0],
 		chamberHeaters: [1],
 		tools: [tool(0, "T0", [2])],
-	});
+	}, {}, "dark");
 	assert.deepEqual(series.map(s => s.label), ["Bed", "Chamber", "T0"]);
 	assert.equal(series[1]!.stroke, CHAMBER_COLOR);
 	assert.equal(series[2]!.stroke, TOOL_COLORS[0]);
@@ -104,7 +104,7 @@ test("a chamber heater is named and coloured as a chamber, not as a tool", () =>
 
 test("there is exactly one series per heater, in heater order", () => {
 	// uPlot aligns series to column index, so this mapping must stay 1:1.
-	const series = heaterSeries(toolchanger);
+	const series = heaterSeries(toolchanger, {}, "dark");
 	assert.equal(series.length, toolchanger.heaters.length);
 });
 
@@ -114,7 +114,7 @@ test("a null heater slot still produces a series so column alignment holds", () 
 		bedHeaters: [0],
 		chamberHeaters: [],
 		tools: [tool(0, "T0", [2])],
-	});
+	}, {}, "dark");
 	assert.equal(series.length, 3);
 });
 
@@ -124,7 +124,7 @@ test("the sentinel -1 in bedHeaters never marks heater 0 as a bed", () => {
 		bedHeaters: [-1, -1],
 		chamberHeaters: [-1],
 		tools: [tool(0, "T0", [0])],
-	});
+	}, {}, "dark");
 	assert.equal(series[0]!.label, "T0");
 	assert.equal(series[0]!.stroke, TOOL_COLORS[0]);
 });
@@ -136,7 +136,7 @@ test("more tools than palette entries wraps rather than running out", () => {
 		bedHeaters: [],
 		chamberHeaters: [],
 		tools: many.map((_, i) => tool(i, `T${i}`, [i])),
-	});
+	}, {}, "dark");
 	assert.equal(series.length, many.length);
 	assert.equal(series[TOOL_COLORS.length]!.stroke, TOOL_COLORS[0]);
 });

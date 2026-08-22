@@ -21,10 +21,18 @@
  * writes those onto documentElement inline for any channel the operator has
  * changed, and an inline style beats every rule — so a ground supplies the ramp
  * for anyone who has not picked one, and is correctly overridden for anyone who
- * has. None of the grounds here do today (vellum, which did, graduated to
- * src/theme-vellum.css); restating the shipped ramp would be a second copy of
- * a value index.css already owns.
+ * has. The shipped ramp is mixed for the vellum default, so every ground
+ * here — all dark — restates the graphite ramp in one shared rule below; a
+ * dark ground under a paper ramp would show an invisible amber.
  */
+
+/* The dark thermal ramp, shared by every lab ground. Same values as
+   theme-graphite.css; the lab is dev-only and never reaches a board build. */
+:root[data-ground] {
+	--t-cold: #6e8ca8;
+	--t-warm: #e0a458;
+	--t-hot: #ef7b45;
+}
 
 /* ---------- navy - the previous shipped ground ("solder mask & silkscreen") ----------
    Kept so the palette that shipped until 2026-08-17 stays one click away for

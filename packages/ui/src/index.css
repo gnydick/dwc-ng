@@ -16,55 +16,51 @@
 }
 
 :root {
-	/* ---------- ground: hard anodize ----------
-	   Replaces the navy "solder mask" ground (2026-08-17). The move was not
-	   about taste: on the old palette SIX tokens sat inside a 39° hue arc at
-	   47–63% lightness, so --accent (28°) and --t-warm (34°) were 6° apart —
-	   the colour meaning "you may press this" and the colour meaning "this is
-	   heating up" were the same colour. Measuring with the project's own
-	   deltaE (util/colorDistance.ts) found 20 pairs under its own
-	   MIN_SEPARATION of 25, across the chrome, the operator's thermal ramp and
-	   the chart series.
+	/* ---------- ground: vellum ----------
+	   The default since 2026-08-22: paper page, ink text, copper accent. It
+	   replaced the hard-anodize graphite that shipped from 2026-08-17, which
+	   is now the "Graphite" theme (theme-graphite.css, one click away on the
+	   preflight strip) and keeps its own rationale there.
 
-	   The ramp owns the warm arc and is the OPERATOR'S (thermalColors), so it
-	   cannot be moved to fix a collision — a palette separated by luck is not
-	   separated. The accent moves instead, 28° → 188°, which puts 152° between
-	   it and the whole warm arc. Nothing warm on screen is interactive, and
-	   nothing cyan is thermal.
+	   What the light ground had to solve before it could ship was the CHART,
+	   not the chrome: the tool lines were mixed at L=76 for a dark card and
+	   read under 2:1 on this one. om/heaterSeries.ts now carries a palette per
+	   ground and the chart picks by the theme (shell/theme.ts).
 
-	   The ground is neutral graphite rather than blue, which is what makes the
-	   thermal ramp legible without touching it: --silk-dim is 7% saturated
-	   here, so --t-cold (209°, 25%) separates from it by CHROMA at the same
-	   lightness. On a blue ground the two were 2° apart and a cold reading
-	   looked like a disabled label.
+	   Page and card were chosen against the contrast floor rather than by eye:
+	   pure white is a lamp on a shop screen, and this is the darkest step at
+	   which the accent still clears 4.5:1 on a card — one step further and
+	   #a85c17 drops under it. The thermal ramp below is mixed for paper and
+	   measures 5.69 / 4.78 / 4.97 : 1 on the card; the dark ramp measured
+	   3.21 / 2.00 / 2.53 here, the amber effectively invisible.
 
-	   Navy is still one click away in the palette lab (dev only). */
-	--mask-900: #15171b;
-	--mask-700: #1e2128;
-	--mask-500: #2a2e37;
-	--silk: #e8eaee;
-	--silk-dim: #8a9099;
-	--hairline: rgba(232, 234, 238, 0.10);
+	   THE DEFAULT IS THE ABSENCE OF data-theme. These values are written down
+	   once, here; every other theme is an override block, so nothing can drift
+	   from what "default" claims to be. */
+	--mask-900: #dee5ee;
+	--mask-700: #f2f5f9;
+	--mask-500: #cfd8e3;
+	--silk: #16202e;
+	--silk-dim: #5a6b80;
+	--hairline: rgba(22, 32, 46, 0.16);
 	/* Was --copper (and --copper-bright) until the ground changed. The name had
 	   stopped describing the value, and a token whose name says one colour while
 	   it holds another is a trap for the next person mixing a palette. --accent
 	   says what the token is FOR, which is the property that survives a
 	   re-ground: the ground can change again and this name will still be true. */
-	--accent: #2fc4d4;
-	--accent-bright: #5ce0ee;
-	--ok: #57c07a;
-	/* Nudged up from #e2574a, which measured 4.37:1 on a --mask-700 card and
-	   was the only token under 4.5 on the new ground. The alarm colour is the
-	   last one that may be hard to read. */
-	--fault: #e5645a;
-	--gold: #c9a227;
+	--accent: #a85c17;
+	--accent-bright: #8a4a10;
+	--ok: #1c7a4d;
+	/* The alarm colour is the last one that may be hard to read; this one
+	   clears 4.5:1 on the card. */
+	--fault: #b3271a;
+	--gold: #8a6a00;
 	/* OFF, as a state rather than an alarm. --fault is for a heater that has
 	   gone wrong; a heater deliberately switched off is not a fault and should
 	   not wear the same red. Pitched to sit with the accent and gold rather
 	   than against them: same mid lightness, same restrained saturation, so a
-	   row of Act/Stand/Off reads as three peers. Moved off #C45FA0 with the
-	   ground: that magenta was mixed for a blue surface. */
-	--magenta: #a97fd6;
+	   row of Act/Stand/Off reads as three peers. */
+	--magenta: #9b3d76;
 	/* The thermal ramp. These three are USER-CONFIGURABLE, and THESE ARE THE
 	   DEFAULT — not a copy of it. App.tsx writes an inline property only for a
 	   channel the operator has actually changed, and removes it when they change
@@ -81,9 +77,9 @@
 	   decide whether a channel is overridden at all. If the two drift, a channel
 	   at its shipped value would be written inline forever and no ground could
 	   ever supply a ramp. */
-	--t-cold: #6e8ca8;
-	--t-warm: #e0a458;
-	--t-hot: #ef7b45;
+	--t-cold: #3f6485;
+	--t-warm: #9a5f0a;
+	--t-hot: #c2380f;
 
 	/* ---------- raised faces ----------
 	   The gradient a pressable control is cut from. These were six literal hex
@@ -92,21 +88,20 @@
 	   change and the buttons stayed navy, so a new ground read as two designs
 	   fighting rather than as one palette.
 
-	   Extracted from app.css unchanged first (that step was a move, not a
-	   restyle), then re-mixed for the anodize ground in the same pass. Kept as
-	   literal pairs rather than derived from --mask-*: the face is deliberately
-	   lighter than the card it sits on AND deliberately not a tint of it, and a
-	   derivation would quietly change that relationship for any ground whose
-	   surfaces are not blue.
+	   Kept as literal pairs rather than derived from --mask-*: the face is
+	   deliberately not a tint of the card it sits on, and a derivation would
+	   quietly change that relationship for any ground. On a light ground the
+	   face is LIGHTER than the card and the gradient runs the other way,
+	   because a raised thing catches light from above.
 
 	   The failed pair is a desaturated maroon rather than --fault, because it
 	   is a GROUND behind a red border, not an alarm colour itself. */
-	--face-hi: #313640;        /* top of a resting control */
-	--face-lo: #262a32;        /* bottom of a resting control */
-	--face-hi-hover: #3b414d;
-	--face-lo-hover: #2f343d;
-	--face-hi-fail: #3a2a28;
-	--face-lo-fail: #2b201f;
+	--face-hi: #fbfcfe;        /* top of a resting control */
+	--face-lo: #e4eaf3;        /* bottom of a resting control */
+	--face-hi-hover: #ffffff;
+	--face-lo-hover: #d8e1ec;
+	--face-hi-fail: #f8e2e0;
+	--face-lo-fail: #eecfcb;
 	--font-display: "Rajdhani", "Segoe UI", system-ui, sans-serif;
 	--font-body: system-ui, "Segoe UI", Roboto, sans-serif;
 	--radius: 6px; /* px-ok: radius never occupies layout space */

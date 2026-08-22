@@ -1,0 +1,53 @@
+/**
+ * Graphite — the dark theme. Reached by data-theme="graphite" on <html>, which
+ * shell/theme.ts is the only writer of. index.css owns the default (vellum)
+ * on :root; this file holds ONLY the override block, so deleting it leaves
+ * the UI byte-identical to the default.
+ *
+ * Selectors are anchored on :root so they outrank app.css by SPECIFICITY
+ * rather than by load order.
+ *
+ * This is the "hard anodize" ground that shipped as the default from
+ * 2026-08-17 to 2026-08-22, unchanged. Its rationale, kept with it:
+ *
+ *   It replaced the navy "solder mask" ground. On that palette SIX tokens
+ *   sat inside a 39° hue arc at 47–63% lightness, so --accent (28°) and
+ *   --t-warm (34°) were 6° apart — the colour meaning "you may press this"
+ *   and the colour meaning "this is heating up" were the same colour.
+ *   Measuring with util/colorDistance.ts found 20 pairs under
+ *   MIN_SEPARATION across the chrome, the operator's thermal ramp and the
+ *   chart series. The ramp owns the warm arc and is the OPERATOR'S
+ *   (thermalColors), so it could not move; the accent moved instead,
+ *   28° → 188°, putting 152° between it and the whole warm arc. The ground
+ *   is neutral rather than blue so --t-cold separates from --silk-dim by
+ *   chroma at the same lightness; on a blue ground a cold reading looked
+ *   like a disabled label. --fault is nudged up from #e2574a, which measured
+ *   4.37:1 on the card and was the only token under 4.5.
+ *
+ * The thermal ramp here is a DEFAULT only: App.tsx writes an inline property
+ * for any channel the operator has changed, and inline beats every rule.
+ * Navy is still one click away in the palette lab (dev only).
+ */
+:root[data-theme="graphite"] {
+	--mask-900: #15171b;
+	--mask-700: #1e2128;
+	--mask-500: #2a2e37;
+	--silk: #e8eaee;
+	--silk-dim: #8a9099;
+	--hairline: rgba(232, 234, 238, 0.10);
+	--accent: #2fc4d4;
+	--accent-bright: #5ce0ee;
+	--ok: #57c07a;
+	--fault: #e5645a;
+	--gold: #c9a227;
+	--magenta: #a97fd6;
+	--t-cold: #6e8ca8;
+	--t-warm: #e0a458;
+	--t-hot: #ef7b45;
+	--face-hi: #313640;
+	--face-lo: #262a32;
+	--face-hi-hover: #3b414d;
+	--face-lo-hover: #2f343d;
+	--face-hi-fail: #3a2a28;
+	--face-lo-fail: #2b201f;
+}
