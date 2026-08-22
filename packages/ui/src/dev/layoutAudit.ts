@@ -235,10 +235,21 @@ export function judgeDrift(
  *       above — promote by running it headless in CI over the registry, the
  *       same CDP driver already used for that sweep would suffice here too
  */
+/**
+ * How many stored cells two scale steps may disagree by and still pass: one,
+ * for the rounding that any ceil() over two different units can produce.
+ *
+ * EXPORTED because the panel highlights the offending cell, and it did so
+ * against its own hard-coded `> 1`. Two copies of a tolerance is a table that
+ * can say "pass" in the verdict column with a red number beside it — which is
+ * exactly the kind of quiet disagreement this whole lab exists to catch.
+ */
+export const SCALE_TOLERANCE_CELLS = 1;
+
 export function judgeScaleInvariance(
 	a: { rows: number; cols: number },
 	b: { rows: number; cols: number },
-	tolerance = 1,
+	tolerance = SCALE_TOLERANCE_CELLS,
 ): { ok: boolean; rowDelta: number; colDelta: number } {
 	const rowDelta = Math.abs(a.rows - b.rows);
 	const colDelta = Math.abs(a.cols - b.cols);

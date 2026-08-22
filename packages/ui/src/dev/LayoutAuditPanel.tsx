@@ -2,11 +2,12 @@ import type { JSX } from "solid-js";
 import { For, Match, Show, Switch, createSignal } from "solid-js";
 import {
 	AUDIT_HEADINGS, AXIS_COL_TAUTOLOGY, AXIS_PASS_LABEL, CHILD_COUNT_CHANGED,
-	SCALE_FAIL_LABEL, SCALE_PASS_LABEL,
+	SCALE_FAIL_LABEL, SCALE_PASS_LABEL, SCALE_TOLERANCE_CELLS,
 	judgeAxis, judgeDrift, judgeFloor, judgeScaleInvariance,
 	type AxisProbe, type AxisVerdict, type DriftSample, type FloorVerdict,
 } from "./layoutAudit.ts";
 import { contentRowSpan, contentColSpan, headerColSpan, unitPx } from "../shell/panelCanvas.ts";
+import { withScale } from "../shell/scale.ts";
 
 export interface CardReport {
 	id: string;
@@ -54,7 +55,7 @@ function probeAt<T>(el: HTMLElement, axis: "row" | "col", px: number, read: () =
 	const prop = axis === "row" ? "height" : "width";
 	const previous = el.style.getPropertyValue(prop);
 	try {
-		el.style.setProperty(prop, `${px}px`);
+		el.style.setProperty(prop, `${px}px`); // px-ok: the probe forces a pixel size — that is what invariant A tests
 		// Reading a layout property flushes pending style and layout, so the
 		// measurement below sees the forced size. No ResizeObserver involved:
 		// observers do not fire in automated or background tabs at all.
@@ -180,7 +181,7 @@ export function LayoutAuditPanel(props: {
 				<div class="layout-audit-bar">
 					<button class="lab-pill" onClick={run}>Run layout audit</button>
 					<span class="lab-note">
-						unit {unitPx()}px
+						unit {unitPx()}px{/* px-ok: readout text, not a length */}
 					</span>
 				</div>
 			</Show>
@@ -539,19 +540,31 @@ function twoAnimationFrames(): Promise<void> {
 }
 
 /**
- * Measure one card's floor at one scale step. Sets the attribute, waits for
- * the restyle to land, reads the same two functions the resize stop and the
- * floor audit read — never a second copy of that arithmetic — and leaves the
- * attribute exactly as this call set it. Restoring the ORIGINAL scale is the
- * sweep's job, once, after every card and step are done; not this function's,
- * after every single measurement.
+ * Measure one card's floor at one scale step. Waits for the restyle to land,
+ * then reads the same two functions the resize stop and the floor audit read
+ * — never a second copy of that arithmetic.
+ *
+ * The attribute is driven through shell/scale.ts's `withScale`, not written
+ * here: that is the one sanctioned transient writer of `data-scale`, and it
+ * restores what it found in a `finally`. This panel used to setAttribute
+ * directly, which made setScale's "written from one place" claim false — and
+ * left the restore to a single outer `finally` several hundred lines away.
+ *
+ * The probe is collected through an array rather than a `let` so the
+ * assignment inside the callback is visible to the type checker: an
+ * unmeasured card must be a thrown error, not a silent zero.
  */
 async function measureAtScale(cardEl: HTMLElement, step: ScaleStep): Promise<ScaleProbe> {
-	document.documentElement.setAttribute("data-scale", step);
-	await twoAnimationFrames();
-	const gutterRow = parseFloat(getComputedStyle(cardEl).marginBottom) || 0;
-	const gutterCol = parseFloat(getComputedStyle(cardEl).marginRight) || 0;
-	return { rows: contentRowSpan(cardEl, gutterRow), cols: contentColSpan(cardEl, gutterCol) };
+	const measured: ScaleProbe[] = [];
+	await withScale(step, async () => {
+		await twoAnimationFrames();
+		const gutterRow = parseFloat(getComputedStyle(cardEl).marginBottom) || 0;
+		const gutterCol = parseFloat(getComputedStyle(cardEl).marginRight) || 0;
+		measured.push({ rows: contentRowSpan(cardEl, gutterRow), cols: contentColSpan(cardEl, gutterCol) });
+	});
+	const probe = measured[0];
+	if (probe === undefined) throw new Error(`scale ${step}: the probe never ran`);
+	return probe;
 }
 
 export interface ScaleSweepReport {
@@ -595,10 +608,11 @@ export function ScaleSweepAll(props: {
 	const [busy, setBusy] = createSignal(false);
 
 	const sweep = async (): Promise<void> => {
-		// Captured before the loop touches anything, so both can be restored
-		// whether the sweep finishes cleanly or throws partway through.
+		// Captured before the loop touches anything, so it can be restored
+		// whether the sweep finishes cleanly or throws partway through. The
+		// SCALE needs no capture here: every measurement goes through
+		// withScale, which restores the attribute it found around each step.
 		const beforeId = props.current();
-		const beforeScale = document.documentElement.getAttribute("data-scale");
 		setBusy(true);
 		setRows([]);
 		try {
@@ -637,11 +651,10 @@ export function ScaleSweepAll(props: {
 			};
 			setRows([...out].sort((a, b) => rank(b) - rank(a)));
 		} finally {
-			// Runs on the happy path AND on a throw: the lab's scale and its
-			// featured card both go back to what the user had, and the button
-			// never sticks on "Sweeping…".
-			if (beforeScale === null) document.documentElement.removeAttribute("data-scale");
-			else document.documentElement.setAttribute("data-scale", beforeScale);
+			// Runs on the happy path AND on a throw: the lab's featured card goes
+			// back to what the user had, and the button never sticks on
+			// "Sweeping…". The scale is already back — withScale put it back
+			// around every step it set.
 			props.feature(beforeId);
 			setBusy(false);
 		}
@@ -701,8 +714,8 @@ export function ScaleSweepAll(props: {
 												<td>{r().rows["150"]}</td>
 												<td>{r().cols["075"]}</td>
 												<td>{r().cols["150"]}</td>
-												<td classList={{ bad: r().verdict.rowDelta > 1 }}>{r().verdict.rowDelta}</td>
-												<td classList={{ bad: r().verdict.colDelta > 1 }}>{r().verdict.colDelta}</td>
+												<td classList={{ bad: r().verdict.rowDelta > SCALE_TOLERANCE_CELLS }}>{r().verdict.rowDelta}</td>
+												<td classList={{ bad: r().verdict.colDelta > SCALE_TOLERANCE_CELLS }}>{r().verdict.colDelta}</td>
 												<td classList={{ bad: !r().verdict.ok }}>
 													<Show when={r().verdict.ok} fallback={SCALE_FAIL_LABEL}>{SCALE_PASS_LABEL}</Show>
 												</td>

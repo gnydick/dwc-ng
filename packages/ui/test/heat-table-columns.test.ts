@@ -206,13 +206,28 @@ test("the Deselect row does NOT wrap — content inside a card must not move", (
  * match - and they stopped matching at a different density, where one card's
  * rows were driven by --ctl-h and the other's by a control that had opted out
  * of it. Agreement has to be structural: ONE declaration, subtracted from.
+ *
+ * STATED AS AN ALLOWLIST, not a denylist. It used to look for `width: <n>px`
+ * — the one spelling that had already been fixed — so `width: calc(40 *
+ * var(--u))` or `width: 12ch` would both have sailed through it while being
+ * exactly the second set of numbers the test exists to forbid. The rule is
+ * "a column width IS a --tool-col-* token", so anything else fails.
  */
 test("tool column widths come from tokens, not from literals", () => {
 	const widths = columnWidths(base);
 	assert.ok(widths.size > 0, "no column rules found");
-	const literal = /\.heat-table \.col-([a-z]+)\s*\{[^}]*width:\s*\d+px/g;
-	const offenders = [...base.matchAll(literal)].map(m => m[1]!);
-	assert.deepEqual(offenders, [], "these columns hard-code a width instead of naming a token");
+	const rules = /\.heat-table \.col-([a-z-]+)\s*\{([^}]*)\}/g;
+	const offenders: string[] = [];
+	for (const rule of base.matchAll(rules)) {
+		for (const decl of rule[2]!.split(";")) {
+			const value = /^\s*width\s*:\s*(\S[^;]*)$/.exec(decl)?.[1];
+			if (value === undefined) continue;
+			if (!/^var\(\s*--tool-col-[a-z-]+\s*\)$/.test(value.trim())) {
+				offenders.push(`col-${rule[1]}: width: ${value.trim()}`);
+			}
+		}
+	}
+	assert.deepEqual(offenders, [], "these columns set a width that is not a --tool-col-* token");
 });
 
 test("every tool column token has exactly one BASE declaration", () => {

@@ -30,14 +30,14 @@ export interface Scale {
 /** Smallest first. The stylesheet is the authority on what a step IS; this
  *  list is the authority on which exist. An id with no CSS block renders as
  *  the default — it cannot render as something broken. */
-export const SCALES: Scale[] = [
+export const SCALES: readonly Scale[] = [
 	{ id: "075", factor: 0.75, label: "75" },
 	{ id: "0875", factor: 0.875, label: "88" },
 	{ id: "100", factor: 1, label: "100" },
 	{ id: "1125", factor: 1.125, label: "113" },
 	{ id: "125", factor: 1.25, label: "125" },
 	{ id: "150", factor: 1.5, label: "150" },
-];
+] as const;
 
 export const DEFAULT_SCALE = "100";
 
@@ -76,8 +76,10 @@ function load(): string {
 const [scale, setScaleSignal] = createSignal<string>(load());
 export { scale };
 
-/** Attribute, signal and storage written from one place, so the document
- *  cannot disagree with the control. */
+/** THE PREFERENCE is written from one place — attribute, signal and storage
+ *  together — so the document cannot disagree with the control. `withScale`
+ *  below is the one sanctioned transient writer of the attribute alone, for
+ *  the Card Lab sweep; nothing else may touch `data-scale`. */
 export function setScale(id: string): void {
 	const next = parseScale(id);
 	setScaleSignal(next);
@@ -89,6 +91,44 @@ export function setScale(id: string): void {
 		localStorage.setItem(KEY, next);
 	} catch {
 		// Private mode / quota: the choice just won't survive a reload.
+	}
+}
+
+/**
+ * Draw at `step` for the duration of `fn`, then put the document back.
+ *
+ * DEV ONLY — the Card Lab's scale sweep (dev/LayoutAuditPanel.tsx) has to
+ * render every card at 0.75 and 1.5 to measure it, which means writing the
+ * attribute without changing the operator's preference. That is the ONE
+ * legitimate exception to "setScale is the only writer", and it exists here,
+ * beside the rule, rather than as a bare setAttribute in the panel where the
+ * rule cannot see it.
+ *
+ * Deliberately writes NEITHER the signal NOR storage: a sweep is not a
+ * choice. Everything that reads the preference (the control, a reload) keeps
+ * reading what the operator picked, while the document draws at the step
+ * being measured. The restore is in a `finally` and restores the ATTRIBUTE AS
+ * FOUND — including "absent", which is what scale 100 is — so a throw
+ * mid-sweep cannot strand the UI on 150.
+ *
+ * `step` is a raw id, not run through parseScale: the sweep names steps that
+ * must exist, and silently substituting the default would make a missing CSS
+ * block look like a passing measurement.
+ */
+export async function withScale(step: string | null, fn: () => Promise<void>): Promise<void> {
+	if (typeof document === "undefined") {
+		await fn();
+		return;
+	}
+	const root = document.documentElement;
+	const before = root.getAttribute("data-scale");
+	if (step === null) root.removeAttribute("data-scale");
+	else root.setAttribute("data-scale", step);
+	try {
+		await fn();
+	} finally {
+		if (before === null) root.removeAttribute("data-scale");
+		else root.setAttribute("data-scale", before);
 	}
 }
 

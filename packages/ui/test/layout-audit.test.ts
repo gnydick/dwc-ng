@@ -78,8 +78,10 @@ test("judgeDrift: a differing child count is a violation, not a crash", () => {
 
 /**
  * THE CHECK INVARIANT A CANNOT MAKE. Every number below is a real measurement
- * taken in Chrome on 2026-07-30 against this worktree at the default pitch
- * (--row-unit: 4px), driven through the Card Lab bench.
+ * taken in Chrome on 2026-07-30 against this worktree at the default scale
+ * (--u: 4px — the token was called --row-unit when these were measured; same
+ * 4px, renamed by the global unit migration), driven through the Card Lab
+ * bench.
  *
  * The four fixtures marked BROKEN are the four cards the floor table records as
  * defective, and A reported "ok" on every one of them. If judgeFloor stops
