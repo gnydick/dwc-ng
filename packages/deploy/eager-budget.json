@@ -1,4 +1,4 @@
 {
-  "maxEagerBytes": 410624,
-  "note": "401 KiB. Seeded 2026-08-03 from a measured 401,859 B, leaving ~8.5 KB of headroom so a content-hash reshuffle does not trip it. RAW bytes, because DSF's Kestrel serves uncompressed. Raising this is a deliberate commit, not a fix."
+  "maxEagerBytes": 423424,
+  "note": "413.5 KiB. Raised 2026-08-21 from 410,624 for global unit scaling: measured main 406,415 B -> branch 414,690 B, +8,275 B, all of it the stylesheet (calc(n * var(--u)) is longer than a px literal, ~870 times). Same ~8.5 KB headroom as the 2026-08-03 seed (401,859 B). RAW bytes, because DSF's Kestrel serves uncompressed. Raising this is a deliberate commit, not a fix."
 }
