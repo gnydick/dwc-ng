@@ -807,7 +807,7 @@ in the diff that drops it.
 
 **Debt — promotion.** the test reads the stylesheet as text. Rung 6 is emitting these widths from the same table definition the component renders from, so a column and its width are one fact rather than two that agree. The Tools card renders the same table without the control columns, so Current is the second cell rather than the fourth. Under role classes that fact needs no restatement of any OTHER column's width — which is what the positional version got wrong. 152 + 58 = 210.
 
-`packages/ui/src/app.css:759`
+`packages/ui/src/app.css:765`
 
 ### `ui/heavy-libraries-stay-behind-a-dynamic-import` — rung 4
 
@@ -827,7 +827,7 @@ in the diff that drops it.
 
 **Debt — promotion.** the scan is a brace walker over text, so it sees source order but not cascade subtleties (:is(), layers, differing specificity within a selector list). Rung 6 is generating the breakpoint blocks from one typed source, so ordering stops being something an author controls at all. (The palette entry's narrow-width rules are NOT here — they live in a second max-width block directly after the desktop ones further down.)
 
-`packages/ui/src/app.css:1385`
+`packages/ui/src/app.css:1402`
 
 ## util
 

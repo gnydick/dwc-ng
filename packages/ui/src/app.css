@@ -14,7 +14,7 @@
 /* ---------- rail ---------- */
 
 .rail {
-	border-right: 1px solid var(--hairline);
+	box-shadow: inset -1px 0 0 var(--hairline);
 	/* Tight right gutter — the nav text no longer floats far off the divider. */
 	padding: var(--sp-rail-py) 6px var(--sp-rail-py) 12px;
 	display: flex;
@@ -134,12 +134,12 @@
 	letter-spacing: 0.1em;
 	text-transform: uppercase;
 	color: var(--silk-dim);
-	border: 1px solid var(--hairline);
+	box-shadow: inset 0 0 0 1px var(--hairline);
 	border-radius: var(--radius);
 	padding: var(--sp-input-py) 12px;
 }
 .ghost-btn:hover { color: var(--silk); background: var(--mask-700); }
-.ghost-btn[aria-pressed="true"] { color: var(--accent-bright); border-color: var(--accent); }
+.ghost-btn[aria-pressed="true"] { color: var(--accent-bright); box-shadow: inset 0 0 0 1px var(--accent); }
 
 .estop {
 	font-family: var(--font-display);
@@ -177,7 +177,7 @@
 	/* Slimmer header + smaller gap to the cards — the top gutter was eating a
 	   lot of vertical space above the first row. */
 	padding: var(--sp-pre-py) 0;
-	border-bottom: 1px solid var(--hairline);
+	box-shadow: inset 0 -1px 0 var(--hairline);
 	margin-bottom: var(--sp-stack);
 	flex-wrap: wrap;
 }
@@ -191,19 +191,22 @@
 	font-size: calc(3.625 * var(--u));
 	letter-spacing: 0.12em;
 	text-transform: uppercase;
-	border: 1px solid var(--hairline);
+	box-shadow: inset 0 0 0 1px var(--hairline);
 	border-radius: 999px;
 	padding: var(--sp-chip-py) var(--sp-chip-px);
 	color: var(--silk-dim);
 }
 .chip .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
 
-.chip-ok    { color: var(--ok); border-color: rgba(111, 191, 143, 0.4); }
-.chip-warn  { color: var(--gold); border-color: rgba(201, 162, 39, 0.45); }
-.chip-hot   { color: var(--t-hot); border-color: rgba(239, 123, 69, 0.45); }
-.chip-fault { color: var(--fault); border-color: rgba(224, 92, 74, 0.5); }
-.chip-busy  { color: var(--accent-bright); border-color: rgba(217, 133, 59, 0.5); }
-.chip-quiet { border-style: dashed; }
+.chip-ok    { color: var(--ok); box-shadow: inset 0 0 0 1px rgba(111, 191, 143, 0.4); }
+.chip-warn  { color: var(--gold); box-shadow: inset 0 0 0 1px rgba(201, 162, 39, 0.45); }
+.chip-hot   { color: var(--t-hot); box-shadow: inset 0 0 0 1px rgba(239, 123, 69, 0.45); }
+.chip-fault { color: var(--fault); box-shadow: inset 0 0 0 1px rgba(224, 92, 74, 0.5); }
+.chip-busy  { color: var(--accent-bright); box-shadow: inset 0 0 0 1px rgba(217, 133, 59, 0.5); }
+/* NOT converted (Task 5): box-shadow can only draw a solid stroke, so the
+   dashed style has no zero-layout equivalent — a real border, replacing
+   (not layering on) .chip's box-shadow, 2px larger than a solid chip. */
+.chip-quiet { box-shadow: none; border: 1px dashed var(--hairline); }
 
 .wordmark {
 	font-family: var(--font-display);
@@ -238,7 +241,7 @@
    hidden). Fixed geometry so its appearance never reflows the chips. */
 .nav-reveal {
 	background: none;
-	border: 1px solid var(--hairline);
+	box-shadow: inset 0 0 0 1px var(--hairline);
 	color: var(--silk);
 	font-size: calc(4.5 * var(--u));
 	line-height: 1;
@@ -280,7 +283,7 @@
 
 .card {
 	background: var(--mask-700);
-	border: 1px solid var(--hairline);
+	box-shadow: inset 0 0 0 1px var(--hairline);
 	border-radius: var(--radius);
 	/* Deliberately NOT a density token: .card is only ever emitted with .panel
 	   (shell/Panel.tsx), and .card.panel below zeroes this. Tokenizing an
@@ -355,7 +358,7 @@
 
 .panel-grip {
 	background: var(--mask-700);
-	border: 1px solid var(--hairline);
+	box-shadow: inset 0 0 0 1px var(--hairline);
 	border-radius: 4px;
 	color: var(--silk-dim);
 	font-size: calc(3.25 * var(--u));
@@ -364,12 +367,12 @@
 	cursor: grab;
 	touch-action: none;
 }
-.panel-grip:hover { color: var(--silk); border-color: var(--accent); }
+.panel-grip:hover { color: var(--silk); box-shadow: inset 0 0 0 1px var(--accent); }
 .panel-grip:active { cursor: grabbing; }
 
 .panel-orientation-toggle {
 	background: var(--mask-700);
-	border: 1px solid var(--hairline);
+	box-shadow: inset 0 0 0 1px var(--hairline);
 	border-radius: 4px;
 	color: var(--silk-dim);
 	font-size: calc(3.25 * var(--u));
@@ -379,7 +382,7 @@
 	/* Always visible, like the grab handle beside it. Hover-only made the
 	   control undiscoverable — you had to already know it was there. */
 }
-.panel-orientation-toggle:hover { color: var(--silk); border-color: var(--accent); }
+.panel-orientation-toggle:hover { color: var(--silk); box-shadow: inset 0 0 0 1px var(--accent); }
 
 .panel-resize-grip {
 	position: absolute;
@@ -398,11 +401,10 @@
 	bottom: 4px;
 	width: 8px;
 	height: 8px;
-	border-right: 2px solid var(--silk-dim);
-	border-bottom: 2px solid var(--silk-dim);
+	box-shadow: inset -2px 0 0 var(--silk-dim), inset 0 -2px 0 var(--silk-dim);
 	opacity: 0.5;
 }
-.panel-resize-grip:hover::before { opacity: 1; border-color: var(--accent-bright); }
+.panel-resize-grip:hover::before { opacity: 1; box-shadow: inset -2px 0 0 var(--accent-bright), inset 0 -2px 0 var(--accent-bright); }
 
 /* Invisible until the card is hovered — then a soft glow at the qualifying
    edge(s) hints "more here," no button chrome. Still a real button underneath
@@ -464,7 +466,7 @@
 	font-size: calc(3.25 * var(--u));
 	letter-spacing: 0.08em;
 	color: var(--silk-dim);
-	border: 1px solid var(--hairline);
+	box-shadow: inset 0 0 0 1px var(--hairline);
 	border-radius: 3px;
 	padding: 1px 6px 0;
 	white-space: nowrap;
@@ -479,16 +481,16 @@
 	font-size: calc(3.25 * var(--u));
 	letter-spacing: 0.08em;
 	color: var(--silk-dim);
-	border: 1px solid var(--hairline);
+	box-shadow: inset 0 0 0 1px var(--hairline);
 	border-radius: 3px;
 	padding: 1px 6px 0;
 	white-space: nowrap;
 }
-.card-tip:hover { color: var(--silk); border-color: var(--accent); }
-.card-tip.copied { color: var(--ok); border-color: var(--ok); }
+.card-tip:hover { color: var(--silk); box-shadow: inset 0 0 0 1px var(--accent); }
+.card-tip.copied { color: var(--ok); box-shadow: inset 0 0 0 1px var(--ok); }
 /* A refused copy has to be visible, or a broken clipboard is indistinguishable
    from a dead button — which is exactly how this went unnoticed. */
-.card-tip.failed { color: var(--fault); border-color: var(--fault); }
+.card-tip.failed { color: var(--fault); box-shadow: inset 0 0 0 1px var(--fault); }
 
 /* ---------- DRO ---------- */
 
@@ -530,13 +532,13 @@
 	   column would shift the value on every toggle and misalign rows against
 	   each other. A fixed slot keeps the value's right edge rock-steady. */
 	align-items: baseline;
-	border-bottom: 1px solid var(--hairline);
+	box-shadow: inset 0 -1px 0 var(--hairline);
 	padding: var(--sp-row) 0;
 }
 /* Now actually reachable: the rows are the only children of .dro-list. As
    children of .panel-body the last row was followed by the speed footer, so
    this never matched and every row carried a rule, including the last. */
-.dro-row:last-child { border-bottom: none; }
+.dro-row:last-child { box-shadow: none; }
 
 .dro-axis {
 	font-family: var(--font-display);
@@ -626,7 +628,7 @@
 	gap: 14px;
 	margin-top: var(--sp-flow);
 	padding-top: var(--sp-flow);
-	border-top: 1px solid var(--hairline);
+	box-shadow: inset 0 1px 0 var(--hairline);
 }
 .speed-foot-tag {
 	font-family: var(--font-display);
@@ -662,6 +664,10 @@
 	appearance: none;
 	background: none;
 	border: none;
+	/* NOT converted to an inset box-shadow (Task 5): box-shadow can only draw a
+	   solid stroke, and this dotted underline is the affordance that reads as
+	   "toggle," not a rule — a solid line would lose that meaning. Left as a
+	   real border; still counted by the px lint as known, un-ratcheted debt. */
 	border-bottom: 1px dotted var(--accent);
 	padding: 0;
 	cursor: pointer;
@@ -784,14 +790,15 @@
 	width: calc(16 * var(--u));
 	padding: var(--sp-chip-py) 6px;
 	background: var(--mask-900);
-	border: 1px solid var(--hairline);
+	border: 0;
+	box-shadow: inset 0 0 0 1px var(--hairline);
 	border-radius: 4px;
 	color: var(--silk);
 	font: 600 calc(3.75 * var(--u))/1 var(--font-display);
 	font-variant-numeric: tabular-nums;
 	text-align: right;
 }
-.heat-input:focus-visible { outline: none; border-color: var(--accent); }
+.heat-input:focus-visible { outline: none; box-shadow: inset 0 0 0 1px var(--accent); }
 /* The in-row filament picker. Fills its fixed column and ellipsises a long
    material name rather than widening it — the columns are load-bearing. */
 .heat-fil {
@@ -830,10 +837,14 @@
 .heat-table th:first-child { text-align: left; }
 .heat-table td {
 	/* Derived, not chosen: whatever is left of the shared row pitch once the
-	   control and the rule are taken out, split top and bottom. This is what
-	   makes a table row exactly as tall as the Tools card's grid row. */
-	padding: calc((var(--tool-row-h) - var(--ctl-h) - 1px) / 2) 0;
-	border-top: 1px solid var(--hairline);
+	   control is taken out, split top and bottom. This is what makes a table
+	   row exactly as tall as the Tools card's grid row. The rule no longer
+	   takes a share of it (Task 5: the hairline is now an inset box-shadow,
+	   zero layout space) — subtracting a border pixel it no longer costs
+	   would leave the row 1px short of --tool-row-h, the exact kind of fixed
+	   drift term this migration exists to remove. */
+	padding: calc((var(--tool-row-h) - var(--ctl-h)) / 2) 0;
+	box-shadow: inset 0 1px 0 var(--hairline);
 	text-align: right;
 	/* MIDDLE, not baseline. Every cell now holds a fixed-height control rather
 	   than loose text, and an inline-flex control's baseline is its bottom
@@ -937,16 +948,16 @@
 	padding: 2px 6px;
 	margin: -2px -6px;
 	background: none;
-	border: 1px solid transparent;
+	box-shadow: inset 0 0 0 1px transparent;
 	border-radius: 4px;
 	cursor: pointer;
 	font: inherit;
 	letter-spacing: inherit;
 	text-transform: inherit;
 }
-.heat-reset:hover { border-color: rgba(224, 92, 74, 0.5); }
+.heat-reset:hover { box-shadow: inset 0 0 0 1px rgba(224, 92, 74, 0.5); }
 .heat-reset.armed {
-	border-color: var(--fault);
+	box-shadow: inset 0 0 0 1px var(--fault);
 	background: rgba(224, 92, 74, 0.14);
 	color: var(--silk);
 }
@@ -1082,7 +1093,7 @@
 	text-align: left;
 	white-space: nowrap;
 	padding: 0 22px 8px 0;
-	border-bottom: 1px solid var(--hairline);
+	box-shadow: inset 0 -1px 0 var(--hairline);
 }
 .sensor-h-table th .sensor-dot { margin-right: 7px; }
 .sensor-h-table td {
@@ -1116,7 +1127,7 @@
 	gap: 5px;
 	padding-bottom: var(--sp-flow);
 	margin-bottom: var(--sp-flow);
-	border-bottom: 1px solid var(--hairline);
+	box-shadow: inset 0 -1px 0 var(--hairline);
 	scrollbar-width: none;
 }
 .console-history::-webkit-scrollbar { display: none; }
@@ -1156,21 +1167,27 @@
 .lab-pill {
 	font-family: var(--font-display); font-weight: 600; font-size: calc(3.625 * var(--u));
 	letter-spacing: 0.04em; color: var(--silk-dim);
-	background: var(--mask-700); border: 1px solid var(--hairline); border-radius: var(--radius);
+	background: var(--mask-700); box-shadow: inset 0 0 0 1px var(--hairline); border-radius: var(--radius);
 	padding: 5px 11px;
 }
 .lab-pill:hover { color: var(--silk); }
-.lab-pill[aria-pressed="true"] { color: var(--accent-bright); border-color: var(--accent); background: rgba(217, 133, 59, 0.1); }
+.lab-pill[aria-pressed="true"] { color: var(--accent-bright); box-shadow: inset 0 0 0 1px var(--accent); background: rgba(217, 133, 59, 0.1); }
 .lab-note { font-size: calc(3.5 * var(--u)); color: var(--silk-dim); font-style: italic; }
-.lab-pill-custom { border-style: dashed; }
-.lab-pill-new { color: var(--ok); border-color: rgba(111, 191, 143, 0.5); }
+/* NOT converted (Task 5): box-shadow can only draw a solid stroke, so the
+   dashed style that marks a custom pill has no zero-layout equivalent. Dev-only
+   (card lab) — a real 1px border, replacing (not layering on) .lab-pill's
+   box-shadow, so a custom pill is 2px larger than its siblings rather than
+   double-ringed; that footprint mismatch is confined to this dev tool. */
+.lab-pill-custom { box-shadow: none; border: 1px dashed var(--hairline); }
+.lab-pill-new { color: var(--ok); box-shadow: inset 0 0 0 1px rgba(111, 191, 143, 0.5); }
 .lab-canvas { padding-bottom: 240px; }
 
 .console-form { display: flex; gap: 8px; flex: 0 0 auto; }
 .console-form input {
 	flex: 1;
 	background: var(--mask-900);
-	border: 1px solid var(--hairline);
+	border: 0;
+	box-shadow: inset 0 0 0 1px var(--hairline);
 	border-radius: var(--radius);
 	padding: var(--sp-input-py) 10px;
 }
@@ -1182,7 +1199,7 @@
 	letter-spacing: 0.1em;
 	text-transform: uppercase;
 	color: var(--accent-bright);
-	border: 1px solid var(--accent);
+	box-shadow: inset 0 0 0 1px var(--accent);
 	border-radius: var(--radius);
 	padding: var(--sp-input-py) 14px;
 }
@@ -1258,7 +1275,7 @@
 /* Rule BETWEEN rows. Keyed off adjacency, not :first-of-type — fields are
    <label> in one card and <div> in another, so :first-of-type gave the first
    row a stray border in some cards and not others. */
-.field + .field { border-top: 1px solid var(--hairline); }
+.field + .field { box-shadow: inset 0 1px 0 var(--hairline); }
 /* .hint is a block elsewhere (margin-bottom); inside a centred row that
    margin pushes the text off-centre. */
 .field .hint { margin: 0; }
@@ -1276,7 +1293,8 @@
 	flex: 1;
 	min-width: 0;
 	background: var(--mask-900);
-	border: 1px solid var(--hairline);
+	border: 0;
+	box-shadow: inset 0 0 0 1px var(--hairline);
 	border-radius: var(--radius);
 	padding: var(--sp-field) 10px;
 }
@@ -1374,8 +1392,7 @@
 	.rail {
 		flex-direction: row;
 		align-items: center;
-		border-right: none;
-		border-bottom: 1px solid var(--hairline);
+		box-shadow: inset 0 -1px 0 var(--hairline);
 		padding: 12px 16px;
 		overflow-x: auto;
 	}
@@ -1444,17 +1461,17 @@
 	text-transform: uppercase;
 	color: var(--silk);
 	background: var(--mask-500);
-	border: 1px solid var(--hairline);
+	box-shadow: inset 0 0 0 1px var(--hairline);
 	border-radius: var(--radius);
 	padding: 9px 16px;
 	cursor: pointer;
 }
-.btn:hover { border-color: var(--accent); color: var(--accent-bright); }
-.btn:disabled { opacity: 0.4; cursor: not-allowed; border-color: var(--hairline); color: var(--silk-dim); }
-.btn-go { background: rgba(111, 191, 143, 0.14); border-color: rgba(111, 191, 143, 0.45); color: var(--ok); }
-.btn-go:hover:not(:disabled) { background: rgba(111, 191, 143, 0.24); border-color: var(--ok); color: var(--ok); }
-.btn-danger { color: var(--fault); border-color: rgba(224, 92, 74, 0.4); }
-.btn-danger:hover { background: rgba(224, 92, 74, 0.16); border-color: var(--fault); color: var(--fault); }
+.btn:hover { box-shadow: inset 0 0 0 1px var(--accent); color: var(--accent-bright); }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: inset 0 0 0 1px var(--hairline); color: var(--silk-dim); }
+.btn-go { background: rgba(111, 191, 143, 0.14); box-shadow: inset 0 0 0 1px rgba(111, 191, 143, 0.45); color: var(--ok); }
+.btn-go:hover:not(:disabled) { background: rgba(111, 191, 143, 0.24); box-shadow: inset 0 0 0 1px var(--ok); color: var(--ok); }
+.btn-danger { color: var(--fault); box-shadow: inset 0 0 0 1px rgba(224, 92, 74, 0.4); }
+.btn-danger:hover { background: rgba(224, 92, 74, 0.16); box-shadow: inset 0 0 0 1px var(--fault); color: var(--fault); }
 .btn-row { display: flex; gap: 10px; align-items: center; margin-top: 14px; }
 /* "Pause" and "Resume" are different widths; without a reserved slot the
    destructive Cancel button next to it slides when the job changes state. */
@@ -1528,12 +1545,13 @@
 	grid-auto-flow: column;
 	grid-auto-columns: auto;
 	align-items: center; gap: 10px;
-	background: none; border: none; border-bottom: 1px solid var(--hairline);
+	background: none;
+	box-shadow: inset 0 -1px 0 var(--hairline);
 	padding: var(--sp-list) 6px; cursor: pointer; text-align: left; color: var(--silk);
 	font: 400 calc(4 * var(--u))/1.2 system-ui, sans-serif;
 }
 .file-row:hover { background: var(--mask-500); }
-.file-row.selected { background: var(--mask-500); box-shadow: inset 3px 0 0 var(--accent); }
+.file-row.selected { background: var(--mask-500); box-shadow: inset 0 -1px 0 var(--hairline), inset 3px 0 0 var(--accent); }
 .file-icon { color: var(--silk-dim); font-size: calc(3.5 * var(--u)); width: 14px; text-align: center; }
 .file-row.dir .file-icon { color: var(--accent); }
 .file-row.dir .file-name { color: var(--accent-bright); }
@@ -1547,7 +1565,7 @@
 
 .detail-body { display: grid; grid-template-columns: 160px 1fr; gap: 18px; align-items: start; }
 .thumb-frame {
-	width: 160px; height: 160px; border: 1px solid var(--hairline); border-radius: var(--radius);
+	width: 160px; height: 160px; box-shadow: inset 0 0 0 1px var(--hairline); border-radius: var(--radius);
 	background: var(--mask-900); display: flex; align-items: center; justify-content: center; overflow: hidden;
 	background-image: linear-gradient(45deg, var(--mask-700) 25%, transparent 25%), linear-gradient(-45deg, var(--mask-700) 25%, transparent 25%),
 		linear-gradient(45deg, transparent 75%, var(--mask-700) 75%), linear-gradient(-45deg, transparent 75%, var(--mask-700) 75%);
@@ -1574,7 +1592,7 @@
 /* flex-shrink:0 is load-bearing: in a card too short for its content the bar
    is the only child with no intrinsic text height, so it collapses to ~1px
    and the print silently looks like it has no progress at all. */
-.progress { position: relative; height: 22px; flex: 0 0 22px; min-height: 22px; background: var(--mask-900); border-radius: var(--radius); overflow: hidden; margin: 4px 0 12px; border: 1px solid var(--hairline); }
+.progress { position: relative; height: 22px; flex: 0 0 22px; min-height: 22px; background: var(--mask-900); border-radius: var(--radius); overflow: hidden; margin: 4px 0 12px; box-shadow: inset 0 0 0 1px var(--hairline); }
 .progress-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-bright)); transition: width 0.4s ease; }
 .progress-label { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font: 600 calc(3.5 * var(--u))/1 "Rajdhani", sans-serif; color: var(--silk); }
 .job-active-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
@@ -1645,9 +1663,9 @@
 .gcode-viewer-modes-travel { top: 64px; right: 8px; }
 .gcode-viewer-modes .mode-btn {
 	font-size: calc(3.25 * var(--u)); padding: 4px 8px; border-radius: var(--radius);
-	border: 1px solid var(--hairline); background: var(--mask-700); color: var(--silk-dim);
+	box-shadow: inset 0 0 0 1px var(--hairline); background: var(--mask-700); color: var(--silk-dim);
 }
-.gcode-viewer-modes .mode-btn.active { color: var(--silk); border-color: var(--accent); }
+.gcode-viewer-modes .mode-btn.active { color: var(--silk); box-shadow: inset 0 0 0 1px var(--accent); }
 .gcode-viewer-modes .mode-btn:disabled { opacity: 0.35; cursor: not-allowed; }
 .gcode-overlay {
 	position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
@@ -1671,7 +1689,8 @@
 	height: var(--ctl-h);
 	flex: none;
 	padding: 0;
-	border: 1px solid var(--hairline);
+	border: 0;
+	box-shadow: inset 0 0 0 1px var(--hairline);
 	border-radius: var(--radius);
 	background: none;
 	cursor: pointer;
@@ -1679,7 +1698,7 @@
 .color-swatch::-webkit-color-swatch-wrapper { padding: 2px; }
 .color-swatch::-webkit-color-swatch { border: none; border-radius: 3px; }
 .color-swatch::-moz-color-swatch { border: none; border-radius: 3px; }
-.color-swatch:hover { border-color: var(--accent); }
+.color-swatch:hover { box-shadow: inset 0 0 0 1px var(--accent); }
 
 /* Reserved width + tabular so "#6e8ca8" and "#fff" don't move the row. */
 .color-hex {
@@ -1730,7 +1749,7 @@
 
    Carries NO scale token itself, on purpose — the control you use to escape
    a scale you dislike must not shrink along with it. */
-.scale-toggle { display: inline-flex; border: 1px solid var(--hairline); border-radius: var(--radius); overflow: hidden; }
+.scale-toggle { display: inline-flex; box-shadow: inset 0 0 0 1px var(--hairline); border-radius: var(--radius); overflow: hidden; }
 .scale-opt {
 	font-family: var(--font-display); font-weight: 600; font-size: 13.5px; /* px-ok: hit target — must not follow the scale it controls */
 	letter-spacing: 0.06em;
@@ -1738,17 +1757,17 @@
 	padding: 6px 9px; cursor: pointer;
 	font-variant-numeric: tabular-nums;
 }
-.scale-opt + .scale-opt { border-left: 1px solid var(--hairline); }
+.scale-opt + .scale-opt { box-shadow: inset 1px 0 0 var(--hairline); }
 .scale-opt:hover { color: var(--silk); background: var(--mask-700); }
 .scale-opt.active { color: var(--mask-900); background: var(--accent); }
 
 /* ---------- dev Mock/Real backend toggle ---------- */
-.backend-toggle { display: inline-flex; border: 1px solid var(--hairline); border-radius: var(--radius); overflow: hidden; }
+.backend-toggle { display: inline-flex; box-shadow: inset 0 0 0 1px var(--hairline); border-radius: var(--radius); overflow: hidden; }
 .backend-opt {
 	font-family: var(--font-display); font-weight: 600; font-size: calc(3.375 * var(--u)); letter-spacing: 0.08em; text-transform: uppercase;
 	color: var(--silk-dim); background: none; border: none; padding: 6px 11px; cursor: pointer;
 }
-.backend-opt + .backend-opt { border-left: 1px solid var(--hairline); }
+.backend-opt + .backend-opt { box-shadow: inset 1px 0 0 var(--hairline); }
 .backend-opt:hover:not(:disabled) { color: var(--silk); background: var(--mask-700); }
 .backend-opt.active { color: var(--mask-900); background: var(--accent); }
 /* Real selected is a hazard state, not a neutral choice — make it unmissable. */
@@ -1760,12 +1779,12 @@
 .arm-btn {
 	font: 600 calc(3.25 * var(--u))/1 var(--font-display); letter-spacing: 0.08em; text-transform: uppercase;
 	color: var(--silk-dim); background: var(--mask-500);
-	border: 1px solid var(--hairline); border-radius: var(--radius);
+	box-shadow: inset 0 0 0 1px var(--hairline); border-radius: var(--radius);
 	padding: 7px 10px; cursor: pointer; white-space: nowrap;
 	min-width: 116px; text-align: center;
 }
-.arm-btn:hover { color: var(--silk); border-color: var(--accent); }
-.arm-btn.armed { color: #fff; background: var(--fault); border-color: var(--fault); }
+.arm-btn:hover { color: var(--silk); box-shadow: inset 0 0 0 1px var(--accent); }
+.arm-btn.armed { color: #fff; background: var(--fault); box-shadow: inset 0 0 0 1px var(--fault); }
 
 /* ---------- temperature chart ---------- */
 /* A canvas reports its BITMAP width as intrinsic content, so uPlot's last draw
@@ -1911,29 +1930,36 @@
 	display: inline-flex; flex-direction: row; align-items: center; gap: 8px;
 	height: var(--ctl-h); box-sizing: border-box;
 	background: linear-gradient(180deg, var(--face-hi) 0%, var(--face-lo) 100%);
-	border: 1px solid rgba(233, 238, 244, 0.22);
-	box-shadow: inset 0 1px 0 rgba(233, 238, 244, 0.07), 0 1px 2px rgba(0, 0, 0, 0.32);
+	/* The ring colour is a custom property, not a literal in the box-shadow
+	   list: every state below (hover, go/danger, is-pending, is-sent…) used to
+	   override border-color, a property independent of box-shadow. Now that the
+	   ring itself IS a box-shadow layer (zero layout space), only overriding
+	   this variable — not restating the whole box-shadow — reproduces that same
+	   independence, so a state that also replaces box-shadow wholesale
+	   (:active, is-engaged) still shows whatever ring colour currently applies. */
+	--gcode-border: rgba(233, 238, 244, 0.22);
+	box-shadow: inset 0 1px 0 rgba(233, 238, 244, 0.07), 0 1px 2px rgba(0, 0, 0, 0.32), inset 0 0 0 1px var(--gcode-border);
 	border-radius: var(--radius);
 	padding: 0 10px; cursor: pointer; color: var(--silk); text-align: left;
 	white-space: nowrap;
 	transition: background 90ms ease, border-color 90ms ease, transform 60ms ease, box-shadow 90ms ease;
 }
-.gcode-btn:hover:not(:disabled) { border-color: var(--accent); background: linear-gradient(180deg, var(--face-hi-hover) 0%, var(--face-lo-hover) 100%); }
+.gcode-btn:hover:not(:disabled) { --gcode-border: var(--accent); background: linear-gradient(180deg, var(--face-hi-hover) 0%, var(--face-lo-hover) 100%); }
 .gcode-btn:focus-visible { outline: 2px solid var(--accent-bright); outline-offset: 2px; }
 .gcode-btn:active:not(:disabled) {
 	transform: translateY(1px);
-	box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.45);
+	box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.45), inset 0 0 0 1px var(--gcode-border);
 	background: linear-gradient(180deg, var(--face-lo) 0%, var(--face-hi) 100%);
 }
-.gcode-btn:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: none; }
+.gcode-btn:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: inset 0 0 0 1px var(--gcode-border); }
 .gcode-label { font: 600 calc(3.625 * var(--u))/1 var(--font-display); letter-spacing: 0.04em; text-transform: uppercase; }
 .gcode-cmd {
 	font: 400 calc(3.125 * var(--u))/1 ui-monospace, "Cascadia Code", "SF Mono", Menlo, Consolas, monospace;
 	color: var(--silk-dim); white-space: nowrap; opacity: 0.75;
 }
-.gcode-go { border-color: rgba(111, 191, 143, 0.55); }
+.gcode-go { --gcode-border: rgba(111, 191, 143, 0.55); }
 .gcode-go .gcode-label { color: var(--ok); }
-.gcode-danger { border-color: rgba(224, 92, 74, 0.5); }
+.gcode-danger { --gcode-border: rgba(224, 92, 74, 0.5); }
 .gcode-danger .gcode-label { color: var(--fault); }
 .gcode-quiet .gcode-label { color: var(--silk-dim); }
 
@@ -1961,7 +1987,7 @@
 .gcode-btn.is-engaged:hover:not(:disabled),
 .gcode-btn.is-engaged:active:not(:disabled) {
 	background: var(--btn-accent);
-	border-color: var(--btn-accent);
+	--gcode-border: var(--btn-accent);
 }
 .gcode-btn.is-engaged {
 	box-shadow:
@@ -1990,7 +2016,7 @@
    and the label's move. The accent, not the send states' green/red: nothing has
    been attempted yet. */
 .is-pending .gcode-ack { background: var(--accent-bright); animation: ack-pulse 900ms ease-in-out infinite; }
-.gcode-btn.is-pending { border-color: var(--accent); }
+.gcode-btn.is-pending { --gcode-border: var(--accent); }
 .gcode-btn.is-pending .gcode-label { color: var(--accent-bright); }
 
 .is-sending .gcode-ack { background: var(--silk-dim); animation: ack-pulse 700ms ease-in-out infinite; }
@@ -2000,10 +2026,10 @@
    not there yet"; the green flash above is reserved for the press after which
    nothing is left to do. */
 .is-sent.ack-mode .gcode-ack { background: var(--accent-bright); box-shadow: 0 0 0 3px rgba(214, 138, 76, 0.28); }
-.gcode-btn.is-sent.ack-mode { border-color: var(--accent); }
+.gcode-btn.is-sent.ack-mode { --gcode-border: var(--accent); }
 .is-failed .gcode-ack { background: var(--fault); box-shadow: 0 0 0 3px rgba(224, 92, 74, 0.25); }
-.gcode-btn.is-sent { border-color: var(--ok); }
-.gcode-btn.is-failed { border-color: var(--fault); background: linear-gradient(180deg, var(--face-hi-fail) 0%, var(--face-lo-fail) 100%); }
+.gcode-btn.is-sent { --gcode-border: var(--ok); }
+.gcode-btn.is-failed { --gcode-border: var(--fault); background: linear-gradient(180deg, var(--face-hi-fail) 0%, var(--face-lo-fail) 100%); }
 
 @keyframes ack-pulse { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) {
@@ -2255,7 +2281,7 @@
    the same control cannot end up looking like two controls in two cards. The
    :not() keeps this rule from re-styling them by virtue of the wrapper. */
 .temp-field input:not(.heat-input), .feed-field input {
-	width: 66px; background: var(--mask-900); border: 1px solid var(--hairline); border-radius: 5px;
+	width: 66px; background: var(--mask-900); border: 0; box-shadow: inset 0 0 0 1px var(--hairline); border-radius: 5px;
 	color: var(--silk); padding: 6px 8px; font: 600 calc(4 * var(--u))/1 var(--font-display); font-variant-numeric: tabular-nums;
 }
 .deg { color: var(--silk-dim); font-size: calc(3.5 * var(--u)); }
@@ -2272,13 +2298,13 @@
    :first-child, so the row under the header carries no rule. */
 [data-panel-id="fans"] .heater-list:not(.horizontal) { gap: 0; }
 [data-panel-id="fans"] .heater-list:not(.horizontal) > .heater-ctl {
-	border-top: 1px solid var(--hairline);
+	box-shadow: inset 0 1px 0 var(--hairline);
 	/* --sp-cell either side. This is the spacing the other three list cards now
 	   take too, via --tool-row-h — see its definition. */
 	padding: var(--sp-cell) 0;
 }
 [data-panel-id="fans"] .heater-list:not(.horizontal) > .heater-ctl:first-child {
-	border-top: none;
+	box-shadow: none;
 	padding-top: 0;
 }
 .heater-list.horizontal { flex-direction: row; flex-wrap: nowrap; gap: 16px; }
@@ -2420,6 +2446,10 @@
 .pos-yn { grid-area: 3 / 2; }
 .jog-center {
 	grid-area: 2 / 2; display: flex; flex-direction: column; align-items: center; justify-content: center;
+	/* NOT converted (Task 5): box-shadow can only draw a solid stroke, no dashed
+	   equivalent exists. Also moot for the zero-layout invariant here — this box
+	   is a fixed 60x60 grid cell (.jog-xy's own explicit px tracks), so the 2px
+	   the border occupies cannot drift any card's floor. */
 	border: 1px dashed var(--hairline); border-radius: var(--radius);
 	font: 700 calc(4.75 * var(--u))/1 var(--font-display); color: var(--accent-bright); font-variant-numeric: tabular-nums;
 }
@@ -2428,11 +2458,11 @@
 .jog-aux { display: flex; flex-direction: column; gap: 6px; }
 .chip-btn {
 	font: 600 calc(3.5 * var(--u))/1 var(--font-display); text-transform: uppercase; letter-spacing: 0.03em;
-	color: var(--silk-dim); background: var(--mask-500); border: 1px solid var(--hairline); border-radius: 5px;
+	color: var(--silk-dim); background: var(--mask-500); box-shadow: inset 0 0 0 1px var(--hairline); border-radius: 5px;
 	padding: 6px 10px; cursor: pointer;
 }
 .chip-btn:hover { color: var(--silk); }
-.chip-btn.active { color: var(--mask-900); background: var(--accent); border-color: var(--accent); }
+.chip-btn.active { color: var(--mask-900); background: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
 .feed-field { color: var(--silk-dim); font-size: calc(3.5 * var(--u)); display: inline-flex; align-items: center; gap: 4px; }
 .jog-row .gcode-btn, .extrude-row .gcode-btn { padding: 7px 14px; }
 .jog-row .gcode-label { font-variant-numeric: tabular-nums; }
@@ -2541,18 +2571,18 @@
 .file-row .file-name:hover { color: var(--accent-bright); }
 .file-name.is-dir { color: var(--accent-bright); font-weight: 600; }
 .file-ico { color: var(--accent); margin-right: 8px; font-size: calc(3.25 * var(--u)); }
-.file-row.active { background: var(--mask-500); box-shadow: inset 3px 0 0 var(--accent); }
+.file-row.active { background: var(--mask-500); box-shadow: inset 0 -1px 0 var(--hairline), inset 3px 0 0 var(--accent); }
 .run-btn {
 	font: 600 calc(3.25 * var(--u))/1 var(--font-display); letter-spacing: 0.06em; text-transform: uppercase;
-	color: var(--silk-dim); background: var(--mask-700); border: 1px solid var(--hairline); border-radius: 5px;
+	color: var(--silk-dim); background: var(--mask-700); box-shadow: inset 0 0 0 1px var(--hairline); border-radius: 5px;
 	padding: 5px 10px; cursor: pointer; white-space: nowrap;
 	/* "▶ Run" (55px) and "Confirm" (66px) differ, and this is a two-step
 	   confirm — the button must not resize between the two clicks it asks for.
 	   Reserve the wider label so the target stays put. */
 	min-width: 72px;
 }
-.run-btn:hover { color: var(--ok); border-color: rgba(111, 191, 143, 0.5); }
-.run-btn.armed { color: var(--mask-900); background: var(--gold); border-color: var(--gold); }
+.run-btn:hover { color: var(--ok); box-shadow: inset 0 0 0 1px rgba(111, 191, 143, 0.5); }
+.run-btn.armed { color: var(--mask-900); background: var(--gold); box-shadow: inset 0 0 0 1px var(--gold); }
 
 /* The editor is a card now: its path is the card title (so, monospace and not
    letterspaced-uppercase like a normal title), and Revert/Save/Close live in
@@ -2581,9 +2611,9 @@
 }
 /* Header action buttons stay within the 28px header. */
 .card-actions .btn { padding: 3px 10px; font-size: calc(3.5 * var(--u)); }
-.btn.primary { background: rgba(217, 133, 59, 0.16); border-color: var(--accent); color: var(--accent-bright); }
+.btn.primary { background: rgba(217, 133, 59, 0.16); box-shadow: inset 0 0 0 1px var(--accent); color: var(--accent-bright); }
 .btn.primary:hover:not(:disabled) { background: rgba(217, 133, 59, 0.26); }
-.editor-host { position: relative; flex: 1; min-height: 0; border: 1px solid var(--hairline); border-radius: var(--radius); overflow: hidden; }
+.editor-host { position: relative; flex: 1; min-height: 0; box-shadow: inset 0 0 0 1px var(--hairline); border-radius: var(--radius); overflow: hidden; }
 .editor-mount { position: absolute; inset: 0; }
 .editor-mount .cm-editor { height: 100%; }
 .editor-overlay {
@@ -2595,10 +2625,10 @@
 /* ---------- System view + object-model inspector ---------- */
 .om-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
 .om-filter {
-	flex: 1; min-width: 0; background: var(--mask-900); border: 1px solid var(--hairline); border-radius: 5px;
+	flex: 1; min-width: 0; background: var(--mask-900); border: 0; box-shadow: inset 0 0 0 1px var(--hairline); border-radius: 5px;
 	color: var(--silk); padding: 7px 10px; font: 400 calc(3.75 * var(--u))/1 system-ui, sans-serif;
 }
-.om-filter:focus { outline: none; border-color: var(--accent); }
+.om-filter:focus { outline: none; box-shadow: inset 0 0 0 1px var(--accent); }
 .om-count { font: 600 calc(3.25 * var(--u))/1 var(--font-display); letter-spacing: 0.08em; text-transform: uppercase; color: var(--silk-dim); white-space: nowrap; }
 
 .om-tree, .om-children { list-style: none; margin: 0; padding: 0; }
@@ -2648,15 +2678,14 @@
 	width: min(520px, 100%);
 	box-sizing: border-box;
 	background: var(--mask-700);
-	border: 1px solid var(--accent);
 	border-radius: var(--radius);
-	box-shadow: 0 18px 48px rgba(0, 0, 0, 0.55);
+	box-shadow: 0 18px 48px rgba(0, 0, 0, 0.55), inset 0 0 0 1px var(--accent);
 	padding: 18px 20px 16px;
 	cursor: auto;
 }
 
 .mbox-head {
-	border-bottom: 1px solid var(--hairline);
+	box-shadow: inset 0 -1px 0 var(--hairline);
 	padding-bottom: 10px;
 	margin-bottom: 12px;
 	/* room for the stop button, which is anchored over this corner */
@@ -2695,7 +2724,8 @@
 	width: 100%;
 	box-sizing: border-box;
 	background: var(--mask-900);
-	border: 1px solid var(--hairline);
+	border: 0;
+	box-shadow: inset 0 0 0 1px var(--hairline);
 	border-radius: var(--radius);
 	color: var(--silk);
 	font: inherit;
@@ -2720,7 +2750,7 @@
 }
 .mbox-btn { min-width: 96px; }
 .mbox-default {
-	border-color: var(--accent);
+	box-shadow: inset 0 0 0 1px var(--accent);
 	color: var(--accent-bright);
 }
 
@@ -2747,20 +2777,20 @@
 }
 .fb-tool {
 	font: 600 calc(3.25 * var(--u))/1 var(--font-display); letter-spacing: 0.06em; text-transform: uppercase;
-	color: var(--silk-dim); background: var(--mask-700); border: 1px solid var(--hairline);
+	color: var(--silk-dim); background: var(--mask-700); box-shadow: inset 0 0 0 1px var(--hairline);
 	border-radius: 5px; padding: 6px 10px; cursor: pointer; white-space: nowrap;
 }
-.fb-tool:hover { color: var(--silk); border-color: rgba(233, 238, 244, 0.22); }
-.fb-tool.ok:not(:disabled) { color: var(--ok); border-color: rgba(111, 191, 143, 0.5); }
+.fb-tool:hover { color: var(--silk); box-shadow: inset 0 0 0 1px rgba(233, 238, 244, 0.22); }
+.fb-tool.ok:not(:disabled) { color: var(--ok); box-shadow: inset 0 0 0 1px rgba(111, 191, 143, 0.5); }
 .fb-tool:disabled { opacity: 0.4; cursor: not-allowed; }
 
 .fb-input {
 	font: 400 calc(3.75 * var(--u))/1 ui-monospace, "Cascadia Code", Consolas, monospace;
 	color: var(--silk); background: var(--mask-900);
-	border: 1px solid var(--hairline); border-radius: 5px; padding: 6px 8px; min-width: 0; width: 180px;
+	border: 0; box-shadow: inset 0 0 0 1px var(--hairline); border-radius: 5px; padding: 6px 8px; min-width: 0; width: 180px;
 }
 .fb-input.grow { flex: 1; width: auto; }
-.fb-input:focus { outline: none; border-color: var(--accent); }
+.fb-input:focus { outline: none; box-shadow: inset 0 0 0 1px var(--accent); }
 
 /* Always in the layout, only sometimes visible — an error must not reflow the
    list underneath it (uniformity/positional stability is a hard rule here). */
@@ -2774,17 +2804,17 @@
 
 .fb-act {
 	font: 600 calc(3.25 * var(--u))/1 var(--font-display); letter-spacing: 0.06em; text-transform: uppercase;
-	color: var(--silk-dim); background: var(--mask-700); border: 1px solid var(--hairline);
+	color: var(--silk-dim); background: var(--mask-700); box-shadow: inset 0 0 0 1px var(--hairline);
 	border-radius: 5px; padding: 5px 8px; cursor: pointer; white-space: nowrap;
 	/* "Delete" (46px) and "Confirm" (56px) differ; this is a two-step confirm,
 	   so the target must not move between the two clicks it asks for. */
 	min-width: 62px; text-align: center;
 }
-.fb-act:hover { color: var(--silk); border-color: rgba(233, 238, 244, 0.22); }
-.fb-act.ok:not(:disabled) { color: var(--ok); border-color: rgba(111, 191, 143, 0.5); }
+.fb-act:hover { color: var(--silk); box-shadow: inset 0 0 0 1px rgba(233, 238, 244, 0.22); }
+.fb-act.ok:not(:disabled) { color: var(--ok); box-shadow: inset 0 0 0 1px rgba(111, 191, 143, 0.5); }
 .fb-act:disabled { opacity: 0.4; cursor: not-allowed; }
-.fb-act.danger:hover { color: var(--fault); border-color: rgba(224, 92, 74, 0.5); }
-.fb-act.danger.armed { color: var(--mask-900); background: var(--fault); border-color: var(--fault); }
+.fb-act.danger:hover { color: var(--fault); box-shadow: inset 0 0 0 1px rgba(224, 92, 74, 0.5); }
+.fb-act.danger.armed { color: var(--mask-900); background: var(--fault); box-shadow: inset 0 0 0 1px var(--fault); }
 
 /* Upload: the native picker is hidden; the "↑ Upload" fb-tool opens it. */
 .fb-file-input { display: none; }
@@ -2797,7 +2827,7 @@
 
 /* ---------- firmware update (M997) ---------- */
 .fw-warn {
-	background: var(--mask-900); border: 1px solid var(--hairline); border-left: 3px solid var(--gold);
+	background: var(--mask-900); box-shadow: inset 0 0 0 1px var(--hairline), inset 3px 0 0 var(--gold);
 	border-radius: var(--radius); padding: 10px 12px; margin-bottom: 12px;
 	font-size: calc(3.625 * var(--u)); color: var(--silk-dim);
 }
@@ -2810,16 +2840,16 @@
 .fw-table { width: 100%; border-collapse: collapse; font-size: calc(3.75 * var(--u)); }
 .fw-table th {
 	text-align: left; font-size: calc(3.25 * var(--u)); text-transform: uppercase; letter-spacing: 0.04em;
-	color: var(--silk-dim); font-weight: 600; padding: 4px 8px; border-bottom: 1px solid var(--hairline);
+	color: var(--silk-dim); font-weight: 600; padding: 4px 8px; box-shadow: inset 0 -1px 0 var(--hairline);
 }
-.fw-table td { padding: 6px 8px; border-bottom: 1px solid var(--mask-900); }
+.fw-table td { padding: 6px 8px; box-shadow: inset 0 -1px 0 var(--mask-900); }
 .fw-table tr.fw-sel td { background: var(--mask-500); }
 .fw-board { color: var(--silk); font-weight: 600; }
 .fw-num { font-variant-numeric: tabular-nums; color: var(--silk); }
 .fw-file { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: calc(3.5 * var(--u)); color: var(--silk-dim); }
 .fw-check { accent-color: var(--accent); width: 15px; height: 15px; cursor: pointer; }
 .fw-actions { margin-top: 12px; }
-.btn-danger.armed { background: var(--fault); color: #fff; border-color: var(--fault); }
+.btn-danger.armed { background: var(--fault); color: #fff; box-shadow: inset 0 0 0 1px var(--fault); }
 /* Drop zone: an accent dashed outline while a file is dragged over the browser,
    so the target reads as a place to drop. Inset so it never shifts the rows. */
 .fb-dragging { outline: 2px dashed var(--accent); outline-offset: -4px; border-radius: var(--radius); }
@@ -2886,7 +2916,7 @@
 /* Set apart from the membership editing above it: this discards geometry. */
 .compose-reset {
 	justify-content: flex-end;
-	border-top: 1px solid var(--hairline);
+	box-shadow: inset 0 1px 0 var(--hairline);
 	padding-top: 8px;
 }
 
@@ -2940,9 +2970,9 @@
 .layout-toolbar { display: flex; gap: 10px; justify-content: flex-end; align-items: flex-start; }
 .compose-drawer {
 	position: absolute; right: 0; top: calc(100% + 6px); z-index: 40; width: 340px;
-	background: var(--mask-700); border: 1px solid var(--accent); border-radius: var(--radius);
+	background: var(--mask-700); border-radius: var(--radius);
 	padding: 12px; display: flex; flex-direction: column; gap: 10px;
-	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45), inset 0 0 0 1px var(--accent);
 	/* Never taller than the viewport: on short screens the tail sections
 	   (New screen, etc.) used to clip off-screen with no way to reach them. */
 	max-height: calc(100vh - 140px);
@@ -2961,7 +2991,7 @@
 .compose-cards {
 	display: grid; grid-template-columns: 1fr 1fr; gap: 2px 12px;
 	max-height: 300px; overflow-y: auto; scrollbar-width: none;
-	border-top: 1px solid var(--hairline); border-bottom: 1px solid var(--hairline); padding: 8px 0;
+	box-shadow: inset 0 1px 0 var(--hairline), inset 0 -1px 0 var(--hairline); padding: 8px 0;
 }
 .compose-card {
 	display: flex; align-items: center; gap: 7px; font-size: calc(3.625 * var(--u)); color: var(--silk);
@@ -2971,19 +3001,19 @@
 .compose-hidden { flex-wrap: wrap; }
 
 /* Card authoring (B2): the JSON editor inside the drawer. */
-.compose-custom-head { justify-content: space-between; border-top: 1px solid var(--hairline); padding-top: 8px; }
-.compose-custom-list { grid-template-columns: 1fr; border: none; padding: 0; }
+.compose-custom-head { justify-content: space-between; box-shadow: inset 0 1px 0 var(--hairline); padding-top: 8px; }
+.compose-custom-list { grid-template-columns: 1fr; box-shadow: none; padding: 0; }
 .compose-customrow { display: flex; align-items: center; gap: 6px; }
 .compose-customrow .compose-card { flex: 1; }
 .compose-editor { display: flex; flex-direction: column; gap: 8px; }
 .compose-json {
 	width: 100%; min-height: 220px; resize: vertical;
 	background: var(--mask-900); color: var(--silk);
-	border: 1px solid var(--hairline); border-radius: 5px; padding: 8px;
+	border: 0; box-shadow: inset 0 0 0 1px var(--hairline); border-radius: 5px; padding: 8px;
 	font: 400 calc(3.5 * var(--u))/1.5 ui-monospace, "Cascadia Code", Consolas, monospace;
 	tab-size: 2;
 }
-.compose-json:focus { outline: none; border-color: var(--accent); }
+.compose-json:focus { outline: none; box-shadow: inset 0 0 0 1px var(--accent); }
 
 /* ---------- card studio (B2.5): the GUI card editor ---------- */
 .studio-backdrop {
@@ -2993,16 +3023,16 @@
 }
 .studio {
 	width: min(1060px, 96vw); max-height: 92vh; overflow-y: auto; scrollbar-width: none;
-	background: var(--mask-700); border: 1px solid var(--accent); border-radius: var(--radius);
+	background: var(--mask-700); border-radius: var(--radius);
 	padding: 16px; display: flex; flex-direction: column; gap: 12px;
-	box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
+	box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55), inset 0 0 0 1px var(--accent);
 }
 .studio-head { display: flex; gap: 8px; align-items: center; }
 .studio-name { flex: 1; font-size: calc(4 * var(--u)); }
 .studio-body { display: grid; grid-template-columns: 1fr 380px; gap: 16px; align-items: start; }
 .studio-edit { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .studio-json { min-height: 340px; }
-.studio-sect { display: flex; align-items: center; gap: 10px; border-top: 1px solid var(--hairline); padding-top: 8px; }
+.studio-sect { display: flex; align-items: center; gap: 10px; box-shadow: inset 0 1px 0 var(--hairline); padding-top: 8px; }
 .studio-inputrow, .studio-itemrow { display: flex; gap: 6px; align-items: center; }
 .studio-inputrow .fb-input, .studio-itemrow .fb-input { min-width: 0; }
 .st-name { width: 90px; }
@@ -3017,6 +3047,8 @@
 .st-template { flex: 1; font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: calc(3.5 * var(--u)); }
 .st-variant { width: 90px; }
 .st-stamp { font-size: calc(3.5 * var(--u)); white-space: nowrap; }
+/* NOT converted (Task 5): box-shadow can only draw a solid stroke, no dashed
+   equivalent exists. */
 .studio-row { border: 1px dashed var(--hairline); border-radius: var(--radius); padding: 8px; display: flex; flex-direction: column; gap: 6px; }
 .studio-rowhead { display: flex; gap: 6px; align-items: center; }
 .st-inputref { color: var(--silk-dim); font-size: calc(3.625 * var(--u)); }
@@ -3039,6 +3071,8 @@
 	color: var(--accent-bright); white-space: pre-wrap; overflow-wrap: anywhere;
 }
 .import-label { color: var(--silk); font-size: calc(3.625 * var(--u)); min-width: 90px; }
+/* NOT converted (Task 5): box-shadow can only draw a solid stroke, no dashed
+   equivalent exists. */
 .import-embedded { border: 1px dashed var(--hairline); border-radius: var(--radius); padding: 8px; display: flex; flex-direction: column; gap: 6px; }
 
 /* Macros: AutoConfirm — visible wherever the Run buttons are, so the mode can
@@ -3062,7 +3096,7 @@
 	display: flex; flex-direction: column; gap: 8px; align-items: flex-start;
 	margin: 0 0 10px; padding: 10px;
 	background: rgba(224, 92, 74, 0.08);
-	border: 1px solid rgba(224, 92, 74, 0.35); border-radius: 6px;
+	box-shadow: inset 0 0 0 1px rgba(224, 92, 74, 0.35); border-radius: 6px;
 }
 .fb-warn-line { margin: 0; font: 400 calc(3.625 * var(--u))/1.45 var(--font-body); color: var(--silk); }
 .fb-warn-line b { color: var(--fault); font-weight: 600; }
@@ -3147,7 +3181,7 @@
    its top. The border is inside the element's box, so no ancestor clip can
    reach it, at any grid position; it also avoids the 1px bloom an outset ring
    added on snap (border-box unchanged → no reflow, no shift). */
-.card.at-limit { border-color: var(--accent); }
+.card.at-limit { box-shadow: inset 0 0 0 1px var(--accent); }
 
 /* Equal-width control grid. Used where labels vary in length and a ragged
    flex-wrap would leave no two buttons sharing a width or an edge. */
@@ -3219,7 +3253,6 @@
    modal mode buttons. */
 .fan-pin.is-engaged {
 	background: var(--accent-bright);
-	border-color: var(--accent-bright);
 	color: var(--mask-900);
 	box-shadow: 0 0 0 1px var(--accent-bright), 0 0 10px color-mix(in srgb, var(--accent-bright) 45%, transparent);
 }
@@ -3234,17 +3267,17 @@
 .pin-cmd {
 	flex: 1 1 auto; min-width: 0;
 	height: var(--ctl-h); box-sizing: border-box;
-	background: var(--mask-900); border: 1px solid var(--hairline); border-radius: 5px;
+	background: var(--mask-900); border: 0; box-shadow: inset 0 0 0 1px var(--hairline); border-radius: 5px;
 	color: var(--silk); padding: 0 8px;
 	font: 400 calc(3.5 * var(--u))/1 ui-monospace, "Cascadia Code", "SF Mono", Menlo, Consolas, monospace;
 }
-.pin-cmd:focus-visible { outline: none; border-color: var(--accent); }
+.pin-cmd:focus-visible { outline: none; box-shadow: inset 0 0 0 1px var(--accent); }
 /* An enabled row is being re-sent — its command reads as live. */
-.pin-row.on .pin-cmd { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 45%, var(--hairline)); }
+.pin-row.on .pin-cmd { color: var(--ok); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ok) 45%, var(--hairline)); }
 .pin-toggle { display: inline-flex; align-items: center; cursor: pointer; flex: 0 0 auto; }
 .pin-toggle input { position: absolute; opacity: 0; width: 0; height: 0; }
-.pin-dot { width: 12px; height: 12px; border-radius: 50%; border: 1px solid var(--silk-dim); background: transparent; box-sizing: border-box; }
-.pin-row.on .pin-dot { background: var(--ok); border-color: var(--ok); box-shadow: 0 0 8px color-mix(in srgb, var(--ok) 40%, transparent); }
+.pin-dot { width: 12px; height: 12px; border-radius: 50%; box-shadow: inset 0 0 0 1px var(--silk-dim); background: transparent; box-sizing: border-box; }
+.pin-row.on .pin-dot { background: var(--ok); box-shadow: inset 0 0 0 1px var(--ok), 0 0 8px color-mix(in srgb, var(--ok) 40%, transparent); }
 
 /* ---------- speed factor slider (M220) ---------- */
 .speed-row { display: flex; align-items: center; gap: 10px; height: var(--ctl-h); }
@@ -3272,22 +3305,22 @@
 }
 .speed-input::-webkit-slider-runnable-track {
 	height: 6px; border-radius: 3px;
-	background: var(--mask-900); border: 1px solid var(--hairline);
+	background: var(--mask-900); box-shadow: inset 0 0 0 1px var(--hairline);
 }
 .speed-input::-moz-range-track {
 	height: 6px; border-radius: 3px;
-	background: var(--mask-900); border: 1px solid var(--hairline);
+	background: var(--mask-900); box-shadow: inset 0 0 0 1px var(--hairline);
 }
 .speed-input::-webkit-slider-thumb {
 	-webkit-appearance: none;
 	width: 14px; height: 14px; border-radius: 50%;
-	background: var(--accent-bright); border: 1px solid var(--mask-900);
+	background: var(--accent-bright); box-shadow: inset 0 0 0 1px var(--mask-900);
 	margin-top: -5px; /* centre the 14px thumb on the 6px track */
 	cursor: grab;
 }
 .speed-input::-moz-range-thumb {
 	width: 14px; height: 14px; border-radius: 50%;
-	background: var(--accent-bright); border: 1px solid var(--mask-900);
+	background: var(--accent-bright); box-shadow: inset 0 0 0 1px var(--mask-900);
 	cursor: grab;
 }
 .speed-input:active::-webkit-slider-thumb { cursor: grabbing; }
@@ -3303,12 +3336,12 @@
 	width: 7px; height: 7px; padding: 0;
 	transform: translateX(-50%);
 	border-radius: 50%;
-	background: var(--mask-500); border: 1px solid var(--silk-dim);
+	background: var(--mask-500); box-shadow: inset 0 0 0 1px var(--silk-dim);
 	cursor: pointer; pointer-events: auto;
 }
-.speed-stop:hover { background: var(--accent); border-color: var(--accent-bright); }
+.speed-stop:hover { background: var(--accent); box-shadow: inset 0 0 0 1px var(--accent-bright); }
 /* The stop the machine is actually sitting on. */
-.speed-stop.current { background: var(--accent-bright); border-color: var(--accent-bright); }
+.speed-stop.current { background: var(--accent-bright); box-shadow: inset 0 0 0 1px var(--accent-bright); }
 
 .speed-value {
 	font: 600 calc(3.75 * var(--u))/1 var(--font-display); color: var(--silk);
@@ -3391,9 +3424,9 @@
 	grid-template-columns: subgrid;
 	align-items: center;
 	height: var(--tool-row-h);
-	border-top: 1px solid var(--hairline);
+	box-shadow: inset 0 1px 0 var(--hairline);
 }
-.filament-list > .filament-row:first-of-type { border-top: none; }
+.filament-list > .filament-row:first-of-type { box-shadow: none; }
 /* The head row's switch spans everything after the two All buttons and hugs
    the right edge — it governs the whole card, not the row it sits on. */
 .filament-head .filament-macros { grid-column: 3 / -1; justify-self: end; }
@@ -3446,7 +3479,7 @@
 .filament-pick {
 	height: var(--ctl-h); box-sizing: border-box;
 	background: var(--mask-900); color: var(--silk);
-	border: 1px solid var(--hairline); border-radius: 5px;
+	border: 0; box-shadow: inset 0 0 0 1px var(--hairline); border-radius: 5px;
 	padding: 0 6px; font: 400 calc(3.625 * var(--u))/1 var(--font-body); cursor: pointer;
 	/* NOT min-width: 0. A select that admits it can be zero wide tells the
 	   width detent (panelCanvas contentColSpan) that this card fits in almost
@@ -3461,7 +3494,7 @@
 	max-width: 200px;
 	flex: 1;
 }
-.filament-pick:focus-visible { outline: none; border-color: var(--accent); }
+.filament-pick:focus-visible { outline: none; box-shadow: inset 0 0 0 1px var(--accent); }
 .filament-loaded {
 	font: 600 calc(3.5 * var(--u))/1 var(--font-display); color: var(--accent-bright);
 	/* Flips between a name and an em dash on every load — reserved so the row
@@ -3484,7 +3517,7 @@
 	gap: 8px;
 	height: var(--ctl-h);
 	padding: 0 4px;
-	border-bottom: 1px solid var(--hairline);
+	box-shadow: inset 0 -1px 0 var(--hairline);
 }
 .fil-row.active { background: var(--mask-900); }
 /* Loaded filaments can't be renamed or deleted — say why, don't just grey out. */
@@ -3493,7 +3526,7 @@
 	text-transform: uppercase;
 	letter-spacing: 0.06em;
 	color: var(--ok);
-	border: 1px solid var(--ok);
+	box-shadow: inset 0 0 0 1px var(--ok);
 	border-radius: 3px;
 	padding: 3px 5px;
 }
@@ -3546,7 +3579,7 @@
 	width: auto;
 	max-width: 100%;
 	margin-inline: auto;
-	border: 1px solid var(--hairline); border-radius: var(--radius);
+	box-shadow: inset 0 0 0 1px var(--hairline); border-radius: var(--radius);
 	overflow: hidden;
 }
 .hm-canvas {
@@ -3565,18 +3598,18 @@
 	transform: translate(-50%, -50%);
 	border-radius: 50%;
 	background: rgba(255, 255, 255, 0.88);
-	border: 1px solid rgba(11, 22, 38, 0.55);
+	box-shadow: inset 0 0 0 1px rgba(11, 22, 38, 0.55);
 	cursor: pointer;
 	transition: transform 80ms ease, background 80ms ease;
 }
 .hm-dot:hover { background: #fff; transform: translate(-50%, -50%) scale(1.5); }
 .hm-dot:focus-visible { outline: 2px solid var(--accent-bright); outline-offset: 2px; }
 /* A point carrying an unsaved re-probe. */
-.hm-dot.edited { background: var(--ok); border-color: var(--mask-900); }
+.hm-dot.edited { background: var(--ok); box-shadow: inset 0 0 0 1px var(--mask-900); }
 .hm-dot.selected {
-	background: var(--accent-bright); border-color: var(--mask-900);
+	background: var(--accent-bright);
 	transform: translate(-50%, -50%) scale(1.6);
-	box-shadow: 0 0 0 2px rgba(240, 160, 80, 0.35);
+	box-shadow: inset 0 0 0 1px var(--mask-900), 0 0 0 2px rgba(240, 160, 80, 0.35);
 }
 
 .hm-detail { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
@@ -3585,7 +3618,7 @@
 .hm-line b { color: var(--accent-bright); }
 .hm-reply {
 	margin: 0; padding: 6px 8px; max-height: 72px; overflow: auto;
-	background: var(--mask-900); border: 1px solid var(--hairline); border-radius: 5px;
+	background: var(--mask-900); box-shadow: inset 0 0 0 1px var(--hairline); border-radius: 5px;
 	font: 400 calc(3.25 * var(--u))/1.4 ui-monospace, "Cascadia Code", Consolas, monospace;
 	color: var(--silk-dim); white-space: pre-wrap;
 }
@@ -3641,7 +3674,6 @@
 .fb-tool.is-engaged,
 .fb-tool.is-engaged:hover:not(:disabled) {
 	background: var(--accent-bright);
-	border-color: var(--accent-bright);
 	color: var(--mask-900);
 	box-shadow:
 		0 0 0 1px var(--accent-bright),
@@ -3679,7 +3711,7 @@
 	flex: 1 1 auto;
 	height: 8px;
 	border-radius: 2px;
-	border: 1px solid var(--hairline);
+	box-shadow: inset 0 0 0 1px var(--hairline);
 }
 .hm-legend-end { flex: 0 0 auto; }
 
@@ -3721,11 +3753,11 @@
 
 /* A compact icon control in the float-right zone (e.g. Camera's hide ✕). */
 .card-act {
-	background: none; border: 1px solid transparent; border-radius: 4px;
+	background: none; box-shadow: inset 0 0 0 1px transparent; border-radius: 4px;
 	color: var(--silk-dim); font-size: calc(3.75 * var(--u)); line-height: 1;
 	padding: 1px 6px; cursor: pointer;
 }
-.card-act:hover { color: var(--silk); border-color: var(--hairline); }
+.card-act:hover { color: var(--silk); box-shadow: inset 0 0 0 1px var(--hairline); }
 
 /* Scroll containment for the text-focused areas only: in the editor and the
    console you're reading/editing text, so reaching the limit shouldn't jump the
@@ -3766,7 +3798,7 @@
 	display: flex;
 	align-items: center;
 	gap: var(--ctl-gap);
-	border-bottom: 1px solid var(--hairline);
+	box-shadow: inset 0 -1px 0 var(--hairline);
 	padding-bottom: var(--sp-flow);
 }
 .layout-audit-grid {
@@ -3784,7 +3816,7 @@
 	font: 600 calc(3.125 * var(--u))/1 var(--font-display); letter-spacing: 0.14em; text-transform: uppercase;
 	color: var(--silk-dim); text-align: left; padding: 0 var(--ctl-gap) var(--sp-cell) 0;
 }
-.layout-audit-table td { padding: var(--sp-cell) var(--ctl-gap) var(--sp-cell) 0; border-top: 1px solid var(--hairline); font-variant-numeric: tabular-nums; }
+.layout-audit-table td { padding: var(--sp-cell) var(--ctl-gap) var(--sp-cell) 0; box-shadow: inset 0 1px 0 var(--hairline); font-variant-numeric: tabular-nums; }
 .layout-audit-table td.bad { color: var(--fault); font-weight: 600; }
 /* A row the sweep could NOT measure. Whole-row, not one cell: there is no
    verdict to colour, and a card that went unmeasured has to be as loud as one

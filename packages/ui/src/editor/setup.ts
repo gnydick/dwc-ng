@@ -59,7 +59,7 @@ const theme = EditorView.theme(
 			backgroundColor: "var(--mask-900)",
 			color: "var(--silk-dim)",
 			border: "none",
-			borderRight: "1px solid var(--hairline)",
+			boxShadow: "inset -1px 0 0 var(--hairline)",
 		},
 		".cm-activeLine": { backgroundColor: "rgba(255, 255, 255, 0.03)" },
 		".cm-activeLineGutter": { backgroundColor: "rgba(255, 255, 255, 0.05)", color: "var(--silk)" },
