@@ -299,7 +299,7 @@ def do_verify(board, accel, name, n, repeats, log=print, candidates=None):
             if spec == "custom":
                 (a1, m1), (a2, m2) = sorted(modes.items())[:2]
                 A, T, line = custom_two_mode(m1, m2)
-                cands.append({"shaper": "custom", "F": 0.0, "S": 0.0, "code": line,
+                cands.append({"shaper": "custom", "F": 0.0, "S": 0.0, "code": line, "A": A.tolist(), "T": T.tolist(),
                               "residual": {a: residual(A, T, m["f"], m["zeta"]) for a, m in modes.items()}, "duration_ms": float(T[-1] * 1000)})
             else:
                 kind, F, S = spec.split(":"); F, S = float(F), float(S)
@@ -329,7 +329,7 @@ def do_verify(board, accel, name, n, repeats, log=print, candidates=None):
                 if base.get(a):
                     pk = fit[a]["peak_g"] if fit.get(a) else None
                     meas[a] = (pk / base[a]["peak_g"]) if pk is not None else 0.0
-            results.append({"code": code, "shaper": c["shaper"], "F": c["F"], "S": c["S"],
+            results.append({"code": code, "shaper": c["shaper"], "F": c["F"], "S": c["S"], "A": c.get("A"), "T": c.get("T"),
                             "predicted": c["residual"], "measured": meas, "fit": fit})
             log("  measured residual: " + "  ".join(f"{a} {100 * v:.0f}%" for a, v in meas.items()) + "   predicted: " + "  ".join(f"{a} {100 * v:.0f}%" for a, v in c["residual"].items()))
     finally:

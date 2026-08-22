@@ -112,7 +112,7 @@ code("""# residual-vs-frequency curves for the verified candidates, with the mea
 f = np.arange(8, 90, 0.25)
 plt.figure(figsize=(10, 4))
 for v in ver:
-    A, T = shaper_impulses(v['shaper'], v['F'], v['S'])
+    A, T = (np.array(v['A']), np.array(v['T'])) if v['shaper'] == 'custom' else shaper_impulses(v['shaper'], v['F'], v['S'])
     plt.plot(f, [100*residual(A, T, x, 0.1) for x in f], label=f"{v['shaper']} F{v['F']:g}  ({T[-1]*1000:.0f} ms)")
 for a, m in modes.items():
     plt.axvline(m['f'], color='k', ls=':', lw=.8); plt.text(m['f'], 95, f' {a} {m["f"]:.0f} Hz', fontsize=8)
