@@ -51,38 +51,37 @@ export const ROW_UNIT_PX = 4;
 export const ROW_GAP_PX = 0;
 
 /**
- * How many PIXELS one stored row unit renders as at the current density pitch.
+ * How many PIXELS one stored grid cell renders as, on BOTH axes, at the
+ * current UI scale.
  *
- * ROW_UNIT_PX above is the unit stored geometry is WRITTEN IN — a card's
- * rowSpan, the sizes in compose/defs.ts, the row-granularity migration. That
- * number is frozen: it defines the saved format, and a format whose meaning
- * depends on a display preference is not a format.
+ * ROW_UNIT_PX / COL_UNIT_PX above are the unit stored geometry is WRITTEN
+ * IN — a card's rowSpan/colSpan, the sizes in compose/defs.ts, the
+ * row-granularity migration. That number is frozen: it defines the saved
+ * format, and a format whose meaning depends on a display preference is not
+ * a format.
  *
- * This is the unit geometry is DRAWN IN, and it tracks the pitch. Density
- * shrinks the spacing inside a card but used to leave the card's box alone, so
- * every card kept the height it had at 1.27 while its contents pulled away from
- * the bottom edge — measured on the Control screen, the cards' content fell to
- * 0.63–0.73 of its default-pitch height while the boxes did not move at all.
- * Tightening the pitch therefore meant re-dragging every card by hand. Scaling
- * the DRAWN unit instead means the stored layout is never touched and every
- * card scales at once.
+ * This is the unit geometry is DRAWN IN, and it tracks the scale (--u, see
+ * shell/scale.ts). A card's box used to follow scale on neither axis while
+ * its contents scaled inside it — measured on the Control screen, the cards'
+ * content fell away from the bottom edge because only the CONTENT scaled
+ * while the box stayed put. Scaling the DRAWN unit instead means the stored
+ * layout is never touched and every card's box scales along with its
+ * contents, on both axes at once.
  *
- * The value lives in index.css beside the other density tokens, so the
- * stylesheet stays the single authority on what a pitch IS (see
- * shell/density.ts) and this cannot drift from the spacing it has to match.
+ * The value lives in index.css beside the other scale tokens, so the
+ * stylesheet stays the single authority on what a scale step IS (see
+ * shell/scale.ts) and this cannot drift from the spacing it has to match.
  *
- * Deliberately CONSERVATIVE — the least-shrinking card sets it, not the
- * average. Cards shrink at different rates (a card is n control-heights plus
- * fixed chrome, so its ratio depends on n), and one unit cannot be right for
- * all of them. Erring large leaves some slack; erring small CLIPS, and a
- * clipped control is not a cosmetic problem. Measured maxima excluding the
- * console: 0.867 at 0.80, 0.733 at 0.50, 0.700 at 0.40.
+ * There is one rate for both axes and no compromise to make: every
+ * layout-space length in the UI is now n × --u (test/unit-lengths.test.ts),
+ * so nothing shrinks relative to anything else and there is no
+ * least-shrinking card to be conservative about.
  */
-export function rowUnitPx(): number {
+export function unitPx(): number {
 	if (typeof document === "undefined") return ROW_UNIT_PX;
-	const raw = getComputedStyle(document.documentElement).getPropertyValue("--row-unit");
+	const raw = getComputedStyle(document.documentElement).getPropertyValue("--u");
 	const px = parseFloat(raw);
-	// A stylesheet that hasn't loaded, or a pitch block missing the token, must
+	// A stylesheet that hasn't loaded, or a scale block missing the token, must
 	// fall back to the stored unit rather than to NaN — which would silently
 	// collapse every card to a single row.
 	return Number.isFinite(px) && px > 0 ? px : ROW_UNIT_PX;
@@ -90,15 +89,19 @@ export function rowUnitPx(): number {
 /** Both gutters now live on the card, not on the grid — see GRID_COLS. */
 export const GAP_PX = 0;
 /**
- * Fixed column width. Columns don't scale with viewport width, so a card's
- * pixel size only ever depends on its own colSpan; a narrower window scrolls
- * horizontally instead of shrinking every card to fit.
+ * The stored-format column unit — same role as ROW_UNIT_PX, just the other
+ * axis: a card's colSpan, the sizes in compose/defs.ts and the
+ * col-granularity migration are all written in this unit, and it is frozen
+ * for the same reason ROW_UNIT_PX is. It does NOT track viewport width — a
+ * card's cell size only ever depends on its own colSpan; a narrower window
+ * scrolls horizontally instead of shrinking every card to fit. What it DOES
+ * track is drawn through unitPx() at scale 1, same as rows (see PanelCanvas.tsx).
  *
  * @invariant grid-metrics-single-source
  * @rung 7  generated, not mirrored — PanelCanvas.tsx emits
- *          `repeat(${GRID_COLS}, ${COL_UNIT_PX}px)` from these constants, so
- *          the stylesheet has no column figures of its own to disagree with.
- *          app.css declares only `display: grid`
+ *          `repeat(${GRID_COLS}, var(--u))` and `grid-auto-rows: var(--u)`,
+ *          so the stylesheet has no column or row figures of its own to
+ *          disagree with. app.css declares only `display: grid`
  * @why the geometry engine computes spans in cells while the browser lays them
  *      out in pixels. When those were two facts, a card's computed position and
  *      its painted position could differ by a whole column with nothing failing
@@ -135,8 +138,8 @@ export interface PanelDefault extends PanelRect {
 	 * defaults to none.
 	 *
 	 * In stored row/column units, like every other span here, which makes it
-	 * pitch-correct for free: the row unit shrinks with the density (see
-	 * rowUnitPx), so a span floor is physically smaller at a tighter pitch —
+	 * scale-correct for free: the drawn unit shrinks with the UI scale (see
+	 * unitPx), so a span floor is physically smaller at a smaller scale —
 	 * exactly as the full content it stands in for would be.
 	 */
 	minColSpan?: number;
@@ -670,14 +673,14 @@ export function contentRowSpan(
 	contentBottom += (parseFloat(bodyStyle.paddingTop) || 0) + (parseFloat(bodyStyle.paddingBottom) || 0);
 	// The card's chrome around the body's content box (borders, outer padding)
 	// — measured, not assumed, and size-invariant since card and body grow
-	// together. Card border-box height == rowUnitPx()*rowSpan - gutter.
+	// together. Card border-box height == unitPx()*rowSpan - gutter.
 	//
-	// rowUnitPx(), not the constant: this converts MEASURED PIXELS into stored
-	// row units, and how many pixels a unit draws as depends on the pitch. With
-	// the constant, a fit measured at 0.50 would come back ~33% too large and
-	// the resize stop would refuse to let the card near its own content.
+	// unitPx(), not the constant: this converts MEASURED PIXELS into stored
+	// row units, and how many pixels a unit draws as depends on the scale. With
+	// the constant, a fit measured at a smaller scale would come back too large
+	// and the resize stop would refuse to let the card near its own content.
 	const chrome = cardEl.getBoundingClientRect().height - body.clientHeight;
-	return Math.max(1, Math.ceil((contentBottom + chrome + gutterPx) / rowUnitPx()));
+	return Math.max(1, Math.ceil((contentBottom + chrome + gutterPx) / unitPx()));
 }
 
 /**
@@ -726,7 +729,7 @@ export function contentColSpan(cardEl: HTMLElement, gutterPx: number): number {
 	// Chrome around the body's content box (borders, the card's own padding),
 	// measured rather than assumed — card and body widen together.
 	const chrome = cardEl.getBoundingClientRect().width - body.clientWidth;
-	return Math.max(1, Math.ceil((intrinsicWidthPx(body, "min-content") + chrome + gutterPx) / COL_UNIT_PX));
+	return Math.max(1, Math.ceil((intrinsicWidthPx(body, "min-content") + chrome + gutterPx) / unitPx()));
 }
 
 /**
@@ -742,7 +745,7 @@ export function headerColSpan(cardEl: HTMLElement, gutterPx: number): number {
 	// MIN-content here too. The header is one nowrap line, so the two usually
 	// agree — but a long title would otherwise set a floor no card could be
 	// narrowed past, and a title is the one thing that may ellipsise.
-	return Math.max(1, Math.ceil((intrinsicWidthPx(head, "min-content") + chrome + gutterPx) / COL_UNIT_PX));
+	return Math.max(1, Math.ceil((intrinsicWidthPx(head, "min-content") + chrome + gutterPx) / unitPx()));
 }
 
 /**
@@ -1485,7 +1488,9 @@ export function createPanelCanvas(
 		const originScrollY = window.scrollY;
 		// Read ONCE per drag, not per frame: it cannot change while a pointer is
 		// down, and getComputedStyle in a rAF loop is a style flush per frame.
-		const unitPx = rowUnitPx();
+		// Named `unit`, not `unitPx`, so the local read cannot shadow the
+		// exported function of the same drawn quantity.
+		const unit = unitPx();
 		let pointerX = event.clientX;
 		let pointerY = event.clientY;
 		// Dragging a card that is NOT in the selection means the operator has
@@ -1529,8 +1534,8 @@ export function createPanelCanvas(
 		let raf = 0;
 		const tick = (): void => {
 			const effectiveY = pointerY + (window.scrollY - originScrollY);
-			const deltaCol = Math.round((pointerX - originX) / (COL_UNIT_PX + GAP_PX));
-			const deltaRow = Math.round((effectiveY - originY) / (unitPx + ROW_GAP_PX));
+			const deltaCol = Math.round((pointerX - originX) / (unit + GAP_PX));
+			const deltaRow = Math.round((effectiveY - originY) / (unit + ROW_GAP_PX));
 			const reachRow = Math.max(0, start.row + deltaRow) + start.rowSpan;
 			spacer.style.gridRow = `${reachRow + 1} / span 1`;
 
@@ -1627,11 +1632,12 @@ export function createPanelCanvas(
 		const footPx = cardEl?.querySelector<HTMLElement>(".panel-resize-grip")?.getBoundingClientRect().height ?? 0;
 		const floorPx = (headPx + footPx) * 1.5;
 		// Read once per drag; same reason as startMove. Both floors are measured
-		// in pixels and converted here, so both track the pitch: at a tighter
-		// pitch the header is shorter AND the unit is smaller, and the stop
-		// stays the same physical size rather than drifting.
-		const unitPx = rowUnitPx();
-		const hardFloor = Math.max(1, Math.ceil((floorPx + gutterPx) / unitPx));
+		// in pixels and converted here, so both track the scale: at a smaller
+		// scale the header is shorter AND the unit is smaller, and the stop
+		// stays the same physical size rather than drifting. Named `unit`, not
+		// `unitPx`, so the local read cannot shadow the exported function.
+		const unit = unitPx();
+		const hardFloor = Math.max(1, Math.ceil((floorPx + gutterPx) / unit));
 		// The declared floor for cards whose content can be absent — see
 		// PanelDefault.minRowSpan. Every rung is a Math.max, so the order they
 		// are written in does not matter and the header floor is genuinely the
@@ -1697,8 +1703,8 @@ export function createPanelCanvas(
 			const scrolledX = (window.scrollX - originScrollX) + ((scroller?.scrollLeft ?? 0) - originScrollLeft);
 			const effectiveY = pointerY + scrolledY;
 			const effectiveX = pointerX + scrolledX;
-			const deltaColSpan = Math.round((effectiveX - originX) / (COL_UNIT_PX + GAP_PX));
-			const deltaRowSpan = Math.round((effectiveY - originY) / (unitPx + ROW_GAP_PX));
+			const deltaColSpan = Math.round((effectiveX - originX) / (unit + GAP_PX));
+			const deltaRowSpan = Math.round((effectiveY - originY) / (unit + ROW_GAP_PX));
 			// Detent at the content fit (snaps, then breaks away), THEN the hard
 			// floor clamps whatever the detent produced so a released card still
 			// can't shrink past the wall. The gold cue lights only while the
@@ -1731,7 +1737,7 @@ export function createPanelCanvas(
 			// bottom of the viewport (reported 2026-08-05: "when you shrink the
 			// camera the screen position jumps"). Receding to what the view actually
 			// needs moves nothing; see settleFloor.
-			settleFloor(unitPx);
+			settleFloor(unit);
 			cardEl?.classList.remove("at-limit");
 			window.removeEventListener("pointermove", onMove);
 			window.removeEventListener("pointerup", onUp);

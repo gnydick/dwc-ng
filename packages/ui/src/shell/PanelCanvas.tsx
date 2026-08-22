@@ -1,5 +1,5 @@
 import type { JSX } from "solid-js";
-import { COL_UNIT_PX, GAP_PX, GRID_COLS, ROW_GAP_PX } from "./panelCanvas.ts";
+import { GAP_PX, GRID_COLS, ROW_GAP_PX } from "./panelCanvas.ts";
 
 /**
  * The grid metrics, emitted from the SAME constants the drag math uses
@@ -8,18 +8,16 @@ import { COL_UNIT_PX, GAP_PX, GRID_COLS, ROW_GAP_PX } from "./panelCanvas.ts";
  * silently diverged the cursor from the panel. Now CSS has no copy to
  * drift.
  *
- * The row track is var(--row-unit), NOT the ROW_UNIT_PX constant: it tracks the
- * density pitch (index.css), so tightening the pitch shrinks every card's box
- * along with its contents and the stored layout is never rewritten. The drag
- * math reads the same custom property through rowUnitPx(), so cursor and card
- * still cannot diverge — the shared authority just moved from a TS constant to
- * a CSS token. Columns keep the constant: density scales air, not type, so
- * widths move only 0.91–0.98 and scaling them would buy a few percent while
- * risking clipped text.
+ * BOTH tracks are var(--u), NOT the ROW_UNIT_PX/COL_UNIT_PX constants: they
+ * track the UI scale (index.css, shell/scale.ts), so a scale step shrinks or
+ * grows every card's box along with its contents and the stored layout is
+ * never rewritten. The drag math reads the same custom property through
+ * unitPx(), so cursor and card cannot diverge on either axis — the shared
+ * authority just moved from TS constants to one CSS token.
  */
 const GRID_STYLE: JSX.CSSProperties = {
-	"grid-template-columns": `repeat(${GRID_COLS}, ${COL_UNIT_PX}px)`,
-	"grid-auto-rows": "var(--row-unit)",
+	"grid-template-columns": `repeat(${GRID_COLS}, var(--u))`,
+	"grid-auto-rows": "var(--u)",
 	"column-gap": `${GAP_PX}px`,
 	"row-gap": `${ROW_GAP_PX}px`,
 };

@@ -185,7 +185,7 @@ test("startResize reserves the extent for the drag, and settles rather than drop
 		"the reservation must be updated from the previewed rect");
 	// THE REGRESSION: removing the reservation outright is what made the view
 	// jump on release. It has to recede, not vanish.
-	assert.match(resize, /settleFloor\(unitPx\)/,
+	assert.match(resize, /settleFloor\(unit\)/,
 		"the drag must settle the floor on drop, not remove it");
 	assert.doesNotMatch(resize, /floor\.el\.remove\(\)|spacer\.remove\(\)/,
 		"removing the reservation at drop is exactly the jump this fixes");

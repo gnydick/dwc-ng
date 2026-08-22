@@ -21,8 +21,8 @@ export interface AxisVerdict {
 }
 
 /**
- * Sub-pixel tolerance. Row units are fractional at tight density pitches
- * (--row-unit is 2.8px at 0.40), so a ceil() over a fractional divisor can
+ * Sub-pixel tolerance. The drawn unit is fractional at some UI scale steps
+ * (--u is 3px at scale 075), so a ceil() over a fractional divisor can
  * legitimately differ by one between probes. Two or more is a real dependency.
  */
 export const AXIS_TOLERANCE = 1;

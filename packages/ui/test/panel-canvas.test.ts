@@ -1,5 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import {
 	GRID_COLS, clampRect, rectsOverlap, collidesWithAny, hasCollisions, inBounds,
 	tryMove, tryResize, defaultCanvas, parseStoredCanvas, serializeCanvas, mergeCanvas,
@@ -553,4 +555,16 @@ test("clampToStop has no memory across frames", () => {
 test("clampToStop is span-agnostic — the same wall serves rows and columns", () => {
 	assert.deepEqual(clampToStop(3, 40), { span: 40, atLimit: true });
 	assert.deepEqual(clampToStop(300, 40), { span: 300, atLimit: false });
+});
+
+test("contentColSpan and headerColSpan convert through unitPx(), not the stored constant", () => {
+	const src = readFileSync(fileURLToPath(new URL("../src/shell/panelCanvas.ts", import.meta.url)), "utf8");
+	for (const fn of ["function contentColSpan", "function headerColSpan", "function contentRowSpan"]) {
+		const start = src.indexOf(fn);
+		assert.ok(start > 0, `${fn} not found`);
+		const body = src.slice(start, src.indexOf("\n}", start));
+		assert.ok(body.includes("unitPx()"), `${fn} must divide by the drawn unit`);
+		assert.ok(!/\/\s*(COL|ROW)_UNIT_PX/.test(body), `${fn} divides by a stored-format constant`);
+	}
+	assert.ok(!src.includes("rowUnitPx"), "rowUnitPx was renamed to unitPx — no stragglers");
 });

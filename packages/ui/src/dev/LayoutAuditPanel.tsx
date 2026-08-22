@@ -5,7 +5,7 @@ import {
 	judgeAxis, judgeDrift, judgeFloor,
 	type AxisProbe, type AxisVerdict, type DriftSample, type FloorVerdict,
 } from "./layoutAudit.ts";
-import { contentRowSpan, contentColSpan, headerColSpan, rowUnitPx, COL_UNIT_PX } from "../shell/panelCanvas.ts";
+import { contentRowSpan, contentColSpan, headerColSpan, unitPx } from "../shell/panelCanvas.ts";
 
 export interface CardReport {
 	id: string;
@@ -179,7 +179,7 @@ export function LayoutAuditPanel(props: {
 				<div class="layout-audit-bar">
 					<button class="lab-pill" onClick={run}>Run layout audit</button>
 					<span class="lab-note">
-						row unit {rowUnitPx()}px · col unit {COL_UNIT_PX}px
+						unit {unitPx()}px
 					</span>
 				</div>
 			</Show>

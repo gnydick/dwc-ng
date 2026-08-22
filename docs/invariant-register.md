@@ -753,11 +753,11 @@ in the diff that drops it.
 
 ### `shell/grid-metrics-single-source` — rung 7
 
-**Mechanism.** generated, not mirrored — PanelCanvas.tsx emits `repeat(${GRID_COLS}, ${COL_UNIT_PX}px)` from these constants, so the stylesheet has no column figures of its own to disagree with. app.css declares only `display: grid`
+**Mechanism.** generated, not mirrored — PanelCanvas.tsx emits `repeat(${GRID_COLS}, var(--u))` and `grid-auto-rows: var(--u)`, so the stylesheet has no column or row figures of its own to disagree with. app.css declares only `display: grid`
 
 **Why.** the geometry engine computes spans in cells while the browser lays them out in pixels. When those were two facts, a card's computed position and its painted position could differ by a whole column with nothing failing — and the arithmetic looks right in both places
 
-`packages/ui/src/shell/panelCanvas.ts:97`
+`packages/ui/src/shell/panelCanvas.ts:100`
 
 ### `shell/reflow-preserves-reading-order` — rung 6
 
@@ -767,7 +767,7 @@ in the diff that drops it.
 
 **Debt — promotion.** promote by making the placement order a value produced once and consumed by the loop, so a future caller cannot iterate the state directly and place out of order.
 
-`packages/ui/src/shell/panelCanvas.ts:1041`
+`packages/ui/src/shell/panelCanvas.ts:1044`
 
 ### `shell/reflow-terminates` — rung 3
 
@@ -777,7 +777,7 @@ in the diff that drops it.
 
 **Debt — promotion.** make the loop consume a bounded, strictly-increasing cursor rather than mutating a candidate in place — then "a push that advances nothing" has no encoding and the argument stops needing to be believed.
 
-`packages/ui/src/shell/panelCanvas.ts:1053`
+`packages/ui/src/shell/panelCanvas.ts:1056`
 
 ### `shell/stream-dies-with-its-element` — rung 7
 
