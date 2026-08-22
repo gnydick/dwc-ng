@@ -15,7 +15,7 @@
  * that has nothing to act on, because nothing is portalling into the slot.
  *
  * A module-level signal rather than context, matching navState.ts and
- * density.ts: this is shell chrome, not an app service, and there is exactly one
+ * scale.ts: this is shell chrome, not an app service, and there is exactly one
  * rail.
  */
 import { createSignal } from "solid-js";

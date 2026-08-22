@@ -75,7 +75,13 @@ with no rework above the connector abstraction.
   of edge cases (M409 retry logic, upload verification, firmware version
   workarounds). Read it before reimplementing any rr_ interaction.
 - Scaling features should work universally. Interface cards should
-  not need resizing or layout updated.
+  not need resizing or layout updated. ✅ Met (2026-08-21): one global unit
+  `--u` (`shell/scale.ts`, `data-scale` on `<html>`), every layout-space
+  length `n * var(--u))`, zero-layout decorations (borders/hairlines as
+  inset box-shadow, never `border:`), enforced by a build-failing px lint
+  (`test/unit-lengths.test.ts`) and a Card Lab scale sweep asserting equal
+  cell floors at 0.75/1.5 for every card. See
+  docs/superpowers/specs/2026-08-21-global-unit-scaling-design.md.
 - Unique desktop and mobile profiles for both portrait and landscape should be
   saved, so 4 layouts per machine
 - Mobile version of UI should be mobile first, not copying desktop

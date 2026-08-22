@@ -41,7 +41,7 @@ applyStoredScale()
 
 // Palette lab (dev-only): repaints the chrome from a floating switcher so a
 // palette can be judged against real machine data. Same before-first-paint
-// reasoning as applyStoredPitch above — it sets attributes that drive CSS
+// reasoning as applyStoredScale above — it sets attributes that drive CSS
 // custom properties, so applying it later would show one frame of the shipped
 // palette and then repaint.
 //

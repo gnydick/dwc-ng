@@ -46,7 +46,7 @@ export default function App(props: { backend: Backend }) {
 	// that wanted its own ramp — the light one in the dev palette lab, where the
 	// dark-ground amber measures 2.0:1 on a white card — could declare it and
 	// silently lose. The default now lives in exactly one place, which is the
-	// same rule data-pitch and data-ground already follow: the default is the
+	// same rule data-scale and data-ground already follow: the default is the
 	// ABSENCE of an override, never a copy of it.
 	//
 	// Compared against DEFAULT_THERMAL_COLORS rather than against the overlay,

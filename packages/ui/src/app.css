@@ -736,11 +736,11 @@
    whose stop did not mean "this is as small as the content goes", and it
    brought its own bugs: containment silenced the table completely, and the
    horizontal layout then disagreed with the vertical about the minimum.
-   152 + 120 + 56 + 56 + 58 + 156 = 598. */
+   40 + 19.5 + 16 + 16.5 + 41 = 133u. */
 /* ONE declaration of the tool table's columns. Both tool cards render the same
    table; Tools simply omits the control columns. Before this the two carried
    separate numbers that agreed by coincidence, and stopped agreeing at a
-   different density. Subtraction cannot disagree. */
+   different scale. Subtraction cannot disagree. */
 :root {
 	--tool-col-heater: calc(40 * var(--u));
 	--tool-col-active: calc(19.5 * var(--u));
@@ -1511,7 +1511,7 @@ input[type="checkbox"] {
 	.heat-table { --heat-table-w: calc(131 * var(--u)); }
 	/* Only Current has measured slack at this width; the setpoint fields are at
 	   their inputs and Set is at its three keys. Overriding the TOKEN keeps one
-	   declaration site — the rule above never changes. 152 + 70 + 56 + 50 + 156 = 484. */
+	   declaration site — the rule above never changes. 40 + 19.5 + 16 + 14.5 + 41 = 131u. */
 	.heat-table { --tool-col-current: calc(14.5 * var(--u)); }
 	.heat-table .col-current { padding-right: calc(1.5 * var(--u)); }
 	/* Same two columns, narrow: 152 + 50 = 202. */
@@ -2038,7 +2038,7 @@ input[type="checkbox"] {
 	border-radius: var(--radius);
 	padding: 0 calc(2.5 * var(--u)); cursor: pointer; color: var(--silk); text-align: left;
 	white-space: nowrap;
-	transition: background 90ms ease, border-color 90ms ease, transform 60ms ease, box-shadow 90ms ease;
+	transition: background 90ms ease, transform 60ms ease, box-shadow 90ms ease;
 }
 .gcode-btn:hover:not(:disabled) { --gcode-border: var(--accent); background: linear-gradient(180deg, var(--face-hi-hover) 0%, var(--face-lo-hover) 100%); }
 .gcode-btn:focus-visible { outline: 2px solid var(--accent-bright); outline-offset: 2px; }
@@ -3285,11 +3285,13 @@ input[type="checkbox"].fw-check { accent-color: var(--accent); width: calc(3.75 
    width-only resize (the earlier at-min border did both, which read as a
    spurious warning).
 
-   Recolour the card's OWN border rather than adding an outset box-shadow ring:
+   The card already draws its hairline as an inset box-shadow (line 288, the
+   zero-layout form the exemption rule requires), so at-limit swaps in an
+   accent-coloured inset box-shadow rather than adding a second, outset one:
    an outset shadow paints in the 1px band OUTSIDE the border-box, which is
    exactly what .view-scroll's `overflow: auto` clips away for any card flush
    against the scrollport — the leftmost column lost its left edge, the top row
-   its top. The border is inside the element's box, so no ancestor clip can
+   its top. An inset shadow is inside the element's box, so no ancestor clip can
    reach it, at any grid position; it also avoids the 1px bloom an outset ring
    added on snap (border-box unchanged → no reflow, no shift). */
 .card.at-limit { box-shadow: inset 0 0 0 1px var(--accent); }

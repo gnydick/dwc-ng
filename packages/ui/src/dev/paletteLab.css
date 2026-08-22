@@ -9,7 +9,7 @@
  *   data-keys    how the heater mode keys spend colour
  *
  * The DEFAULT of each axis is the ABSENCE of an override, exactly as
- * shell/density.ts does with data-pitch: with no attribute the UI renders
+ * shell/scale.ts does with data-scale: with no attribute the UI renders
  * byte-identically to main, so "current" can never be a stale copy of the
  * shipped values.
  *

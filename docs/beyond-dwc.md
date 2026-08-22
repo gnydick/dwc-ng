@@ -102,7 +102,7 @@ the absent `sendCode` in the HeightMap plugin.
   customized.
 - Unsaved-changes state survives a reload instead of being silently
   overwritten by the next connect.
-- Per-device preferences (density, last folder, scroll position) stay on the
+- Per-device preferences (UI scale, last folder, scroll position) stay on the
   device and never mark anything unsaved.
 - File browsers remember the folder you were in and where you'd scrolled to.
 

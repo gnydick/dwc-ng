@@ -7,7 +7,7 @@
  * build and Rollup drops the branch, taking this module and its stylesheet
  * with it — so nothing here is in the bundle the printer serves.
  *
- * The mechanism is two attributes on <html>, copied from shell/density.ts
+ * The mechanism is two attributes on <html>, copied from shell/scale.ts
  * because that module already solved this exact problem for spacing:
  *
  *   data-ground  which chrome tokens the UI is painted with
@@ -24,7 +24,7 @@
  *
  * Deliberately NOT wired into the config overlay. That uploads to the SD card
  * and drives the dirty / "Save to machine" cycle, and an experiment is not
- * machine configuration. localStorage, same as density, navState and
+ * machine configuration. localStorage, same as scale, navState and
  * speedFlowMode.
  */
 import "./paletteLab.css";
@@ -221,7 +221,7 @@ function mountPanel(): void {
  * Apply the stored choices, then mount the switcher.
  *
  * main.tsx awaits this BEFORE render for the same reason it calls
- * applyStoredPitch() there: these attributes drive CSS custom properties, so
+ * applyStoredScale() there: these attributes drive CSS custom properties, so
  * applying them after first paint shows one frame of the shipped palette and
  * then repaints the whole page.
  */
