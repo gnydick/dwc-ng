@@ -21,7 +21,7 @@ and invariant claim mentions 13 -> 23, so no mechanism was deleted and no
 claim was lost in the gap. From here the ratchets make a dropped rung visible
 in the diff that drops it.
 
-**Totals:** 84 invariants · 64 at rung 6 or above · 20 below rung 6 (ceiling 20).
+**Totals:** 85 invariants · 64 at rung 6 or above · 21 below rung 6 (ceiling 21).
 
 ## bed
 
@@ -435,6 +435,16 @@ in the diff that drops it.
 
 `packages/ui/src/dev/layoutAudit.ts:34`
 
+### `dev/card-floor-scale-invariant` — rung 4
+
+**Mechanism.** static analysis, run on demand — the Card Lab's scale sweep measures every registry card at two scale steps and judges each pair with this function. Nothing in CI runs it yet.
+
+**Why.** the whole point of n × var(--u) (Tasks 1-8) is that a layout saved on one device fits on another untouched; a card whose floor moves with the scale is a layout that quietly stopped being portable, and the px lint that enforces the arithmetic cannot see a pixel hiding behind a script-set inline style or a third-party stylesheet
+
+**Debt — promotion.** the sweep is manual, exactly like card-floor-independent-of-size above — promote by running it headless in CI over the registry, the same CDP driver already used for that sweep would suffice here too
+
+`packages/ui/src/dev/layoutAudit.ts:205`
+
 ### `dev/guard-follows-the-declaration` — rung 7
 
 **Mechanism.** totality over an interface — `const writes: ConnectorWrites = {…}` must be COMPLETE, so a method added to ConnectorWrites fails to compile until it is guarded here, and it cannot be smuggled into the pass-through block, which accepts only ConnectorReads members. WHERE a method is declared IS its classification
@@ -827,7 +837,7 @@ in the diff that drops it.
 
 **Debt — promotion.** the scan is a brace walker over text, so it sees source order but not cascade subtleties (:is(), layers, differing specificity within a selector list). Rung 6 is generating the breakpoint blocks from one typed source, so ordering stops being something an author controls at all. (The palette entry's narrow-width rules are NOT here — they live in a second max-width block directly after the desktop ones further down.)
 
-`packages/ui/src/app.css:1413`
+`packages/ui/src/app.css:1451`
 
 ## util
 

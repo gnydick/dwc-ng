@@ -189,6 +189,42 @@ export interface DriftSample {
  * containing wrapping text, so cards that legitimately reflow must be excluded
  * by name rather than by fudging the comparison.
  */
+/**
+ * THE SCALE INVARIANT, expressed as a judgement that can fail. Tasks 1-8 made
+ * every layout-space length in the UI n × var(--u), so a card's floor in
+ * STORED grid cells (contentRowSpan/contentColSpan, which divide the measured
+ * pixels by unitPx()) should read the same number at every [data-scale] step.
+ * The only legitimate wobble is the ceil() in those functions landing on a
+ * different integer when --u is fractional (3px at 075, 6px at 150) — at most
+ * one cell, never two.
+ *
+ * A failure names a card that still contains a layout-space pixel the px
+ * lint could not see: a bitmap sized by script, a third-party stylesheet, a
+ * measurement taken before the scale attribute's restyle settled.
+ *
+ * @invariant card-floor-scale-invariant
+ * @rung 4  static analysis, run on demand — the Card Lab's scale sweep
+ *          measures every registry card at two scale steps and judges each
+ *          pair with this function. Nothing in CI runs it yet.
+ * @why the whole point of n × var(--u) (Tasks 1-8) is that a layout saved on
+ *      one device fits on another untouched; a card whose floor moves with
+ *      the scale is a layout that quietly stopped being portable, and the px
+ *      lint that enforces the arithmetic cannot see a pixel hiding behind a
+ *      script-set inline style or a third-party stylesheet
+ * @debt the sweep is manual, exactly like card-floor-independent-of-size
+ *       above — promote by running it headless in CI over the registry, the
+ *       same CDP driver already used for that sweep would suffice here too
+ */
+export function judgeScaleInvariance(
+	a: { rows: number; cols: number },
+	b: { rows: number; cols: number },
+	tolerance = 1,
+): { ok: boolean; rowDelta: number; colDelta: number } {
+	const rowDelta = Math.abs(a.rows - b.rows);
+	const colDelta = Math.abs(a.cols - b.cols);
+	return { ok: rowDelta <= tolerance && colDelta <= tolerance, rowDelta, colDelta };
+}
+
 export function judgeDrift(
 	a: readonly DriftSample[],
 	b: readonly DriftSample[],

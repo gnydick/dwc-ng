@@ -1194,8 +1194,23 @@
 .lab-canvas { padding-bottom: calc(60 * var(--u)); }
 
 .console-form { display: flex; gap: calc(2 * var(--u)); flex: 0 0 auto; }
+/* No width was ever set here, so this flex item's OWN preferred size won —
+   Chromium's font-metric-based default for an unstyled text input (its
+   "size=20" formula), which does not track --u: it carries a small fixed
+   (non-u) rounding/decoration component, so it reports a DIFFERENT ratio to
+   --u at every scale. min-width alone does not fix this — a min-width
+   smaller than that default has no effect, since the default already
+   exceeds it (measured: min-width: calc(30 * var(--u)) left the rendered
+   width completely unchanged). An explicit `width` replaces the browser's
+   formula outright with a deterministic n × --u value; flex:1 (flex-basis
+   0%) still governs actual growth, so the real, at-rest size is unaffected.
+   Scale sweep, 2026-08-21: the Console card failed card-floor-scale-
+   invariant (Δcols 3) for exactly this reason — see the identical fix and
+   longer note on .field input[type="text"] above. */
 .console-form input {
 	flex: 1;
+	width: calc(30 * var(--u));
+	min-width: calc(30 * var(--u));
 	background: var(--mask-900);
 	border: 0;
 	box-shadow: inset 0 0 0 1px var(--hairline);
@@ -1300,9 +1315,26 @@
 	font-variant-numeric: tabular-nums;
 }
 
+/* min-width was 0 on both — that overrides a flex item's AUTOMATIC
+   content-based minimum, but the input's OWN preferred width still won:
+   Chromium's font-metric-based default for an unstyled text/number input
+   (its "size=20" formula) carries a small fixed (non-u) rounding/decoration
+   component, so it does not scale at the same rate as --u, and that default
+   is what contentColSpan's min-content probe reads back regardless of
+   min-width, since min-width only clamps a size from BELOW — a min-width
+   smaller than the browser's own default has no effect at all (measured:
+   min-width alone left the rendered width completely unchanged). Scale
+   sweep, 2026-08-21: Axis roles, Tool dock sensors, Bed probing, Camera URL
+   and Sensor names all failed card-floor-scale-invariant on the COLUMN axis
+   (Δcols 2-3) for exactly this reason. An explicit `width` replaces the
+   browser's formula outright with a deterministic n × --u value — flex:1
+   (flex-basis 0%) still governs actual growth, so the real, at-rest size is
+   unaffected; min-width stays alongside it only so shrinking can never go
+   below this floor either. */
 .field input[type="text"], .field input[type="number"] {
 	flex: 1;
-	min-width: 0;
+	width: calc(24 * var(--u));
+	min-width: calc(24 * var(--u));
 	background: var(--mask-900);
 	border: 0;
 	box-shadow: inset 0 0 0 1px var(--hairline);
@@ -1310,7 +1342,7 @@
 	padding: var(--sp-field) calc(2.5 * var(--u));
 }
 .field input::placeholder { color: var(--silk-dim); }
-.field input[type="number"] { max-width: calc(22.5 * var(--u)); }
+.field input[type="number"] { width: calc(10 * var(--u)); min-width: calc(10 * var(--u)); max-width: calc(22.5 * var(--u)); }
 
 .check {
 	display: inline-flex;
@@ -1319,6 +1351,12 @@
 	font-size: calc(3.625 * var(--u));
 	color: var(--silk-dim);
 }
+/* Chromium's native checkbox has a fixed intrinsic size (not derived from
+   font-size or any custom property), so it was a second raw-pixel
+   contributor behind the Tool dock sensors card's scale-sweep failure
+   alongside the input above. An explicit --u size makes it track scale like
+   every other small square control (.om-toggle uses the same 4u). */
+.check input[type="checkbox"] { width: calc(4 * var(--u)); height: calc(4 * var(--u)); flex: none; }
 
 .link-btn {
 	font-family: var(--font-display);
@@ -1930,6 +1968,23 @@
 	   floor a guess again. Safe to fix: .u-label is nowrap and the row is one
 	   line by construction. */
 	height: var(--legend-row-h);
+	/* uPlot's OWN stylesheet carries `.u-inline tr { margin-right: 16px; }` —
+	   spacing meant for its INLINE legend mode (series side by side on one
+	   line), which is not the mode this is: `.u-legend` is overridden to a
+	   flex COLUMN above, one row per line. The class stays (`u-inline` also
+	   controls other uPlot behaviour) but its row margin does not apply here,
+	   and it is a raw, non-`--u` 16px — a third-party stylesheet contributing
+	   exactly the kind of pixel the invariant doc comment on
+	   judgeScaleInvariance names: one the px lint cannot see because it never
+	   runs over node_modules. Scale sweep, 2026-08-21: measured 16px added to
+	   EVERY row at BOTH --u:3 and --u:6 (`marginR: "16px"` verified via
+	   getComputedStyle on the live row at both scales) — a constant offset
+	   against a linearly-scaling row is a shrinking fraction of the total at
+	   larger scales, which is exactly what a card-floor-scale-invariant
+	   failure looks like. Zeroing it here, at the same selector that already
+	   owns this row's layout, is the fix — not a rewrite of the grid tracks
+	   above, which were never the defect. */
+	margin-right: 0;
 }
 /* The marker and the name travel together in the first track. */
 .temp-chart-legend .u-legend th { display: flex; align-items: center; gap: calc(1.5 * var(--u)); }
@@ -2647,6 +2702,18 @@
 .editor-overlay.err { color: var(--fault); padding: calc(4 * var(--u)); text-align: center; }
 
 /* ---------- System view + object-model inspector ---------- */
+/* Same shape as .fb (FileCards): the CARD is the authority on how tall this
+   gets, not the viewport. This used to be .om-tree { max-height: 52vh } — a
+   slice of the viewport that has nothing to do with the card it lives in.
+   Scale sweep, 2026-08-21: the object-model card failed the card-floor-
+   scale-invariant check (81 rows @075 vs 68 @150) because 52vh is a real
+   pixel quantity that does not track --u — at the larger scale, the SAME
+   number of expanded rows is taller in real pixels, so it hits the fixed
+   viewport-relative ceiling sooner and the card's measured floor comes out
+   smaller relative to its content, by a different amount at every scale.
+   flex 1 1 0 + min-height 0 on the tree, with this wrapper supplying a
+   declared (scale-correct) floor, is the .fb fix applied to the same defect. */
+.om-inspector { display: flex; flex-direction: column; flex: 1 1 0; min-height: calc(20 * var(--u)); }
 .om-bar { display: flex; align-items: center; gap: calc(3 * var(--u)); margin-bottom: calc(2.5 * var(--u)); }
 .om-filter {
 	flex: 1; min-width: 0; background: var(--mask-900); border: 0; box-shadow: inset 0 0 0 1px var(--hairline); border-radius: 5px;
@@ -2656,7 +2723,7 @@
 .om-count { font: 600 calc(3.25 * var(--u))/1 var(--font-display); letter-spacing: 0.08em; text-transform: uppercase; color: var(--silk-dim); white-space: nowrap; }
 
 .om-tree, .om-children { list-style: none; margin: 0; padding: 0; }
-.om-tree { max-height: 52vh; overflow-y: auto; scrollbar-width: none; }
+.om-tree { flex: 1 1 0; min-height: 0; overflow-y: auto; scrollbar-width: none; }
 .om-tree::-webkit-scrollbar { display: none; }
 .om-row {
 	display: flex; align-items: center; gap: calc(2 * var(--u)); padding: calc(0.75 * var(--u)) calc(1 * var(--u)); border-radius: 4px;

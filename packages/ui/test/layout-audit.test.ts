@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
 	AXIS_PASS_LABEL, CHILD_COUNT_CHANGED, EMPTY_BODY_ROWS, judgeAxis, judgeDrift, judgeFloor,
+	judgeScaleInvariance,
 } from "../src/dev/layoutAudit.ts";
 
 /**
@@ -146,4 +147,19 @@ test("a passed axis check is labelled with what it established, never 'ok'", () 
 		assert.notEqual(label.toLowerCase(), "ok");
 		assert.match(label, /unchanged by (height|width)/);
 	}
+});
+
+/**
+ * THE SCALE INVARIANT AS AN ASSERTION. A card's floor in STORED grid cells
+ * must be the same number at every UI scale, within one cell for the ceil()
+ * a non-integer --u introduces. Two cells apart is a real dependency: some
+ * element in the card still contains a layout-space pixel the px lint could
+ * not see.
+ */
+test("judgeScaleInvariance: floors equal within one cell pass; two cells fail", () => {
+	assert.equal(judgeScaleInvariance({ rows: 53, cols: 156 }, { rows: 54, cols: 156 }).ok, true);
+	assert.equal(judgeScaleInvariance({ rows: 53, cols: 156 }, { rows: 55, cols: 156 }).ok, false);
+	const r = judgeScaleInvariance({ rows: 53, cols: 156 }, { rows: 53, cols: 160 });
+	assert.equal(r.ok, false);
+	assert.equal(r.colDelta, 4);
 });

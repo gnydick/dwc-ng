@@ -48,7 +48,13 @@ function OmNode(props: { name: string; value: unknown; depth: number }) {
 
 	return (
 		<li class="om-node">
-			<div class="om-row" style={{ "padding-left": `${props.depth * 14 + 4}px` }}>
+			{/* calc(n * var(--u)), not a raw px template literal — an inline style
+			    is exactly the "bitmap sized by script" case the scale sweep exists
+			    to catch (Card Lab, 2026-08-21): a per-depth offset computed in raw
+			    pixels does not track --u, so nesting the SAME tree deeper reads a
+			    different indent-to-content ratio at every UI scale. 3.5u/1u match
+			    the previous 14px/4px exactly at the default scale (u=4px). */}
+			<div class="om-row" style={{ "padding-left": `calc(${props.depth * 3.5 + 1} * var(--u))` }}>
 				<Show when={expandable()} fallback={<span class="om-leafdot" />}>
 					<button class="om-toggle" aria-expanded={open()} onClick={() => setOpen(o => !o)}>
 						{open() ? "▾" : "▸"}

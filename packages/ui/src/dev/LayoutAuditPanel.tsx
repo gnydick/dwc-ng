@@ -2,7 +2,7 @@ import type { JSX } from "solid-js";
 import { For, Match, Show, Switch, createSignal } from "solid-js";
 import {
 	AUDIT_HEADINGS, AXIS_COL_TAUTOLOGY, AXIS_PASS_LABEL, CHILD_COUNT_CHANGED,
-	judgeAxis, judgeDrift, judgeFloor,
+	judgeAxis, judgeDrift, judgeFloor, judgeScaleInvariance,
 	type AxisProbe, type AxisVerdict, type DriftSample, type FloorVerdict,
 } from "./layoutAudit.ts";
 import { contentRowSpan, contentColSpan, headerColSpan, unitPx } from "../shell/panelCanvas.ts";
@@ -490,6 +490,234 @@ export function LayoutAuditAll(props: {
 					{" "}{AXIS_COL_TAUTOLOGY.replace(/^by construction — /, "")}, so it is a tautology
 					rather than a check and should never be read as evidence.
 					{" "}No declared-vs-measured comparison exists yet.
+				</p>
+			</Show>
+		</div>
+	);
+}
+
+/**
+ * The two [data-scale] steps the sweep compares. 075 has the smallest --u
+ * (3px) and 150 the largest (6px) — see index.css — so any element that is
+ * still sized in a raw pixel the px lint could not see (a bitmap sized by
+ * script, a third-party stylesheet) moves the most it will ever move between
+ * these two, which is exactly what a sweep is for.
+ */
+const SCALE_SWEEP_STEPS = ["075", "150"] as const;
+type ScaleStep = (typeof SCALE_SWEEP_STEPS)[number];
+
+/** One card's floor, in stored grid cells, at one scale step. */
+interface ScaleProbe {
+	rows: number;
+	cols: number;
+}
+
+/**
+ * Wait two animation frames before trusting measured geometry.
+ *
+ * TWO, not one: setting [data-scale] changes --u, which every layout-space
+ * length in the UI is now written as n × of (test/unit-lengths.test.ts), so
+ * the restyle has to both recompute every dependent length AND re-run layout
+ * before contentRowSpan/contentColSpan read anything trustworthy — a single
+ * frame occasionally read back the PREVIOUS scale's geometry in this
+ * worktree.
+ *
+ * rAF DOES NOT FIRE in a hidden or backgrounded tab — the same property that
+ * got ResizeObserver banned from the sibling audit above (see
+ * SETTLE_MICROTASKS). That is a constraint on whoever DRIVES this sweep (the
+ * tab must stay foregrounded — CDP's Page.bringToFront, or a person actually
+ * looking at it), not a reason to fall back to timers here: a timer cannot
+ * tell you the restyle has actually been applied, only that some time has
+ * passed, and this is exactly the measurement a stale read would corrupt
+ * silently.
+ */
+function twoAnimationFrames(): Promise<void> {
+	return new Promise(resolve => {
+		requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+	});
+}
+
+/**
+ * Measure one card's floor at one scale step. Sets the attribute, waits for
+ * the restyle to land, reads the same two functions the resize stop and the
+ * floor audit read — never a second copy of that arithmetic — and leaves the
+ * attribute exactly as this call set it. Restoring the ORIGINAL scale is the
+ * sweep's job, once, after every card and step are done; not this function's,
+ * after every single measurement.
+ */
+async function measureAtScale(cardEl: HTMLElement, step: ScaleStep): Promise<ScaleProbe> {
+	document.documentElement.setAttribute("data-scale", step);
+	await twoAnimationFrames();
+	const gutterRow = parseFloat(getComputedStyle(cardEl).marginBottom) || 0;
+	const gutterCol = parseFloat(getComputedStyle(cardEl).marginRight) || 0;
+	return { rows: contentRowSpan(cardEl, gutterRow), cols: contentColSpan(cardEl, gutterCol) };
+}
+
+export interface ScaleSweepReport {
+	id: string;
+	title: string;
+	rows: Record<ScaleStep, number>;
+	cols: Record<ScaleStep, number>;
+	verdict: { ok: boolean; rowDelta: number; colDelta: number };
+}
+
+/** Same shape as SweepRow above, for the same reason: a card the sweep could
+ *  not measure gets a line of its own rather than vanishing silently. */
+export type ScaleSweepRow =
+	| { kind: "report"; report: ScaleSweepReport }
+	| { kind: "error"; id: string; title: string; reason: string };
+
+/**
+ * The scale sweep: for every registry card, measure its floor at 075 and at
+ * 150, and judge whether the two agree (judgeScaleInvariance). This is the
+ * claim Tasks 1-8 made — "a card's floor in stored cells is the same number
+ * at every scale" — run as a check that can fail, over the whole registry
+ * rather than one card at a time.
+ *
+ * Structured identically to LayoutAuditAll above: feature each card, wait for
+ * it to settle onto the bench, measure, and restore whatever was featured and
+ * whatever scale was set before the sweep started — in a `finally`, so a
+ * throw partway through cannot strand the lab on 150 or on the wrong card.
+ */
+export function ScaleSweepAll(props: {
+	ids: () => readonly string[];
+	titleOf: (id: string) => string;
+	feature: (id: string) => void;
+	current: () => string;
+	benchEl: () => HTMLElement | null;
+	/** Whether the RESULTS are shown; the bar always renders. Same reasoning
+	 *  as LayoutAuditAll's `open` — a control only reachable once you've
+	 *  opened what it populates is a control you have to discover twice. */
+	open: () => boolean;
+}) {
+	const [rows, setRows] = createSignal<ScaleSweepRow[]>([]);
+	const [busy, setBusy] = createSignal(false);
+
+	const sweep = async (): Promise<void> => {
+		// Captured before the loop touches anything, so both can be restored
+		// whether the sweep finishes cleanly or throws partway through.
+		const beforeId = props.current();
+		const beforeScale = document.documentElement.getAttribute("data-scale");
+		setBusy(true);
+		setRows([]);
+		try {
+			const out: ScaleSweepRow[] = [];
+			for (const id of props.ids()) {
+				const title = props.titleOf(id);
+				try {
+					props.feature(id);
+					const el = await settleBench(props.benchEl);
+					if (el === null) {
+						out.push({ kind: "error", id, title, reason: SETTLE_FAILED });
+						continue;
+					}
+					const probes = {} as Record<ScaleStep, ScaleProbe>;
+					for (const step of SCALE_SWEEP_STEPS) probes[step] = await measureAtScale(el, step);
+					const verdict = judgeScaleInvariance(probes["075"], probes["150"]);
+					const rowsByStep = {} as Record<ScaleStep, number>;
+					const colsByStep = {} as Record<ScaleStep, number>;
+					for (const step of SCALE_SWEEP_STEPS) {
+						rowsByStep[step] = probes[step].rows;
+						colsByStep[step] = probes[step].cols;
+					}
+					out.push({ kind: "report", report: { id, title, rows: rowsByStep, cols: colsByStep, verdict } });
+				} catch (err) {
+					// One card that throws must not end the sweep: the rest are
+					// still worth measuring, and the throw is itself a finding.
+					out.push({ kind: "error", id, title, reason: err instanceof Error ? err.message : String(err) });
+				}
+			}
+			// Worst first: a failed invariant is what the operator came here to
+			// find, and a card that could not be measured outranks a verdict —
+			// an unknown is worse news than a known failure.
+			const rank = (row: ScaleSweepRow): number => {
+				if (row.kind === "error") return 2;
+				return row.report.verdict.ok ? 0 : 1;
+			};
+			setRows([...out].sort((a, b) => rank(b) - rank(a)));
+		} finally {
+			// Runs on the happy path AND on a throw: the lab's scale and its
+			// featured card both go back to what the user had, and the button
+			// never sticks on "Sweeping…".
+			if (beforeScale === null) document.documentElement.removeAttribute("data-scale");
+			else document.documentElement.setAttribute("data-scale", beforeScale);
+			props.feature(beforeId);
+			setBusy(false);
+		}
+	};
+
+	return (
+		<div class="layout-audit">
+			<div class="layout-audit-bar">
+				<button class="lab-pill" disabled={busy()} onClick={() => void sweep()}>
+					<Show when={busy()} fallback="Scale sweep">Sweeping…</Show>
+				</button>
+				<span class="lab-note">
+					{rows().length} rows
+					<Show when={rows().filter(r => r.kind === "error").length}>
+						{n => <> · <b>{n()} could not be measured</b></>}
+					</Show>
+					<Show when={rows().filter(r => r.kind === "report" && !r.report.verdict.ok).length}>
+						{n => <> · <b>{n()} scale-dependent</b></>}
+					</Show>
+				</span>
+			</div>
+			<Show when={props.open() && rows().length > 0}>
+				{/* Reuses .layout-audit-table's column rhythm (tabular-nums on every
+				    td already) rather than a second table style — the same reason
+				    chromeRowSpan reuses contentRowSpan instead of re-deriving what
+				    counts as a card's floor. */}
+				<table class="layout-audit-table">
+					<thead>
+						<tr>
+							<th scope="col">Card</th>
+							<th scope="col">Rows @075</th>
+							<th scope="col">Rows @150</th>
+							<th scope="col">Cols @075</th>
+							<th scope="col">Cols @150</th>
+							<th scope="col">Δ rows</th>
+							<th scope="col">Δ cols</th>
+							<th scope="col">Scale-invariant</th>
+						</tr>
+					</thead>
+					<tbody>
+						<For each={rows()}>
+							{row => (
+								<Switch>
+									<Match when={row.kind === "error" ? row : null}>
+										{e => (
+											<tr class="bad">
+												<td>{e().title}</td>
+												<td colSpan={7}>FAILED — {e().reason}</td>
+											</tr>
+										)}
+									</Match>
+									<Match when={row.kind === "report" ? row.report : null}>
+										{r => (
+											<tr classList={{ bad: !r().verdict.ok }}>
+												<td>{r().title}</td>
+												<td>{r().rows["075"]}</td>
+												<td>{r().rows["150"]}</td>
+												<td>{r().cols["075"]}</td>
+												<td>{r().cols["150"]}</td>
+												<td classList={{ bad: r().verdict.rowDelta > 1 }}>{r().verdict.rowDelta}</td>
+												<td classList={{ bad: r().verdict.colDelta > 1 }}>{r().verdict.colDelta}</td>
+												<td classList={{ bad: !r().verdict.ok }}>
+													<Show when={r().verdict.ok} fallback="FAILS">ok</Show>
+												</td>
+											</tr>
+										)}
+									</Match>
+								</Switch>
+							)}
+						</For>
+					</tbody>
+				</table>
+				<p class="lab-note layout-audit-scope">
+					The scale invariant: a card's floor in stored grid cells should read the
+					same number at 075 and at 150, within one cell for the ceil() a fractional
+					--u introduces. <b>Scale-invariant</b> reading FAILS names a card that still
+					contains a layout-space pixel the px lint could not see.
 				</p>
 			</Show>
 		</div>

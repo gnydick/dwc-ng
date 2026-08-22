@@ -16,7 +16,7 @@ import { createServicePool } from "../compose/services.ts";
 import type { CardCtx } from "../compose/ctx.ts";
 import { SCENARIOS, scenarioModel, type ScenarioId } from "./cardScenarios.ts";
 import { createStubConnector } from "@dwc-ng/connector";
-import { LayoutAuditAll, LayoutAuditPanel } from "./LayoutAuditPanel.tsx";
+import { LayoutAuditAll, LayoutAuditPanel, ScaleSweepAll } from "./LayoutAuditPanel.tsx";
 
 /**
  * Card Lab (dev-only): render one REGISTRY card at a time against a synthetic
@@ -138,6 +138,7 @@ export default function CardLab() {
 	// one ref suffices; the sweep features each id and re-reads this.
 	let benchEl: HTMLDivElement | undefined;
 	const [auditOpen, setAuditOpen] = createSignal(false);
+	const [scaleSweepOpen, setScaleSweepOpen] = createSignal(false);
 	// The single-card audit hands its action here so its button can sit in the
 	// sweep's bar — every audit control on one row, per the operator.
 	let runThisCard: (() => void) | undefined;
@@ -216,8 +217,25 @@ export default function CardLab() {
 						<button class="lab-pill" aria-pressed={auditOpen()} onClick={() => setAuditOpen(v => !v)}>
 							{auditOpen() ? "Hide results" : "Show results"}
 						</button>
+						<button class="lab-pill" aria-pressed={scaleSweepOpen()} onClick={() => setScaleSweepOpen(v => !v)}>
+							{scaleSweepOpen() ? "Hide scale sweep" : "Show scale sweep"}
+						</button>
 					</>
 				}
+			/>
+			{/* The scale invariant, as a check that can fail: does every card's
+			    floor read the same number of stored cells at 075 and at 150? A
+			    separate sweep from the one above — it forces [data-scale] rather
+			    than the card's own size — so its own bar carries just the
+			    "Scale sweep" button; the show/hide toggle lives up in the audit
+			    bar beside its sibling so the lab's controls stay on one row. */}
+			<ScaleSweepAll
+				ids={() => allCardIds()}
+				titleOf={id => cardTitleOf(id as CardId)}
+				feature={id => setFeatured(id as CardId)}
+				current={() => featured()}
+				benchEl={() => benchEl?.querySelector<HTMLElement>("[data-panel-id]") ?? null}
+				open={scaleSweepOpen}
 			/>
 
 			{/* Directly above the bench, and the last thing before it. Reset acts
