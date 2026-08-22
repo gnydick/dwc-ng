@@ -144,12 +144,14 @@ test("findPxHits: exempt properties, px-ok markers and @media preludes are not h
 	const css = [
 		"a { border-radius: 6px; }",
 		"b { box-shadow: inset 0 0 0 1px red; }",
-		"@media (max-width: 600px) { c { width: 1px; } }",
+		"@media (max-width: 600px) {",
+		"  c { width: 1px; }",
+		"}",
 		"d { width: 4px; } /* px-ok: test */",
 		"e { padding: 3px; }",
 	].join("\n");
 	const r = findPxHits("x.css", css);
-	assert.deepEqual(r.hits.map(h => h.line), [3, 5]); // the `c` rule inside @media is a hit; the prelude is not
+	assert.deepEqual(r.hits.map(h => h.line), [4, 7]); // the `c` rule inside @media is a hit; the prelude line is not
 	assert.equal(r.allowed.length, 1);
 });
 
