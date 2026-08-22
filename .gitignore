@@ -34,3 +34,6 @@ packages/mock-duet/tsconfig.tsbuildinfo
 # Per-developer settings (see .env.example)
 .env.local
 .env.*.local
+
+# superpowers SDD scratch
+.superpowers/
