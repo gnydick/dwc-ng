@@ -153,7 +153,7 @@
 	box-shadow: 0 2px 0 #8f3527;
 }
 .estop:hover { background: #ea6c5a; }
-.estop:active { transform: translateY(1px); /* px-ok: hit target — must not follow the scale it controls */ box-shadow: 0 1px 0 #8f3527; }
+.estop:active { transform: translateY(1px); /* px-ok: zero layout — transform paints only, it never reflows */ box-shadow: 0 1px 0 #8f3527; }
 .estop small { display: block; font-size: 11px; /* px-ok: hit target — must not follow the scale it controls */ font-weight: 600; letter-spacing: 0.1em; opacity: 0.8; }
 /* The STOP did not reach the board (network failure): colour-only alarm on
    fixed geometry — the button must never move or resize under the finger. */
@@ -2015,7 +2015,9 @@
 	--gcode-border: var(--btn-accent);
 }
 .gcode-btn.is-engaged {
-	box-shadow: 0 0 0 1px var(--btn-accent), 0 0 14px color-mix(in srgb, var(--btn-accent) 45%, transparent);
+	box-shadow:
+		0 0 0 1px var(--btn-accent),
+		0 0 14px color-mix(in srgb, var(--btn-accent) 45%, transparent);
 }
 .gcode-btn.is-engaged .gcode-label,
 .gcode-btn.is-engaged .gcode-cmd { color: var(--mask-900); }
@@ -2103,7 +2105,10 @@
    Colour and shadow only: no size, border width or padding moves, so nothing
    on this ladder can shift a control under the pointer. */
 .mode-key.is-engaged.at-target {
-	box-shadow: inset 0 1px 0 rgba(233, 238, 244, 0.07), 0 0 0 1px var(--btn-accent), 0 0 10px -1px var(--btn-accent);
+	box-shadow:
+		inset 0 1px 0 rgba(233, 238, 244, 0.07),
+		0 0 0 1px var(--btn-accent),
+		0 0 10px -1px var(--btn-accent);
 }
 /* Running over: warm at OVER_WARM_C, hot at OVER_HOT_C. The glow changes while
    the key keeps its own solid ground, so it still reads as "the mode you are
@@ -2112,10 +2117,18 @@
    raises and the Current cell shows as a badge. Listed warm-then-hot so the
    hotter band wins when a reading is past both. */
 .mode-key.is-engaged.over-warm {
-	box-shadow: inset 0 1px 0 rgba(233, 238, 244, 0.07), 0 0 0 1px var(--t-warm), 0 0 11px -1px var(--t-warm), inset 0 0 0 1px var(--t-warm);
+	box-shadow:
+		inset 0 1px 0 rgba(233, 238, 244, 0.07),
+		0 0 0 1px var(--t-warm),
+		0 0 11px -1px var(--t-warm),
+		inset 0 0 0 1px var(--t-warm);
 }
 .mode-key.is-engaged.over-hot {
-	box-shadow: inset 0 1px 0 rgba(233, 238, 244, 0.07), 0 0 0 1px var(--fault), 0 0 13px -1px var(--fault), inset 0 0 0 1px var(--fault);
+	box-shadow:
+		inset 0 1px 0 rgba(233, 238, 244, 0.07),
+		0 0 0 1px var(--fault),
+		0 0 13px -1px var(--fault),
+		inset 0 0 0 1px var(--fault);
 }
 /* Your value landed; the next press is the one that acts on it. Full-strength
    accent lettering on the resting ground — brighter than at rest, dimmer than
@@ -3685,7 +3698,9 @@
 .fb-tool.is-engaged:hover:not(:disabled) {
 	background: var(--accent-bright);
 	color: var(--mask-900);
-	box-shadow: 0 0 0 1px var(--accent-bright), 0 0 12px color-mix(in srgb, var(--accent-bright) 45%, transparent);
+	box-shadow:
+		0 0 0 1px var(--accent-bright),
+		0 0 12px color-mix(in srgb, var(--accent-bright) 45%, transparent);
 }
 
 /* The 3D surface. Fills whatever the panel gives it — the canvas is sized by

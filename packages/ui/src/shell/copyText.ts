@@ -48,8 +48,8 @@ function copyViaSelection(text: string): boolean {
 	area.setAttribute("readonly", "");
 	area.setAttribute("aria-hidden", "true");
 	area.style.position = "fixed";
-	area.style.top = "-1000px";
-	area.style.left = "-1000px";
+	area.style.top = "-1000px"; /* px-ok: off-screen, never laid out visibly */
+	area.style.left = "-1000px"; /* px-ok: off-screen, never laid out visibly */
 	area.style.opacity = "0";
 	// Preserve whatever the operator had selected: copying a card tip must not
 	// silently destroy a selection they were part-way through making.

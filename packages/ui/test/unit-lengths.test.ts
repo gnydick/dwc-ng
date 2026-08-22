@@ -15,10 +15,13 @@ import { fileURLToPath } from "node:url";
  * `px-ok: <reason>`, and every such line is printed so the allowlist is
  * visible, not silent.
  *
- * BASELINE is the debt ratchet: it is the number of violations on the day the
- * lint landed, and each migration task lowers it. It may never go up.
+ * BASELINE was the debt ratchet while the migration was in progress: it
+ * started at the count of violations on the day the lint landed, and each
+ * migration task lowered it. Task 8 (2026-08-21) drove it to zero and the
+ * ratchet mechanism was retired in favour of the hard assertion below — a
+ * literal now fails the build the moment it lands, not just when someone
+ * remembers to re-measure the baseline.
  */
-const BASELINE = 3; // set to the measured count in Step 3
 
 const SRC = fileURLToPath(new URL("../src", import.meta.url));
 
@@ -58,8 +61,33 @@ export function findPxHits(file: string, raw: string): { hits: Hit[]; allowed: H
 		scan = scan.replace(/(?<!:)\/\/.*$/gm, m => m.replace(/./g, " "));
 	}
 	const scanLines = scan.split("\n");
+	// Carries an unterminated CSS declaration's property name across lines. A
+	// multi-line value list (e.g. a box-shadow list, one value per line) has its
+	// `prop:` only on the FIRST line; every continuation line has no property of
+	// its own, so without this the exempt guard falls through (prop undefined)
+	// and each continuation line is miscounted as a hit. Updated on EVERY CSS
+	// line (not just px-bearing ones), because the property usually sits on a
+	// line with no px at all (`box-shadow:`) while the values needing judgement
+	// are the continuation lines below it. Cleared whenever a line's trailing
+	// fragment ends the declaration (`;`) or the rule (`}`).
+	let pendingProp: string | undefined;
 	for (let i = 0; i < scanLines.length; i++) {
 		const line = scanLines[i]!;
+		// The property pending INTO this line, frozen before this line's own
+		// bookkeeping mutates `pendingProp` for the NEXT line.
+		const incomingPendingProp = pendingProp;
+		if (isCss) {
+			const body = line.includes("{") ? line.slice(line.lastIndexOf("{") + 1) : line;
+			const trimmedBody = body.trimEnd();
+			if (trimmedBody === "" || trimmedBody.endsWith(";") || trimmedBody.endsWith("}")) {
+				pendingProp = undefined;
+			} else {
+				const declarations = body.split(";");
+				const lastFrag = declarations[declarations.length - 1]!;
+				const ownProp = /^\s*(--[\w-]+|[a-z-]+)\s*:/.exec(lastFrag)?.[1];
+				pendingProp = ownProp ?? incomingPendingProp;
+			}
+		}
 		if (!/\d(\.\d+)?px\b/.test(line)) continue;
 		const original = lines[i]!;
 		if (/px-ok:/.test(original)) { allowed.push({ file, line: i + 1, text: original.trim() }); continue; }
@@ -77,7 +105,8 @@ export function findPxHits(file: string, raw: string): { hits: Hit[]; allowed: H
 			// Split on ; and check each declaration separately.
 			// A line is a hit if ANY non-exempt declaration contains px.
 			const declarations = body.split(";");
-			for (const decl of declarations) {
+			for (let d = 0; d < declarations.length; d++) {
+				const decl = declarations[d]!;
 				if (!/\d(\.\d+)?px\b/.test(decl)) continue;
 				// Anchored to the declaration's start: on its own this still isn't
 				// enough (a selector fragment with no property would just leave
@@ -86,7 +115,11 @@ export function findPxHits(file: string, raw: string): { hits: Hit[]; allowed: H
 				// the false positive; the anchor stops a stray `word:` mid-value
 				// (e.g. inside a url() or a custom ident) from being misread as
 				// the property.
-				const prop = /^\s*(--[\w-]+|[a-z-]+)\s*:/.exec(decl)?.[1];
+				const ownProp = /^\s*(--[\w-]+|[a-z-]+)\s*:/.exec(decl)?.[1];
+				// Only the FIRST fragment of a line can be a continuation of the
+				// previous line's unterminated declaration — any later fragment
+				// follows a `;` in THIS line, so it starts its own declaration.
+				const prop = ownProp ?? (d === 0 ? incomingPendingProp : undefined);
 				if (prop && EXEMPT_PROPS.includes(prop)) continue;
 				isHit = true;
 				break;
@@ -181,7 +214,26 @@ test("findPxHits: in TS, each px is judged by its own property", () => {
 	assert.ok(r.hits[0]!.text.includes("padding"));
 });
 
-test(`layout-space px literals do not exceed the ratchet baseline (${BASELINE})`, () => {
+test("findPxHits: a multi-line box-shadow declaration carries its property across continuation lines", () => {
+	// Every value line belongs to the box-shadow declaration opened above it,
+	// even though none of the continuation lines has its own `prop:` — without
+	// carrying pendingProp forward, each continuation line falls through the
+	// exempt guard (prop undefined) and is miscounted as a hit.
+	const css = ".a {\n\tbox-shadow:\n\t\t0 0 0 1px red,\n\t\t0 0 4px blue;\n}";
+	const r = findPxHits("x.css", css);
+	assert.equal(r.hits.length, 0);
+});
+
+test("findPxHits: the same multi-line shape under a non-exempt property IS a hit on the continuation line", () => {
+	// padding is not exempt, so unlike the box-shadow fixture above, the
+	// continuation lines ARE hits — every px-bearing line in the list, since
+	// each one carries the same (non-exempt) pendingProp forward.
+	const css = ".a {\n\tpadding:\n\t\t0 0 0 1px red,\n\t\t0 0 4px blue;\n}";
+	const r = findPxHits("x.css", css);
+	assert.deepEqual(r.hits.map(h => h.line), [3, 4]);
+});
+
+test("layout-space px literals: zero", () => {
 	const hits: Hit[] = [];
 	const allowed: Hit[] = [];
 	for (const f of walk(SRC)) {
@@ -189,9 +241,8 @@ test(`layout-space px literals do not exceed the ratchet baseline (${BASELINE})`
 		hits.push(...r.hits);
 		allowed.push(...r.allowed);
 	}
-	console.log(`px hits: ${hits.length} (baseline ${BASELINE}); px-ok allowlist: ${allowed.length}`);
+	console.log(`px hits: ${hits.length}; px-ok allowlist: ${allowed.length}`);
 	for (const a of allowed) console.log(`  px-ok  ${a.file}:${a.line}  ${a.text}`);
 	const sample = hits.slice(0, 25).map(h => `  ${h.file}:${h.line}  ${h.text}`).join("\n");
-	assert.ok(hits.length <= BASELINE,
-		`${hits.length} layout-space px literals, baseline is ${BASELINE}. First ones:\n${sample}`);
+	assert.equal(hits.length, 0, `${hits.length} layout-space px literals:\n${sample}`);
 });

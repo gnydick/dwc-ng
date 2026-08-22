@@ -43,7 +43,7 @@ function languageExtension(lang: EditorLang): Extension {
 /** Dark theme keyed to the app palette (CSS vars resolve at render time). */
 const theme = EditorView.theme(
 	{
-		"&": { color: "var(--silk)", backgroundColor: "var(--mask-900)", fontSize: "13px", height: "100%" },
+		"&": { color: "var(--silk)", backgroundColor: "var(--mask-900)", fontSize: "calc(3.25 * var(--u))", height: "100%" },
 		".cm-scroller": {
 			fontFamily: 'ui-monospace, "Cascadia Code", "SF Mono", Menlo, Consolas, monospace',
 			lineHeight: "1.55",

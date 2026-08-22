@@ -192,9 +192,8 @@
 	gap: calc(1.75 * var(--u));
 	padding: calc(2.5 * var(--u)) calc(3 * var(--u)) calc(2.5 * var(--u)) calc(2.5 * var(--u));
 	border-radius: 6px;
-	border: calc(0.25 * var(--u)) solid var(--hairline);
 	background: var(--mask-700);
-	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+	box-shadow: inset 0 0 0 1px var(--hairline), 0 8px 24px rgba(0, 0, 0, 0.45);
 	font-family: var(--font-display);
 }
 .plab-row { display: flex; align-items: center; gap: calc(1.25 * var(--u)); }
@@ -208,8 +207,9 @@
 }
 .plab button {
 	appearance: none;
-	border: calc(0.25 * var(--u)) solid var(--hairline);
+	border: none;
 	border-radius: 3px;
+	box-shadow: inset 0 0 0 1px var(--hairline);
 	background: transparent;
 	color: var(--silk-dim);
 	cursor: pointer;
@@ -221,7 +221,7 @@
 .plab button[aria-pressed="true"] {
 	color: var(--mask-900);
 	background: var(--accent-bright);
-	border-color: var(--accent-bright);
+	box-shadow: inset 0 0 0 1px var(--accent-bright);
 }
 .plab button:focus-visible { outline: 2px solid var(--accent-bright); outline-offset: 1px; }
 .plab-foot {
@@ -237,7 +237,7 @@
 }
 /* Collapsed: a single corner tab, so the panel can sit on screen all session
    without covering a card you are trying to read. */
-.plab.is-min { padding: 0; border-color: transparent; background: transparent; box-shadow: none; }
+.plab.is-min { padding: 0; background: transparent; box-shadow: none; }
 .plab.is-min .plab-row, .plab.is-min .plab-foot { display: none; }
 .plab.is-min .plab-open { display: block; }
 .plab-open { display: none; }
