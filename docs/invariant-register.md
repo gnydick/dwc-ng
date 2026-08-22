@@ -443,7 +443,7 @@ in the diff that drops it.
 
 **Debt — promotion.** the sweep is manual, exactly like card-floor-independent-of-size above — promote by running it headless in CI over the registry, the same CDP driver already used for that sweep would suffice here too
 
-`packages/ui/src/dev/layoutAudit.ts:205`
+`packages/ui/src/dev/layoutAudit.ts:225`
 
 ### `dev/guard-follows-the-declaration` — rung 7
 
@@ -837,7 +837,7 @@ in the diff that drops it.
 
 **Debt — promotion.** the scan is a brace walker over text, so it sees source order but not cascade subtleties (:is(), layers, differing specificity within a selector list). Rung 6 is generating the breakpoint blocks from one typed source, so ordering stops being something an author controls at all. (The palette entry's narrow-width rules are NOT here — they live in a second max-width block directly after the desktop ones further down.)
 
-`packages/ui/src/app.css:1451`
+`packages/ui/src/app.css:1467`
 
 ## util
 

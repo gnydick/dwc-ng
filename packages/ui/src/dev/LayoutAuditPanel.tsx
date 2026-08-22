@@ -2,6 +2,7 @@ import type { JSX } from "solid-js";
 import { For, Match, Show, Switch, createSignal } from "solid-js";
 import {
 	AUDIT_HEADINGS, AXIS_COL_TAUTOLOGY, AXIS_PASS_LABEL, CHILD_COUNT_CHANGED,
+	SCALE_FAIL_LABEL, SCALE_PASS_LABEL,
 	judgeAxis, judgeDrift, judgeFloor, judgeScaleInvariance,
 	type AxisProbe, type AxisVerdict, type DriftSample, type FloorVerdict,
 } from "./layoutAudit.ts";
@@ -703,7 +704,7 @@ export function ScaleSweepAll(props: {
 												<td classList={{ bad: r().verdict.rowDelta > 1 }}>{r().verdict.rowDelta}</td>
 												<td classList={{ bad: r().verdict.colDelta > 1 }}>{r().verdict.colDelta}</td>
 												<td classList={{ bad: !r().verdict.ok }}>
-													<Show when={r().verdict.ok} fallback="FAILS">ok</Show>
+													<Show when={r().verdict.ok} fallback={SCALE_FAIL_LABEL}>{SCALE_PASS_LABEL}</Show>
 												</td>
 											</tr>
 										)}

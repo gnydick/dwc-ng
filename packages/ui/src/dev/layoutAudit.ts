@@ -189,6 +189,26 @@ export interface DriftSample {
  * containing wrapping text, so cards that legitimately reflow must be excluded
  * by name rather than by fudging the comparison.
  */
+export function judgeDrift(
+	a: readonly DriftSample[],
+	b: readonly DriftSample[],
+): { stable: boolean; moved: string[] } {
+	// A differing count means children appeared or vanished with size, which is
+	// a stronger violation than movement — report it rather than zipping the
+	// shorter list and silently ignoring the tail.
+	if (a.length !== b.length) return { stable: false, moved: [CHILD_COUNT_CHANGED] };
+	const moved: string[] = [];
+	for (let i = 0; i < a.length; i++) {
+		const before = a[i]!;
+		const after = b[i]!;
+		if (Math.abs(before.main - after.main) > AXIS_TOLERANCE
+			|| Math.abs(before.cross - after.cross) > AXIS_TOLERANCE) {
+			moved.push(before.id);
+		}
+	}
+	return { stable: moved.length === 0, moved };
+}
+
 /**
  * THE SCALE INVARIANT, expressed as a judgement that can fail. Tasks 1-8 made
  * every layout-space length in the UI n × var(--u), so a card's floor in
@@ -225,22 +245,13 @@ export function judgeScaleInvariance(
 	return { ok: rowDelta <= tolerance && colDelta <= tolerance, rowDelta, colDelta };
 }
 
-export function judgeDrift(
-	a: readonly DriftSample[],
-	b: readonly DriftSample[],
-): { stable: boolean; moved: string[] } {
-	// A differing count means children appeared or vanished with size, which is
-	// a stronger violation than movement — report it rather than zipping the
-	// shorter list and silently ignoring the tail.
-	if (a.length !== b.length) return { stable: false, moved: [CHILD_COUNT_CHANGED] };
-	const moved: string[] = [];
-	for (let i = 0; i < a.length; i++) {
-		const before = a[i]!;
-		const after = b[i]!;
-		if (Math.abs(before.main - after.main) > AXIS_TOLERANCE
-			|| Math.abs(before.cross - after.cross) > AXIS_TOLERANCE) {
-			moved.push(before.id);
-		}
-	}
-	return { stable: moved.length === 0, moved };
-}
+/**
+ * The words the panel prints for the scale-sweep verdict — one declaration
+ * site, for the same reason AXIS_PASS_LABEL exists: "ok" is what let a green
+ * cell over a broken check read as "this is fine" (see AXIS_PASS_LABEL's own
+ * comment and the guard test below it). A passed scale check has a specific
+ * claim to make — the floor did not move between 075 and 150 — and a failure
+ * has the mirror claim; neither should ever collapse to a bare token.
+ */
+export const SCALE_PASS_LABEL = "floor unchanged by scale";
+export const SCALE_FAIL_LABEL = "floor drifts with scale";

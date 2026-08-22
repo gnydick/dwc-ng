@@ -1,8 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-	AXIS_PASS_LABEL, CHILD_COUNT_CHANGED, EMPTY_BODY_ROWS, judgeAxis, judgeDrift, judgeFloor,
-	judgeScaleInvariance,
+	AXIS_PASS_LABEL, CHILD_COUNT_CHANGED, EMPTY_BODY_ROWS, SCALE_FAIL_LABEL, SCALE_PASS_LABEL,
+	judgeAxis, judgeDrift, judgeFloor, judgeScaleInvariance,
 } from "../src/dev/layoutAudit.ts";
 
 /**
@@ -162,4 +162,17 @@ test("judgeScaleInvariance: floors equal within one cell pass; two cells fail", 
 	const r = judgeScaleInvariance({ rows: 53, cols: 156 }, { rows: 53, cols: 160 });
 	assert.equal(r.ok, false);
 	assert.equal(r.colDelta, 4);
+});
+
+/**
+ * The verdict wording is the fix, not a nicety, same reasoning as the axis
+ * labels above: "ok" is what let a green cell over a broken check read as
+ * "this is fine". Welded here so the scale-sweep column cannot regress to a
+ * bare token either.
+ */
+test("a passed or failed scale-invariance check is labelled with what it established, never 'ok'", () => {
+	assert.notEqual(SCALE_PASS_LABEL.toLowerCase(), "ok");
+	assert.notEqual(SCALE_FAIL_LABEL.toLowerCase(), "ok");
+	assert.match(SCALE_PASS_LABEL, /unchanged by scale/);
+	assert.match(SCALE_FAIL_LABEL, /drifts with scale/);
 });

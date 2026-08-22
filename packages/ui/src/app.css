@@ -1351,12 +1351,28 @@
 	font-size: calc(3.625 * var(--u));
 	color: var(--silk-dim);
 }
-/* Chromium's native checkbox has a fixed intrinsic size (not derived from
-   font-size or any custom property), so it was a second raw-pixel
-   contributor behind the Tool dock sensors card's scale-sweep failure
-   alongside the input above. An explicit --u size makes it track scale like
-   every other small square control (.om-toggle uses the same 4u). */
-.check input[type="checkbox"] { width: calc(4 * var(--u)); height: calc(4 * var(--u)); flex: none; }
+
+/* Chromium's native checkbox has a fixed intrinsic size AND a fixed UA
+   margin (13px, margin: 3px 3px 3px 4px) — neither derived from font-size or
+   any custom property — so it was a raw-pixel contributor behind the Tool
+   dock sensors card's scale-sweep failure. Scoping the size fix to `.check`
+   only fixed the one card that happened to use that class; the other eight
+   `type="checkbox"` inputs in the app (FileCards, FirmwareUpdateCard,
+   PinnedCommandsCard, CardStudio, ComposedScreen ×2, FilamentCard) were left
+   on the UA default and would fail the same sweep the moment it reached
+   them. A base element rule covers every checkbox in the app, present and
+   future, by construction — the fix is not selector-scoped debt.
+
+   3.25u and 0.75u/0.75u/0.75u/1u are chosen to equal Chromium's own default
+   AT THE DEFAULT SCALE (--u: 4px: 13px, 3px 3px 3px 4px) — pixel-identical
+   today, so this changes no default-scale rendering, only makes the same
+   box track --u at every OTHER scale instead of staying fixed. */
+input[type="checkbox"] {
+	width: calc(3.25 * var(--u));
+	height: calc(3.25 * var(--u));
+	margin: calc(0.75 * var(--u)) calc(0.75 * var(--u)) calc(0.75 * var(--u)) calc(1 * var(--u));
+	flex: none;
+}
 
 .link-btn {
 	font-family: var(--font-display);
