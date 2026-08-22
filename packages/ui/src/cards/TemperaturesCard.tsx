@@ -1,6 +1,7 @@
 import { Show, createMemo } from "solid-js";
 import { useApp } from "../shell/context.ts";
 import { heaterSeries } from "../om/heaterSeries.ts";
+import { groundOf, theme } from "../shell/theme.ts";
 import { TemperatureChart, type ChartSeries } from "../charts/TemperatureChart.tsx";
 
 /**
@@ -20,7 +21,7 @@ export function TemperaturesBody() {
 			bedHeaters: app.om.om.heat.bedHeaters,
 			chamberHeaters: app.om.om.heat.chamberHeaters,
 			tools: app.om.om.tools,
-		}, app.config.config.heaterColors),
+		}, app.config.config.heaterColors, groundOf(theme())),
 	);
 
 	return (

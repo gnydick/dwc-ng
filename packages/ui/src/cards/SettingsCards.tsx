@@ -13,6 +13,7 @@ import { createArmed } from "../control/armed.ts";
 import { useApp } from "../shell/context.ts";
 import { MAX_LABEL_LEN, DEFAULT_THERMAL_COLORS, type ThermalColors } from "../config/types.ts";
 import { heaterSeries } from "../om/heaterSeries.ts";
+import { groundOf, theme } from "../shell/theme.ts";
 import { nearestCollision, isHexColor } from "../util/colorDistance.ts";
 import { sensorRows } from "../om/sensorRows.ts";
 import { captureScreenGeometry } from "../compose/screens.ts";
@@ -67,7 +68,7 @@ export function HeaterColorsBody() {
 			bedHeaters: app.om.om.heat.bedHeaters,
 			chamberHeaters: app.om.om.heat.chamberHeaters,
 			tools: app.om.om.tools,
-		}, app.config.config.heaterColors),
+		}, app.config.config.heaterColors, groundOf(theme())),
 	);
 	/** Every OTHER line, so a row never reports colliding with itself. */
 	const others = (index: number): Array<readonly [string, string]> =>

@@ -23,6 +23,28 @@ export const BED_COLOR = "#c9a227";
 export const CHAMBER_COLOR = "#7f8ea3";
 
 /**
+ * The same palette solved for a LIGHT ground (theme "vellum", card #f2f5f9).
+ *
+ * The dark set is mixed at L=76 and measures under 2:1 on that card — the
+ * lines vanish. These keep the dark set's six hues (57°, 117°, 177°, 236°,
+ * 297°, 357°) and the bed's gold at 87°, re-solved at L=52, C=32: the darkest
+ * lightness at which every pair still clears the ΔE floor inside the sRGB
+ * gamut. Every line measures ≥ 3.8:1 on the card and every pair is ≥ ΔE 29.4,
+ * the same floor the dark set clears. The chamber is near-neutral (C=3)
+ * rather than blue-slate because at this lightness a blue slate sat ΔE 25
+ * from the blue tool; neutral is what frees the pair. heater-colors.test.ts
+ * asserts all of this, for the light set as for the dark.
+ */
+export const BED_COLOR_LIGHT = "#997800";
+export const CHAMBER_COLOR_LIGHT = "#797c81";
+export const TOOL_COLORS_LIGHT = ["#a5704f", "#74824a", "#2b8a78", "#0887a9", "#7b76ad", "#ae6780"];
+
+/** Which ground the palette is solved for. Mirrors shell/theme.ts's Ground;
+ *  kept as a string union here so the object-model layer does not import the
+ *  shell. */
+export type PaletteGround = "dark" | "light";
+
+/**
  * Tool line colours, in assignment order. Contains no gold: gold belongs to the
  * bed, and a palette that cannot express it cannot collide with it.
  *
@@ -67,7 +89,11 @@ export interface HeaterSeries {
 export function heaterSeries(
 	model: HeaterSeriesModel,
 	overrides: HeaterColorOverrides = {},
+	ground: PaletteGround = "dark",
 ): HeaterSeries[] {
+	const [bedColor, chamberColor, toolColors] = ground === "light"
+		? [BED_COLOR_LIGHT, CHAMBER_COLOR_LIGHT, TOOL_COLORS_LIGHT]
+		: [BED_COLOR, CHAMBER_COLOR, TOOL_COLORS];
 	// RRF pads these arrays with -1 for "no heater"; a bare Set would then treat
 	// index -1 as meaningful, which is harmless, but filtering keeps the intent
 	// obvious and guards against a stray -1 ever being compared against a real index.
@@ -91,10 +117,10 @@ export function heaterSeries(
 		// or not it is overridden — otherwise clearing one override would
 		// renumber the palette and recolour every line after it.
 		const derived = beds.has(i)
-			? { label: "Bed", stroke: BED_COLOR }
+			? { label: "Bed", stroke: bedColor }
 			: chambers.has(i)
-				? { label: "Chamber", stroke: CHAMBER_COLOR }
-				: { label: nameByHeater.get(i) ?? `Heater ${i}`, stroke: TOOL_COLORS[toolSlot++ % TOOL_COLORS.length]! };
+				? { label: "Chamber", stroke: chamberColor }
+				: { label: nameByHeater.get(i) ?? `Heater ${i}`, stroke: toolColors[toolSlot++ % toolColors.length]! };
 		const override = overrides[String(i)];
 		return override === undefined ? derived : { label: derived.label, stroke: override };
 	});

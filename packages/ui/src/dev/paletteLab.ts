@@ -47,7 +47,6 @@ const GROUNDS: Option[] = [
 	{ id: "navy", label: "Navy", title: "The previous ground — solder mask & silkscreen" },
 	{ id: "green", label: "Green", title: "The other real mask colour; copper accent kept" },
 	{ id: "instrument", label: "Instr", title: "No chromatic accent at all — interactive is white at weight" },
-	{ id: "vellum", label: "Vellum", title: "Light. Chrome only: the chart palette is not solved for a light ground" },
 ];
 
 const KEYSETS: Option[] = [

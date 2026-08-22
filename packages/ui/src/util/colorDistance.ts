@@ -45,6 +45,22 @@ export function toLab(hex: string): [number, number, number] {
 	return [116 * y - 16, 500 * (x - y), 200 * (y - z)];
 }
 
+/**
+ * WCAG 2 relative luminance and contrast ratio. 21 is black on white; the
+ * floor for non-text graphics such as a chart line is 3:1, for text 4.5:1.
+ */
+export function relativeLuminance(hex: string): number {
+	const n = parseInt(expandHex(hex).slice(1), 16);
+	const [r, g, b] = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map(v => srgbToLinear(v / 255)) as [number, number, number];
+	return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+export function contrastRatio(a: string, b: string): number {
+	const la = relativeLuminance(a);
+	const lb = relativeLuminance(b);
+	return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+}
+
 /** CIE76 ΔE. 0 is identical; the JND is around 2.3. */
 export function deltaE(a: string, b: string): number {
 	const [l1, a1, b1] = toLab(a);

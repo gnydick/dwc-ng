@@ -5,6 +5,7 @@ import { createRouter, LAB_ROUTE } from "./router.ts";
 import { navHidden, setNavHidden } from "./navState.ts";
 import { setRailSlot } from "./railSlot.ts";
 import { SCALES, scale, setScale } from "./scale.ts";
+import { THEMES, theme, setTheme } from "./theme.ts";
 import { BUILD_ID } from "./buildId.ts";
 import { installEdgeScroll } from "./edgeScroll.ts";
 import {
@@ -149,6 +150,7 @@ export default function Shell() {
 					</Show>
 
 					<div class="preflight-actions">
+						<ThemeToggle />
 						<ScaleToggle />
 						<Show when={import.meta.env.DEV}><BackendToggle /></Show>
 						<button
@@ -219,6 +221,31 @@ function ScaleToggle() {
 						onClick={() => setScale(s.id)}
 					>
 						{s.label}
+					</button>
+				)}
+			</For>
+		</div>
+	);
+}
+
+/**
+ * Which palette the UI draws in (see shell/theme.ts). Same contract as the
+ * scale: one attribute on <html>, a browser preference, never machine config.
+ */
+function ThemeToggle() {
+	return (
+		<div class="scale-toggle" role="group" aria-label="UI theme" title="UI theme — a display preference for this browser">
+			<For each={THEMES}>
+				{t => (
+					<button
+						type="button"
+						class="scale-opt"
+						classList={{ active: theme() === t.id }}
+						aria-pressed={theme() === t.id}
+						title={t.title}
+						onClick={() => setTheme(t.id)}
+					>
+						{t.label}
 					</button>
 				)}
 			</For>

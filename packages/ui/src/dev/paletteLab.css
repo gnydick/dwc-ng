@@ -21,8 +21,9 @@
  * writes those onto documentElement inline for any channel the operator has
  * changed, and an inline style beats every rule — so a ground supplies the ramp
  * for anyone who has not picked one, and is correctly overridden for anyone who
- * has. Only the light ground does; the dark ones want the shipped ramp, and
- * restating it here would be a second copy of a value index.css already owns.
+ * has. None of the grounds here do today (vellum, which did, graduated to
+ * src/theme-vellum.css); restating the shipped ramp would be a second copy of
+ * a value index.css already owns.
  */
 
 /* ---------- navy - the previous shipped ground ("solder mask & silkscreen") ----------
@@ -99,57 +100,6 @@
 	--face-lo-hover: #31363d;
 	--face-hi-fail: #3a2a28;
 	--face-lo-fail: #2b201f;
-}
-
-/* ---------- vellum · light ----------
-   INCOMPLETE ON PURPOSE. The chart series (om/heaterSeries.ts) is solved at
-   L 76 for a dark ground and sits near 1.8:1 on a white card, so the
-   temperature chart is not judgeable here. This ground exists to look at the
-   chrome in a bright shop, not to be shipped. */
-:root[data-ground="vellum"] {
-	/* Dropped a step from the first cut (page E8ECF2 / card FFFFFF). Pure white
-	   is a lamp on a shop screen, and the page had so little separation from it
-	   that cards floated. Chosen against the contrast floor rather than by eye:
-	   this is the darkest step where the accent still clears 4.5:1 on a card.
-	   One step further and A85C17 drops under it. */
-	--mask-900: #dee5ee;
-	--mask-700: #f2f5f9;
-	--mask-500: #cfd8e3;
-	--silk: #16202e;
-	--silk-dim: #5a6b80;
-	--hairline: rgba(22, 32, 46, 0.16);
-	--accent: #a85c17;
-	--accent-bright: #8a4a10;
-	--ok: #1c7a4d;
-	--fault: #b3271a;
-	--gold: #8a6a00;
-	--magenta: #9b3d76;
-	/* Light ground: the face is LIGHTER than the card, and the gradient runs
-	   the other way, because a raised thing catches light from above. */
-	--face-hi: #fbfcfe;
-	--face-lo: #e4eaf3;
-	--face-hi-hover: #ffffff;
-	--face-lo-hover: #d8e1ec;
-	--face-hi-fail: #f8e2e0;
-	--face-lo-fail: #eecfcb;
-	/* A ramp mixed for paper. The shipped one is mixed for a 10%-luminance
-	   ground and measures 3.21 / 2.00 / 2.53 : 1 on this card — the amber is
-	   effectively invisible. These are 5.69 / 4.78 / 4.97.
-
-	   A ground could not declare these until App.tsx stopped writing all three
-	   inline unconditionally: an inline style beats every rule, so the
-	   declaration was there and losing. It now writes only the channels the
-	   operator has actually changed, so this applies to anyone who has not
-	   picked their own — and is correctly overridden for anyone who has. */
-	--t-cold: #3f6485;
-	--t-warm: #9a5f0a;
-	--t-hot: #c2380f;
-}
-/* On a light ground the "bright" accent is DARKER, so anything painting
-   ground-coloured text on it needs the ground colour rather than white. */
-:root[data-ground="vellum"] .gcode-btn.is-engaged .gcode-label,
-:root[data-ground="vellum"] .mode-key.is-engaged .gcode-label {
-	color: var(--mask-900);
 }
 
 /* ============================================================
