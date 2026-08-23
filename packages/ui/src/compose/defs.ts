@@ -488,6 +488,94 @@ export const CARD_DEFS = {
 		tip: "0:/sys/dwc-ng-config.json",
 		size: { colSpan: 312, rowSpan: 26 },
 	}),
+	// ---- Shaping Lab (docs/superpowers/specs/2026-08-22-shaping-lab-campaign-design.md)
+	// Eight cards in the order the operator follows: measure, look, choose,
+	// prove, apply. Ids are `shaping-*` rather than `tuning-*` because `tuning`
+	// is already the speed-factor/babystep card and a second meaning of the word
+	// on the same registry is a card picker nobody can read.
+	//
+	// EVERY rowSpan below is MEASURED, not chosen: contentRowSpan() in the Card
+	// Lab against the `shaping-measured` scenario (four tools, T0 fingerprinted,
+	// ranked and verified), audited at the 720 / 400 / 200 px probes so the
+	// number is a floor and not a reading of the card's current height. Column
+	// floors all came out between 66 and 118, so 156 leaves every one of them
+	// slack on a two-column screen; the colSpan is the screen's, not the card's.
+	/** Per-tool session state and what M593 the machine is running now. */
+	"shaping-status": defineCard({
+		title: "Shaping",
+		ariaLabel: "Shaping status",
+		tip: "M593 · M955 · M956",
+		// Four tool rows of two lines each, the running-shaper line, and the
+		// five-step workflow list. MEASURED with every tpost row COLLAPSED,
+		// which is how the card opens: one open row needs ~11 more and all four
+		// need ~44, and reserving that for a disclosure most sessions use once
+		// is worse than letting the body scroll while it is open.
+		size: { colSpan: 156, rowSpan: 138 },
+	}),
+	/** The test motion: the box it may move in, the sensor, and the run. */
+	"shaping-capture": defineCard({
+		title: "Capture",
+		ariaLabel: "Shaping capture",
+		tip: "M955 · M956 · G1",
+		size: { colSpan: 156, rowSpan: 66 },
+	}),
+	/** One capture at a time: the ring-down and the mode fitted from it. */
+	"shaping-decay": defineCard({
+		title: "Decay",
+		ariaLabel: "Shaping decay",
+		tip: "0:/sys/accelerometer",
+		// 75 -> 159 for the chart (E1), 159 -> 189 for the board browser and the
+		// fingerprint bar. MEASURED with auditCard against the
+		// `shaping-measured` scenario, and it is a floor rather than a reading:
+		// the figure row declares 55u, the verdict box 15u, the controls 8u,
+		// the filter 8u, the list 60u of scroll, the batch bar 8u and its report
+		// 10u. Every one of those is a declared length, so the number is the
+		// same with 276 captures listed, with 12, and with none — checked at all
+		// three. The scale sweep puts it at 189 x 133 cells at BOTH 0.75 and 1.5
+		// (rowDelta 0, colDelta 0), which is the claim that matters: the chart
+		// is a canvas and the filter row is full of text, and either sized in
+		// screen pixels would have broken it. colStop 133 is set by the captures
+		// table's declared tracks and sits inside the 156 this screen gives.
+		size: { colSpan: 156, rowSpan: 189 },
+	}),
+	/** Frequency × speed: which peaks shaping can touch and which it cannot. */
+	"shaping-sweep": defineCard({
+		title: "Speed sweep",
+		ariaLabel: "Shaping speed sweep",
+		tip: "M956 · G1 F",
+		// The smallest of the eight: measured with no sweep recorded, which is
+		// the state it ships in. The heatmap (task E2) will raise this.
+		size: { colSpan: 156, rowSpan: 39 },
+	}),
+	/** Ranked shapers with their predicted residual and robustness. */
+	"shaping-candidates": defineCard({
+		title: "Candidates",
+		ariaLabel: "Shaping candidates",
+		tip: "M593 F S · predicted",
+		// Same 60u scroll as Decay, hence the same number.
+		size: { colSpan: 156, rowSpan: 75 },
+	}),
+	/** The two-mode custom train, as M593's H/T form takes it. */
+	"shaping-custom": defineCard({
+		title: "Custom shaper",
+		ariaLabel: "Custom shaper",
+		tip: 'M593 P"custom" H T',
+		size: { colSpan: 156, rowSpan: 71 },
+	}),
+	/** Predicted versus measured, and any mode the shaper introduced itself. */
+	"shaping-verify": defineCard({
+		title: "Verify",
+		ariaLabel: "Shaping verify",
+		tip: "M593 · M956 · measured",
+		size: { colSpan: 156, rowSpan: 62 },
+	}),
+	/** The line to put on the machine, and the macro it belongs in. */
+	"shaping-apply": defineCard({
+		title: "Apply",
+		ariaLabel: "Shaping apply",
+		tip: "M593 · 0:/sys/tpostN.g",
+		size: { colSpan: 156, rowSpan: 50 },
+	}),
 	/** Define the materials this machine knows about: the filament directories
 	 *  under 0:/filaments and their load/unload/config macros. Machine
 	 *  management, not a file browser. */

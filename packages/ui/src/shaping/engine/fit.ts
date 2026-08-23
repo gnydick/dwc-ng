@@ -35,22 +35,97 @@ export function isMode(r: Mode | NoFit): r is Mode {
 	return "zeta" in r;
 }
 
+/** Overrides for the three FIT_DEFAULTS a caller may reasonably vary. */
 export type FitOptions = {
-	/** Highest ring frequency considered (Hz). Default 150: above that it is motor ripple, not ringing. */
+	/** Highest ring frequency considered (Hz): above it, motor ripple. */
 	readonly fmax?: number;
-	/** Minimum post-stop peak (g) for there to be any ringing to fit. Default 0.02. */
+	/** Minimum post-stop peak (g) for there to be any ringing to fit. */
 	readonly floorG?: number;
-	/** Analysis window after the stop (s). Default 0.6. */
+	/** Analysis window after the stop (s). */
 	readonly windowS?: number;
 };
 
-export function fitDecay(axis: Float64Array, rate: Hz, tStop: Seconds, opts: FitOptions = {}): Mode | NoFit {
-	const fmax = opts.fmax ?? 150;
-	const floorG = opts.floorG ?? 0.02;
-	const windowS = opts.windowS ?? 0.6;
+/**
+ * The fitter's acceptance rule, as numbers rather than literals scattered
+ * through it.
+ *
+ * They are here because the decay CHART states them to the operator — "the
+ * ring needs two cycles and yours managed 1.88" is only true while the chart's
+ * 2 and the fitter's 2 are the same 2. A bound may exist in exactly one place.
+ */
+export const FIT_DEFAULTS = {
+	/** Highest ring frequency considered (Hz); above it, motor ripple. */
+	fmax: 150,
+	/** Minimum post-stop peak (g) for there to be any ringing to fit. */
+	floorG: 0.02,
+	/** Analysis window after the stop (s). */
+	windowS: 0.6,
+	/** Shortest window worth analysing (s). */
+	minWindowS: 0.15,
+	/** Head of the window searched for the peak (s). */
+	headS: 0.1,
+	/** The regression runs from the envelope peak down to this fraction of it. */
+	decayTo: 0.15,
+	/** Cycles of ring-down the regression needs before it reports a damping. */
+	minCycles: 2,
+} as const;
+
+/**
+ * The analysed decay: the segment `fitDecay` looks at, the band envelope it
+ * measures, and the two indices that bound the log-slope regression.
+ *
+ * Everything here used to live inside `fitDecay` as locals, and the decay
+ * CHART needed the same numbers to draw the envelope the fit was taken from.
+ * Recomputing them beside the fitter is the duplication that guarantees a
+ * chart which one day disagrees with the figure printed next to it — a
+ * different band, a different peak index, a curve that does not sit on its own
+ * envelope. So there is one producer, and both the fitter and the chart
+ * consume it.
+ *
+ * @invariant one-decay-window
+ * @rung 6  choke-point — `decayWindow` is the only place the analysis segment,
+ *          its band centre, its envelope and the 15 %-of-peak decay bound are
+ *          computed. `fitDecay` derives its verdict from this and nothing
+ *          else, and `charts/decayData.ts` draws this and nothing else
+ * @why the chart exists to let an operator see WHY a fit came out as it did;
+ *      a chart drawn from a second, independently-derived envelope can show a
+ *      healthy decay beside a "decayed too fast" verdict and be believed
+ * @debt the window is handed out as plain arrays, so a future caller could
+ *       draw one window's envelope against another window's Mode. Promote by
+ *       returning the Mode|NoFit alongside it from a single call, once a
+ *       second consumer exists that needs both. Tracked with the E1 work item
+ */
+export type DecayWindow = {
+	/** First sample of the analysis segment, as an index into the input array. */
+	readonly i0: number;
+	/** Mean-removed samples over the analysis window. */
+	readonly seg: Float64Array;
+	/** Largest |g| in the first 0.1 s — the "is there any ringing" figure. */
+	readonly headPeakG: G;
+	/** Band centre: the strongest component in [5, fmax]. */
+	readonly fPeak: Hz;
+	/** Envelope of `seg` band-passed about `fPeak`. */
+	readonly env: Float64Array;
+	/** Index in `seg`/`env` of the envelope peak. */
+	readonly ipk: number;
+	/** Index in `seg`/`env` where the envelope first falls below 15 % of its peak. */
+	readonly iend: number;
+	/** The envelope at `ipk` — the peak a Mode reports. */
+	readonly lvl: G;
+	/** Samples the regression needs: two full cycles at `fPeak`. */
+	readonly minSamples: number;
+};
+
+/**
+ * The window, or `null` when there are not 0.15 s of samples after the stop to
+ * look at — the one condition under which there is nothing to analyse at all.
+ */
+export function decayWindow(axis: Float64Array, rate: Hz, tStop: Seconds, opts: FitOptions = {}): DecayWindow | null {
+	const fmax = opts.fmax ?? FIT_DEFAULTS.fmax;
+	const windowS = opts.windowS ?? FIT_DEFAULTS.windowS;
 	const i0 = Math.round((tStop + 0.01) * rate);
 	const i1 = Math.min(axis.length, i0 + Math.round(windowS * rate));
-	if (i1 - i0 < Math.round(0.15 * rate)) return { reason: "short-window" };
+	if (i1 - i0 < Math.round(FIT_DEFAULTS.minWindowS * rate)) return null;
 	const seg = axis.slice(i0, i1);
 	let mean = 0;
 	for (let i = 0; i < seg.length; i++) mean += seg[i]!;
@@ -59,26 +134,43 @@ export function fitDecay(axis: Float64Array, rate: Hz, tStop: Seconds, opts: Fit
 
 	// "Is there ringing?" is a time-domain question — a fast decay averages
 	// to almost nothing in a 0.6 s spectrum.
-	const head = Math.max(1, Math.round(0.1 * rate));
+	const head = Math.max(1, Math.round(FIT_DEFAULTS.headS * rate));
 	let tpk = 0;
 	for (let i = 0; i < head && i < seg.length; i++) tpk = Math.max(tpk, Math.abs(seg[i]!));
-	if (tpk < floorG) return { reason: "below-floor", peakG: g(tpk) };
 
 	const fPeak = peakHz(seg, rate, 5, fmax);
 	const { env } = bandAnalytic(seg, rate, fPeak);
 	let ipk = 0;
 	for (let i = 1; i < head && i < env.length; i++) if (env[i]! > env[ipk]!) ipk = i;
 	const lvl = env[ipk]!;
-	// Fit ln(env) from the peak until the envelope falls to 15 % of it.
+	// The regression runs from the peak until the envelope falls to 15 % of it.
 	let iend = env.length;
 	for (let i = ipk; i < env.length; i++) {
-		if (env[i]! < 0.15 * lvl) {
+		if (env[i]! < FIT_DEFAULTS.decayTo * lvl) {
 			iend = i;
 			break;
 		}
 	}
-	const minSamples = Math.round((2 * rate) / fPeak); // at least two cycles
-	if (iend - ipk < minSamples) return { reason: "short-decay", f: fPeak, peakG: g(lvl) };
+	return {
+		i0,
+		seg,
+		headPeakG: g(tpk),
+		fPeak,
+		env,
+		ipk,
+		iend,
+		lvl: g(lvl),
+		minSamples: Math.round((FIT_DEFAULTS.minCycles * rate) / fPeak),
+	};
+}
+
+export function fitDecay(axis: Float64Array, rate: Hz, tStop: Seconds, opts: FitOptions = {}): Mode | NoFit {
+	const w = decayWindow(axis, rate, tStop, opts);
+	if (w === null) return { reason: "short-window" };
+	const floorG = opts.floorG ?? FIT_DEFAULTS.floorG;
+	if (w.headPeakG < floorG) return { reason: "below-floor", peakG: w.headPeakG };
+	const { env, ipk, iend, fPeak, lvl } = w;
+	if (iend - ipk < w.minSamples) return { reason: "short-decay", f: fPeak, peakG: lvl };
 	// Damping from the log-slope of the band-limited envelope over the decay.
 	// This is the prototype's estimator (tools/accel/shaping.py), which matched
 	// the machine within 0.5 Hz / 0.03 zeta over 12 captures. Known limit: a
@@ -100,8 +192,8 @@ export function fitDecay(axis: Float64Array, rate: Hz, tStop: Seconds, opts: Fit
 	const slope = (cnt * sxy - sx * sy) / (cnt * sxx - sx * sx);
 	const f0 = fPeak;
 	const zeta = -slope / (2 * Math.PI * f0);
-	if (!(zeta >= 0.005 && zeta <= 0.5)) return { reason: "damping-out-of-range", f: f0, peakG: g(lvl) };
-	return { f: f0, zeta, peakG: g(lvl), cyclesFit: (cnt * f0) / rate } as Mode;
+	if (!(zeta >= 0.005 && zeta <= 0.5)) return { reason: "damping-out-of-range", f: f0, peakG: lvl };
+	return { f: f0, zeta, peakG: lvl, cyclesFit: (cnt * f0) / rate } as Mode;
 }
 
 export type Axis = "X" | "Y";

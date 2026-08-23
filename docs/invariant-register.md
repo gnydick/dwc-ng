@@ -21,7 +21,7 @@ and invariant claim mentions 13 -> 23, so no mechanism was deleted and no
 claim was lost in the gap. From here the ratchets make a dropped rung visible
 in the diff that drops it.
 
-**Totals:** 103 invariants · 81 at rung 6 or above · 22 below rung 6 (ceiling 22).
+**Totals:** 108 invariants · 86 at rung 6 or above · 22 below rung 6 (ceiling 22).
 
 ## bed
 
@@ -67,6 +67,14 @@ in the diff that drops it.
 
 ## charts
 
+### `charts/decay-view-comes-from-one-fitted-capture` — rung 7
+
+**Mechanism.** sole-constructor input — `decaySeries` takes a `FitResult` and nothing else. A FitResult is minted only by the engine worker (shaping/worker.ts) from one CSV, and carries its axis, its samples, its stop and its verdict together, so there are no two arguments that could come from two captures
+
+**Why.** the whole point of the card is to let an operator see why a fit came out as it did, which requires that what is drawn and what is printed be the same measurement Pure and JSX-free by design (the plan's data/JSX split): node:test cannot import a `.tsx`, and everything worth asserting about this chart is a number or a sentence, not a DOM.
+
+`packages/ui/src/charts/decayData.ts:19`
+
 ### `charts/the-in-progress-layer-is-never-a-statistic` — rung 6
 
 **Mechanism.** choke-point — one `completed()`, private to this module, and both exports (layerChartData and layerStats) start by calling it. There is no path from job.layers to a rendered figure that does not pass through here, and the module's only consumer is LayersCard
@@ -93,7 +101,7 @@ in the diff that drops it.
 
 **Why.** a delete that removes a card from every screen at once is exactly the action whose scope the operator must see before confirming — "delete this card?" cannot precede stripping it from screens they forgot it was on. The plan freezes usage at arm time; the studio is modal over composition edits, so the frozen report cannot go stale between the two clicks
 
-`packages/ui/src/compose/screens.ts:384`
+`packages/ui/src/compose/screens.ts:419`
 
 ### `compose/composition-degrades-per-slot` — rung 6
 
@@ -805,6 +813,16 @@ in the diff that drops it.
 
 `packages/ui/src/om/types.ts:473`
 
+## shaping
+
+### `shaping/capture-text-has-one-loader` — rung 6
+
+**Mechanism.** choke-point — `CaptureLoader.text` is the only function that turns a CaptureRef into CSV, and a CaptureRef is the only thing it takes. A board file is downloaded at most once per session and answered from the cache after that, so no second call site can decide for itself whether to re-fetch
+
+**Why.** the board's HTTP server tolerates very few requests, and clicking down a list of twelve captures is exactly the gesture that would issue twelve downloads per click without a single owner of the cache
+
+`packages/ui/src/shaping/captures.ts:18`
+
 ## shaping/engine
 
 ### `shaping/engine/capture-is-parsed` — rung 7
@@ -823,6 +841,16 @@ in the diff that drops it.
 
 `packages/ui/src/shaping/engine/fit.ts:5`
 
+### `shaping/engine/one-decay-window` — rung 6
+
+**Mechanism.** choke-point — `decayWindow` is the only place the analysis segment, its band centre, its envelope and the 15 %-of-peak decay bound are computed. `fitDecay` derives its verdict from this and nothing else, and `charts/decayData.ts` draws this and nothing else
+
+**Why.** the chart exists to let an operator see WHY a fit came out as it did; a chart drawn from a second, independently-derived envelope can show a healthy decay beside a "decayed too fast" verdict and be believed
+
+**Debt — promotion.** the window is handed out as plain arrays, so a future caller could draw one window's envelope against another window's Mode. Promote by returning the Mode|NoFit alongside it from a single call, once a second consumer exists that needs both. Tracked with the E1 work item
+
+`packages/ui/src/shaping/engine/fit.ts:85`
+
 ### `shaping/engine/shaper-definitions-are-one-table` — rung 8
 
 **Mechanism.** illegal state unrepresentable — ShaperSpec is a discriminated union, impulses() is one exhaustive switch with a `never` arm, and a named shaper carries F/S while a custom one carries H/T; there is no way to pair a type with the wrong parameter set, and adding a shaper type to ShaperType stops compilation until its arm exists
@@ -840,6 +868,14 @@ in the diff that drops it.
 `packages/ui/src/shaping/engine/units.ts:4`
 
 ## shaping
+
+### `shaping/every-refusal-has-copy` — rung 7
+
+**Mechanism.** totality — `refusalText` switches on the discriminant with a `never` arm and no default, so a variant added to `Refusal` stops compilation here until someone has written its sentence. That is not hypothetical: work item C added `not-measurable` after this table was specified, and the `never` arm is what turned a missing row into a compile error rather than a button that renders the empty string
+
+**Why.** a control disabled with no reason is worse than a control that is not there — the operator cannot tell a refusal from a bug, and the whole point of returning `Refusal` as DATA rather than a boolean was that the reason survives to the screen Nothing here decides anything. Each sentence restates a verdict the procedure already reached (shaping/preconditions.ts, shaping/procedure.ts); the UI adds no gate of its own, because the firmware and the planner are the authorities on whether the machine may move.
+
+`packages/ui/src/shaping/copy.ts:9`
 
 ### `shaping/preconditions-are-a-fresh-read` — rung 7
 
@@ -869,7 +905,7 @@ in the diff that drops it.
 
 ### `shaping/results-persist-through-one-writer` — rung 6
 
-**Mechanism.** choke-point — RESULTS_PATH is imported by this module alone, so the card file has exactly one reader (load) and one writer (save), and both go through parseResults/serializeResults
+**Mechanism.** choke-point — RESULTS_PATH is imported by this module alone, so the card file has exactly one reader (load) and one writer (save), and both go through parseResults/serializeResults. `save` also creates the directory chain the path needs, so "wrote the file" and "the place it goes exists" are one act rather than a precondition on whoever calls it
 
 **Why.** per-tool results written from two places would interleave a half-built session over a finished one, and a reader that skipped parseResults would put hand-edited numbers straight into a ranking
 
@@ -884,6 +920,16 @@ in the diff that drops it.
 **Why.** this is the feature's whole safety story. The lab sends 200 mm/s moves with nobody watching the axis, and the difference between a capture and a crash into the frame is whether those four facts were true at the moment of planning. A second way to build a run is a second place to forget one of them
 
 `packages/ui/src/shaping/procedure.ts:166`
+
+### `shaping/step-readiness-has-one-answer` — rung 6
+
+**Mechanism.** choke-point — `stepReadiness` is the sole producer of a step's enabled/disabled state AND of the sentence beside it, from one switch over one input record. A button cannot be enabled while showing a reason it is not, because the two come out of the same call
+
+**Why.** the first version of this had the button's `disabled` on one expression and its caption on another; they agree until someone edits one of them, and the failure mode is a control that looks available and does nothing
+
+**Debt — promotion.** the note strings are assembled here while the refusal sentences live in copy.ts. Promote by moving these into copy.ts too, so there is one module anyone looking for the screen's words has to read.
+
+`packages/ui/src/shaping/steps.ts:12`
 
 ### `shaping/verified-is-a-type` — rung 7
 

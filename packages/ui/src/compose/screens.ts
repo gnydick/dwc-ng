@@ -133,6 +133,35 @@ export const BED_COMPOSITION: Composition = {
 	camera: { col: 0, row: 265, colSpan: 104, rowSpan: 75 },
 };
 
+/**
+ * Shaping: the input-shaping lab, in the order the operator works through it.
+ *
+ * Two columns, and the pairing across them is deliberate rather than a way of
+ * filling space: what you are measuring sits beside what it produced. Status
+ * next to Capture (the session and the run that feeds it), Decay next to Sweep
+ * (one stop, then every speed), Candidates next to Custom (the ranked list and
+ * the train you build yourself), Verify next to Apply (what the machine
+ * measured and the line it earns). Every rowSpan matches the card's own
+ * default, so a fresh screen is each card fitted to its content.
+ */
+export const SHAPING_COMPOSITION: Composition = {
+	// status 77 -> 138 when it gained the five-step workflow list, the per-tool
+	// tpost disclosure and the reserved message line; the rest of the left
+	// column follows it down.
+	"shaping-status": { col: 0, row: 0, colSpan: 156, rowSpan: 138 },
+	"shaping-capture": { col: 156, row: 0, colSpan: 156, rowSpan: 66 },
+	"shaping-decay": { col: 0, row: 138, colSpan: 156, rowSpan: 75 },
+	"shaping-sweep": { col: 156, row: 66, colSpan: 156, rowSpan: 39 },
+	"shaping-candidates": { col: 0, row: 213, colSpan: 156, rowSpan: 75 },
+	"shaping-custom": { col: 156, row: 105, colSpan: 156, rowSpan: 71 },
+	"shaping-verify": { col: 0, row: 288, colSpan: 156, rowSpan: 62 },
+	"shaping-apply": { col: 156, row: 176, colSpan: 156, rowSpan: 50 },
+	// The left column is the taller of the two (ends at 350); the full-width
+	// strip clears both.
+	console: { col: 0, row: 350, colSpan: 312, rowSpan: 75 },
+	camera: { col: 0, row: 425, colSpan: 104, rowSpan: 75 },
+};
+
 /** Settings: config-overlay editors + the save card (the former save-bar). */
 export const SETTINGS_COMPOSITION: Composition = {
 	"axis-roles": { col: 0, row: 0, colSpan: 156, rowSpan: 109 },
@@ -167,6 +196,12 @@ export const BUILTIN_SCREENS = {
 	// stays `bed` — it is the layout storage key, so renaming it would orphan
 	// every saved layout.
 	bed: { name: "Bed maintenance", composition: BED_COMPOSITION, class: "bed" },
+	// Appended, not inserted: the order of this object IS the nav order, so
+	// putting Shaping anywhere else would move every screen below it in a rail
+	// people navigate by position.
+	// No `class`: nothing in app.css keys off a shaping canvas, and an unused
+	// styling hook is an invitation to write one rule against it and forget.
+	shaping: { name: "Shaping", composition: SHAPING_COMPOSITION },
 } as const satisfies Record<string, ScreenDef>;
 
 export type BuiltinScreenId = keyof typeof BUILTIN_SCREENS;

@@ -14,7 +14,7 @@ import { CardStudio } from "../compose/CardStudio.tsx";
 import { customCardIds, isCustomCardId, isOrphanSlot, type CustomCardId, type SlotId } from "../compose/composition.ts";
 import { createServicePool } from "../compose/services.ts";
 import type { CardCtx } from "../compose/ctx.ts";
-import { SCENARIOS, scenarioModel, type ScenarioId } from "./cardScenarios.ts";
+import { SCENARIOS, scenarioFile, scenarioList, scenarioModel, type ScenarioId } from "./cardScenarios.ts";
 import { createStubConnector } from "@dwc-ng/connector";
 import { LayoutAuditAll, LayoutAuditPanel, ScaleSweepAll } from "./LayoutAuditPanel.tsx";
 
@@ -68,10 +68,23 @@ export default function CardLab() {
 		om: model, setOm: setModel, connection, console: consoleLines, events: {},
 	};
 
+	// The stub echoes G-code and answers every read emptily. A scenario may also
+	// carry FILES — a card whose state lives on the SD card (the shaping results)
+	// has no other way to be looked at in the lab — so downloads consult the
+	// scenario first and fall through to the stub for everything else. Read at
+	// call time, not captured: switching scenario changes what the next read
+	// finds, which is what the Reload control on such a card is for.
+	const stub = createStubConnector(echo);
 	const services: AppServices = {
 		om: omStore,
 		config: outer.config, // real config so user axis-role/sensor labels render
-		connector: createStubConnector(echo),
+		connector: {
+			...stub,
+			download: async (path: string) => scenarioFile(scenario(), path) ?? stub.download(path),
+			// The Decay card browses a directory, and a bench that answers it
+			// with nothing cannot measure the card at the scale it is for.
+			list: async (dir: string) => scenarioList(scenario(), dir) ?? stub.list(dir),
+		},
 		temps: createTemperatureHistory(omStore),
 		backend: outer.backend,
 	};

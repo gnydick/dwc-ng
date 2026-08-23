@@ -31,6 +31,10 @@ import {
 	AxisRolesBody, DockSensorsBody, BedProbeBody, CameraConfigBody, SensorNamesBody, SavedVersionsBody, ConfigSaveBody,
 	HeaterColorsBody, ThermalColorsBody, ShapingBody,
 } from "../cards/SettingsCards.tsx";
+import {
+	ShapingStatusBody, ShapingCaptureBody, ShapingDecayBody, ShapingSweepBody,
+	ShapingCandidatesBody, ShapingCustomBody, ShapingVerifyBody, ShapingApplyBody,
+} from "../cards/ShapingCards.tsx";
 import { FirmwareBody } from "../cards/FirmwareUpdateCard.tsx";
 import { LayersBody } from "../cards/LayersCard.tsx";
 import { GcodeViewerBody } from "../gcode/GcodeViewer.tsx";
@@ -97,6 +101,23 @@ export const CARD_RENDER: Record<CardId, CardRender> = {
 	"camera-config": { body: () => <CameraConfigBody />, actions: resetAction("camera") },
 	"sensor-names": { body: () => <SensorNamesBody />, actions: resetAction("sensorNames") },
 	"settings-shaping": { body: () => <ShapingBody />, actions: resetAction("shaping") },
+	// The Shaping Lab. Every body is a view of ONE service (the per-tool results
+	// store and the screen's selections), so the eight cards cannot disagree
+	// about which tool is being tuned — see compose/services.ts `shaping`.
+	"shaping-status": {
+		body: ctx => <ShapingStatusBody ctx={ctx} />,
+		// Re-read this tool's results file. It lives on the SD card beside
+		// config.g, so the operator can put one there or edit one out from under
+		// the screen — the same reason the height map carries a Reload.
+		actions: ctx => <button class="link-btn" onClick={() => ctx.service("shaping").reload()}>Reload</button>,
+	},
+	"shaping-capture": { body: ctx => <ShapingCaptureBody ctx={ctx} /> },
+	"shaping-decay": { body: ctx => <ShapingDecayBody ctx={ctx} /> },
+	"shaping-sweep": { body: ctx => <ShapingSweepBody ctx={ctx} /> },
+	"shaping-candidates": { body: ctx => <ShapingCandidatesBody ctx={ctx} /> },
+	"shaping-custom": { body: ctx => <ShapingCustomBody ctx={ctx} /> },
+	"shaping-verify": { body: ctx => <ShapingVerifyBody ctx={ctx} /> },
+	"shaping-apply": { body: ctx => <ShapingApplyBody ctx={ctx} /> },
 	"saved-versions": { body: () => <SavedVersionsBody /> },
 	"config-save": { body: () => <ConfigSaveBody /> },
 };

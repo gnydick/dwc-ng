@@ -1,4 +1,4 @@
 {
-  "maxEagerBytes": 423424,
-  "note": "413.5 KiB. Raised 2026-08-21 from 410,624 for global unit scaling: measured main 406,415 B -> branch 414,690 B, +8,275 B, all of it the stylesheet (calc(n * var(--u)) is longer than a px literal, ~870 times). Same ~8.5 KB headroom as the 2026-08-03 seed (401,859 B). RAW bytes, because DSF's Kestrel serves uncompressed. Raising this is a deliberate commit, not a fix."
+  "maxEagerBytes": 483328,
+  "note": "472 KiB. SECOND raise on 2026-08-22/23, for the decay viewer: measured branch 474,033 B (baseline at that point 460,084 B, +13,949 B, JS ~11 KB and CSS ~2.3 KB; uPlot was already eager via TemperatureChart so none of it is the chart library). NOTE the previous note's '9,895 B headroom' was already false when written - main had grown to 460,084 B, leaving 716 B. Do not trust a stale headroom figure; measure. New headroom 9,295 B, and work items E2 (canvas heatmap), F (residual chart, custom editor) and G (verify bars, apply diff) all still have to fit in it. This is the point at which lazy-loading the Shaping screen stops being optional. RAW bytes, because DSF's Kestrel serves uncompressed. Raising this is a deliberate commit, not a fix."
 }

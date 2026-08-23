@@ -69,6 +69,27 @@ export type ToolResults = {
 /** One file per tool: a toolchanger tunes each head separately, and a shared file would make tool 3's session overwrite tool 0's. */
 export const RESULTS_PATH = (tool: number): string => `0:/sys/dwc-ng/shaping/tool${tool}.json`;
 
+/**
+ * Every directory a path needs, outermost first, excluding the volume.
+ *
+ * `0:/sys/dwc-ng/shaping/tool0.json` needs `0:/sys`, `0:/sys/dwc-ng` and
+ * `0:/sys/dwc-ng/shaping` to exist. RRF does not create them: `rr_upload` to a
+ * missing directory fails, and DWC only ever calls `rr_mkdir` from its explicit
+ * New Directory dialog (reference/connectors PollConnector.ts:953). Nobody had
+ * noticed because `save` had no call site until a real fingerprint needed
+ * writing — on a board where `0:/sys/dwc-ng/` does not exist.
+ */
+export function parentDirs(path: string): string[] {
+	const parts = path.split("/");
+	// The volume prefix ("0:") is not a directory anyone creates, and the last
+	// segment is the file itself.
+	const dirs: string[] = [];
+	for (let i = 2; i < parts.length; i++) {
+		dirs.push(parts.slice(0, i).join("/"));
+	}
+	return dirs;
+}
+
 export function emptyResults(tool: number): ToolResults {
 	return { tool, fingerprint: null, captures: [], sweep: null, candidates: [], verified: [], applied: null };
 }

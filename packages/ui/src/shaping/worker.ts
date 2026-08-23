@@ -11,7 +11,19 @@ import { type Candidate, rank, type RankOptions } from "./engine/rank.ts";
 import { type SweepMatrix, sweepMatrix } from "./engine/sweep.ts";
 import type { Hz, MmPerS, Seconds } from "./engine/units.ts";
 
+/**
+ * One capture, fitted. The samples, the stop the fitter used and the verdict
+ * it reached travel as ONE value, and the value names the axis it is about.
+ *
+ * That is deliberate rather than convenient: the decay chart draws the samples
+ * and prints the verdict, and if those arrived as separate arguments a caller
+ * could — eventually would — hand it one capture's numbers beside another
+ * capture's fit, or draw Y while printing the fit of X. There is nothing to
+ * mismatch when there is only one argument.
+ */
 export type FitResult = {
+	/** Which axis `fit` is about, and therefore which of x/y the chart draws. */
+	readonly axis: Axis;
 	readonly rate: Hz;
 	readonly x: Float64Array;
 	readonly y: Float64Array;
@@ -69,7 +81,7 @@ export function handle(req: EngineRequest): { response: EngineResponse; transfer
 				const data = req.axis === "X" ? c.x : c.y;
 				const tStop = detectStop(data, c.rate);
 				const fit: Mode | NoFit = tStop === null ? { reason: "short-window" } : fitDecay(data, c.rate, tStop);
-				const result: FitResult = { rate: c.rate, x: c.x, y: c.y, z: c.z, tStop, fit };
+				const result: FitResult = { axis: req.axis, rate: c.rate, x: c.x, y: c.y, z: c.z, tStop, fit };
 				void isMode;
 				return { response: { id: req.id, kind: "fit", result }, transfer: [c.x.buffer, c.y.buffer, c.z.buffer] };
 			}
