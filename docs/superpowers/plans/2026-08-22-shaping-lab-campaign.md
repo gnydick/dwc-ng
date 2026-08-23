@@ -367,6 +367,10 @@ Rules: `stale` if `now − pre.readAt > 2000 ms`; every point of the plan (start
 - [ ] **Step 2–4:** implement. No `G92` anywhere. Use only `cmd.*`.
 - [ ] **Step 5: PASS.** **Step 6: Commit.**
 
+**Carried forward from B2 (2026-08-22):** `reference/dwc` (`plugins/InputShaping/RecordMotionProfileDialog.vue:555,557`) puts `M400`, `M956` and the move on a SINGLE line so the capture arms in the same buffer as the move. Our builders are one-command-each and `joinCommands` separates with `
+`. With trigger `A1`/`A2` the M956 is still queued before the move, so ordering should hold — but this is UNVERIFIED on the board. Confirm it against the real machine (or mock-duet's B3 emulation) before trusting the first capture; if the separate-line form loses the arm, the step must emit one joined command.
+
+
 ### Task C3: run loop with capture retrieval + structural restore (I2)
 
 **Files:** Modify `shaping/procedure.ts` (add `run`); Test `test/shaping-procedure-run.test.ts` with a fake connector.

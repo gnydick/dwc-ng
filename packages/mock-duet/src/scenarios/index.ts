@@ -1,5 +1,6 @@
 import type { Machine } from "../machine.ts";
 import type { Scenario } from "./types.ts";
+import { DEFAULT_MODES, ensureAccelerometer } from "../accelerometer.ts";
 
 export type { Scenario, ScenarioEvent } from "./types.ts";
 
@@ -58,9 +59,29 @@ const disconnect: Scenario = {
 	],
 };
 
+const shaping: Scenario = {
+	name: "shaping",
+	description: "Idle and homed, ringing like the real toolchanger (X 18.1Hz, Y 51.6Hz, 250Hz forced).",
+	init(machine: Machine) {
+		machine.accel.modes = DEFAULT_MODES;
+		// The synthetic base model ships with no accelerometer; the bundled
+		// capture already has one on every tool board, so this is a no-op there.
+		ensureAccelerometer(machine);
+		// A board that has been used for shaping has the folder, empty or not.
+		// It is NOT part of the base seed: a board that never ran M956 does not
+		// have it, and the UI has to survive listing a directory that is absent.
+		machine.sd.ensureDir("0:/sys/accelerometer", String(machine.om.state.time ?? ""));
+		// The Shaping Lab refuses to move an unhomed machine, so a scenario
+		// that exists to be driven by it starts homed.
+		for (const axis of machine.om.move.axes) axis.homed = true;
+		machine.bump("move");
+	},
+};
+
 export const scenarios: Record<string, Scenario> = {
 	[idle.name]: idle,
 	[midPrint.name]: midPrint,
 	[heaterFault.name]: heaterFault,
 	[disconnect.name]: disconnect,
+	[shaping.name]: shaping,
 };

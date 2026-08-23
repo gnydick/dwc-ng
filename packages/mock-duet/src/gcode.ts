@@ -1,4 +1,6 @@
 import type { Machine } from "./machine.ts";
+import { readParams } from "./gcodeParams.ts";
+import { executeM593, executeM955, executeM956, onMove } from "./accelerometer.ts";
 
 /**
  * Minimal G-code interpreter — just enough to make an interactive UI feel
@@ -23,20 +25,13 @@ function executeLine(machine: Machine, line: string): string {
 	if (code === "") return "";
 
 	const word = code.split(/\s+/)[0]!.toUpperCase();
-	const param = (letter: string): number | null => {
-		const match = new RegExp(`(?:^|\\s)${letter}(-?\\d+(?:\\.\\d+)?)`, "i").exec(code.slice(word.length));
-		return match ? parseFloat(match[1]!) : null;
-	};
-	const quoted = (): string | null => /"([^"]*)"/.exec(code)?.[1] ?? null;
-	/** The quoted string belonging to one parameter letter, e.g. P"hi" in M291. */
-	const quotedParam = (letter: string): string | null =>
-		new RegExp(`(?:^|\\s)${letter}"([^"]*)"`, "i").exec(code)?.[1] ?? null;
-	/** An RRF array literal of strings, e.g. K{"Yes","No"}. */
-	const quotedList = (letter: string): string[] | null => {
-		const body = new RegExp(`(?:^|\\s)${letter}\\{([^}]*)\\}`, "i").exec(code)?.[1];
-		if (body === undefined) return null;
-		return [...body.matchAll(/"([^"]*)"/g)].map(m => m[1]!);
-	};
+	// One parameter grammar for every code (gcodeParams.ts). These are the
+	// names the handlers below already used, bound to it.
+	const p = readParams(code, word);
+	const param = p.num;
+	const quoted = p.anyQuoted;
+	const quotedParam = p.quoted;
+	const quotedList = p.strings;
 	const om = machine.om;
 
 	// Tool change: T0 / T-1
@@ -48,6 +43,9 @@ function executeLine(machine: Machine, line: string): string {
 	switch (word) {
 		case "G0":
 		case "G1": {
+			const before = planePosition(machine);
+			const feed = param("F");
+			if (feed !== null && feed > 0) machine.feedRateMmPerMin = feed;
 			for (const axis of om.move.axes) {
 				const v = param(axis.letter);
 				if (v === null) continue;
@@ -60,6 +58,8 @@ function executeLine(machine: Machine, line: string): string {
 				const pos = machine.extruderRelative ? extruder.position + e : e;
 				extruder.rawPosition = extruder.position = pos;
 			}
+			const after = planePosition(machine);
+			onMove(machine, after.x - before.x, after.y - before.y, machine.feedRateMmPerMin / 60);
 			return "";
 		}
 		case "G90": machine.axesRelative = false; return "";
@@ -224,6 +224,12 @@ function executeLine(machine: Machine, line: string): string {
 			machine.bump("heat");
 			return "";
 		}
+		// Accelerometer and input shaping. The strings and the physics live in
+		// accelerometer.ts so the reply, the object model and the synthesized
+		// capture cannot drift apart.
+		case "M593": return executeM593(machine, p);
+		case "M955": return executeM955(machine, p);
+		case "M956": return executeM956(machine, p);
 		case "M112":
 			om.state.status = "halted";
 			machine.bump("state");
@@ -274,6 +280,13 @@ function executeLine(machine: Machine, line: string): string {
 		default:
 			return "";
 	}
+}
+
+/** X and Y as the machine currently has them — the plane a capture rings in. */
+function planePosition(machine: Machine): { x: number; y: number } {
+	const axes = machine.om.move.axes as Array<{ letter: string; machinePosition: number }>;
+	const at = (letter: string): number => axes.find(a => a.letter === letter)?.machinePosition ?? 0;
+	return { x: at("X"), y: at("Y") };
 }
 
 function stripComment(line: string): string {

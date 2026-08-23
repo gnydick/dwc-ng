@@ -11,6 +11,8 @@
 
 import { EMERGENCY_STOP } from "@dwc-ng/connector";
 import type { GcodeCommand } from "@dwc-ng/connector";
+import { impulses, type ShaperSpec } from "../shaping/engine/shapers.ts";
+import type { Mm } from "../shaping/engine/units.ts";
 
 /**
  * The two things a command may be assembled from, and their sole producers.
@@ -102,6 +104,29 @@ const gc = (parts: TemplateStringsArray, ...values: Param[]): string =>
  *  re-parsing that through n() would send "0.5" instead. */
 const fixed = (value: number, digits: number): Param => value.toFixed(digits) as Param;
 
+/**
+ * A number at %g precision: six significant digits, trailing zeros dropped.
+ * `52` stays `52` rather than becoming `F52.000`, and a frequency that came out
+ * of a curve fit as 51.98732145 is trimmed to what the board can act on. Distinct
+ * from n() because a fitted value carries more digits than are meaningful, and
+ * from fixed() because the width is not part of the emitted form here.
+ *
+ * Refuses a non-finite value: NaN.toPrecision(6) is the string "NaN", which n()
+ * would happily splice into a command as a parameter the board cannot parse.
+ */
+const sig = (value: number): Param => {
+	if (!Number.isFinite(value)) throw new Error(`not a finite number: ${String(value)}`);
+	return n(Number(value.toPrecision(6)));
+};
+
+/**
+ * RRF's colon-separated numeric list (M593's H and T). Built only out of
+ * fixed(), so the joined result contains digits, dots and colons and nothing
+ * else — there is no input that could put anything else in it.
+ */
+const numberList = (values: readonly number[], digits: number): Param =>
+	values.map((v) => fixed(v, digits)).join(":") as Param;
+
 export const axisLetter = (value: string): Param => {
 	if (!/^[A-Za-z]$/.test(value)) throw new Error(`not an axis letter: ${JSON.stringify(value)}`);
 	// Passed through with its CASE INTACT. An earlier draft of this uppercased,
@@ -127,6 +152,56 @@ export const gcodeQuote = (value: string): Param => {
 	}
 	return `"${value.replace(/"/g, '""').replace(/'/g, "''")}"` as Param;
 };
+
+/**
+ * `X180 Y120` — the axis words of a G1. Each pair is an axisLetter and a sig,
+ * so the only thing this can produce is letters and numbers; there is no route
+ * by which free text reaches a move.
+ */
+const axisWords = (target: ReadonlyArray<{ readonly axis: string; readonly mm: number }>): Param =>
+	target.map((t) => `${axisLetter(t.axis)}${sig(t.mm)}`).join(" ") as Param;
+
+/**
+ * An accelerometer, spelled the way M955/M956 address one: `20.0` for device 0
+ * on the CAN board at address 20, and the bare `0` for the mainboard's own.
+ * Only accelAddr() below can make one.
+ */
+export type AccelAddr = string & { readonly __accel: true };
+
+/**
+ * An accelerometer address as M955/M956 want it in their P parameter.
+ *
+ * @invariant accelerometer-address-is-a-type
+ * @rung 7  sole-constructor type — the brand is unforgeable outside accelAddr(),
+ *          so M955 and M956 cannot be handed a tool number, a heater index or a
+ *          hand-formatted string. The board.device spelling AND the mainboard's
+ *          bare form are decided once, in the only place that can mint one, so a
+ *          second caller cannot spell it differently
+ * @why P is board.device, not a device number: on this toolchanger every
+ *      accelerometer is on a CAN toolboard, so a bare index would silently
+ *      address the mainboard instead — a capture from the wrong sensor looks
+ *      like a real capture and would be fitted, ranked and applied. The
+ *      mainboard exception follows reference/dwc
+ *      (plugins/InputShaping/RecordMotionProfileDialog.vue:273-277), which maps
+ *      canAddress 0 to "0" and everything else to `${canAddress}.0`; the wiki
+ *      (reference/duet-gcode.md, M955 notes) likewise says "Use P0 for an
+ *      accelerometer connected locally". DWC and the board win over a general
+ *      reading of the bb.nn form
+ */
+export function accelAddr(boardAddress: number, device: number): AccelAddr {
+	if (!Number.isInteger(boardAddress) || boardAddress < 0 || boardAddress > 126) {
+		// 0 is the mainboard; 1..126 is the CAN address range (reference/duet-gcode.md M959).
+		throw new Error(`not a board address: ${String(boardAddress)}`);
+	}
+	if (!Number.isInteger(device) || device < 0) {
+		throw new Error(`not a device number: ${String(device)}`);
+	}
+	return (boardAddress === 0 && device === 0 ? "0" : `${boardAddress}.${device}`) as AccelAddr;
+}
+
+/** Interpolate a minted address. Sound because accelAddr is its only producer
+ *  and it emits digits and one dot. */
+const accelParam = (addr: AccelAddr): Param => addr as string as Param;
 
 /** Run a macro file (M98). The P filename is quoted through gcodeQuote. */
 const runMacro = (path: string): string => gc`M98 P${gcodeQuote(path)}`;
@@ -368,6 +443,127 @@ const rawCmd = {
 	ackNumber: (seq: number, value: number): string => gc`M292 R{${n(value)}} S${n(seq)}`,
 	/** Operator free text — quoted, because it is the operator's. */
 	ackText: (seq: number, text: string): string => gc`M292 R{${gcodeQuote(text)}} S${n(seq)}`,
+
+	// --- motion primitives (the shaping procedure composes these) ---
+	//
+	// Forms per reference/duet-gcode.md G90/G4/M400/G1. They are separate
+	// builders rather than one bundle because the shaping procedure interleaves
+	// them with captures, and a bundle would fix an order the procedure needs to
+	// choose. joinCommands is how they become one payload.
+
+	/** G90 — absolute positioning. Note this does NOT set extrusion absolute
+	 *  (that is M82), and the flag is per input channel. */
+	absolute: (): string => "G90",
+
+	/** M400 — wait for the move queue to drain. Bare, so RRF 3.5+ releases the
+	 *  axes it owns; S1 would hold them, which a capture has no reason to do. */
+	waitMoves: (): string => "M400",
+
+	/** G4 P — dwell in MILLISECONDS (G4 S is the seconds form). Used to let the
+	 *  machine come to rest before a capture reads the ring-down. */
+	dwell: (ms: number): string => {
+		if (!Number.isFinite(ms) || ms < 0) throw new Error(`not a dwell in ms: ${String(ms)}`);
+		return gc`G4 P${sig(ms)}`;
+	},
+
+	/**
+	 * An absolute X/Y move at a given feed rate (mm/min, as F always is).
+	 *
+	 * Plain G1 — no H flag, like cmd.jog: the shaping procedure only ever runs on
+	 * a homed machine and axis limits should apply. G90 is NOT bundled in; the
+	 * procedure sends cmd.absolute() once, because repeating a modal per move
+	 * would be the same fact stated twice.
+	 *
+	 * Refuses an empty target (a G1 with no axes is a feed-rate change wearing a
+	 * move) and a repeated axis (`G1 X1 X2` is malformed). Both are runtime
+	 * refusals — rung 2 — because the parameter shape is fixed by the procedure
+	 * API; the honest claim is that they fail loudly at the one place that could
+	 * have emitted them, not that they are unrepresentable.
+	 */
+	moveTo: (target: ReadonlyArray<{ axis: "X" | "Y"; mm: Mm }>, feedMmPerMin: number): string => {
+		if (target.length === 0) throw new Error("a move needs at least one axis");
+		if (new Set(target.map((t) => t.axis)).size !== target.length) {
+			throw new Error(`repeated axis in a move: ${target.map((t) => t.axis).join("")}`);
+		}
+		return gc`G1 ${axisWords(target)} F${sig(feedMmPerMin)}`;
+	},
+
+	// --- accelerometer + input shaping (M955 / M956 / M593) ---
+
+	/**
+	 * Report an accelerometer's configuration (M955 with P alone). Sending only P
+	 * asks; adding I/S/R would SET, and those settings persist on the board, so
+	 * this deliberately carries nothing else — reading the sampling rate must not
+	 * change it (reference/duet-gcode.md M955 notes).
+	 */
+	accelConfig: (addr: AccelAddr): string => gc`M955 P${accelParam(addr)}`,
+
+	/**
+	 * Collect `samples` accelerometer readings into a .csv (M956).
+	 *
+	 * Parameter order P, S, A, F follows reference/dwc
+	 * (plugins/InputShaping/RecordMotionProfileDialog.vue:555) and the wiki's own
+	 * listing. No X/Y/Z: with them omitted RRF collects all three axes, which is
+	 * what the fingerprint wants — the ringing of an X move shows up on Y too.
+	 *
+	 * `trigger` is M956's A: 0 = start now, 1 = at the start of the next move,
+	 * 2 = at the start of that move's deceleration. Typed 0|1|2 rather than
+	 * number, so there is no fourth value to send.
+	 *
+	 * F is a bare file name; RRF puts it in 0:/sys/accelerometer.
+	 */
+	accelCapture: (addr: AccelAddr, samples: number, trigger: 0 | 1 | 2, file: string): string => {
+		if (!Number.isInteger(samples) || samples <= 0) throw new Error(`not a sample count: ${String(samples)}`);
+		return gc`M956 P${accelParam(addr)} S${n(samples)} A${n(trigger)} F${gcodeQuote(file)}`;
+	},
+
+	/**
+	 * Configure input shaping (M593), named or custom.
+	 *
+	 * The named form is uniform across every shaper RRF knows, so the six cases
+	 * share one arm — but they are still WRITTEN OUT, with a `never` default, so
+	 * that adding a type to ShaperType stops compilation here until someone has
+	 * decided whether it really is a P/F/S shaper. A `spec.type === "custom"`
+	 * test would have narrowed the other branch automatically and let a new
+	 * shaper through silently.
+	 *
+	 * The custom form is DERIVED from impulses(spec) rather than re-read off the
+	 * spec, so what goes to the board is exactly the train the engine modelled:
+	 * H is every amplitude except the last (RRF sets the last to 1 - sum) and T
+	 * is every cumulative delay except the first (which is zero), in seconds —
+	 * reference/duet-gcode.md M593, RRF 3.6 section. That is also why the lists
+	 * are n-1 long by construction rather than by a length check. Widths follow
+	 * reference/dwc (InputShaping.vue:289-291), one digit finer on each.
+	 */
+	inputShaping: (spec: ShaperSpec): string => {
+		switch (spec.type) {
+			case "zvd":
+			case "zvdd":
+			case "zvddd":
+			case "mzv":
+			case "ei2":
+			case "ei3":
+				return gc`M593 P${gcodeQuote(spec.type)} F${sig(spec.F)} S${sig(spec.S)}`;
+			case "custom": {
+				const { A, T } = impulses(spec);
+				const amplitudes = Array.from(A.subarray(0, A.length - 1));
+				const delays = Array.from(T.subarray(1));
+				return gc`M593 P${gcodeQuote("custom")} H${numberList(amplitudes, 4)} T${numberList(delays, 5)}`;
+			}
+			default: {
+				const unhandled: never = spec;
+				throw new Error(`unknown shaper type: ${String((unhandled as { type: unknown }).type)}`);
+			}
+		}
+	},
+
+	/** Disable input shaping. P"none" is a shaper TYPE, not an absent one, so this
+	 *  is a distinct command rather than inputShaping with a missing argument. */
+	shapingOff: (): string => gc`M593 P${gcodeQuote("none")}`,
+
+	/** Bare M593 — report the current shaper. No parameters means ASK; any
+	 *  parameter would set. */
+	queryShaping: (): string => "M593",
 };
 
 /**

@@ -21,7 +21,7 @@ and invariant claim mentions 13 -> 23, so no mechanism was deleted and no
 claim was lost in the gap. From here the ratchets make a dropped rung visible
 in the diff that drops it.
 
-**Totals:** 90 invariants · 68 at rung 6 or above · 22 below rung 6 (ceiling 22).
+**Totals:** 96 invariants · 74 at rung 6 or above · 22 below rung 6 (ceiling 22).
 
 ## bed
 
@@ -377,6 +377,14 @@ in the diff that drops it.
 
 ## control
 
+### `control/accelerometer-address-is-a-type` — rung 7
+
+**Mechanism.** sole-constructor type — the brand is unforgeable outside accelAddr(), so M955 and M956 cannot be handed a tool number, a heater index or a hand-formatted string. The board.device spelling AND the mainboard's bare form are decided once, in the only place that can mint one, so a second caller cannot spell it differently
+
+**Why.** P is board.device, not a device number: on this toolchanger every accelerometer is on a CAN toolboard, so a bare index would silently address the mainboard instead — a capture from the wrong sensor looks like a real capture and would be fitted, ranked and applied. The mainboard exception follows reference/dwc (plugins/InputShaping/RecordMotionProfileDialog.vue:273-277), which maps canAddress 0 to "0" and everything else to `${canAddress}.0`; the wiki (reference/duet-gcode.md, M955 notes) likewise says "Use P0 for an accelerometer connected locally". DWC and the board win over a general reading of the bb.nn form
+
+`packages/ui/src/control/commands.ts:174`
+
 ### `control/escape-disarms` — rung 6
 
 **Mechanism.** choke-point — createArmed is the only route to an armed control, and test/armed.test.ts walks src rejecting any `[armed, …]` signal not produced by it, so a new two-step control Escape cannot reach fails the suite by file and line
@@ -393,7 +401,7 @@ in the diff that drops it.
 
 **Why.** an unquoted operator filename reaching M98 was a real injection: a name containing a quote closed the parameter early and the remainder was parsed as further G-code, against a machine with heaters. Promoted from rung 5 on 2026-08-01 — it had been "the builders below all call it", which is inspection, and inspection is what the next builder skips. Control characters added 2026-08-05: the same early-close, by a route doubling cannot address. Not reachable at the time — a filename is already filtered by files/path.ts, and an `<input type="text">` strips newlines — but both of those barriers belong to OTHER systems (that parser, the DOM), and messagebox/ack.ts already has a path around the second: MessageBoxPrompt seeds its input straight from the board's `default`, so an unedited answer never passes through the DOM at all. What kept it safe was RRF being unable to put a newline in M291's F"..." parameter, which is RRF's guarantee to withdraw, not ours
 
-`packages/ui/src/control/commands.ts:66`
+`packages/ui/src/control/commands.ts:68`
 
 ## deploy
 
@@ -691,6 +699,54 @@ in the diff that drops it.
 
 ## mock-duet
 
+### `mock-duet/capture-files-come-only-from-the-synth` — rung 6
+
+**Mechanism.** choke-point — this is the sole route from a MOVE to a file under `0:/sys/accelerometer`, and it consumes the armed record before it writes, so one M956 can produce at most one file. It does not own the directory: `rr_upload` (server.ts) and the DSF `PUT /machine/file` route (dsf.ts) write arbitrary bytes to any path, exactly as a real board lets you upload a CSV there
+
+**Why.** a second route from a move would be a capture whose contents were not produced by the model the tests fit against, and the Shaping Lab's whole claim is that the numbers it shows came from the motion it commanded. An uploaded file is a different thing: the operator put it there deliberately, and the real board allows it too
+
+**Debt — promotion.** promotion to 7 is a `CaptureFile` type whose sole constructor takes the synth's output, with `VirtualSD.write` refusing plain bytes under that directory. That needs the SD store to know about capture paths, which is a bigger change to a shared type than this earns today.
+
+`packages/mock-duet/src/accelerometer.ts:563`
+
+### `mock-duet/captures-are-reproducible` — rung 6
+
+**Mechanism.** choke-point — this is the only producer of capture text, and it is a pure function of `SynthOptions`: the noise comes from a PRNG seeded by hashing those options, and the module imports no clock and no global entropy, so nothing inside it can differ between two runs. The seed deliberately excludes `shaper`, which makes a shaped/unshaped pair a controlled experiment on one noise realisation rather than two draws. Purity is the mechanism; the `Math.random`/`Date` source scan in test/accelerometer.test.ts is support, not the enforcement
+
+**Why.** a mock whose output moved between runs would turn every tolerance in the shaping tests into a flake, and a verdict about a machine that changes on a re-run is worse than no verdict
+
+**Debt — promotion.** promotion to 7 is a branded `CaptureCsv` string type minted only here, so a hand-built CSV cannot reach the SD write in `onMove`. It is worth doing at the same time as the `CaptureFile` promotion filed under capture-files-come-only-from-the-synth, not before.
+
+`packages/mock-duet/src/accelerometer.ts:271`
+
+### `mock-duet/every-shaper-is-modelled` — rung 8
+
+**Mechanism.** illegal state unrepresentable — ShaperRequest is a discriminated union and this is one exhaustive switch with a `never` arm, so a shaper type added to the union stops compilation until its train exists. There is no default arm that could return an unshaped train for a type nobody wrote, and the named form carries F/S while the custom form carries H/T, so the parameters cannot be paired with the wrong type
+
+**Why.** a shaper the mock silently failed to model would leave the ring at full height, and the Verify step would report a real shaper as having done nothing — a wrong verdict about the machine, produced by the test rig rather than measured
+
+`packages/mock-duet/src/accelerometer.ts:102`
+
+### `mock-duet/one-parameter-reader` — rung 6
+
+**Mechanism.** choke-point — every parameter any code handler reads comes from `readParams`. The handlers receive a `Params` and have no access to the raw line, so a second, subtly different `P(\d+)` regex has nowhere to be written; adding an accessor here changes one grammar for every code at once
+
+**Why.** RRF's parameter grammar has real corners — a quoted string may contain a letter that looks like another parameter, `P20.0` is an ADDRESS and not the number 20.0, and `H0.4:0.3` is a list. The accelerometer codes needed all three, and re-deriving them beside the ones in the main dispatch is exactly how the mock ends up speaking two dialects
+
+**Debt — promotion.** promotion to 7 is a parsed `Line` type produced only by this module, with the raw string unreachable from a handler's signature. Today a handler could still be handed the string, because the dispatch in gcode.ts holds it in scope; splitting the dispatch table out so each handler is a `(machine, params) => string` function closes that.
+
+`packages/mock-duet/src/gcodeParams.ts:4`
+
+### `mock-duet/shaping-has-one-home` — rung 6
+
+**Mechanism.** choke-point — M593 writes the object model and nothing else keeps a copy: the report string is rendered from `move.shaping`, and the synth reads its impulses from the same place through `activeShaper`. A client polling the model and the console reply therefore cannot be told two different things
+
+**Why.** the mock exists to be the thing a UI is developed against; a shaper that the reply reported and the ring did not reflect would be a bug the UI could never diagnose, because both of its windows onto the machine would be equally plausible
+
+**Debt — promotion.** promotion to 7 needs the object model to be typed rather than `Record<string, any>`, which snapshot.ts holds open on purpose so the mock can replay captured responses verbatim.
+
+`packages/mock-duet/src/accelerometer.ts:620`
+
 ### `mock-duet/sole-frame-parser` — rung 7
 
 **Mechanism.** choke-point behind a sole constructor — this is the ONLY byte-level WS code here, and a connection exists solely through attachWebSocket's handshake; no other constructor is exported. The parser's outcomes are a closed sum of frame / need-more / fail, so "malformed input hangs the connection" has no encoding
@@ -737,7 +793,7 @@ in the diff that drops it.
 
 **Debt — promotion.** two routes in means the gate is not a gate, and om/speeds.ts re-parses currentMove at the point of DISPLAY to cover the ungated one — a second mechanism for the same property, i.e. the drift hazard. CORRECTED 2026-08-01. This used to say "promote by routing both through one entry that brands what it produces". Following that literally would have introduced a bug, measured rather than reasoned about: this function FILLS IN defaults for absent arrays, so conforming a PARTIAL patch invents them. conformModelKey("heat", { heaters: [...] }) returns that patch plus bedHeaters: [] and chamberHeaters: [], and deep-merging those empties over the store wipes the real lists — on this machine the bed heater would vanish from the UI mid-print. Pinned by test/om-conform.test.ts. The two routes are not one operation with two callers. A wholesale subtree may be completed from defaults because it IS the whole truth; a live patch may never be, because absence there means "unchanged", not "empty". The real promotion is a conform that distinguishes the two — filling only on replacement — and only then can both share an entry. Until that exists, speeds.ts's second parse is load bearing and must not be deleted as redundant.
 
-`packages/ui/src/om/types.ts:346`
+`packages/ui/src/om/types.ts:458`
 
 ## shaping/engine
 
