@@ -113,7 +113,7 @@ function parseFit(raw: unknown): Mode | NoFit | null {
 	// NoFit carries a reason, a Mode carries a damping ratio.
 	if (raw.reason === undefined) return reviveMode(raw);
 	if (typeof raw.reason !== "string" || !NO_FIT_REASONS.includes(raw.reason as NoFit["reason"])) return null;
-	const out: { reason: NoFit["reason"]; f?: Hz; peakG?: G } = { reason: raw.reason as NoFit["reason"] };
+	const out: { reason: NoFit["reason"]; f?: Hz; peakG?: G; cyclesFit?: number } = { reason: raw.reason as NoFit["reason"] };
 	if (raw.f !== undefined) {
 		if (!isFinitePositive(raw.f)) return null;
 		out.f = hz(raw.f);
@@ -121,6 +121,13 @@ function parseFit(raw: unknown): Mode | NoFit | null {
 	if (raw.peakG !== undefined) {
 		if (typeof raw.peakG !== "number" || !Number.isFinite(raw.peakG) || raw.peakG < 0) return null;
 		out.peakG = g(raw.peakG);
+	}
+	// How short "short-decay" actually was. A near-miss (1.9 of the 2 cycles
+	// the fit needs) reads very differently from a mode that dies at once,
+	// so it survives the round trip through the card file.
+	if (raw.cyclesFit !== undefined) {
+		if (typeof raw.cyclesFit !== "number" || !Number.isFinite(raw.cyclesFit) || raw.cyclesFit < 0) return null;
+		out.cyclesFit = raw.cyclesFit;
 	}
 	return out;
 }

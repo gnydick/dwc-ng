@@ -128,15 +128,27 @@ export function peakHz(x: Float64Array, rate: Hz, minHz: number, maxHz: number):
 }
 
 /**
- * Envelope of `x` band-passed to centre·(1±rel): magnitude of the analytic
- * signal built by keeping only positive frequencies in the band.
+ * `x` band-passed to centre·(1±rel): the band-limited SIGNAL, not an envelope.
+ *
+ * @invariant one-envelope-and-it-is-fitted
+ * @rung 8  illegal state unrepresentable — the engine has no function that
+ *          returns a measured envelope, so no consumer can obtain one. The
+ *          only envelope in the system is `modeEnvelope()` in fit.ts, which
+ *          is `peakG·exp(-2π·f·zeta·t)` derived from a fitted Mode and is
+ *          therefore monotonically decreasing for every t by arithmetic
+ * @why an ideal band mask is a zero-phase filter with a sinc impulse
+ *      response ~1/(2·rel·f) long. A ring-down starts abruptly at the stop,
+ *      so the mask has no signal on the left half of its kernel and its
+ *      magnitude RISES for tens of milliseconds before settling — measured
+ *      2026-08-23 on a pure decaying sinusoid whose envelope cannot rise:
+ *      reading/truth ran 0.35 → 1.00 → 1.52 for 18 Hz ζ 0.127 at rel 0.25.
+ *      Padding the input with run-in does not help (a zero run-in leaves the
+ *      rise at 46 ms); on real captures it only replaces the rise with
+ *      deceleration bleeding through the band. A measured envelope of a
+ *      ring-down is not recoverable near the stop, so the engine does not
+ *      offer one — see docs in fit.ts
  */
-export function bandEnvelope(x: Float64Array, rate: Hz, centre: Hz, rel = 0.25): Float64Array {
-	return bandAnalytic(x, rate, centre, rel).env;
-}
-
-/** Analytic signal of the band-passed input: envelope and unwrapped phase (rad). */
-export function bandAnalytic(x: Float64Array, rate: Hz, centre: Hz, rel = 0.25): { env: Float64Array; phase: Float64Array; real: Float64Array } {
+export function bandPass(x: Float64Array, rate: Hz, centre: Hz, rel = 0.25): Float64Array {
 	const n = x.length;
 	const m = nextPow2(n);
 	let mean = 0;
@@ -150,33 +162,13 @@ export function bandAnalytic(x: Float64Array, rate: Hz, centre: Hz, rel = 0.25):
 	const hi = centre * (1 + rel);
 	for (let k = 0; k < m; k++) {
 		const f = (k * rate) / m;
-		const keep = k > 0 && k < m / 2 && f >= lo && f <= hi;
+		const mirror = ((m - k) % m) * rate / m;
+		const keep = k > 0 && ((f >= lo && f <= hi) || (mirror >= lo && mirror <= hi));
 		if (!keep) {
 			re[k] = 0;
 			im[k] = 0;
-		} else {
-			re[k] = re[k]! * 2;
-			im[k] = im[k]! * 2;
 		}
 	}
 	ifft(re, im);
-	const env = new Float64Array(n);
-	const phase = new Float64Array(n);
-	const real = new Float64Array(n);
-	let prev = 0;
-	let acc = 0;
-	for (let i = 0; i < n; i++) {
-		env[i] = Math.hypot(re[i]!, im[i]!);
-		real[i] = re[i]!;
-		const ph = Math.atan2(im[i]!, re[i]!);
-		if (i > 0) {
-			let d = ph - prev;
-			while (d > Math.PI) d -= 2 * Math.PI;
-			while (d < -Math.PI) d += 2 * Math.PI;
-			acc += d;
-		}
-		prev = ph;
-		phase[i] = acc;
-	}
-	return { env, phase, real };
+	return re.slice(0, n);
 }

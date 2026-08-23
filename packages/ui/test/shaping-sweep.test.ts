@@ -37,7 +37,7 @@ test("sweepMatrix: full-step line is speed × 5 and the 100 mm/s row peaks at ~2
 });
 
 test("worker handle: fit routes a capture through detectStop + fitDecay and returns transferables", () => {
-	const { response, transfer } = handle({ id: 7, kind: "fit", csv: fx("ring1_Xp0.csv"), axis: "X" });
+	const { response, transfer } = handle({ id: 7, kind: "fit", csv: fx("ring1/ring1_Xp0.csv"), axis: "X" });
 	assert.equal(response.id, 7);
 	assert.ok(response.kind === "fit");
 	assert.ok(response.result.tStop !== null && isMode(response.result.fit) && Math.abs(response.result.fit.f - 18.1) < 0.5);
