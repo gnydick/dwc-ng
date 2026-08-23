@@ -45,3 +45,10 @@ export type { Layer } from "./layerHistory.ts";
 export { isPlainObject, isSafeKey, safeEntries } from "./safeObject.ts";
 export { EMERGENCY_STOP, isEmergencyStop } from "./emergency.ts";
 export { createStubConnector } from "./stubConnector.ts";
+/**
+ * The clock seam's types only. `realClock` is deliberately NOT on this face:
+ * it is the default the connectors already apply, so an app never needs to
+ * name it, and a second construction of "now" is exactly what the seam exists
+ * to prevent.
+ */
+export type { Clock, TimerHandle } from "./clock.ts";

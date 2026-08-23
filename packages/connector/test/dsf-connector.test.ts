@@ -8,6 +8,7 @@ import { createMockServer, type MockServer, type MockServerOptions } from "../..
 import { THUMBNAIL_PNG_BASE64 } from "../../mock-duet/src/files.ts";
 import { DsfConnector, type DsfConnectorOptions } from "../src/DsfConnector.ts";
 import { EMERGENCY_STOP } from "../src/emergency.ts";
+import { createVirtualClock, type VirtualClock } from "./virtualClock.ts";
 import {
 	DisconnectedError, FileNotFoundError, InvalidPasswordError, OperationFailedError,
 	type ConnectionStatus,
@@ -20,9 +21,33 @@ import {
  * connector's events. Faults the mock has no API for (a firewalled or
  * crashed DCS) are simulated on the raw upgraded TCP socket, which a
  * second — purely observational — 'upgrade' listener captures.
+ *
+ * TIME is virtual here. Every connector in this file is constructed with its
+ * OWN VirtualClock (src/clock.ts; never a swapped global — `node --test` runs
+ * these files concurrently), so a liveness deadline, a reconnect delay and a
+ * request budget are all things the test MOVES rather than waits for. That
+ * bought two things. It took this file from 12.9 s to 1.1 s — it was the whole
+ * reason the battery took 15 s — and it made the timing
+ * assertions exact: "nothing at 1050 ms, the ladder at 1080 ms" is a claim
+ * about the deadline, where "wait 1.4 s and look" was only a claim about the
+ * end state.
+ *
+ * The NETWORK is still real. A reconnect genuinely opens a socket to the mock
+ * over loopback, which costs real milliseconds — so the pattern below is
+ * "advance the clock to make the connector act, then `until(...)` to let the
+ * I/O it started finish".
  */
 
 const T = { timeout: 15_000 };
+
+/**
+ * The mock's idle session sweep is the one deadline in this file that is NOT
+ * on the connector's clock: it reads wall time inside mock-duet, a different
+ * package and out of scope here. So exactly one real wait survives, and it is
+ * this one.
+ */
+const SESSION_TIMEOUT_MS = 250;
+const SESSION_SWEEP_MS = SESSION_TIMEOUT_MS + 20;
 
 function sleep(ms: number): Promise<void> {
 	return new Promise(resolve => setTimeout(resolve, ms));
@@ -36,9 +61,31 @@ async function until(cond: () => boolean, label: string, ms = 5000): Promise<voi
 	}
 }
 
+/**
+ * Move the connector's clock forward in steps until `cond` holds, letting the
+ * real network run between steps.
+ *
+ * Use this where the point is "get there" — a reconnect ladder that may need
+ * several attempts, say. Where the point is "get there at exactly T", use
+ * `clock.advance()` directly: a step size is an approximation, and the
+ * deadline assertions in this file are not approximate.
+ */
+async function advanceUntil(
+	clock: VirtualClock, cond: () => boolean, label: string, stepMs = 25, maxMs = 120_000,
+): Promise<void> {
+	let moved = 0;
+	while (!cond()) {
+		if (moved >= maxMs) throw new Error(`never held within ${maxMs} virtual ms: ${label}`);
+		await clock.advance(stepMs);
+		moved += stepMs;
+	}
+}
+
 interface Harness {
 	mock: MockServer;
 	connector: DsfConnector;
+	/** The connector's own clock. Nothing in this file waits on wall time. */
+	clock: VirtualClock;
 	/** Every onModelKey emission, in order. */
 	keys: Array<{ key: string; value: unknown }>;
 	replies: string[];
@@ -72,8 +119,10 @@ async function startHarness(
 	const boardInfos: Array<{ emulated: boolean; boardType?: string; transport?: string }> = [];
 	const log: string[] = [];
 
+	const clock = createVirtualClock();
 	const connector = new DsfConnector({
 		baseUrl: `http://127.0.0.1:${port}`,
+		clock,
 		pingIntervalMs: 50,
 		reconnectDelayMs: 25,
 		requestTimeoutMs: 2000,
@@ -103,7 +152,7 @@ async function startHarness(
 	});
 
 	return {
-		mock, connector, keys, replies, statuses, layerEvents, boardInfos, log, rawSockets,
+		mock, connector, clock, keys, replies, statuses, layerEvents, boardInfos, log, rawSockets,
 		latest(key: string): unknown {
 			for (let i = keys.length - 1; i >= 0; i--) {
 				if (keys[i]!.key === key) return keys[i]!.value;
@@ -123,7 +172,7 @@ async function startHarness(
  * express (it always sends the full model on connection). Used to prove the
  * liveness deadline is armed before the first frame.
  */
-function createSilentUpgradeServer(): { listen(): Promise<number>; close(): Promise<void> } {
+function createSilentUpgradeServer(): { listen(): Promise<number>; upgrades(): number; close(): Promise<void> } {
 	const server = http.createServer();
 	const sockets: Duplex[] = [];
 	server.on("upgrade", (req, socket) => {
@@ -144,11 +193,20 @@ function createSilentUpgradeServer(): { listen(): Promise<number>; close(): Prom
 		listen: () => new Promise<number>(resolve => server.listen(0, () => {
 			resolve((server.address() as { port: number }).port);
 		})),
+		// Completed handshakes. Virtual time can outrun a real TCP upgrade, so
+		// the test waits for THIS before claiming the socket went silent.
+		upgrades: () => sockets.length,
 		close: () => new Promise<void>(resolve => {
 			// http close() does NOT reap upgraded sockets — destroy them by
 			// hand or node never exits (the very gotcha the campaign fixed for
 			// mock-duet; here it is the test's own throwaway server).
 			for (const s of sockets) s.destroy();
+			// …and it does not reap the ORDINARY connection either. The aborted
+			// /machine/connect probe leaves a socket this server is still
+			// holding open, and close() then waits out its 5 s keep-alive
+			// timeout: that alone was 4 s of the battery once virtual time had
+			// removed everything else from this test.
+			server.closeAllConnections();
 			server.close(() => resolve());
 		}),
 	};
@@ -317,38 +375,83 @@ test("a severity prefix survives the whole transport exactly once", T, async () 
 
 test("PONGs keep a quiet connection alive across the mock's idle expiry", T, async () => {
 	// pingIntervalMs 40 → liveness deadline 1080 ms. Nothing changes on the
-	// machine for well past that AND past the mock's 250 ms session sweep:
-	// only PING/PONG traffic exists. If PONG frames did not stamp the
+	// machine: only PING/PONG traffic exists. If PONG frames did not stamp the
 	// liveness clock, the connector would false-positive into reconnecting.
 	const h = await startHarness(
-		{ password: "secret", sessionTimeout: 250 },
+		{ password: "secret", sessionTimeout: SESSION_TIMEOUT_MS },
 		{ password: "secret", pingIntervalMs: 40 },
 	);
 	try {
 		await h.connector.connect();
-		await sleep(1400);
-		assert.ok(!h.statuses.includes("reconnecting"), "a ponging socket is a live socket");
+		const deadlineMs = 2 * 40 + 1000;
+
+		// THREE full deadlines of virtual quiet, walked one ping interval at a
+		// time so each PONG has a real turn of the loop to cross the loopback
+		// socket and stamp the clock. The old version of this test waited
+		// 1400 ms of wall time — 1.3 deadlines — and cost 1.4 s; this covers
+		// more than twice the silence and costs the network round trips only.
+		for (let elapsed = 0; elapsed < 3 * deadlineMs; elapsed += 40) {
+			await h.clock.advance(40);
+			assert.ok(!h.statuses.includes("reconnecting"),
+				`the ladder started after ${elapsed + 40} ms of PONGed silence (deadline ${deadlineMs} ms)`);
+		}
 		assert.equal(h.connector.status, "connected");
+		assert.equal(h.rawSockets.length, 1, "the original socket was never replaced");
+
+		// The mock's idle sweep reads WALL time — it is the mock's clock, not
+		// the connector's, and mock-duet is out of scope here — so proving the
+		// WS-held session outlived it still costs one real wait. Only this one.
+		await sleep(SESSION_SWEEP_MS);
 		assert.equal(h.mock.sessions.size, 1, "the WS-held session survived idle expiry");
 	} finally {
 		await h.close();
 	}
 });
 
-test("a silent (firewalled) socket trips the liveness deadline; the ladder recovers", T, async () => {
-	const h = await startHarness({}, { pingIntervalMs: 30, reconnectDelayMs: 30 });
+test("a silent (firewalled) socket trips the ladder AT the deadline, not before", T, async () => {
+	// This is the test virtual time was worth having. It used to pause the
+	// socket, wait up to 6 s for "reconnecting" to appear, and assert the end
+	// state — which cannot tell a deadline that fires at 1060 ms from one that
+	// fires at 40 ms because of a bug in `lastSeen`. Now every instant is
+	// exact: nothing at 1050 ms, the ladder at 1080 ms, the attempt at 1110 ms.
+	const pingMs = 30;
+	const reconnectMs = 30;
+	const h = await startHarness({}, { pingIntervalMs: pingMs, reconnectDelayMs: reconnectMs });
 	try {
 		await h.connector.connect();
 		h.keys.length = 0;
 		h.boardInfos.length = 0;
+		const deadlineMs = 2 * pingMs + 1000; // D5/C7
+
+		// The whole handshake ran without the clock moving, so the liveness
+		// stamp is exactly `now` and the arithmetic below is not an estimate.
+		assert.equal(h.clock.now(), 0, "connect() consumed no virtual time");
 
 		// Firewall: the server stops READING (no PONGs, no acks processed)
 		// but the TCP connection stays up — the exact silent-death mode the
 		// deadline exists for. No close frame will ever arrive.
 		h.rawSockets[0]!.pause();
-		await until(() => h.statuses.includes("reconnecting"), "liveness deadline expiry", 6000);
 
-		// Recovery: a fresh socket, a fresh model, everything re-emitted.
+		// The deadline expires at the first ping tick STRICTLY past it, so the
+		// last tick that still sees a live socket is at 1050 ms and the first
+		// that does not is at 1080 ms. Both instants are asserted.
+		const lastQuietTick = Math.floor(deadlineMs / pingMs) * pingMs;
+		await h.clock.advance(lastQuietTick);
+		assert.equal(h.connector.status, "connected", `torn down early, at ${h.clock.now()} ms of silence`);
+		assert.ok(!h.statuses.includes("reconnecting"), "the ladder must not start before the deadline");
+
+		// The very next tick is the first one PAST the deadline.
+		await h.clock.advance(pingMs);
+		assert.equal(h.connector.status, "reconnecting", `deadline of ${deadlineMs} ms did not fire at ${h.clock.now()} ms`);
+		assert.equal(h.rawSockets.length, 1, "noticing the death is not yet an attempt");
+
+		// …and the attempt itself waits its full backoff, no less.
+		await h.clock.advance(reconnectMs - 1);
+		assert.equal(h.rawSockets.length, 1, `the ladder attempted early, ${reconnectMs - 1} ms into a ${reconnectMs} ms delay`);
+		await h.clock.advance(1);
+
+		// Recovery: a fresh socket, a fresh model, everything re-emitted. The
+		// socket and the model are real, so this part waits on real I/O.
 		await until(() => h.connector.status === "connected", "reconnect completed");
 		assert.equal(h.rawSockets.length, 2, "recovery used a NEW socket");
 		for (const key of ["boards", "heat", "move", "state", "tools"]) {
@@ -381,7 +484,8 @@ test("M999 kills every session; reconnect negotiates a fresh one and re-emits fr
 		h.rawSockets.at(-1)!.destroy();
 
 		await until(() => h.statuses.includes("reconnecting"), "socket death noticed");
-		await until(() => h.connector.status === "connected", "reconnected");
+		// The backoff is virtual; the session negotiation and socket are real.
+		await advanceUntil(h.clock, () => h.connector.status === "connected", "reconnected");
 
 		// The old key was dead, so this MUST have been a fresh
 		// /machine/connect — a reused stale key would be refused (1008) and
@@ -405,8 +509,12 @@ test("wrong password is terminal: InvalidPasswordError, no socket, no retry loop
 		assert.deepEqual(h.statuses, ["connecting", "disconnected"]);
 		assert.equal(h.rawSockets.length, 0, "the 403 precedes any WebSocket attempt");
 
-		// Several reconnectDelayMs windows: a ladder would show itself here.
-		await sleep(200);
+		// Ten virtual MINUTES — where this used to be 200 ms of real waiting,
+		// which is under three reconnectDelayMs windows. A ladder, a retry, a
+		// stray keepalive: anything at all would have to show itself in that.
+		assert.equal(h.clock.pendingScheduled(), 0,
+			`a terminal failure armed a timer: ${h.clock.describePending()}`);
+		await h.clock.advance(10 * 60_000);
 		assert.deepEqual(h.statuses, ["connecting", "disconnected"], "terminal means terminal");
 		assert.equal(h.rawSockets.length, 0);
 	} finally {
@@ -424,10 +532,16 @@ test("deliberate disconnect: session dropped, no ladder, no timer left behind", 
 		assert.equal(h.connector.status, "disconnected");
 		assert.equal(h.mock.sessions.size, 0, "the goodbye reached /machine/disconnect");
 
-		// Many fake-fast ping/reconnect intervals: a leaked timer or ladder
-		// would open a new socket or flip the status. (A leaked interval
-		// would also hang the test runner at exit — that gate is implicit.)
-		await sleep(300);
+		// The leak check, stated directly instead of inferred. On wall time the
+		// best this test could do was sleep 300 ms and hope a leaked timer
+		// showed itself (and lean on a leaked interval hanging the runner at
+		// exit — an implicit gate that a virtual timer no longer trips, which
+		// is precisely why the count below replaces it). Now the question
+		// "did disconnect() leave anything armed?" is asked, not sampled.
+		assert.equal(h.clock.pendingScheduled(), 0,
+			`disconnect() left a timer armed: ${h.clock.describePending()}`);
+		// And a minute of virtual time confirms nothing wakes up on its own.
+		await h.clock.advance(60_000);
 		assert.equal(h.statuses.at(-1), "disconnected");
 		assert.equal(h.rawSockets.length, 1, "no reconnection after a deliberate close");
 	} finally {
@@ -504,16 +618,46 @@ test("a socket that opens but never pushes trips the deadline into the ladder", 
 	// nothing; connect() must reject within the deadline, not hang.
 	const silent = createSilentUpgradeServer();
 	const port = await silent.listen();
+	const clock = createVirtualClock();
+	const requestTimeoutMs = 5000;
+	const pingIntervalMs = 50;
+	const deadlineMs = 2 * pingIntervalMs + 1000;
 	try {
 		const c = new DsfConnector({
 			baseUrl: `http://127.0.0.1:${port}`,
-			pingIntervalMs: 50, // deadline = 2*50 + 1000 = 1100 ms
+			clock,
+			pingIntervalMs,
 			reconnectDelayMs: 25,
+			requestTimeoutMs,
 			events: {},
 		});
-		await assert.rejects(c.connect(), (err: unknown) => err instanceof OperationFailedError,
+		// Started, not awaited: the whole point is to move the clock while
+		// connect() is in flight.
+		const rejected = assert.rejects(c.connect(), (err: unknown) => err instanceof OperationFailedError,
 			"connect() rejects on the silent socket instead of hanging");
+
+		// This bare server answers nothing at all, so /machine/connect hangs
+		// and only its own budget ends it. That budget used to be real: this
+		// test cost 9 s, the single most expensive one in the battery.
+		await clock.advance(requestTimeoutMs - 1);
+		assert.equal(silent.upgrades(), 0, "still inside the session probe — no socket attempted yet");
+		await clock.advance(1);
+
+		// Sessionless fallback, then the socket. The handshake is real TCP, so
+		// wait for it before claiming the socket then went silent.
+		await until(() => silent.upgrades() === 1, "the bare server completed the handshake");
+		const armedAt = clock.now();
+		assert.equal(c.status, "connecting");
+
+		// The deadline is armed at socket CREATION, not at the first frame —
+		// that is the whole claim of this test, and it is now checked to the
+		// tick rather than inferred from "it rejected eventually".
+		await clock.advance(deadlineMs);
+		assert.equal(c.status, "connecting", `torn down after only ${clock.now() - armedAt} ms of silence`);
+		await clock.advance(pingIntervalMs);
+		await rejected;
 		await c.disconnect();
+		assert.equal(clock.pendingScheduled(), 0, `a failed connect left a timer armed: ${clock.describePending()}`);
 	} finally {
 		await silent.close();
 	}
