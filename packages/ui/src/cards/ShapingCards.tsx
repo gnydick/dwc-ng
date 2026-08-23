@@ -1160,9 +1160,11 @@ export function ShapingSweepBody(props: { ctx: CardCtx }) {
 			fallback={
 				<p class="hint">
 					No sweep for T{svc.tool()}. A sweep repeats the same move at a range of
-					speeds: a peak that stays at one frequency as the speed rises is forced
-					vibration — motor ripple meeting a frame mode — and input shaping cannot
-					touch it. A peak that moves with the speed is ringing, which it can.
+					speeds. A peak whose frequency <em>rises with the speed</em> is forced
+					vibration — the motors' own step rate, which is speed × steps/mm — and
+					input shaping cannot touch it. A peak that stays at the{" "}
+					<em>same frequency</em> at every speed is a structural mode ringing at
+					its own natural frequency, which is what shaping is for.
 				</p>
 			}
 		>
