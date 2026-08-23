@@ -24,9 +24,12 @@
  * no gate of its own, because the firmware and the planner are the authorities
  * on whether the machine may move.
  */
+import { ACCEL_DIR } from "./captures.ts";
 import type { Fingerprint } from "./engine/fit.ts";
 import type { Refusal } from "./preconditions.ts";
 import type { StepBlock, StepNeed, StepSpec, StepStatus } from "./steps.ts";
+import type { MotionOutcome, MotionState } from "./motionRun.ts";
+import type { RunKind } from "./runPlan.ts";
 import type { SweepState } from "./sweepRun.ts";
 
 /**
@@ -342,4 +345,116 @@ export function captureSourceLabel(source: CaptureSource, tool: number): string 
 			throw new Error(`unknown capture source: ${String(unhandled)}`);
 		}
 	}
+}
+
+/* ------------------------------------------------- what the machine is doing */
+
+/** What a run is called, in the operator's words rather than the union's. */
+export function runKindText(kind: RunKind): string {
+	switch (kind) {
+		case "measure":
+			return "Measure";
+		case "sweep":
+			return "Sweep";
+		default: {
+			const unhandled: never = kind;
+			throw new Error(`unknown run kind: ${String(unhandled)}`);
+		}
+	}
+}
+
+/** "8 of 12 captures", singular where it has to be. */
+const captureTally = (captured: number, expected: number): string =>
+	`${captured} of ${expected} ${expected === 1 ? "capture" : "captures"}`;
+
+/**
+ * What a finished run left behind, in one clause.
+ *
+ * The restore clause is not decoration and is not conditional on the run having
+ * gone well: `Procedure.run` sends the restore from a `finally`, so it happens
+ * on a cancel and on a failure too, and whether it LANDED is a fact about the
+ * machine the operator prints with next. A "done" that did not mention it is a
+ * report that hides the one thing the operator cannot see for themselves.
+ */
+const restoreClause = (restored: boolean): string =>
+	restored
+		? " The machine's shaper is back as it was found."
+		: " THE SHAPER WAS NOT PUT BACK — check M593 before printing.";
+
+function outcomeText(outcome: MotionOutcome, captured: number, expected: number): string {
+	switch (outcome.kind) {
+		case "done":
+			return `Ran ${captureTally(captured, expected)}.`;
+		case "cancelled":
+			return `Cancelled after ${captureTally(captured, expected)}.`;
+		case "refused":
+			// The planner's own words, unchanged: one refusal, one sentence,
+			// wherever it is shown.
+			return `Refused — ${refusalText(outcome.refusal)}.`;
+		case "failed":
+			// The reason comes from the run itself — including the two the capture
+			// wait tells apart: a board that finished a capture and could not write
+			// the file, and a board that never captured at all. Those are different
+			// jobs for the operator, so the sentence is passed through whole rather
+			// than summarised into "failed".
+			return `Stopped after ${captureTally(captured, expected)}: ${outcome.why}`;
+		default: {
+			const unhandled: never = outcome;
+			throw new Error(`unknown motion outcome: ${String((unhandled as { kind: unknown }).kind)}`);
+		}
+	}
+}
+
+/**
+ * The one sentence under the Capture card's progress bar.
+ *
+ * A `never` arm and no default, exactly like `refusalText`: a state added to
+ * `MotionState` stops compilation here until somebody has written its sentence,
+ * because a status line that silently renders "" is indistinguishable from a
+ * card that is broken.
+ *
+ * The idle sentence is where the CONSENT is stated. This is the first control
+ * in this UI that drives the carriage for its own reasons rather than because
+ * somebody pressed a jog button, and the operator is about to hand it a series
+ * of full-speed passes with nobody watching the axis — so the resting state of
+ * this line says what will happen and what will not, rather than saying nothing.
+ */
+export function motionStateText(state: MotionState): string {
+	switch (state.kind) {
+		case "idle":
+			return "Nothing is running. Arming shows the exact moves; the machine is read again the moment you confirm, and any step whose carriage is not where the plan expects ends the run rather than being corrected.";
+		case "planning":
+			return `${runKindText(state.run)}: reading the machine…`;
+		case "running":
+			return `${runKindText(state.run)} step ${state.step} of ${state.steps}: ${state.label} · ${captureTally(state.captured, state.expected)} recorded`;
+		case "restoring":
+			return `Putting the machine's shaper back — ${captureTally(state.captured, state.expected)} recorded.`;
+		case "fitting":
+			return `Fitting ${state.done + 1} of ${state.total} — one ring-down per capture.`;
+		case "ended":
+			// The restore clause appears only when something was actually sent. A
+			// refusal reaches the machine with nothing, and a report discussing
+			// the machine's shaper after one would describe a run that never
+			// happened.
+			return `${runKindText(state.run)}: ${outcomeText(state.outcome, state.captured, state.expected)}${state.touched ? restoreClause(state.restored) : ""}`;
+		default: {
+			const unhandled: never = state;
+			throw new Error(`unknown motion state: ${String((unhandled as { kind: unknown }).kind)}`);
+		}
+	}
+}
+
+/**
+ * What an armed confirm is about to do, stated with the numbers the PLAN
+ * carries.
+ *
+ * Every figure comes from the plans themselves — the capture count from
+ * `plannedCaptureCount`, the move from the settings that built them — so the
+ * sentence an operator consents against cannot describe a different run from
+ * the one that would be sent. Escape is named because `createArmed` guarantees
+ * it, and a two-step control whose way out is invisible is a two-step control
+ * with no way out.
+ */
+export function armedRunText(kind: RunKind, captures: number, distMm: number, speedMmS: number, first: string, last: string): string {
+	return `Confirm ${runKindText(kind).toLowerCase()}: ${captures} ${captures === 1 ? "capture" : "captures"}, ${distMm} mm at ${speedMmS} mm/s, writing ${first} … ${last} to ${ACCEL_DIR}. Escape cancels.`;
 }

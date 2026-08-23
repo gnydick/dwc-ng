@@ -21,7 +21,8 @@ import type { Envelope, ShapingConfig } from "../config/types.ts";
 import type { ObjectModel, Shaping } from "../om/types.ts";
 import { SHAPER_TYPES, type ShaperSpec, type ShaperType } from "./engine/shapers.ts";
 import { hz, mm, seconds, type Mm, type MmPerS } from "./engine/units.ts";
-import { accelerometerOf, planarPosition, Preconditions, type Point, type Refusal } from "./preconditions.ts";
+import { accelerometerOf, inside, planarPosition, Preconditions, type Point, type Refusal } from "./preconditions.ts";
+import { ACCEL_DIR } from "./captures.ts";
 
 /** A `Preconditions` read longer ago than this is refused as `stale`. One
  *  status poll is 1 s at the connector's slowest cadence; two is the window in
@@ -48,7 +49,7 @@ const TRIGGER_ON_DECELERATION = 2;
  *  firmware chooses the directory (reference/duet-gcode.md, M956). Exported so
  *  the card that offers "import an existing capture" reads the same place the
  *  run writes to, rather than spelling the path a second time. */
-export const CAPTURE_DIR = "0:/sys/accelerometer";
+export const CAPTURE_DIR = ACCEL_DIR;
 
 /** How far the carriage may be from where a step expects it. Tight enough that
  *  a skipped step or a nudge shows up, loose enough to survive the rounding
@@ -72,20 +73,6 @@ const RING_DIRECTIONS = ["p", "m"] as const;
  * per axis; a sweep exercises both from a shared origin.
  */
 export const PLANAR_AXES = ["X", "Y"] as const;
-
-/**
- * How many captures a measure run produces, at the configured repeats.
- *
- * Exported because the status card promises the number in its primary action
- * ("Measure T0 — 12 captures") and the Capture card states the same run in
- * words. One producer for all three, so the count an operator consents to and
- * the number of capture steps `plan` builds cannot be two arithmetics that
- * drift — the whole point of the button naming a figure is that it is the real
- * one.
- */
-export function measureCaptureCount(repeats: number): number {
-	return repeats * RING_DIRECTIONS.length * PLANAR_AXES.length;
-}
 
 export type RingPlan = {
 	readonly kind: "ring";
@@ -403,10 +390,11 @@ export class Procedure {
 		if (cfg.envelope === null) return { ok: false, refusal: { kind: "no-envelope" } };
 		if (!sameEnvelope(cfg.envelope, pre.envelope)) return { ok: false, refusal: { kind: "stale" } };
 
-		// The carriage's current position leads the list: the first step's
-		// opening move starts from there, and the envelope is a rectangle, so
-		// a segment with both ends inside it never leaves it.
-		for (const point of [pre.position, ...visitedPoints(plan)]) {
+		// The PLAN's own points only. The carriage's current position is not
+		// re-checked here: `Preconditions.read` refuses a head outside the box, so
+		// holding a `Preconditions` is already the proof — and a rectangle is
+		// convex, so a segment with both ends inside it never leaves it.
+		for (const point of visitedPoints(plan)) {
 			if (!inside(point, pre.envelope)) {
 				return { ok: false, refusal: { kind: "outside-envelope", point: { x: point.x, y: point.y } } };
 			}
@@ -465,9 +453,6 @@ function measurable(plan: Plan): boolean {
 
 // --- geometry ---------------------------------------------------------------
 
-const inside = (p: Point, e: Envelope): boolean =>
-	p.x >= e.x[0] && p.x <= e.x[1] && p.y >= e.y[0] && p.y <= e.y[1];
-
 const sameEnvelope = (a: Envelope, b: Envelope): boolean =>
 	a.x[0] === b.x[0] && a.x[1] === b.x[1] && a.y[0] === b.y[0] && a.y[1] === b.y[1];
 
@@ -506,13 +491,177 @@ const feedOf = (speed: MmPerS): number => speed * 60;
 
 /** `<prefix>_Xp0.csv` — axis, direction, repeat. One producer, so the name the
  *  procedure waits for and the name M956 writes cannot be spelled apart. */
-const captureName = (prefix: string, axis: "X" | "Y", dir: "p" | "m", index: number): string =>
+const ringCaptureName = (prefix: string, axis: "X" | "Y", dir: "p" | "m", index: number): string =>
 	`${prefix}_${axis}${dir}${index}.csv`;
+
+/**
+ * `<prefix>_X_100.csv` — axis, then the speed that leg was driven at.
+ *
+ * A DIFFERENT convention from a ring's, deliberately. A sweep is one move at
+ * many speeds, and `shaping/captures.ts speedFamilies` collects exactly
+ * `<prefix>_<axis>_<speed>.csv` into the family the Sweep card draws its heat
+ * map from. Named any other way a live sweep would leave files nothing on this
+ * screen could collect — a run that worked and a result that was unreachable.
+ *
+ * The speed goes in as written and that family regex recognises whole numbers
+ * only, so the ladder that builds a sweep's speeds (shaping/runPlan.ts) is what
+ * keeps them whole and distinct. Two speeds that rounded together would be two
+ * captures under one name, which is one capture.
+ */
+const sweepCaptureName = (prefix: string, axis: "X" | "Y", speed: MmPerS): string =>
+	`${prefix}_${axis}_${speed}.csv`;
 
 const xy = (p: Point): ReadonlyArray<{ axis: "X" | "Y"; mm: Mm }> => [
 	{ axis: "X", mm: p.x },
 	{ axis: "Y", mm: p.y },
 ];
+
+/**
+ * One measured pass, as GEOMETRY: where the carriage must already be, where the
+ * positioning move puts it, and the excitation leg the accelerometer records.
+ *
+ * The single producer of a plan's shape. `stepsFor` turns a pass into the
+ * commands that perform it; `plannedSegments` turns the same pass into the
+ * polyline the Capture card's map draws. So the picture an operator approves and
+ * the moves an armed confirm sends are two renderings of ONE derivation rather
+ * than two arithmetics that agree today.
+ *
+ * Not a hypothetical: the map exists so the operator can see the moves before
+ * arming them, and a map computed from its own reading of the plan would be a
+ * drawing of a run that might not be the one about to happen — worse than no map.
+ */
+type Pass = {
+	readonly at: Point;
+	readonly from: Point;
+	readonly to: Point;
+	readonly speed: MmPerS;
+	readonly samples: number;
+	readonly file: string;
+	readonly label: string;
+};
+
+function ringPasses(plan: RingPlan, origin: Point): Pass[] {
+	const far = along(plan.start, plan.axis, plan.distMm);
+	const passes: Pass[] = [];
+	let where = origin;
+	for (let i = 0; i < plan.repeats; i++) {
+		// Out then back: the return leg is a capture in its own right AND is
+		// what puts the carriage where the next repeat starts, so the run never
+		// contains a move that is not being measured.
+		for (const dir of RING_DIRECTIONS) {
+			const from = dir === "p" ? plan.start : far;
+			const to = dir === "p" ? far : plan.start;
+			passes.push({
+				at: where,
+				from,
+				to,
+				speed: plan.speed,
+				samples: plan.samples,
+				file: ringCaptureName(plan.namePrefix, plan.axis, dir, i),
+				label: `${plan.axis}${dir === "p" ? "+" : "-"} ${plan.speed} mm/s (${i + 1}/${plan.repeats})`,
+			});
+			where = to;
+		}
+	}
+	return passes;
+}
+
+function sweepPasses(plan: SweepPlan, origin: Point): Pass[] {
+	const passes: Pass[] = [];
+	let where = origin;
+	for (const speed of plan.speeds) {
+		for (const axis of PLANAR_AXES) {
+			const to = along(plan.start, axis, plan.distMm);
+			passes.push({
+				at: where,
+				from: plan.start,
+				to,
+				speed,
+				samples: plan.samples,
+				file: sweepCaptureName(plan.namePrefix, axis, speed),
+				label: `${axis}+ ${speed} mm/s`,
+			});
+			where = to;
+		}
+	}
+	return passes;
+}
+
+/**
+ * Every measured pass this plan makes, starting from `origin`.
+ *
+ * Total over the plan union with a `never` arm: a plan kind added without an
+ * answer to "what does this do to the carriage" is a compile error rather than
+ * a run that silently measures nothing.
+ */
+function passesFor(plan: Plan, origin: Point): readonly Pass[] {
+	switch (plan.kind) {
+		case "ring":
+			return ringPasses(plan, origin);
+		case "sweep":
+			return sweepPasses(plan, origin);
+		case "verify":
+			// The shaper is applied by a step that does not move, so a verify run
+			// traces exactly its ring.
+			return ringPasses(plan.ring, origin);
+		default: {
+			const unhandled: never = plan;
+			throw new Error(`unknown plan kind: ${String((unhandled as { kind: unknown }).kind)}`);
+		}
+	}
+}
+
+/**
+ * One leg of a run, for the Capture card's XY map and for the file names it
+ * states before arming.
+ *
+ * A UNION rather than a flag plus an optional name: the positioning leg is how
+ * the carriage gets to the start and produces nothing, the capture leg is the
+ * one the accelerometer is armed for and produces exactly one file. "Recorded,
+ * but no file" and "a travel leg with a file name" are not states either half
+ * of this feature can be in, so they are not states this type can say.
+ *
+ * The file name comes off the same `Pass` the M956 does — there is no second
+ * spelling of a capture's name anywhere in the app, which is what lets the card
+ * promise `t0_ring_Xp0.csv … t0_ring_Ym2.csv` and be right.
+ */
+export type PlannedSegment =
+	| { readonly kind: "travel"; readonly from: Point; readonly to: Point; readonly label: string }
+	| { readonly kind: "capture"; readonly from: Point; readonly to: Point; readonly label: string; readonly file: string };
+
+/**
+ * The polyline the carriage will trace, in send order, for a WHOLE armed run.
+ *
+ * A run is a LIST of plans — a measure run is a ring on X and a ring on Y — and
+ * each plan starts wherever the one before left the carriage, so the chaining
+ * belongs here rather than in a caller that would have to know a ring ends where
+ * it began. Pass a one-element array for a single plan.
+ *
+ * Zero-length positioning legs are omitted. `captureStep` still emits that G1
+ * (the firmware ignores a move to where it already is), but a segment with two
+ * identical ends draws nothing and would still be counted in "N moves".
+ *
+ * PURE, and node-tested for its geometry: numbers in, numbers out, no clock, no
+ * model, no machine. Derived from `passesFor`, which is what `stepsFor` builds
+ * the commands from, so the map cannot draw a run different from the one that
+ * would be sent.
+ */
+export function plannedSegments(plans: readonly Plan[], origin: Point): readonly PlannedSegment[] {
+	const out: PlannedSegment[] = [];
+	let where = origin;
+	for (const plan of plans) {
+		for (const pass of passesFor(plan, where)) {
+			if (!samePoint(pass.at, pass.from)) {
+				out.push({ kind: "travel", from: pass.at, to: pass.from, label: `travel to ${at(pass.from)}` });
+			}
+			out.push({ kind: "capture", from: pass.from, to: pass.to, label: pass.label, file: pass.file });
+			where = pass.to;
+		}
+	}
+	return out;
+}
+
+const samePoint = (a: Point, b: Point): boolean => a.x === b.x && a.y === b.y;
 
 /**
  * One capture: position, settle, arm, excite, settle.
@@ -523,103 +672,43 @@ const xy = (p: Point): ReadonlyArray<{ axis: "X" | "Y"; mm: Mm }> => [
  * speed; there is no separate travel feed to be a second number that means
  * "how fast the lab moves".
  */
-function captureStep(args: {
-	at: Point;
-	from: Point;
-	to: Point;
-	speed: MmPerS;
-	addr: AccelAddr;
-	samples: number;
-	file: string;
-	label: string;
-}): Step {
-	const feed = feedOf(args.speed);
+function captureStep(pass: Pass, addr: AccelAddr): Step {
+	const feed = feedOf(pass.speed);
 	return {
 		codes: [
 			cmd.absolute(),
-			cmd.moveTo(xy(args.from), feed),
+			cmd.moveTo(xy(pass.from), feed),
 			cmd.waitMoves(),
 			cmd.dwell(SETTLE_MS),
-			cmd.accelCapture(args.addr, args.samples, TRIGGER_ON_DECELERATION, args.file),
-			cmd.moveTo(xy(args.to), feed),
+			cmd.accelCapture(addr, pass.samples, TRIGGER_ON_DECELERATION, pass.file),
+			cmd.moveTo(xy(pass.to), feed),
 			cmd.waitMoves(),
 			cmd.dwell(RINGDOWN_MS),
 		],
-		expectFile: args.file,
-		label: args.label,
-		expectPosition: args.at,
+		expectFile: pass.file,
+		label: pass.label,
+		expectPosition: pass.at,
 	};
 }
 
-function ringSteps(plan: RingPlan, pre: Preconditions, origin: Point): Step[] {
-	const far = along(plan.start, plan.axis, plan.distMm);
-	const steps: Step[] = [];
-	let at = origin;
-	for (let i = 0; i < plan.repeats; i++) {
-		// Out then back: the return leg is a capture in its own right AND is
-		// what puts the carriage where the next repeat starts, so the run never
-		// contains a move that is not being measured.
-		for (const dir of RING_DIRECTIONS) {
-			const from = dir === "p" ? plan.start : far;
-			const to = dir === "p" ? far : plan.start;
-			steps.push(captureStep({
-				at,
-				from,
-				to,
-				speed: plan.speed,
-				addr: pre.accel,
-				samples: plan.samples,
-				file: captureName(plan.namePrefix, plan.axis, dir, i),
-				label: `${plan.axis}${dir === "p" ? "+" : "-"} ${plan.speed} mm/s (${i + 1}/${plan.repeats})`,
-			}));
-			at = to;
-		}
-	}
-	return steps;
-}
-
-function sweepSteps(plan: SweepPlan, pre: Preconditions): Step[] {
-	const steps: Step[] = [];
-	let at = pre.position;
-	plan.speeds.forEach((speed, i) => {
-		for (const axis of PLANAR_AXES) {
-			const to = along(plan.start, axis, plan.distMm);
-			steps.push(captureStep({
-				at,
-				from: plan.start,
-				to,
-				speed,
-				addr: pre.accel,
-				samples: plan.samples,
-				file: captureName(plan.namePrefix, axis, "p", i),
-				label: `${axis}+ ${speed} mm/s`,
-			}));
-			at = to;
-		}
-	});
-	return steps;
-}
-
+/**
+ * The commands, from the same passes the map draws.
+ *
+ * A verify plan prepends one step that does not move: it applies the candidate
+ * shaper, so the ring that follows is measured with it live. Everything else is
+ * the pass list, one capture step each.
+ */
 function stepsFor(plan: Plan, pre: Preconditions): readonly Step[] {
-	switch (plan.kind) {
-		case "ring":
-			return ringSteps(plan, pre, pre.position);
-		case "sweep":
-			return sweepSteps(plan, pre);
-		case "verify":
-			return [
-				{
-					codes: [cmd.inputShaping(plan.spec)],
-					label: `shaper ${plan.spec.type}`,
-					expectPosition: pre.position,
-				},
-				...ringSteps(plan.ring, pre, pre.position),
-			];
-		default: {
-			const unhandled: never = plan;
-			throw new Error(`unknown plan kind: ${String((unhandled as { kind: unknown }).kind)}`);
-		}
-	}
+	const captures = passesFor(plan, pre.position).map((pass) => captureStep(pass, pre.accel));
+	if (plan.kind !== "verify") return captures;
+	return [
+		{
+			codes: [cmd.inputShaping(plan.spec)],
+			label: `shaper ${plan.spec.type}`,
+			expectPosition: pre.position,
+		},
+		...captures,
+	];
 }
 
 // --- restore ----------------------------------------------------------------

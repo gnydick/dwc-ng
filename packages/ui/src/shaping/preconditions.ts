@@ -140,12 +140,38 @@ export class Preconditions {
 		const envelope = cfg.envelope;
 		if (envelope === null) return { ok: false, refusal: { kind: "no-envelope" } };
 
+		// The carriage's own whereabouts, LAST, because it is the one refusal an
+		// operator fixes by moving the machine rather than by changing a setting.
+		//
+		// It lives here rather than in `planProcedure` — which is where it used to
+		// be — so that holding a `Preconditions` IS the proof the carriage is in
+		// the box. Every run starts by moving FROM wherever the head is parked, so
+		// a head outside the box cannot be the start of any plan; deciding that at
+		// plan time meant the screen's shared gate (compose/services.ts, a bare
+		// `read`) could not see it, and the Capture card offered an enabled Run
+		// button that refused the moment it was confirmed. Observed against
+		// mock-duet, 2026-08-23: parked at X180 Y150.5 with the box redrawn to
+		// 200-300, the button was live and the refusal arrived only on confirm.
+		if (!inside({ x, y }, envelope)) {
+			return { ok: false, refusal: { kind: "outside-envelope", point: { x, y } } };
+		}
+
 		return {
 			ok: true,
 			pre: new Preconditions(now, { x, y }, accel, travelAcceleration(om), om.move.shaping, envelope),
 		};
 	}
 }
+
+/**
+ * Is this point in the box?
+ *
+ * Exported because `planProcedure` asks the same question of the points a PLAN
+ * visits, and one rectangle test is one answer. Half-open would be a different
+ * box; inclusive is what the operator drew.
+ */
+export const inside = (p: { readonly x: number; readonly y: number }, e: Envelope): boolean =>
+	p.x >= e.x[0] && p.x <= e.x[1] && p.y >= e.y[0] && p.y <= e.y[1];
 
 /**
  * The user position of a planar axis, or null when there is no move to plan

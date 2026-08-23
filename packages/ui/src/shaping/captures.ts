@@ -98,6 +98,20 @@ export type CaptureLoader = {
 	/** The CSV, downloaded once per board file and cached thereafter. */
 	text(ref: CaptureRef): Promise<string>;
 	/**
+	 * Put bytes this session already holds into the cache without a download.
+	 *
+	 * For the one case where the UI has a board file's contents and has not paid
+	 * for them: a capture run just read that file off the machine to fit it. The
+	 * Decay card would otherwise download all twelve again the first time the
+	 * operator clicked a row of the run they were watching, out of a server this
+	 * project exists to be gentle with.
+	 *
+	 * Defined for a board ref only. An import already carries its text in the
+	 * ref, so there is nothing to remember, and remembering one under a board
+	 * key would let a file from another machine answer for the board's own.
+	 */
+	remember(ref: CaptureRef, text: string): void;
+	/**
 	 * Drop every cached download.
 	 *
 	 * For the one gesture that means "the card is not what I last read": the
@@ -115,6 +129,9 @@ export function createCaptureLoader(conn: Pick<ConnectorReads, "download">): Cap
 	return {
 		forget: (): void => {
 			cache.clear();
+		},
+		remember: (ref: CaptureRef, text: string): void => {
+			if (ref.kind === "board") cache.set(ref.key, text);
 		},
 		text: async (ref: CaptureRef): Promise<string> => {
 			if (ref.kind === "import") return ref.text;

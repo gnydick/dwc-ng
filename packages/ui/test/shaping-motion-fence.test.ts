@@ -76,6 +76,13 @@ const FENCES: readonly Fence[] = [
 		why: "G-code is built by cmd.* builders in control/commands.ts, never assembled at the call site",
 	},
 	{
+		name: "planProcedure(",
+		pattern: /planProcedure\s*\(/,
+		allowedIn: ["runner.ts"],
+		zones: ["shaping", "cards"],
+		why: "a plan becomes a run in exactly one place (runner.ts), which is what makes 'every leg is gated on its own fresh reading' a property of the loop rather than of whoever wrote the card",
+	},
+	{
 		name: "Capture._mint",
 		pattern: /Capture\._mint/,
 		allowedIn: ["engine/capture.ts"],
@@ -154,6 +161,20 @@ test("red check: the cards zone rejects G92 and a gc template, but not sendCode(
 	assert.deepEqual(fenceViolations(rel, "\tawait conn.sendCode(cmd.inputShaping(spec));\n", "cards"), []);
 	// And the shaping-only rules stay where they were.
 	assert.deepEqual(fenceViolations(rel, "\treturn Capture._mint(hz(rate), x, y, z);\n", "cards"), []);
+});
+
+test("red check: planProcedure( is rejected outside runner.ts, in both zones", () => {
+	const source = '\tconst planned = planProcedure(plan, pre, cfg, Date.now());\n';
+	assert.deepEqual(fenceViolations("runner.ts", source), [], "runner.ts owns the plan-to-run step");
+	// A card that planned and ran for itself would be a second motion loop with
+	// its own idea of when to re-read the machine — which is the whole of what
+	// `every-leg-is-gated-on-its-own-fresh-reading` prevents.
+	assert.equal(fenceViolations("ShapingCards.tsx", source, "cards").length, 1);
+	for (const rel of ["store.ts", "captures.ts", "runPlan.ts"]) {
+		assert.equal(fenceViolations(rel, source).length, 1, `${rel} must be rejected`);
+	}
+	// The word without a call is not a call: the docs cite it constantly.
+	assert.deepEqual(fenceViolations("store.ts", "// planProcedure refuses a stale reading\n"), []);
 });
 
 test("red check: sendCode( is rejected outside procedure.ts and accepted inside it", () => {

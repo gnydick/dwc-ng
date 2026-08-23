@@ -11,7 +11,8 @@
 import { For, Index, Show, createMemo, createSignal } from "solid-js";
 import { createArmed } from "../control/armed.ts";
 import { useApp } from "../shell/context.ts";
-import { MAX_LABEL_LEN, DEFAULT_THERMAL_COLORS, type Envelope, type ShapingDefaults, type ThermalColors } from "../config/types.ts";
+import { MAX_LABEL_LEN, DEFAULT_THERMAL_COLORS, type Envelope, type ThermalColors } from "../config/types.ts";
+import { commitMotionField, MOTION_FIELDS, type MotionField } from "../shaping/motionFields.ts";
 import { parseAccelAddr } from "../control/commands.ts";
 import { accelerometerOf } from "../shaping/preconditions.ts";
 import {
@@ -314,37 +315,6 @@ const AXIS_ROWS = [
 }>;
 
 /**
- * Motion defaults, one row each.
- *
- * Each row carries its own reader and its own patch builder rather than a bare
- * key: `setShaping({ defaults: { [key]: n } })` with a union-typed key widens
- * to an index signature and throws away the very field names ShapingDefaults
- * exists to keep, so the row names its field in a form the compiler checks.
- */
-const MOTION_ROWS = [
-	{
-		label: "Distance", unit: "mm", step: "1",
-		read: (d: ShapingDefaults): number => d.distMm,
-		patch: (distMm: number): Partial<ShapingDefaults> => ({ distMm }),
-	},
-	{
-		label: "Speed", unit: "mm/s", step: "10",
-		read: (d: ShapingDefaults): number => d.speedMmS,
-		patch: (speedMmS: number): Partial<ShapingDefaults> => ({ speedMmS }),
-	},
-	{
-		label: "Repeats", unit: "per axis", step: "1",
-		read: (d: ShapingDefaults): number => d.repeats,
-		patch: (repeats: number): Partial<ShapingDefaults> => ({ repeats }),
-	},
-	{
-		label: "Samples", unit: "M956 S", step: "100",
-		read: (d: ShapingDefaults): number => d.samples,
-		patch: (samples: number): Partial<ShapingDefaults> => ({ samples }),
-	},
-] as const;
-
-/**
  * The Shaping Lab's settings: the motion envelope, the capture defaults, and
  * which accelerometer belongs to which tool.
  *
@@ -424,15 +394,20 @@ export function ShapingBody() {
 	// section byte-identical. So it also outlives a section Reset, which is
 	// the honest reading: Reset did not make that commit succeed.
 	const [motionNote, setMotionNote] = createSignal("");
-	const commitMotion = (
-		row: (typeof MOTION_ROWS)[number],
-		input: HTMLInputElement,
-	): void => {
-		const typed = Number(input.value);
-		app.config.setShaping({ defaults: row.patch(typed) });
-		const kept = row.read(app.config.config.shaping.defaults);
-		input.value = String(kept);
-		setMotionNote(kept === typed ? "" : `${row.label} refused — kept ${String(kept)}.`);
+	const commitMotion = (field: MotionField, input: HTMLInputElement): void => {
+		// One writer, shared with the Capture card's editor of the same four
+		// numbers (shaping/motionFields.ts): it commits through the config gate
+		// and reads back, which is the only way a refused default is visible at
+		// all — the gate drops the field and the effective value simply does not
+		// change.
+		const result = commitMotionField(
+			field,
+			Number(input.value),
+			patch => { app.config.setShaping({ defaults: patch }); },
+			() => app.config.config.shaping.defaults,
+		);
+		input.value = String(result.kept);
+		setMotionNote(result.note);
 	};
 
 	// Same two-signal shape as the envelope, per tool.
@@ -520,18 +495,18 @@ export function ShapingBody() {
 			</p>
 
 			<span class="set-cap">Motion defaults</span>
-			<For each={MOTION_ROWS}>
-				{row => (
+			<For each={MOTION_FIELDS}>
+				{field => (
 					<div class="field">
-						<span class="field-label">{row.label}</span>
+						<span class="field-label">{field.label}</span>
 						<input
 							type="number"
-							step={row.step}
-							aria-label={row.label}
-							value={row.read(app.config.config.shaping.defaults)}
-							onChange={e => commitMotion(row, e.currentTarget)}
+							step={field.step}
+							aria-label={field.label}
+							value={field.read(app.config.config.shaping.defaults)}
+							onChange={e => commitMotion(field, e.currentTarget)}
 						/>
-						<span class="env-unit">{row.unit}</span>
+						<span class="env-unit">{field.unit}</span>
 					</div>
 				)}
 			</For>

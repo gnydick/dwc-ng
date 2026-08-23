@@ -5044,6 +5044,190 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; appe
    sentence an operator reads before their first sweep. */
 .shp-sweep-note { height: calc(15 * var(--u)); }
 
+
+/* ---------- Capture card (cards/ShapingCards.tsx · charts/mapData.ts) --------
+
+   The card that MOVES the machine, and the only one on this screen that does.
+   Everything below declares its own height for the usual reason and one extra:
+   this card is watched while a carriage crosses the bed, so the moment the
+   operator is looking hardest is exactly the moment a slot appearing would move
+   what they are reading. The editor rows, the map's stage, the run bar, the
+   progress track and the status box are all fixed boxes; only the bar's FILL
+   and the text inside the box change while a run happens.
+
+   Same declared-width discipline as the Decay and Sweep rows, and for the same
+   measured reason: a flex child's min-width defaults to its MIN-CONTENT, so a
+   number input and a run button reading `Measure T0 — 12` would put their own
+   glyph metrics — which do not scale with --u — into this card's minimum
+   width. */
+.shp-run-fields, .shp-run-bar {
+	flex: 0 0 auto;
+	display: flex;
+	flex-wrap: nowrap;
+	align-items: center;
+	gap: var(--ctl-gap);
+	margin-bottom: calc(2 * var(--u));
+	min-height: calc(8 * var(--u));
+}
+.shp-run-fields > *, .shp-run-bar > * { min-width: 0; flex: 0 0 auto; }
+.shp-run-fields .shp-cap { width: calc(8 * var(--u)); }
+
+/* One number and the word for what it is. The pair is the flex item, so the
+   unit cannot be separated from its input by a wrap. */
+.shp-run-field { display: flex; align-items: baseline; gap: calc(1 * var(--u)); }
+/* Declared, and `min-width: 0` from the rule above. A bare <input type=number>
+   contributes a content-based minimum whatever basis it is given, and four of
+   them would set this card's floor between them. */
+.shp-run-num {
+	width: calc(13 * var(--u));
+	font: 400 calc(3.5 * var(--u))/1 ui-monospace, "Cascadia Code", Consolas, monospace;
+	font-variant-numeric: tabular-nums;
+	color: var(--silk);
+	background: var(--mask-900);
+	border: 0;
+	box-shadow: inset 0 0 0 1px var(--hairline);
+	border-radius: 5px;
+	padding: calc(1.25 * var(--u)) calc(1 * var(--u));
+	text-align: right;
+}
+.shp-run-num:focus { outline: none; box-shadow: inset 0 0 0 1px var(--accent); }
+.shp-run-unit { font-size: calc(3.125 * var(--u)); color: var(--silk-dim); }
+
+/* Which run this card is set up for. The same chip as the tool picker, because
+   they are the same kind of choice — one click, one lit thing — and two
+   surfaces that look alike should behave alike. */
+.shp-run-chip {
+	width: calc(17 * var(--u));
+	height: calc(6 * var(--u));
+	line-height: calc(6 * var(--u));
+	text-align: center;
+	box-shadow: inset 0 0 0 1px var(--hairline);
+	border-radius: var(--radius);
+}
+.shp-run-chip[aria-pressed="true"] { box-shadow: inset 0 0 0 1px var(--accent); }
+/* The run's name, which becomes the capture files' prefix. Takes the slack, so
+   the chips stay left and the count stays right whatever is typed. */
+.shp-run-name { flex: 1 1 auto; width: calc(28 * var(--u)); font-size: calc(3.5 * var(--u)); padding: calc(1.25 * var(--u)) calc(1.5 * var(--u)); }
+.shp-run-count {
+	width: calc(20 * var(--u));
+	text-align: right;
+	font-size: calc(3.125 * var(--u));
+	color: var(--silk-dim);
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+}
+
+/* The map's box, declared HERE and not by the drawing. 46u because the plan is
+   a cross or an L inside a rectangle and the thing being read off it is the
+   SHAPE — where the moves are relative to the box — which a smaller stage
+   stops answering. The SVG fills this absolutely so its aspect ratio can never
+   reach the card's intrinsic width. */
+.shp-map-stage {
+	flex: 0 0 auto;
+	position: relative;
+	/* Width DECLARED as well as height, which is the difference between this
+	   stage and the chart stages beside it. Those hold a canvas — one child, whose
+	   pixels the layout audit cannot see move — and may safely fill the card. This
+	   holds an SVG whose every leg is a DOM child, so a stage that grew with the
+	   card would move all thirteen of them on a resize: measured 9 moved children
+	   at a full-width stage, none at this one. It is the better drawing anyway —
+	   a map that means the same thing at every card width. */
+	width: calc(58 * var(--u));
+	height: calc(46 * var(--u));
+	margin-bottom: calc(1 * var(--u));
+	background: var(--mask-900);
+	box-shadow: inset 0 0 0 1px var(--hairline);
+	border-radius: var(--radius);
+	overflow: hidden;
+}
+.shp-map { position: absolute; inset: calc(1.5 * var(--u)); width: auto; height: auto; }
+.shp-map-empty {
+	position: absolute;
+	inset: 0;
+	margin: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 0 calc(4 * var(--u));
+	text-align: center;
+	font-size: calc(3.375 * var(--u));
+	color: var(--gold);
+}
+/* The envelope: the box the operator drew, and the only thing on this drawing
+   that is not a move. */
+.shp-map-box { fill: none; stroke: var(--hairline); }
+/* The legs the accelerometer is armed for — the whole reason for the run — and
+   the positioning moves that are not being recorded. Two weights and two
+   colours, because drawn alike they would tell an operator the machine is about
+   to record twice what it will. */
+.shp-map-leg { stroke: var(--accent); fill: none; stroke-linecap: round; }
+.shp-map-travel { stroke: var(--silk-dim); fill: none; opacity: 0.7; }
+/* Where the carriage is now. Hollow, so it reads as a position rather than as
+   another leg, and drawn last so it is never hidden under one. */
+.shp-map-here { fill: none; stroke: var(--gold); }
+/* What the drawing adds up to, and the files it will write. Two slots on one
+   line: the summary takes the slack, the names are clipped rather than wrapped
+   — a caption that wrapped would make this row two lines on a narrow card. */
+.shp-map-cap {
+	flex: 0 0 auto;
+	display: flex;
+	align-items: baseline;
+	gap: calc(2 * var(--u));
+	margin: 0 0 calc(2 * var(--u));
+	min-height: calc(5 * var(--u));
+	font-size: calc(3.125 * var(--u));
+	color: var(--silk-dim);
+	font-variant-numeric: tabular-nums;
+}
+/* DECLARED widths, not just `min-width: 0`. A nowrap flex item contributes its
+   whole min-content size to the container's intrinsic width whatever its
+   min-width is — `min-width: 0` only lets it shrink once the container has a
+   definite size — so these two spans were voting their own glyph metrics into
+   this card's floor: measured 146u for the caption alone, against a card the
+   screen gives 156. Declared, they contribute their declaration and the floor
+   goes back to the rows above. */
+.shp-map-cap > span:first-child { flex: 1 1 auto; width: calc(58 * var(--u)); min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* The file range, right-aligned and ellipsised from the LEFT: the two names
+   share a prefix and differ at the end, so the tail is the half worth keeping. */
+.shp-map-cap > span:last-child { flex: 0 1 auto; width: calc(44 * var(--u)); min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; direction: rtl; text-align: left; }
+
+/* The three acts, in the order they are performed. Declared widths so the bar's
+   geometry is the same in every state — a button whose label goes from
+   `Measure T0 — 12` to `Confirm` must not move the two beside it. */
+.shp-run-go { flex: 1 1 auto; width: calc(46 * var(--u)); text-align: center; }
+.shp-run-stop { width: calc(18 * var(--u)); text-align: center; }
+.shp-run-save { width: calc(26 * var(--u)); text-align: center; }
+
+/* The progress track. Always drawn and always the same height; only the fill's
+   width changes, and that is a PERCENTAGE of its own track — a fraction of a
+   box whose size is already in u, so it follows the scale for free. */
+.shp-run-track {
+	flex: 0 0 auto;
+	height: calc(1.5 * var(--u));
+	margin-bottom: calc(1.5 * var(--u));
+	background: var(--mask-900);
+	box-shadow: inset 0 0 0 1px var(--hairline);
+	border-radius: 999px;
+	overflow: hidden;
+}
+.shp-run-fill { height: 100%; background: var(--accent); border-radius: 999px; }
+
+/* Four lines, and it SCROLLS rather than growing. A failure sentence from the
+   run names the file that never appeared AND the directory it was not in, and
+   the two capture diagnoses differ only in that clause — so truncating it would
+   throw away the half that says which of the two things went wrong. A box that
+   grew to fit would change the card's floor with its state, which is the same
+   defect as a row that moves, one step removed. */
+.shp-run-note {
+	flex: 0 0 auto;
+	margin: 0;
+	height: calc(20 * var(--u));
+	overflow-y: auto;
+	color: var(--silk-dim);
+	font-size: calc(3.375 * var(--u));
+	line-height: calc(5 * var(--u));
+}
+
 /* ---------- Sweep card (cards/ShapingCards.tsx · charts/SweepHeatmap) --------
 
    Speed x frequency x amplitude. Same governing rule as the Decay card: the

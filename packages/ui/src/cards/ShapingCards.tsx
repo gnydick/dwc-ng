@@ -28,19 +28,25 @@ import { For, Match, Show, Switch, createEffect, createMemo, createSignal } from
 import { cmd } from "../control/commands.ts";
 import { copyText } from "../shell/copyText.ts";
 import { createArmed } from "../control/armed.ts";
-import { allDoneAction, batchSummaryText, type CaptureSource, captureSourceLabel, stepActionText, stepStatusText, sweepStateText, type StepScope } from "../shaping/copy.ts";
+import { allDoneAction, armedRunText, batchSummaryText, type CaptureSource, captureSourceLabel, motionStateText, refusalText, runKindText, stepActionText, stepStatusText, sweepStateText, type StepScope } from "../shaping/copy.ts";
 import type { CardCtx } from "../compose/ctx.ts";
 import type { MacroRead } from "../compose/services.ts";
 import { nextStep, SHAPING_STEPS, type ShapingStep, type StepInputs, type StepSpec } from "../shaping/steps.ts";
 import { toolMacroPath } from "../shaping/toolMacro.ts";
-import type { ShapingConfig } from "../config/types.ts";
+import type { Envelope, ShapingConfig, ShapingDefaults } from "../config/types.ts";
 import type { Shaping } from "../om/types.ts";
 import type { Artefact } from "../shaping/engine/artefact.ts";
 import { isMode, MIN_CYCLES, type Axis, type Fingerprint, type Mode, type NoFit } from "../shaping/engine/fit.ts";
 import { type Candidate, customCandidate } from "../shaping/engine/rank.ts";
 import { convolve, type Impulses, SHAPER_TYPES, type ShaperSpec, zv } from "../shaping/engine/shapers.ts";
 import { seconds } from "../shaping/engine/units.ts";
-import { measureCaptureCount } from "../shaping/procedure.ts";
+import { plannedSegments, type Plan, type PlannedSegment } from "../shaping/procedure.ts";
+import { captureNameRange, defaultPrefix, envelopeText, plannedCaptureCount, RUN_KINDS, runOrigin, runPlans, safePrefix, type RunKind } from "../shaping/runPlan.ts";
+import { commitMotionField, MOTION_FIELDS } from "../shaping/motionFields.ts";
+import { motionBad, motionBusy, motionProgress } from "../shaping/motionRun.ts";
+import { fitCapturesOf, runMotion } from "../shaping/runner.ts";
+import { planarPosition } from "../shaping/preconditions.ts";
+import { mapPoint, mapSummary, mapView, type MapView } from "../charts/mapData.ts";
 import { RESULTS_PATH, type ToolResults } from "../shaping/results.ts";
 import type { VerifiedCandidate } from "../shaping/store.ts";
 import { DecayChart } from "../charts/DecayChart.tsx";
@@ -226,7 +232,10 @@ export function ShapingStatusBody(props: { ctx: CardCtx }) {
 			hasVerified: r.verified.length > 0,
 			hasRecommendation: recommendation(r) !== null,
 			hasApplied: r.applied !== null,
-			busy: spec.step === "rank" && svc.ranking(),
+			// Anything that MOVES is busy while the machine is moving, whichever
+			// card asked it to. One machine, one carriage: a Verify offered while
+			// a measure run is mid-pass is not a step that could be taken.
+			busy: (spec.step === "rank" && svc.ranking()) || (spec.moves && motionBusy(svc.motion())),
 		};
 	};
 
@@ -240,21 +249,29 @@ export function ShapingStatusBody(props: { ctx: CardCtx }) {
 	/**
 	 * How big the next action is, in the numbers the plan would carry.
 	 *
-	 * Honest or silent. Measure counts the captures the run will actually take
-	 * (`measureCaptureCount`, the same arithmetic the Capture card states in
-	 * words); Rank counts the shaper table it scores; Verify and Apply name the
-	 * shaper they are about. Sweep has no speed list to count until the card
-	 * that builds one exists, so it says nothing rather than a number this
-	 * screen made up.
+	 * Honest or silent. Measure and Sweep count the captures their run will
+	 * ACTUALLY take, by building the very plans the Capture card would arm
+	 * (`shaping/runPlan.ts`) and counting them — not by a second arithmetic over
+	 * the same settings. Rank counts the shaper table it scores; Verify and Apply
+	 * name the shaper they are about.
+	 *
+	 * With no envelope there are no plans, so both say nothing rather than a
+	 * number this screen made up — which is also the state in which the step is
+	 * refused, so the button carries the reason instead.
 	 */
+	const runScope = (kind: RunKind): StepScope => {
+		const env = cfg().envelope;
+		if (env === null) return { kind: "unknown" };
+		const n = plannedCaptureCount(runPlans(kind, cfg().defaults, env, defaultPrefix(kind, svc.tool())));
+		return n > 0 ? { kind: "captures", n } : { kind: "unknown" };
+	};
+
 	const scopeFor = (step: ShapingStep): StepScope => {
 		switch (step) {
-			case "measure": {
-				const n = measureCaptureCount(cfg().defaults.repeats);
-				return Number.isInteger(n) && n > 0 ? { kind: "captures", n } : { kind: "unknown" };
-			}
+			case "measure":
+				return runScope("measure");
 			case "sweep":
-				return { kind: "unknown" };
+				return runScope("sweep");
 			case "rank":
 				return { kind: "shapers", n: SHAPER_TYPES.length };
 			case "verify": {
@@ -424,17 +441,272 @@ export function ShapingStatusBody(props: { ctx: CardCtx }) {
 /* ----------------------------------------------------------------- 2. capture */
 
 /**
- * What a capture run would do, stated before anything arms it: the box it is
- * allowed to move in, the sensor it will read, and the move it will make.
+ * What the two armed controls on this card are about.
  *
- * The envelope has no default by design (config/types.ts
- * `envelope-is-config-not-default`) — an unset one is shown as the refusal it
- * is, not filled in from the axis limits.
+ * ONE armed slot for both, and that is the safety property rather than an
+ * economy: arming Save disarms Run and vice versa, because `createArmed` holds
+ * a single value. A card with two independent arms can sit with both live, and
+ * then the next Enter or Space is one of two different things depending on
+ * where focus happens to be.
+ */
+type CaptureArm =
+	| { readonly kind: "run"; readonly run: RunKind }
+	| { readonly kind: "save"; readonly tool: number };
+
+/**
+ * The card that moves the machine.
+ *
+ * Everything else on this screen reads, fits or draws. This one sends a series
+ * of full-speed passes across the bed with nobody's hand on the jog wheel, so
+ * the layout is built around one question: can the operator see exactly what
+ * will happen before it does?
+ *
+ *  - the MOTION EDITOR is the same four settings Settings › Input shaping edits,
+ *    through the same table and the same gate (shaping/motionFields.ts);
+ *  - the MAP draws the polyline `plannedSegments` derives from the very passes
+ *    `Procedure` builds its commands from, so it cannot show a different run
+ *    from the one an armed confirm would send;
+ *  - the RUN control is a `createArmed` two-step whose confirm sentence states
+ *    the capture count, the move and the file names, all read off the plan;
+ *  - the PROGRESS STRIP reports the run's own events, including the two
+ *    failures the capture wait tells apart — a board that finished a capture
+ *    and could not write the file, and a board that never captured at all.
+ *
+ * No G-code is assembled here and none can be. A `Procedure` keeps its commands
+ * in `#`-private fields, so this file cannot obtain one to send; the only route
+ * to the machine is `Procedure.run`, and its `finally` puts the shaper back
+ * whichever way the run ends — finished, failed, or cancelled by the operator.
+ *
+ * Positional stability governs the layout. Every block declares its height: the
+ * two editor rows, the map's stage, the run bar, the progress track and the
+ * status box. Nothing appears or disappears while a run is watched — the bar
+ * fills in place, the sentence changes inside a box that scrolls rather than
+ * grows, and the map redraws only when a SETTING changes, never on a poll. The
+ * carriage dot is projected separately from the legs for exactly that reason
+ * (charts/mapData.ts `mapPoint`).
  */
 export function ShapingCaptureBody(props: { ctx: CardCtx }) {
 	const svc = props.ctx.service("shaping");
 	const cfg = (): ShapingConfig => props.ctx.config.config.shaping;
-	const accel = (): string | null => cfg().accelByTool[svc.tool()] ?? null;
+	const defaults = (): ShapingDefaults => cfg().defaults;
+	const envelope = (): Envelope | null => cfg().envelope;
+
+	const [kind, setKindNow] = createSignal<RunKind>("measure");
+	const [armed, setArmed] = createArmed<CaptureArm>();
+	const [name, setName] = createSignal<string | null>(null);
+	const [fieldNote, setFieldNote] = createSignal("");
+
+	/** The run's name: the operator's, once they have typed one, otherwise the
+	 *  tool's default — so switching tool re-labels the run rather than writing
+	 *  T1's captures over T0's. */
+	const prefix = (): string => name() ?? defaultPrefix(kind(), svc.tool());
+	const safeName = (): string => safePrefix(prefix(), defaultPrefix(kind(), svc.tool()));
+
+	/** Changing which run is being set up disarms: the confirm sentence names
+	 *  the run, and a confirm left standing across a change would fire a
+	 *  different run from the one it described. */
+	const setKind = (next: RunKind): void => {
+		setArmed(null);
+		setKindNow(next);
+	};
+
+	/**
+	 * The plans one confirm would execute, and the polyline they trace.
+	 *
+	 * Built from the envelope in CONFIG, which is the same box `Preconditions`
+	 * will carry when the confirm re-reads the machine — and `planProcedure`
+	 * refuses `stale` if it changed in between, so the drawing and the run
+	 * cannot silently be about different boxes.
+	 *
+	 * The origin is the first plan's own start, NOT the carriage's position.
+	 * Deliberate: the polyline then depends only on the settings, so it is
+	 * rebuilt when the operator edits one and never on a poll. Where the
+	 * carriage actually is is drawn as its own marker, which is the honest
+	 * separation — here is the plan, here is you.
+	 */
+	const plans = createMemo((): readonly Plan[] => {
+		const env = envelope();
+		return env === null ? [] : runPlans(kind(), defaults(), env, safeName());
+	});
+
+	const segments = createMemo((): readonly PlannedSegment[] => {
+		const list = plans();
+		const origin = runOrigin(list);
+		return origin === null ? [] : plannedSegments(list, origin);
+	});
+
+	const view = createMemo((): MapView | null => {
+		const env = envelope();
+		return env === null ? null : mapView(env, segments());
+	});
+
+	/** Where the carriage is, projected through the SAME flip the legs are.
+	 *  Null when either axis is not reporting a homed position — an unknown
+	 *  position is not a position, and a dot at the origin would be a claim. */
+	const carriage = createMemo((): { x: number; y: number } | null => {
+		const env = envelope();
+		if (env === null) return null;
+		const x = planarPosition(props.ctx.om.om, "X");
+		const y = planarPosition(props.ctx.om.om, "Y");
+		return x === null || y === null ? null : mapPoint(env, { x, y });
+	});
+
+	const captureCount = createMemo((): number => plannedCaptureCount(plans()));
+
+	/** The first and last file the run will write — the convention AND the
+	 *  extent. Read off the SEGMENTS, which carry the name the M956 will use,
+	 *  so this card states file names it did not spell itself. */
+	const files = createMemo((): { first: string; last: string } | null =>
+		captureNameRange(segments().flatMap(s => (s.kind === "capture" ? [s.file] : []))));
+
+	/**
+	 * Why the run control is off, or null when it is live.
+	 *
+	 * `svc.gate()` is the screen's ONE reading (compose/services.ts) — a fresh
+	 * `Preconditions.read` per poll, shared by every control here — so what this
+	 * button says and what the status card's step list says about the same
+	 * machine come from one place. The two extra conditions are this card's own
+	 * and neither is a machine verdict: a run already in flight, and a plan with
+	 * nothing in it.
+	 */
+	const block = createMemo((): string => {
+		if (motionBusy(svc.motion())) return "a run is already in flight";
+		const refusal = svc.gate();
+		if (refusal !== null) return refusalText(refusal);
+		if (captureCount() === 0) return refusalText({ kind: "not-measurable" });
+		return "";
+	});
+
+	const saveable = createMemo((): boolean => {
+		const run = svc.runState();
+		return run.kind === "fitted" && run.attribution.kind === "machine" && !motionBusy(svc.motion());
+	});
+
+	/**
+	 * Start the run, or arm it.
+	 *
+	 * The confirm claims the screen's one motion slot (`beginMotion`) and gets
+	 * back the only writer of it plus the signal that cancels it. A second run
+	 * cannot start while this one holds the slot — not because a button is
+	 * disabled, but because there is no reporter to be had.
+	 */
+	const go = (): void => {
+		const want = kind();
+		const now = armed();
+		if (now === null || now.kind !== "run" || now.run !== want) {
+			setArmed({ kind: "run", run: want });
+			return;
+		}
+		setArmed(null);
+		const accel = svc.accelFor(svc.tool());
+		if (accel === null) return;
+		const slot = svc.beginMotion();
+		if (slot === null) return;
+		void (async () => {
+			const result = await runMotion(want, {
+				conn: props.ctx.connector,
+				om: () => props.ctx.om.om,
+				cfg,
+				accel,
+				prefix: safeName(),
+				report: slot.report,
+				signal: slot.signal,
+			});
+			// A sweep's captures are one move at many speeds and must NOT be
+			// aggregated into a fingerprint — the medians would mix speeds. What a
+			// sweep produces is a family on the card, so the listing is re-read
+			// and the Sweep card's picker finds it.
+			if (result.kind === "sweep") {
+				if (result.captures.length > 0) svc.refreshBoard();
+				return;
+			}
+			if (result.captures.length === 0) return;
+			const records = await fitCapturesOf(
+				result.captures,
+				(csv, axis) => useEngine().fit(csv, axis),
+				(done, total) => slot.report({ kind: "fitting", run: result.kind, done, total }),
+				svc.rememberCapture,
+			);
+			// Back to the terminal state the run ended in, so the sentence under
+			// the bar is the run's outcome and not a stale "fitting 12 of 12".
+			slot.report({
+				kind: "ended",
+				run: result.kind,
+				outcome: result.outcome,
+				captured: result.captures.length,
+				expected: result.captures.length,
+				touched: result.touched,
+				restored: result.restored,
+			});
+			svc.setFitted(records);
+			svc.refreshBoard();
+		})();
+	};
+
+	/**
+	 * Write what the run measured against the tool it was run for.
+	 *
+	 * No tool picker, unlike the Decay card's save bar, and that is the safer
+	 * shape here rather than a shortcut: the run addressed `accelByTool[tool()]`
+	 * — this tool's own sensor — so the head these captures belong to is not a
+	 * choice anybody has to make. The Decay card offers the picker because a
+	 * batch there can be any twelve files off the card.
+	 */
+	const save = (): void => {
+		const tool = svc.tool();
+		const now = armed();
+		if (now === null || now.kind !== "save" || now.tool !== tool) {
+			setArmed({ kind: "save", tool });
+			return;
+		}
+		setArmed(null);
+		void svc.saveMeasurement(tool);
+	};
+
+	// The status card's step list does not run anything itself: it calls the
+	// owning card's handler, which here ARMS this control. Two clicks either
+	// way, and the second one is on the card showing the map — the status card
+	// can never be the surface that starts a move.
+	svc.offer("measure", () => {
+		setKind("measure");
+		setArmed({ kind: "run", run: "measure" });
+	});
+	svc.offer("sweep", () => {
+		setKind("sweep");
+		setArmed({ kind: "run", run: "sweep" });
+	});
+
+	/**
+	 * The one sentence under the bar.
+	 *
+	 * Precedence, and each step of it is a different question: what is about to
+	 * happen if you press again (armed), what is happening (a run), why you
+	 * cannot start one (the gate), and what this card is for (idle). Every arm
+	 * comes out of the one copy table, so nothing here writes a sentence of its
+	 * own.
+	 */
+	const note = createMemo((): string => {
+		const arm = armed();
+		if (arm !== null && arm.kind === "save") {
+			return `Confirm: write T${arm.tool}'s fingerprint to ${RESULTS_PATH(arm.tool)}. Escape cancels.`;
+		}
+		if (arm !== null) {
+			const range = files();
+			return armedRunText(
+				arm.run,
+				captureCount(),
+				defaults().distMm,
+				defaults().speedMmS,
+				range?.first ?? "—",
+				range?.last ?? "—",
+			);
+		}
+		const state = svc.motion();
+		if (state.kind === "idle" && block() !== "") return `Cannot run — ${block()}.`;
+		return motionStateText(state);
+	});
+
+	const bad = (): boolean => motionBad(svc.motion()) || (svc.motion().kind === "idle" && block() !== "");
 
 	return (
 		<>
@@ -442,40 +714,178 @@ export function ShapingCaptureBody(props: { ctx: CardCtx }) {
 				<div class="shp-fact">
 					<dt>Envelope</dt>
 					<dd>
-						<Show when={cfg().envelope} fallback={<span class="shp-warn-inline">not set — Settings › Input shaping</span>}>
-							{env => (
-								<span class="shp-mono">
-									X {env().x[0]}–{env().x[1]} · Y {env().y[0]}–{env().y[1]} mm
-								</span>
-							)}
+						<Show when={envelope()} fallback={<span class="shp-warn-inline">not set — Settings › Input shaping</span>}>
+							{env => <span class="shp-mono">{envelopeText(env())}</span>}
 						</Show>
 					</dd>
 				</div>
 				<div class="shp-fact">
 					<dt>Sensor</dt>
 					<dd>
-						<Show when={accel()} fallback={<span class="shp-warn-inline">T{svc.tool()} has no accelerometer mapped</span>}>
+						<Show
+							when={cfg().accelByTool[svc.tool()]}
+							fallback={<span class="shp-warn-inline">T{svc.tool()} has no accelerometer mapped</span>}
+						>
 							{addr => <span class="shp-mono">board.device {addr()}</span>}
 						</Show>
 					</dd>
 				</div>
-				<div class="shp-fact">
-					<dt>Move</dt>
-					<dd><span class="shp-mono">{cfg().defaults.distMm} mm at {cfg().defaults.speedMmS} mm/s</span></dd>
-				</div>
-				<div class="shp-fact">
-					<dt>Run</dt>
-					<dd>
-						<span class="shp-mono">
-							{cfg().defaults.repeats} reps × 2 directions × 2 axes · {cfg().defaults.samples} samples
-						</span>
-					</dd>
-				</div>
 			</dl>
-			<p class="hint">
-				Each pass accelerates to speed, holds it, and stops hard; the accelerometer
-				records the ring-down that follows. Position and homed state are read from
-				the machine immediately before every move.
+
+			{/* The four numbers a run is made of, through the SAME table and the
+			    same gate Settings edits them with (shaping/motionFields.ts). Edited
+			    here because this is where the map of the run is: changing the
+			    distance and watching the cross grow is the gesture, and sending
+			    the operator to another screen for it would break it. */}
+			<div class="shp-run-fields">
+				<span class="shp-cap">Move</span>
+				<For each={MOTION_FIELDS}>
+					{field => (
+						<label class="shp-run-field">
+							<input
+								type="number"
+								class="shp-run-num"
+								step={field.step}
+								aria-label={field.label}
+								value={field.read(defaults())}
+								onChange={e => {
+									setArmed(null);
+									const result = commitMotionField(
+										field,
+										Number(e.currentTarget.value),
+										patch => { props.ctx.config.setShaping({ defaults: patch }); },
+										() => props.ctx.config.config.shaping.defaults,
+									);
+									e.currentTarget.value = String(result.kept);
+									setFieldNote(result.note);
+								}}
+							/>
+							<span class="shp-run-unit">{field.short}</span>
+						</label>
+					)}
+				</For>
+			</div>
+
+			<div class="shp-run-fields">
+				<span class="shp-cap">Run</span>
+				<div class="shp-tool-pick" role="group" aria-label="Which run">
+					<For each={RUN_KINDS}>
+						{k => (
+							<button
+								class="shp-pick shp-run-chip"
+								aria-pressed={kind() === k}
+								onClick={() => setKind(k)}
+							>
+								{runKindText(k)}
+							</button>
+						)}
+					</For>
+				</div>
+				<input
+					type="text"
+					class="fb-input shp-run-name"
+					aria-label="Name for this run"
+					placeholder={defaultPrefix(kind(), svc.tool())}
+					value={prefix()}
+					onInput={e => { setArmed(null); setName(e.currentTarget.value); }}
+				/>
+				<span class="shp-run-count">{captureCount()} captures</span>
+			</div>
+
+			{/* The stage declares the drawing's box, so the map never sizes the
+			    card and the card never has to be resized when a plan changes. */}
+			<div class="shp-map-stage">
+				<Show
+					when={view()}
+					fallback={<p class="shp-map-empty">Draw the motion envelope in Settings › Input shaping — nothing may move until you do.</p>}
+				>
+					{v => (
+						<svg class="shp-map" viewBox={v().viewBox} preserveAspectRatio="xMidYMid meet" role="img" aria-label="Planned moves inside the envelope">
+							<rect
+								class="shp-map-box"
+								x={v().box.x}
+								y={v().box.y}
+								width={v().box.w}
+								height={v().box.h}
+								stroke-width={v().stroke}
+							/>
+							<For each={v().legs}>
+								{leg => (
+									<line
+										class={leg.measured ? "shp-map-leg" : "shp-map-travel"}
+										x1={leg.x1}
+										y1={leg.y1}
+										x2={leg.x2}
+										y2={leg.y2}
+										stroke-width={leg.measured ? v().stroke * 2 : v().stroke}
+										stroke-dasharray={leg.measured ? undefined : `${v().marker / 2} ${v().marker / 2}`}
+									>
+										<title>{leg.label}</title>
+									</line>
+								)}
+							</For>
+							{/* The carriage, in its own element and its own memo: it moves
+							    on every poll and the legs do not, so redrawing the polyline
+							    to move a dot is exactly what this card must not do. */}
+							<Show when={carriage()}>
+								{here => (
+									<circle class="shp-map-here" cx={here().x} cy={here().y} r={v().marker / 2} stroke-width={v().stroke}>
+										<title>carriage</title>
+									</circle>
+								)}
+							</Show>
+						</svg>
+					)}
+				</Show>
+			</div>
+			<p class="shp-map-cap">
+				<span>{mapSummary(segments())}</span>
+				<span class="shp-mono">{files() === null ? NONE : `${files()!.first} … ${files()!.last}`}</span>
+			</p>
+
+			<div class="shp-run-bar">
+				<button
+					class="fb-tool shp-run-go"
+					classList={{ "shp-arming": armed()?.kind === "run" }}
+					disabled={block() !== ""}
+					onClick={go}
+					title={block()}
+				>
+					{armed()?.kind === "run" ? "Confirm" : `${runKindText(kind())} T${svc.tool()} — ${captureCount()}`}
+				</button>
+				{/* Always present, only sometimes live: a Cancel that appeared with
+				    the run would move the bar under it at the moment the machine
+				    started moving. */}
+				<button
+					class="fb-tool shp-run-stop"
+					disabled={!motionBusy(svc.motion())}
+					onClick={() => svc.cancelMotion()}
+				>
+					Cancel
+				</button>
+				<button
+					class="fb-tool shp-run-save"
+					classList={{ "shp-arming": armed()?.kind === "save" }}
+					disabled={!saveable()}
+					onClick={save}
+				>
+					{armed()?.kind === "save" ? "Confirm" : `Save to T${svc.tool()}`}
+				</button>
+			</div>
+
+			{/* The bar's track is always drawn and always the same height; only the
+			    fill's width changes. A percentage, not a length in u — it is a
+			    fraction of its own track, so it follows the scale for free. */}
+			<div class="shp-run-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow={Math.round(motionProgress(svc.motion()).fraction * 100)}>
+				<div class="shp-run-fill" style={{ width: `${motionProgress(svc.motion()).fraction * 100}%` }} />
+			</div>
+			{/* Fixed height and it SCROLLS rather than growing. A failure sentence
+			    from the run can be long — it names the file that never appeared and
+			    the directory it was not in — and truncating it would throw away the
+			    half that says which of the two things went wrong. */}
+			<p class="shp-run-note" role="status" classList={{ "shp-warn-inline": bad() }}>
+				{note()}
+				<Show when={fieldNote() !== ""}>{n => <span class="shp-warn-inline"> {n()}</span>}</Show>
 			</p>
 		</>
 	);
