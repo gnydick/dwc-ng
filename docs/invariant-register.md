@@ -21,7 +21,7 @@ and invariant claim mentions 13 -> 23, so no mechanism was deleted and no
 claim was lost in the gap. From here the ratchets make a dropped rung visible
 in the diff that drops it.
 
-**Totals:** 117 invariants · 94 at rung 6 or above · 23 below rung 6 (ceiling 23).
+**Totals:** 121 invariants · 98 at rung 6 or above · 23 below rung 6 (ceiling 23).
 
 ## bed
 
@@ -109,7 +109,7 @@ in the diff that drops it.
 
 **Why.** a delete that removes a card from every screen at once is exactly the action whose scope the operator must see before confirming — "delete this card?" cannot precede stripping it from screens they forgot it was on. The plan freezes usage at arm time; the studio is modal over composition edits, so the frozen report cannot go stale between the two clicks
 
-`packages/ui/src/compose/screens.ts:434`
+`packages/ui/src/compose/screens.ts:436`
 
 ### `compose/composition-degrades-per-slot` — rung 6
 
@@ -180,6 +180,14 @@ in the diff that drops it.
 **Why.** a second delete surface is how the blast-radius report gets skipped: the old drawer ✕ deleted from every screen while showing only a tooltip warning. One surface, armed with the plan, keeps "delete" and "here is what that does" inseparable
 
 `packages/ui/src/compose/CardStudio.tsx:142`
+
+### `compose/one-run-at-a-time-per-screen` — rung 7
+
+**Mechanism.** capability object — a card cannot report motion without a reporter, the only producer of a reporter is `beginMotion`, and `beginMotion` returns null while `motionBusy` holds. The signal's setter is closed over and never handed out, so "two cards each driving the machine and each reporting over the other" is not expressible. A reporter also stops working once its own run has reported a terminal state, so a late event from an abandoned run cannot overwrite a fresh one's progress
+
+**Why.** the run this screen starts sends a 200 mm/s G1 with nobody's hand on the jog wheel. Two of them interleaved would each be re-checking the carriage against ITS plan's expected position and finding the other one's move — every step refused, the machine moving anyway, and two restores racing at the end
+
+`packages/ui/src/compose/services.ts:875`
 
 ### `compose/one-service-instance-per-screen` — rung 8
 
@@ -839,7 +847,15 @@ in the diff that drops it.
 
 **Why.** reported by Gabe, 2026-08-23: pick a capture on the Decay card, click a name-family chip that excludes it, and the chart plus every fitted number beside it blanked — even though the selection itself was intact. The filter exists to FIND rows; what is on screen is what the operator deliberately chose, and it stays until they choose another
 
-`packages/ui/src/shaping/captures.ts:495`
+`packages/ui/src/shaping/captures.ts:512`
+
+### `shaping/a-run-is-planned-from-the-box-not-from-the-carriage` — rung 6
+
+**Mechanism.** choke-point — `runPlans` is the only producer of a `Plan` for the Capture card, and it takes the envelope as an argument rather than reading config for itself, so the preview the operator approves and the plan the confirm builds are the same function of the same box. The one thing that could differ between them is the box itself, and `planProcedure` refuses `stale` when the envelope changed between the reading and the plan
+
+**Why.** the map on the card is a promise about where the carriage will go. A second arithmetic for "where does this run start" — one for the drawing, one for the moving — is a promise that can be broken silently
+
+`packages/ui/src/shaping/runPlan.ts:20`
 
 ### `shaping/capture-text-has-one-loader` — rung 6
 
@@ -913,6 +929,14 @@ in the diff that drops it.
 
 ## shaping
 
+### `shaping/every-leg-is-gated-on-its-own-fresh-reading` — rung 7
+
+**Mechanism.** sole-constructor type, borrowed — a leg cannot be run without a `Procedure`, a `Procedure` cannot be built without a `Preconditions`, and a `Preconditions` cannot be built except by `read` over an object model taken at that moment. `runMotion` calls `read` inside the loop, once per plan, so the second ring of a measure run is gated on the machine as it is AFTER the first ring moved it — not on a reading taken before either. There is no way to express "plan both now, run both later": `planProcedure` refuses a reading older than two seconds as `stale`
+
+**Why.** a measure run is two rings that take a minute between them. A single reading at the top would authorise the second ring on the machine's state a minute ago — the exact window `Preconditions` exists to close, reopened by the loop that uses it
+
+`packages/ui/src/shaping/runner.ts:17`
+
 ### `shaping/every-refusal-has-copy` — rung 7
 
 **Mechanism.** totality — `refusalText` switches on the discriminant with a `never` arm and no default, so a variant added to `Refusal` stops compilation here until someone has written its sentence. That is not hypothetical: work item C added `not-measurable` after this table was specified, and the `never` arm is what turned a missing row into a compile error rather than a button that renders the empty string
@@ -927,7 +951,7 @@ in the diff that drops it.
 
 **Why.** reported by Gabe, 2026-08-23, driving the deployed build against his board: the `ring1_` chip said 60 files and produced 12. The label came from a raw prefix tally and the click came from a filter that subtracted the sub-families shown beside it — two expressions for one claim, the same shape `step-readiness-has-one-answer` exists to prevent. The same row also covered 141 of his 259 files, leaving 118 in no bucket at all @limit nothing stops a caller filtering the listing by prefix itself instead of asking; what is gone is the SECOND ANSWER, not the ability to write a third. Promote by making a row unrenderable except through a bucket
 
-`packages/ui/src/shaping/captures.ts:295`
+`packages/ui/src/shaping/captures.ts:312`
 
 ### `shaping/fits-are-dropped-only-by-a-reload` — rung 7
 
@@ -953,6 +977,14 @@ in the diff that drops it.
 
 `packages/ui/src/shaping/steps.ts:23`
 
+### `shaping/one-motion-field-table` — rung 6
+
+**Mechanism.** choke-point — `MOTION_FIELDS` is the only description of these four settings and `commitMotionField` the only writer of one from an editor. Both cards iterate the table rather than naming fields, so a field added here appears on both and a field added to neither cannot be edited at all
+
+**Why.** the Capture card states the run an armed confirm is about to perform. If its editor and the Settings editor could describe different sets of numbers, the run the operator approved and the run the plan was built from would be describable apart
+
+`packages/ui/src/shaping/motionFields.ts:20`
+
 ### `shaping/preconditions-are-a-fresh-read` — rung 7
 
 **Mechanism.** sole-constructor type — the constructor is `private` and the class carries a `#`-private field, so `new Preconditions(...)` is a compile error outside this file AND an object literal is not assignable to the type (a `#` name makes the class nominal, which a `private constructor` alone would not — the fields are all public and would otherwise match structurally). `read` is the only static, so holding one of these IS the proof that an object model was examined and found idle, homed, accelerometer-bearing and envelope-bearing. The one universal escape, `x as unknown as Preconditions`, is not counted against this rung
@@ -967,7 +999,7 @@ in the diff that drops it.
 
 **Why.** the machine's prior shaper is knowable only BEFORE the run changes it. A restore derived from live state after a verify pass would faithfully re-apply the candidate under test and leave the operator believing the machine was back to baseline — a wrong belief about a setting that changes every subsequent print
 
-`packages/ui/src/shaping/procedure.ts:240`
+`packages/ui/src/shaping/procedure.ts:227`
 
 ### `shaping/results-file-is-parsed-not-cast` — rung 6
 
@@ -995,7 +1027,7 @@ in the diff that drops it.
 
 **Why.** this is the feature's whole safety story. The lab sends 200 mm/s moves with nobody watching the axis, and the difference between a capture and a crash into the frame is whether those four facts were true at the moment of planning. A second way to build a run is a second place to forget one of them
 
-`packages/ui/src/shaping/procedure.ts:193`
+`packages/ui/src/shaping/procedure.ts:180`
 
 ### `shaping/step-readiness-has-one-answer` — rung 6
 

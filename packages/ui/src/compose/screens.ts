@@ -152,7 +152,9 @@ export const SHAPING_COMPOSITION: Composition = {
 	// tpost disclosure and the reserved message line, and 138 -> 156 when it
 	// gained the next-step region; the rest of the left column follows it down.
 	"shaping-status": { col: 0, row: 0, colSpan: 156, rowSpan: 156 },
-	"shaping-capture": { col: 156, row: 0, colSpan: 156, rowSpan: 66 },
+	// Capture 66 -> 140 when it gained the run control, the motion editor and the
+	// XY map (D3). The whole right column follows it down by 74.
+	"shaping-capture": { col: 156, row: 0, colSpan: 156, rowSpan: 140 },
 	// Decay 75 -> 189: it grew for the chart (E1) and the board browser, and the
 	// screen was never re-flowed for it — the card was placed at less than half
 	// the height its own content declares. Everything below it in the left
@@ -161,13 +163,13 @@ export const SHAPING_COMPOSITION: Composition = {
 	// Sweep 39 -> 118 for the heat map (E2); the right column follows it down
 	// by 79. The card is the same ID, so a saved layout keeps whatever the
 	// operator dragged it to — this is the DEFAULT placement only.
-	"shaping-sweep": { col: 156, row: 66, colSpan: 156, rowSpan: 118 },
+	"shaping-sweep": { col: 156, row: 140, colSpan: 156, rowSpan: 118 },
 	"shaping-candidates": { col: 0, row: 345, colSpan: 156, rowSpan: 75 },
-	"shaping-custom": { col: 156, row: 184, colSpan: 156, rowSpan: 71 },
+	"shaping-custom": { col: 156, row: 258, colSpan: 156, rowSpan: 71 },
 	"shaping-verify": { col: 0, row: 420, colSpan: 156, rowSpan: 62 },
-	"shaping-apply": { col: 156, row: 255, colSpan: 156, rowSpan: 50 },
+	"shaping-apply": { col: 156, row: 329, colSpan: 156, rowSpan: 50 },
 	// The left column is still the taller of the two (ends at 482, against the
-	// right column's 305); the full-width strip clears both.
+	// right column's 379); the full-width strip clears both.
 	console: { col: 0, row: 482, colSpan: 312, rowSpan: 75 },
 	camera: { col: 0, row: 557, colSpan: 104, rowSpan: 75 },
 };

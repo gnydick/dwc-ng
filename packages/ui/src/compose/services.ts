@@ -72,6 +72,7 @@ import { type FullStep, fullStepPerMm } from "../shaping/fullStep.ts";
 import { mmPerS, seconds } from "../shaping/engine/units.ts";
 import { analysedRows } from "../shaping/engine/sweep.ts";
 import type { SweepState } from "../shaping/sweepRun.ts";
+import { motionBusy, type MotionState } from "../shaping/motionRun.ts";
 import { createFitCache } from "../shaping/fitCache.ts";
 import type { AppServices } from "../shell/context.ts";
 
@@ -860,6 +861,101 @@ function shapingService(base: ServiceBaseCtx) {
 		}
 	};
 
+	/* ------------------------------------------------------------ the machine */
+
+	/**
+	 * The screen's ONE motion slot, and the only writer of it.
+	 *
+	 * A Shaping screen may have a Capture card and a Verify card on it at once,
+	 * and both drive the carriage. Two runs in flight is not a state a machine
+	 * can be in, so it is not a state this screen can express: `beginMotion`
+	 * hands back the writer, or null when the slot is taken, and there is no
+	 * setter beside it for a card to reach past it with.
+	 *
+	 * @invariant one-run-at-a-time-per-screen
+	 * @rung 7  capability object — a card cannot report motion without a
+	 *          reporter, the only producer of a reporter is `beginMotion`, and
+	 *          `beginMotion` returns null while `motionBusy` holds. The signal's
+	 *          setter is closed over and never handed out, so "two cards each
+	 *          driving the machine and each reporting over the other" is not
+	 *          expressible. A reporter also stops working once its own run has
+	 *          reported a terminal state, so a late event from an abandoned run
+	 *          cannot overwrite a fresh one's progress
+	 * @why the run this screen starts sends a 200 mm/s G1 with nobody's hand on
+	 *      the jog wheel. Two of them interleaved would each be re-checking the
+	 *      carriage against ITS plan's expected position and finding the other
+	 *      one's move — every step refused, the machine moving anyway, and two
+	 *      restores racing at the end
+	 */
+	const [motion, setMotionNow] = createSignal<MotionState>({ kind: "idle" });
+	let motionAbort: AbortController | null = null;
+
+	const beginMotion = (): { readonly signal: AbortSignal; readonly report: (state: MotionState) => void } | null => {
+		if (motionBusy(motion())) return null;
+		const controller = new AbortController();
+		motionAbort = controller;
+		let live = true;
+		return {
+			signal: controller.signal,
+			report: (state: MotionState): void => {
+				if (!live) return;
+				setMotionNow(state);
+				// A run that has reported a terminal state is finished with the
+				// slot. Freeing it here rather than in the caller means a caller
+				// that forgot cannot leave the screen unable to run again.
+				if (!motionBusy(state)) {
+					live = false;
+					if (motionAbort === controller) motionAbort = null;
+				}
+			},
+		};
+	};
+
+	/**
+	 * Stop the run. Both cancellation routes end in `Procedure.run`'s `finally`,
+	 * so the shaper still goes back — the abort is checked between steps and
+	 * inside the capture wait, and neither path can skip the restore.
+	 */
+	const cancelMotion = (): void => {
+		motionAbort?.abort();
+	};
+
+	// A screen that goes away takes its run with it. Services die with their
+	// screen (see the module header), and an unattended run whose progress
+	// nobody can see is worse than a cancelled one — the restore is sent either
+	// way, because the abort reaches the generator's `finally`.
+	onCleanup(cancelMotion);
+
+	/**
+	 * Hand a finished measure run's captures to the batch state the Decay card
+	 * already reports and saves from.
+	 *
+	 * Two states rather than one, on purpose. `MotionState` is what the MACHINE
+	 * did; `BatchState` is what the MEASUREMENT came to, and it is the thing
+	 * `saveMeasurement` writes against a tool through its own armed confirm. A
+	 * run that lands twelve captures has not measured anything until they are
+	 * fitted, and fitting them is not a motion.
+	 */
+	const setFitted = (records: readonly CaptureRecord[]): void => {
+		const fingerprint = aggregate(records.map(r => ({ axis: r.axis, fit: r.fit })));
+		setRunState({
+			kind: "fitted",
+			fingerprint,
+			// This machine's own captures, by construction: they came off it a
+			// moment ago through `Procedure.run`.
+			attribution: { kind: "machine", records: [...records] },
+			contributed: fingerprint.n.X + fingerprint.n.Y,
+			total: records.length,
+		});
+	};
+
+	/** Bytes a run already paid for, put where the Decay card looks. */
+	const rememberCapture = (file: string, csv: string, fit: Mode | NoFit): void => {
+		const ref = boardRef(file);
+		loader.remember(ref, csv);
+		fitCache.remember(ref.key, fit);
+	};
+
 	/**
 	 * Which cards on THIS screen can actually carry out which step.
 	 *
@@ -911,6 +1007,7 @@ function shapingService(base: ServiceBaseCtx) {
 
 	return {
 		store, tool, setTool, resultsFor, reload,
+		motion, beginMotion, cancelMotion, setFitted, rememberCapture,
 		results: (): ToolResults => resultsFor(tool()),
 		capturePick, setCapturePick, imports, addImport, loadCapture: loader.text,
 		board, boardState, boardError, wantBoard, refreshBoard,

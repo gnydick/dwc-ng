@@ -21,7 +21,7 @@ import {
 } from "../src/shaping/steps.ts";
 import { allDoneAction, stepActionText, stepStatusText, type StepScope } from "../src/shaping/copy.ts";
 import { CARD_DEFS } from "../src/compose/defs.ts";
-import { measureCaptureCount } from "../src/shaping/procedure.ts";
+import { measurePlans, plannedCaptureCount } from "../src/shaping/runPlan.ts";
 
 /**
  * The machine and the card at their best: nothing refuses, every card is on
@@ -228,10 +228,14 @@ test("every state a step can reach has a chip, and no two chips are the same wid
 
 const spec = (step: ShapingStep): StepSpec => SHAPING_STEPS.find(s => s.step === step)!;
 
-test("the primary action names the run's real size, from the same arithmetic the plan uses", () => {
+test("the primary action names the run's real size, from the plans themselves", () => {
+	// Not a restated formula: the number is counted off the very plans an armed
+	// confirm would execute, so the figure the operator consents to and the
+	// number of capture steps that get built cannot be two arithmetics.
+	const plans = measurePlans({ distMm: 60, speedMmS: 200, repeats: 3, samples: 1500 }, { x: [50, 250], y: [50, 250] }, "t0_ring");
 	// Three repeats is what ships: out and back, on each of two axes.
-	assert.equal(measureCaptureCount(3), 12);
-	const scope: StepScope = { kind: "captures", n: measureCaptureCount(3) };
+	assert.equal(plannedCaptureCount(plans), 12);
+	const scope: StepScope = { kind: "captures", n: plannedCaptureCount(plans) };
 	assert.equal(stepActionText(spec("measure"), 0, scope), "Measure T0 — 12 captures");
 });
 

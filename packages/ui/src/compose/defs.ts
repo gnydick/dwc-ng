@@ -525,12 +525,32 @@ export const CARD_DEFS = {
 		// table's declared tracks and nothing else.
 		size: { colSpan: 156, rowSpan: 156 },
 	}),
-	/** The test motion: the box it may move in, the sensor, and the run. */
+	/** The test motion: the box it may move in, the sensor, the moves it will
+	 *  make, and the armed control that makes them. */
 	"shaping-capture": defineCard({
 		title: "Capture",
 		ariaLabel: "Shaping capture",
 		tip: "M955 · M956 · G1",
-		size: { colSpan: 156, rowSpan: 66 },
+		// 66 -> 140 when the card gained the run (D3): it was two fact rows and a
+		// hint, and it is now a motion editor, an XY map of the planned moves, an
+		// armed run control and a progress strip. MEASURED with auditCard against
+		// the `shaping-measured` scenario with an envelope set (the state the card
+		// can actually plan in), and it is a FLOOR rather than a reading: the two
+		// fact rows declare 6.5u each, the two editor rows 8u each, the map stage
+		// 46u, its caption 5u, the run bar 8u, the progress track 1.5u and the
+		// status box 20u, and every one of those is a declared length. Checked
+		// with no envelope, with a 12-capture measure plan drawn, and with the run
+		// control armed — 139 rows in all three, body worth 124 of it, NO CHILD
+		// MOVED. The scale sweep reports 139 at 0.75 and 140 at 1.5, so 140 is the
+		// number that is a floor at both; colStop 114 sits inside the 156 the
+		// screen gives it, set by the motion editor's declared tracks.
+		//
+		// The map's stage declares its WIDTH as well as its height, unlike the
+		// canvas stages on Decay and Sweep. An SVG's legs are DOM children, so a
+		// stage that filled the card moved all thirteen of them on a resize (9
+		// moved children, measured); a declared box moves none, and a map that
+		// means the same thing at every card width is the better drawing anyway.
+		size: { colSpan: 156, rowSpan: 140 },
 	}),
 	/** One capture at a time: the ring-down and the mode fitted from it. */
 	"shaping-decay": defineCard({

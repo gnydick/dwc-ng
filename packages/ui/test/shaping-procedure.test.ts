@@ -118,12 +118,32 @@ test("planProcedure names the ring's own start when that is what is outside", ()
 	assert.deepEqual(r.refusal, { kind: "outside-envelope", point: { x: 10, y: 100 } });
 });
 
-test("planProcedure refuses when the carriage is parked outside the box — the first move starts there", () => {
-	const pre = freshPre({ axes: [axis("X", true, 20), axis("Y", true, 100)] });
-	const r = planProcedure(ringPlan(), pre, config(), NOW);
+/**
+ * A head parked outside the box is refused by `read`, not by `plan`.
+ *
+ * Moved there 2026-08-23 (D3), and the move is the point: every run starts by
+ * moving FROM wherever the head is parked, so a head outside the box cannot be
+ * the start of ANY plan — which makes it a fact about the machine rather than
+ * about a plan. Deciding it at plan time meant the screen's shared gate
+ * (compose/services.ts, a bare `read`) could not see it, and the Capture card
+ * offered a live Run button that refused the instant it was confirmed. Now
+ * holding a `Preconditions` IS the proof the carriage is in the box, so
+ * `planProcedure` does not re-check it and cannot disagree.
+ */
+test("a carriage parked outside the box is refused by the READING, before any plan exists", () => {
+	const r = Preconditions.read(modelWith({ axes: [axis("X", true, 20), axis("Y", true, 100)] }), config(), TOOLBOARD, NOW);
 	assert.equal(r.ok, false);
 	if (r.ok) return;
 	assert.deepEqual(r.refusal, { kind: "outside-envelope", point: { x: 20, y: 100 } });
+});
+
+test("a Preconditions therefore always carries a position inside its own envelope", () => {
+	// The property the check above buys: no arrangement of arguments produces a
+	// reading whose position is outside the box it carries.
+	const pre = freshPre();
+	const box = pre.envelope;
+	assert.ok(Number(pre.position.x) >= box.x[0] && Number(pre.position.x) <= box.x[1]);
+	assert.ok(Number(pre.position.y) >= box.y[0] && Number(pre.position.y) <= box.y[1]);
 });
 
 test("a negative-going ring is checked at both ends", () => {
@@ -349,15 +369,20 @@ const sweepPlan = (over: Partial<SweepPlan> = {}): SweepPlan => ({
 	...over,
 });
 
-test("a sweep visits both corners: one capture per axis per speed", () => {
+// A sweep's captures are named `<prefix>_<axis>_<speed>.csv`, NOT with the
+// ring's direction-and-repeat suffix, and the difference is load-bearing rather
+// than cosmetic: `shaping/captures.ts speedFamilies` collects exactly that shape
+// into the family the Sweep card draws a heat map from. Named the ring's way, a
+// live sweep would leave files nothing on the screen could collect.
+test("a sweep names its captures by speed, so the Sweep card can collect them", () => {
 	const r = planProcedure(sweepPlan(), freshPre(), config(), NOW);
 	assert.equal(r.ok, true);
 	if (!r.ok) return;
 	assert.deepEqual(r.proc.steps.map((s) => s.expectFile), [
-		"sweep_Xp0.csv",
-		"sweep_Yp0.csv",
-		"sweep_Xp1.csv",
-		"sweep_Yp1.csv",
+		"sweep_X_100.csv",
+		"sweep_Y_100.csv",
+		"sweep_X_200.csv",
+		"sweep_Y_200.csv",
 	]);
 	assert.deepEqual(r.proc.steps.map((s) => s.label), [
 		"X+ 100 mm/s",
@@ -378,7 +403,7 @@ test("a sweep's speed is a different feed rate on the same geometry", async () =
 		"G1 X100 Y100 F6000",
 		"M400",
 		"G4 P500",
-		'M956 P20.0 S1500 A2 F"sweep_Xp0.csv"',
+		'M956 P20.0 S1500 A2 F"sweep_X_100.csv"',
 		"G1 X160 Y100 F6000",
 		"M400",
 		"G4 P1500",
@@ -388,7 +413,7 @@ test("a sweep's speed is a different feed rate on the same geometry", async () =
 		"G1 X100 Y100 F6000",
 		"M400",
 		"G4 P500",
-		'M956 P20.0 S1500 A2 F"sweep_Yp0.csv"',
+		'M956 P20.0 S1500 A2 F"sweep_Y_100.csv"',
 		"G1 X100 Y160 F6000",
 		"M400",
 		"G4 P1500",
