@@ -25,7 +25,8 @@
  */
 import {
 	CONFIG_VERSION, isCustomCardId, isUserScreenId,
-	type ConfigOverlay, type CustomScreen, type PinnedCommand, type SlotRect,
+	type ConfigOverlay, type CustomScreen, type Envelope, type PinnedCommand,
+	type Range, type ShapingDefaults, type SlotRect,
 	type ThermalColors, type UserScreenId,
 } from "./types.ts";
 import { isPlainObject, safeEntries } from "@dwc-ng/connector";
@@ -111,6 +112,106 @@ function parseCamera(raw: unknown): ConfigOverlay["camera"] {
 function parseMacros(raw: unknown): ConfigOverlay["macros"] {
 	if (!isPlainObject(raw) || typeof raw.autoConfirmRun !== "boolean") return undefined;
 	return { autoConfirmRun: raw.autoConfirmRun };
+}
+
+/**
+ * An inclusive bound: exactly two finite numbers, low strictly below high.
+ *
+ * `lo >= hi` is rejected rather than repaired. An empty (or reversed) span
+ * would still be a box the containment test accepts as a question — and it
+ * would answer "outside" for every point, so a run would refuse with
+ * `outside-envelope`, which tells the operator their coordinates are wrong
+ * when what is actually wrong is the box. Dropping to unset says the true
+ * thing, and points at the Settings editor that fixes it.
+ */
+function asRange(value: unknown): Range | null {
+	if (!Array.isArray(value) || value.length !== 2) return null;
+	const [lo, hi] = value as unknown[];
+	if (typeof lo !== "number" || typeof hi !== "number") return null;
+	if (!Number.isFinite(lo) || !Number.isFinite(hi) || lo >= hi) return null;
+	return [lo, hi];
+}
+
+/**
+ * The SOLE producer of a non-null Envelope (spec I8) — called by the overlay
+ * boundary below and by the config store's setShaping, so a box entered in
+ * Settings and a box hand-edited into the SD file pass the identical gate.
+ *
+ * Whole-or-nothing, unlike the field-by-field sections around it: one good
+ * axis is not a box, and half an envelope cannot answer "is this point
+ * inside?", which is the only question it exists to answer.
+ */
+export function asEnvelope(value: unknown): Envelope | null {
+	if (!isPlainObject(value)) return null;
+	const x = asRange(value.x);
+	const y = asRange(value.y);
+	if (x === null || y === null) return null;
+	return { x, y };
+}
+
+/** An accelerometer address as M955/M956 P wants it: "board.slot". */
+export function isAccelAddr(value: unknown): value is string {
+	return typeof value === "string" && /^\d+\.\d+$/.test(value);
+}
+
+/**
+ * Capture-run motion defaults, per field. Each is a positive quantity in a
+ * G-code parameter slot — a zero or negative distance, feed, repeat count or
+ * sample count has no move to describe, so it falls back to the shipped
+ * default rather than reaching a builder.
+ */
+export function parseShapingDefaults(raw: unknown): Partial<ShapingDefaults> | undefined {
+	if (!isPlainObject(raw)) return undefined;
+	const positive = (v: unknown): number | undefined =>
+		typeof v === "number" && Number.isFinite(v) && v > 0 ? v : undefined;
+	const count = (v: unknown): number | undefined =>
+		typeof v === "number" && Number.isInteger(v) && v >= 1 ? v : undefined;
+	const out: { -readonly [K in keyof ShapingDefaults]?: number } = {};
+	const distMm = positive(raw.distMm);
+	if (distMm !== undefined) out.distMm = distMm;
+	const speedMmS = positive(raw.speedMmS);
+	if (speedMmS !== undefined) out.speedMmS = speedMmS;
+	const repeats = count(raw.repeats);
+	if (repeats !== undefined) out.repeats = repeats;
+	const samples = count(raw.samples);
+	if (samples !== undefined) out.samples = samples;
+	return Object.keys(out).length > 0 ? out : undefined;
+}
+
+/** Tool number → accelerometer address. The key must be the canonical
+ *  spelling of a non-negative whole tool number, so "01"/"1.5"/"x" drop. */
+function parseAccelByTool(raw: unknown): Record<number, string> | undefined {
+	if (!isPlainObject(raw)) return undefined;
+	const out: Record<number, string> = {};
+	for (const [key, value] of safeEntries(raw)) {
+		const tool = Number(key);
+		if (!Number.isInteger(tool) || tool < 0 || String(tool) !== key) continue;
+		if (!isAccelAddr(value)) continue;
+		out[tool] = value;
+	}
+	return Object.keys(out).length > 0 ? out : undefined;
+}
+
+/**
+ * The shaping section. A malformed envelope leaves the key ABSENT, which is
+ * how the overlay spells "never customized" — and the default it falls back
+ * to is `null`, so a mangled box can only ever become "unset", never a
+ * repaired or partial one (spec I8).
+ */
+function parseShaping(raw: unknown): ConfigOverlay["shaping"] {
+	if (!isPlainObject(raw)) return undefined;
+	const out: {
+		envelope?: Envelope;
+		defaults?: Partial<ShapingDefaults>;
+		accelByTool?: Record<number, string>;
+	} = {};
+	const envelope = asEnvelope(raw.envelope);
+	if (envelope !== null) out.envelope = envelope;
+	const defaults = parseShapingDefaults(raw.defaults);
+	if (defaults !== undefined) out.defaults = defaults;
+	const accelByTool = parseAccelByTool(raw.accelByTool);
+	if (accelByTool !== undefined) out.accelByTool = accelByTool;
+	return Object.keys(out).length > 0 ? out : undefined;
 }
 
 function parseBed(raw: unknown): ConfigOverlay["bed"] {
@@ -199,6 +300,7 @@ export function parseOverlay(raw: unknown): ConfigOverlay {
 		screens: parseScreens(raw.screens),
 		cards: parseCards(raw.cards),
 		pins: parsePins(raw.pins),
+		shaping: parseShaping(raw.shaping),
 	} satisfies { [K in keyof ConfigOverlay]: ConfigOverlay[K] };
 	for (const [key, value] of safeEntries(sections)) {
 		if (value !== undefined) (out as Record<string, unknown>)[key] = value;
