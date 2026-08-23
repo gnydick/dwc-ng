@@ -29,7 +29,7 @@ import {
 import { HeightmapBody, ProbePointBody, MeshBody, BedTramBody } from "../cards/BedCards.tsx";
 import {
 	AxisRolesBody, DockSensorsBody, BedProbeBody, CameraConfigBody, SensorNamesBody, SavedVersionsBody, ConfigSaveBody,
-	HeaterColorsBody, ThermalColorsBody,
+	HeaterColorsBody, ThermalColorsBody, ShapingBody,
 } from "../cards/SettingsCards.tsx";
 import { FirmwareBody } from "../cards/FirmwareUpdateCard.tsx";
 import { LayersBody } from "../cards/LayersCard.tsx";
@@ -96,6 +96,7 @@ export const CARD_RENDER: Record<CardId, CardRender> = {
 	"bed-probe": { body: () => <BedProbeBody />, actions: resetAction("bed") },
 	"camera-config": { body: () => <CameraConfigBody />, actions: resetAction("camera") },
 	"sensor-names": { body: () => <SensorNamesBody />, actions: resetAction("sensorNames") },
+	"settings-shaping": { body: () => <ShapingBody />, actions: resetAction("shaping") },
 	"saved-versions": { body: () => <SavedVersionsBody /> },
 	"config-save": { body: () => <ConfigSaveBody /> },
 };

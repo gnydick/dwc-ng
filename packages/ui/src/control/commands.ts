@@ -199,6 +199,34 @@ export function accelAddr(boardAddress: number, device: number): AccelAddr {
 	return (boardAddress === 0 && device === 0 ? "0" : `${boardAddress}.${device}`) as AccelAddr;
 }
 
+/**
+ * The deserialization arm of the AccelAddr producer.
+ *
+ * The config overlay stores an accelerometer as the plain string `"20.0"` (it
+ * has to: the brand cannot survive a JSON round-trip to the SD card), so
+ * something must turn that back into an address the M955/M956 builders accept.
+ * That something lives HERE, beside `accelAddr`, for the same reason
+ * `reviveMode` lives inside fit.ts: the brand keeps exactly one module that can
+ * mint it, and a parse arm in the card that needed it would be a second minting
+ * site wearing a cast.
+ *
+ * Every legal address is produced by re-deriving it from the parsed numbers
+ * rather than by blessing the input string, so the mainboard's bare `"0"`
+ * spelling comes out of `accelAddr` here too — a config holding `"0.0"` yields
+ * the same address the builders would have been given directly.
+ */
+export function parseAccelAddr(raw: string): AccelAddr | null {
+	const m = /^(\d+)\.(\d+)$/.exec(raw);
+	if (m === null) return null;
+	try {
+		return accelAddr(Number(m[1]), Number(m[2]));
+	} catch {
+		// Out of the CAN address range. A refusal, not a throw: this is a parse
+		// of untrusted config, and its whole job is to have a null answer.
+		return null;
+	}
+}
+
 /** Interpolate a minted address. Sound because accelAddr is its only producer
  *  and it emits digits and one dot. */
 const accelParam = (addr: AccelAddr): Param => addr as string as Param;
