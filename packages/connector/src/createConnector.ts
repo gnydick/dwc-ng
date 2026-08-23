@@ -39,6 +39,21 @@
 import type { Connector, ConnectorEvents } from "./types.ts";
 import { PollConnector } from "./PollConnector.ts";
 import { DsfConnector } from "./DsfConnector.ts";
+import { realClock, type Clock } from "./clock.ts";
+
+// --- platform-timer shadow (invariant connector/clock-seam) -----------------
+// Module-scoped shadows of the platform's timers: `setTimeout(...)` in this
+// file is a COMPILE ERROR ("type 'never' has no call signatures"), not a silent
+// return to wall time. Every deferral here goes through the injected Clock, so
+// a test can drive a deadline instead of waiting it out. The declarations erase
+// to nothing at runtime; test/clock-fence.test.ts checks they are still here.
+declare const setTimeout: never;
+declare const clearTimeout: never;
+declare const setInterval: never;
+declare const clearInterval: never;
+declare const setImmediate: never;
+declare const performance: never;
+declare const AbortSignal: never;
 
 /** Which dialect a backend speaks. Closed on purpose (C1). */
 export type Transport = "rr" | "dsf";
@@ -78,9 +93,9 @@ export function createConnector(target: ConnectorTarget, events: ConnectorEvents
  * against, which we do not have). The probe is kept sound and tested so the
  * wiring, when it lands, is correct.
  */
-export async function probeTransport(baseUrl: string, timeoutMs = 2000): Promise<Transport> {
+export async function probeTransport(baseUrl: string, timeoutMs = 2000, clock: Clock = realClock): Promise<Transport> {
 	try {
-		const res = await fetch(`${baseUrl}/machine/status`, { signal: AbortSignal.timeout(timeoutMs) });
+		const res = await fetch(`${baseUrl}/machine/status`, { signal: clock.timeoutSignal(timeoutMs) });
 		if (res.ok || res.status === 401 || res.status === 403) return "dsf";
 		return "rr";
 	} catch {
