@@ -21,7 +21,7 @@ and invariant claim mentions 13 -> 23, so no mechanism was deleted and no
 claim was lost in the gap. From here the ratchets make a dropped rung visible
 in the diff that drops it.
 
-**Totals:** 96 invariants · 74 at rung 6 or above · 22 below rung 6 (ceiling 22).
+**Totals:** 103 invariants · 81 at rung 6 or above · 22 below rung 6 (ceiling 22).
 
 ## bed
 
@@ -211,13 +211,23 @@ in the diff that drops it.
 
 ## config
 
+### `config/envelope-is-config-not-default` — rung 6
+
+**Mechanism.** choke-point — `envelope` ships as `null` and the ONLY producer of a non-null one is `asEnvelope` (config/parse.ts), which both the untrusted-overlay boundary and the store's `setShaping` call. There is no code path that derives a box from the object model's axis limits, and no literal reaches `overlay.shaping.envelope` without passing that gate. PARTIALITY is already rung 7 and needs no gate: `Envelope | null` is a union, so DeepPartial does not descend into it and `{ x: [...] }` alone is a compile error in ConfigOverlay. What the type cannot say is `lo < hi`; that is what asRange checks
+
+**Why.** a shaping run drives the carriage the full length of the envelope at high speed. A guessed extent — axis limits, a shipped default, a half-entered box — is a crash into the frame. Refusing to move until a human has stated the box makes the machine's safe region a fact someone asserted, never one this UI inferred
+
+**Debt — promotion.** promote to rung 7 by branding `Envelope` so a hand-written object literal is not assignable and a future writer physically cannot skip `asEnvelope`. Blocked on the brand having to survive JSON round-trips to the SD card; today the guarantee is "one gate, two callers".
+
+`packages/ui/src/config/types.ts:203`
+
 ### `config/id-namespace` — rung 7
 
 **Mechanism.** the return type IS the proof — `${P}${string}` means a minted id carries its prefix in its TYPE, so a consumer expecting a UserScreenId cannot be handed a bare string and no cast appears at any call site
 
 **Why.** "u-" ids must never collide with built-in screen ids or the lab route, and "c-" ids never with registry CardIds. A collision would silently shadow a built-in screen with a user one, and the user could not delete what they had not created
 
-`packages/ui/src/config/store.ts:484`
+`packages/ui/src/config/store.ts:543`
 
 ### `config/labels-never-travel` — rung 6
 
@@ -227,7 +237,7 @@ in the diff that drops it.
 
 **Debt — promotion.** the payload is a hand-built object literal, so a future field is one line away. Promote by giving ConfigOverlay a single serialize that returns a branded ConfigPayload upload accepts, so what travels is decided by the overlay's own type rather than here.
 
-`packages/ui/src/config/store.ts:433`
+`packages/ui/src/config/store.ts:492`
 
 ### `config/overlay-writes-persist` — rung 6
 
@@ -237,7 +247,7 @@ in the diff that drops it.
 
 **Debt — promotion.** `commit` is closure-private, so this holds within the module and says nothing about a future module. Promotion to 7 is making the overlay a branded value only commit can produce, so a second store could not assign one either.
 
-`packages/ui/src/config/store.ts:189`
+`packages/ui/src/config/store.ts:215`
 
 ### `config/screen-layout-two-tier` — rung 6
 
@@ -247,7 +257,7 @@ in the diff that drops it.
 
 **Debt — promotion.** replaceAllScreenCards is still reachable from anywhere holding the store, and its name is the only thing saying the caller owes the second tier — which is naming, not prevention. Rung 7 is having it take a branded value that only compose/screens.ts can mint, so a bare Record cannot be passed. Rung 8 would be folding the canvas write in here so one tier alone has no encoding at all; that needs the config store to reach the canvas store, which is a bigger architectural change than this invariant alone justifies.
 
-`packages/ui/src/config/store.ts:75`
+`packages/ui/src/config/store.ts:101`
 
 ### `config/sole-snapshot-producer` — rung 6
 
@@ -257,7 +267,7 @@ in the diff that drops it.
 
 **Debt — promotion.** promote by making ConfigSnapshot's label a branded SnapshotLabel this function is the sole producer of, so a snapshot assembled elsewhere cannot be pushed at all rather than merely not being.
 
-`packages/ui/src/config/store.ts:394`
+`packages/ui/src/config/store.ts:453`
 
 ### `config/untrusted-overlay-boundary` — rung 6
 
@@ -277,7 +287,7 @@ in the diff that drops it.
 
 **Debt — promotion.** promote by making writeCache take one CacheRecord value assembled in one place, so a second call site physically cannot pass a subset.
 
-`packages/ui/src/config/store.ts:175`
+`packages/ui/src/config/store.ts:201`
 
 ## connector
 
@@ -828,6 +838,60 @@ in the diff that drops it.
 **Why.** the decay fit, the shaper model and the G-code builders all mix seconds, hertz, g and mm; the 2026-08-22 prototype mixed them freely in Python and relied on the author remembering which was which
 
 `packages/ui/src/shaping/engine/units.ts:4`
+
+## shaping
+
+### `shaping/preconditions-are-a-fresh-read` — rung 7
+
+**Mechanism.** sole-constructor type — the constructor is `private` and the class carries a `#`-private field, so `new Preconditions(...)` is a compile error outside this file AND an object literal is not assignable to the type (a `#` name makes the class nominal, which a `private constructor` alone would not — the fields are all public and would otherwise match structurally). `read` is the only static, so holding one of these IS the proof that an object model was examined and found idle, homed, accelerometer-bearing and envelope-bearing. The one universal escape, `x as unknown as Preconditions`, is not counted against this rung
+
+**Why.** the checks and the move must not be separable. A card that could assemble its own guard object would be free to omit the homed test, and an unhomed axis under a 200 mm/s G1 is a crash into the frame at full current — the failure this whole feature is built around
+
+`packages/ui/src/shaping/preconditions.ts:48`
+
+### `shaping/restore-is-structural` — rung 7
+
+**Mechanism.** sole-constructor type — this is a `readonly` field of a class whose only constructor is private and whose only producer is `plan`, which always computes it from `pre.priorShaping`. There is no setter, no optional argument and no code path that yields a Procedure with an empty or absent restore, so "was a restore computed?" is not a question a run can be in the wrong answer to. What the field holds is fixed at plan time: recomputing it later is not a thing the type offers
+
+**Why.** the machine's prior shaper is knowable only BEFORE the run changes it. A restore derived from live state after a verify pass would faithfully re-apply the candidate under test and leave the operator believing the machine was back to baseline — a wrong belief about a setting that changes every subsequent print
+
+`packages/ui/src/shaping/procedure.ts:126`
+
+### `shaping/results-file-is-parsed-not-cast` — rung 6
+
+**Mechanism.** choke-point — parseResults is the only route from the card's text to a ToolResults, it is TOTAL (no input throws), and it refuses the whole file rather than dropping a bad record. Refusing whole is the difference from the config overlay: a dropped preference falls back to a default, whereas a dropped capture would silently change a fingerprint the operator is about to tune a machine against
+
+**Why.** the results file is the only place a measurement survives a reload, and the numbers in it end up as the M593 line written into tpostN.g
+
+**Debt — promotion.** the path is a plain string, so a future writer could reach 0:/sys/dwc-ng/shaping/… without coming through the store (spec I7 is rung 6 for this reason). Promote by branding the path so only this module can produce one, tracked on GitHub #19.
+
+`packages/ui/src/shaping/results.ts:25`
+
+### `shaping/results-persist-through-one-writer` — rung 6
+
+**Mechanism.** choke-point — RESULTS_PATH is imported by this module alone, so the card file has exactly one reader (load) and one writer (save), and both go through parseResults/serializeResults
+
+**Why.** per-tool results written from two places would interleave a half-built session over a finished one, and a reader that skipped parseResults would put hand-edited numbers straight into a ranking
+
+**Debt — promotion.** the path is a plain string (see results.ts); promote by branding it so a second writer cannot address the file at all. Tracked on GitHub #19.
+
+`packages/ui/src/shaping/store.ts:26`
+
+### `shaping/shaping-motion-only-via-procedure` — rung 7
+
+**Mechanism.** sole-constructor type — the constructor is `private` and the class carries a `#`-private field, so neither `new Procedure(...)` nor `{steps, restore, pre} as Procedure` compiles outside this file; the `#` name is what makes the class nominal, since every other member is public and would match structurally. The only static is `plan`, and `planProcedure` is that same function object under the name the rest of the codebase calls it — one route, two names, not two routes. `plan` takes a `Preconditions`, which is itself obtainable only from a fresh object-model read, so a run cannot exist that was not gated on idle, homed, sensor-present and inside-the-box. The universal `x as unknown as T` escape is not counted against this rung
+
+**Why.** this is the feature's whole safety story. The lab sends 200 mm/s moves with nobody watching the axis, and the difference between a capture and a crash into the frame is whether those four facts were true at the moment of planning. A second way to build a run is a second place to forget one of them
+
+`packages/ui/src/shaping/procedure.ts:97`
+
+### `shaping/verified-is-a-type` — rung 7
+
+**Mechanism.** sole-constructor type — `VerifiedCandidate` carries a brand keyed by a `unique symbol` that this module declares and does not export. Outside this file the key cannot be NAMED, so no object literal, spread, `satisfies` or structural widening produces one: the type is reachable only by calling verifyAnalysis(), which needs a baseline Fingerprint, a Candidate and a measured Fingerprint — each itself mintable only by its own engine module. "This shaper was measured on the machine" therefore cannot be asserted, only earned
+
+**Why.** the Apply card's whole job is the difference between "the impulse model predicts this is good" and "the machine was measured with it on". The 2026-08-22 prototype found a shaper the model rated best that introduced a NEW 38 Hz ring — a predicted-good candidate is not a verified one, and a boolean field saying `verified: true` would let any code claim it was @limit a TypeScript brand is defeated by an explicit `as VerifiedCandidate` or a trip through `any`; the language has no stronger seal. That residue is what test/shaping-motion-fence.test.ts backstops — it is a BACKSTOP for the cast, not the mechanism for the type
+
+`packages/ui/src/shaping/store.ts:7`
 
 ## shell
 

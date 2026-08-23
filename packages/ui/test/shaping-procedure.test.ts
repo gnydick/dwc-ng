@@ -1,0 +1,453 @@
+/**
+ * Preconditions, plans and the sealed Procedure — the whole of what stands
+ * between the Shaping Lab and the carriage.
+ *
+ * These tests assert EXACT emitted strings, not shapes. A procedure that has
+ * the right number of steps but sends the capture arm after the move records
+ * nothing, and one whose restore line is spelled differently leaves the
+ * machine shaped when the operator thinks it is not. The order
+ * `[G90, G1 start, M400, G4, M956, G1 end, M400, G4]` is the contract.
+ *
+ * The refusal table is the other half: every reason the lab can decline to
+ * move is produced here from a crafted object model, so a new reason cannot be
+ * added without a row and an existing one cannot quietly stop firing.
+ */
+import { test } from "node:test";
+import assert from "node:assert/strict";
+
+import { Preconditions, type Refusal } from "../src/shaping/preconditions.ts";
+import { planProcedure, Procedure, type RingPlan, type SweepPlan, type VerifyPlan } from "../src/shaping/procedure.ts";
+import { accelAddr } from "../src/control/commands.ts";
+import { emptyModel, type Axis, type Board, type ObjectModel, type Shaping } from "../src/om/types.ts";
+import type { Envelope, ShapingConfig } from "../src/config/types.ts";
+import { hz, mm, mmPerS } from "../src/shaping/engine/units.ts";
+import type { ShaperSpec } from "../src/shaping/engine/shapers.ts";
+
+// --- fixtures ---------------------------------------------------------------
+
+const TOOLBOARD = accelAddr(20, 0);
+const MAINBOARD = accelAddr(0, 0);
+const NOW = 1_000_000;
+
+const BOX: Envelope = { x: [50, 250], y: [50, 250] };
+
+const NO_SHAPER: Shaping = { type: "none", frequency: 0, damping: 0, amplitudes: [], delays: [] };
+const EI2_PRIOR: Shaping = { type: "ei2", frequency: 52, damping: 0.075, amplitudes: [0.34, 0.44, 0.22], delays: [0, 0.0096, 0.0192] };
+
+function axis(letter: string, homed: boolean, position: number | null): Axis {
+	return { letter, homed, machinePosition: position, userPosition: position, min: 0, max: 300, babystep: 0, visible: true };
+}
+
+function board(canAddress: number, accelerometer: boolean): Board {
+	return {
+		name: `board-${canAddress}`,
+		shortName: String(canAddress),
+		canAddress,
+		mcuTemp: null,
+		vIn: null,
+		accelerometer: accelerometer ? { orientation: 20, points: 0, runs: 0 } : null,
+	};
+}
+
+type ModelOverrides = {
+	status?: string;
+	axes?: Axis[];
+	boards?: (Board | null)[];
+	shaping?: Shaping;
+	travelAcceleration?: unknown;
+};
+
+/** Idle, homed at X100 Y100, an accelerometer on CAN board 20, no shaper. */
+function modelWith(over: ModelOverrides = {}): ObjectModel {
+	const m = emptyModel();
+	m.state.status = over.status ?? "idle";
+	m.move.axes = over.axes ?? [axis("X", true, 100), axis("Y", true, 100), axis("Z", true, 5)];
+	m.boards = over.boards ?? [board(0, false), board(20, true)];
+	const move = m.move as unknown as Record<string, unknown>;
+	move.shaping = over.shaping ?? NO_SHAPER;
+	if ("travelAcceleration" in over) move.travelAcceleration = over.travelAcceleration;
+	else move.travelAcceleration = 3000;
+	return m;
+}
+
+function config(envelope: Envelope | null = BOX): ShapingConfig {
+	return { envelope, defaults: { distMm: 60, speedMmS: 200, repeats: 3, samples: 1500 }, accelByTool: {} };
+}
+
+/** A Preconditions or an explosion — the happy path is not what these tests
+ *  are measuring when they use this. */
+function freshPre(over: ModelOverrides = {}, cfg = config(), addr = TOOLBOARD) {
+	const r = Preconditions.read(modelWith(over), cfg, addr, NOW);
+	if (!r.ok) throw new Error(`fixture refused: ${JSON.stringify(r.refusal)}`);
+	return r.pre;
+}
+
+const ringPlan = (over: Partial<RingPlan> = {}): RingPlan => ({
+	kind: "ring",
+	axis: "X",
+	start: { x: mm(100), y: mm(100) },
+	distMm: mm(60),
+	speed: mmPerS(200),
+	repeats: 3,
+	samples: 1500,
+	namePrefix: "ring",
+	...over,
+});
+
+// --- refusals from Preconditions.read ---------------------------------------
+
+const READ_REFUSALS: ReadonlyArray<{ name: string; over: ModelOverrides; cfg?: ShapingConfig; addr?: ReturnType<typeof accelAddr>; want: Refusal }> = [
+	{ name: "printing is not idle", over: { status: "processing" }, want: { kind: "not-idle", status: "processing" } },
+	{ name: "halted is not idle", over: { status: "halted" }, want: { kind: "not-idle", status: "halted" } },
+	{ name: "X unhomed", over: { axes: [axis("X", false, 100), axis("Y", true, 100)] }, want: { kind: "not-homed", axes: "X" } },
+	{ name: "both unhomed", over: { axes: [axis("X", false, null), axis("Y", false, null)] }, want: { kind: "not-homed", axes: "XY" } },
+	{ name: "Y missing entirely", over: { axes: [axis("X", true, 100)] }, want: { kind: "not-homed", axes: "Y" } },
+	{ name: "homed but no position is not plannable", over: { axes: [axis("X", true, 100), axis("Y", true, null)] }, want: { kind: "not-homed", axes: "Y" } },
+	{ name: "board 20 has no accelerometer", over: { boards: [board(0, false), board(20, false)] }, want: { kind: "no-accelerometer", addr: "20.0" } },
+	{ name: "board 20 is not on the bus at all", over: { boards: [board(0, true)] }, want: { kind: "no-accelerometer", addr: "20.0" } },
+	{ name: "mainboard asked for, toolboard has it", over: {}, addr: MAINBOARD, want: { kind: "no-accelerometer", addr: "0" } },
+	{ name: "no envelope set", over: {}, cfg: config(null), want: { kind: "no-envelope" } },
+];
+
+for (const row of READ_REFUSALS) {
+	test(`Preconditions.read refuses: ${row.name}`, () => {
+		const r = Preconditions.read(modelWith(row.over), row.cfg ?? config(), row.addr ?? TOOLBOARD, NOW);
+		assert.equal(r.ok, false);
+		if (r.ok) return;
+		assert.deepEqual(r.refusal, row.want);
+	});
+}
+
+test("Preconditions.read on a ready machine carries the read time, position and prior shaper", () => {
+	const r = Preconditions.read(modelWith({ shaping: EI2_PRIOR }), config(), TOOLBOARD, NOW);
+	assert.equal(r.ok, true);
+	if (!r.ok) return;
+	assert.equal(r.pre.readAt, NOW);
+	assert.deepEqual({ x: Number(r.pre.position.x), y: Number(r.pre.position.y) }, { x: 100, y: 100 });
+	assert.equal(String(r.pre.accel), "20.0");
+	assert.equal(r.pre.travelAccel, 3000);
+	assert.equal(r.pre.priorShaping.type, "ei2");
+	assert.deepEqual(r.pre.envelope, BOX);
+});
+
+test("travelAcceleration the board never reported is null, not a guessed number", () => {
+	const r = Preconditions.read(modelWith({ travelAcceleration: undefined }), config(), TOOLBOARD, NOW);
+	assert.equal(r.ok, true);
+	if (!r.ok) return;
+	assert.equal(r.pre.travelAccel, null);
+});
+
+test("the mainboard's own accelerometer is addressed as P0", () => {
+	const r = Preconditions.read(modelWith({ boards: [board(0, true)] }), config(), MAINBOARD, NOW);
+	assert.equal(r.ok, true);
+});
+
+// --- refusals from planProcedure --------------------------------------------
+
+test("planProcedure refuses a Preconditions older than one poll cycle", () => {
+	const pre = freshPre();
+	const fresh = planProcedure(ringPlan(), pre, config(), NOW + 2000);
+	assert.equal(fresh.ok, true, "exactly 2000 ms is still fresh");
+	const stale = planProcedure(ringPlan(), pre, config(), NOW + 2001);
+	assert.equal(stale.ok, false);
+	if (stale.ok) return;
+	assert.deepEqual(stale.refusal, { kind: "stale" });
+});
+
+test("planProcedure refuses when the envelope changed after the read", () => {
+	const pre = freshPre();
+	const r = planProcedure(ringPlan(), pre, config({ x: [0, 300], y: [0, 300] }), NOW);
+	assert.equal(r.ok, false);
+	if (r.ok) return;
+	assert.deepEqual(r.refusal, { kind: "stale" });
+});
+
+test("planProcedure refuses when the envelope was cleared after the read", () => {
+	const pre = freshPre();
+	const r = planProcedure(ringPlan(), pre, config(null), NOW);
+	assert.equal(r.ok, false);
+	if (r.ok) return;
+	assert.deepEqual(r.refusal, { kind: "no-envelope" });
+});
+
+test("planProcedure names the point that leaves the envelope — the far end of the ring", () => {
+	const r = planProcedure(ringPlan({ start: { x: mm(220), y: mm(100) } }), freshPre(), config(), NOW);
+	assert.equal(r.ok, false);
+	if (r.ok) return;
+	assert.deepEqual(r.refusal, { kind: "outside-envelope", point: { x: 280, y: 100 } });
+});
+
+test("planProcedure names the ring's own start when that is what is outside", () => {
+	const r = planProcedure(ringPlan({ start: { x: mm(10), y: mm(100) } }), freshPre(), config(), NOW);
+	assert.equal(r.ok, false);
+	if (r.ok) return;
+	assert.deepEqual(r.refusal, { kind: "outside-envelope", point: { x: 10, y: 100 } });
+});
+
+test("planProcedure refuses when the carriage is parked outside the box — the first move starts there", () => {
+	const pre = freshPre({ axes: [axis("X", true, 20), axis("Y", true, 100)] });
+	const r = planProcedure(ringPlan(), pre, config(), NOW);
+	assert.equal(r.ok, false);
+	if (r.ok) return;
+	assert.deepEqual(r.refusal, { kind: "outside-envelope", point: { x: 20, y: 100 } });
+});
+
+test("a negative-going ring is checked at both ends", () => {
+	const r = planProcedure(ringPlan({ distMm: mm(-60), start: { x: mm(60), y: mm(100) } }), freshPre(), config(), NOW);
+	assert.equal(r.ok, false);
+	if (r.ok) return;
+	assert.deepEqual(r.refusal, { kind: "outside-envelope", point: { x: 0, y: 100 } });
+});
+
+// --- ring plan --------------------------------------------------------------
+
+test("a ring plan yields 2 x repeats capture steps, one per direction per repeat", () => {
+	const r = planProcedure(ringPlan(), freshPre(), config(), NOW);
+	assert.equal(r.ok, true);
+	if (!r.ok) return;
+	assert.equal(r.proc.steps.length, 6);
+	assert.deepEqual(
+		r.proc.steps.map((s) => s.expectFile),
+		["ring_Xp0.csv", "ring_Xm0.csv", "ring_Xp1.csv", "ring_Xm1.csv", "ring_Xp2.csv", "ring_Xm2.csv"],
+	);
+});
+
+test("a Y ring names its files on Y", () => {
+	const r = planProcedure(ringPlan({ axis: "Y", repeats: 1, namePrefix: "probe" }), freshPre(), config(), NOW);
+	assert.equal(r.ok, true);
+	if (!r.ok) return;
+	assert.deepEqual(r.proc.steps.map((s) => s.expectFile), ["probe_Yp0.csv", "probe_Ym0.csv"]);
+});
+
+test("every capture step emits exactly [G90, G1 start, M400, G4, M956, G1 end, M400, G4]", () => {
+	const r = planProcedure(ringPlan({ repeats: 1 }), freshPre(), config(), NOW);
+	assert.equal(r.ok, true);
+	if (!r.ok) return;
+	assert.deepEqual(r.proc.steps[0]?.codes, [
+		"G90",
+		"G1 X100 Y100 F12000",
+		"M400",
+		"G4 P500",
+		'M956 P20.0 S1500 A2 F"ring_Xp0.csv"',
+		"G1 X160 Y100 F12000",
+		"M400",
+		"G4 P1500",
+	]);
+	assert.deepEqual(r.proc.steps[1]?.codes, [
+		"G90",
+		"G1 X160 Y100 F12000",
+		"M400",
+		"G4 P500",
+		'M956 P20.0 S1500 A2 F"ring_Xm0.csv"',
+		"G1 X100 Y100 F12000",
+		"M400",
+		"G4 P1500",
+	]);
+});
+
+test("each step carries the position the carriage must already be at", () => {
+	const r = planProcedure(ringPlan({ repeats: 2 }), freshPre({ axes: [axis("X", true, 120), axis("Y", true, 140)] }), config(), NOW);
+	assert.equal(r.ok, true);
+	if (!r.ok) return;
+	assert.deepEqual(
+		r.proc.steps.map((s) => ({ x: Number(s.expectPosition.x), y: Number(s.expectPosition.y) })),
+		[
+			{ x: 120, y: 140 }, // where the OM said the carriage was
+			{ x: 160, y: 100 }, // the far end of the first out-move
+			{ x: 100, y: 100 },
+			{ x: 160, y: 100 },
+		],
+	);
+});
+
+test("step labels name the axis, direction, speed and repeat", () => {
+	const r = planProcedure(ringPlan({ repeats: 3 }), freshPre(), config(), NOW);
+	assert.equal(r.ok, true);
+	if (!r.ok) return;
+	assert.deepEqual(r.proc.steps.map((s) => s.label), [
+		"X+ 200 mm/s (1/3)",
+		"X- 200 mm/s (1/3)",
+		"X+ 200 mm/s (2/3)",
+		"X- 200 mm/s (2/3)",
+		"X+ 200 mm/s (3/3)",
+		"X- 200 mm/s (3/3)",
+	]);
+});
+
+test("the procedure keeps the Preconditions it was planned from", () => {
+	const pre = freshPre();
+	const r = planProcedure(ringPlan(), pre, config(), NOW);
+	assert.equal(r.ok, true);
+	if (!r.ok) return;
+	assert.equal(r.proc.pre, pre);
+});
+
+// --- restore (I2) -----------------------------------------------------------
+
+test('restore turns shaping off when the machine had none', () => {
+	const r = planProcedure(ringPlan(), freshPre({ shaping: NO_SHAPER }), config(), NOW);
+	assert.equal(r.ok, true);
+	if (!r.ok) return;
+	assert.deepEqual(r.proc.restore, ['M593 P"none"']);
+});
+
+test("restore reinstates the exact prior named shaper", () => {
+	const r = planProcedure(ringPlan(), freshPre({ shaping: EI2_PRIOR }), config(), NOW);
+	assert.equal(r.ok, true);
+	if (!r.ok) return;
+	assert.deepEqual(r.proc.restore, ['M593 P"ei2" F52 S0.075']);
+});
+
+test("a prior custom shaper is restored impulse for impulse", () => {
+	const prior: Shaping = {
+		type: "custom",
+		frequency: 40,
+		damping: 0.1,
+		amplitudes: [0.335, 0.2641, 0.2242, 0.1767],
+		delays: [0, 0.00972, 0.0278, 0.03752],
+	};
+	const r = planProcedure(ringPlan(), freshPre({ shaping: prior }), config(), NOW);
+	assert.equal(r.ok, true);
+	if (!r.ok) return;
+	assert.deepEqual(r.proc.restore, ['M593 P"custom" H0.3350:0.2641:0.2242 T0.00972:0.02780:0.03752']);
+});
+
+test("a shaper this build has never heard of is restored from its reported impulse train", () => {
+	const prior: Shaping = {
+		type: "zvddddd",
+		frequency: 40,
+		damping: 0.1,
+		amplitudes: [0.335, 0.2641, 0.2242, 0.1767],
+		delays: [0, 0.00972, 0.0278, 0.03752],
+	};
+	const r = planProcedure(ringPlan(), freshPre({ shaping: prior }), config(), NOW);
+	assert.equal(r.ok, true);
+	if (!r.ok) return;
+	assert.deepEqual(r.proc.restore, ['M593 P"custom" H0.3350:0.2641:0.2242 T0.00972:0.02780:0.03752']);
+});
+
+test("a shaper that reports no usable train restores to off rather than to a guess", () => {
+	const prior: Shaping = { type: "custom", frequency: 40, damping: 0.1, amplitudes: [], delays: [] };
+	const r = planProcedure(ringPlan(), freshPre({ shaping: prior }), config(), NOW);
+	assert.equal(r.ok, true);
+	if (!r.ok) return;
+	assert.deepEqual(r.proc.restore, ['M593 P"none"']);
+});
+
+// --- verify plan ------------------------------------------------------------
+
+const EI2_SPEC: ShaperSpec = { type: "ei2", F: hz(52), S: 0.075 };
+
+test("a verify plan prepends the shaper as step 0 and leaves the ring untouched", () => {
+	const verify: VerifyPlan = { kind: "verify", spec: EI2_SPEC, ring: ringPlan({ repeats: 1, namePrefix: "ver" }) };
+	const r = planProcedure(verify, freshPre({ shaping: EI2_PRIOR }), config(), NOW);
+	assert.equal(r.ok, true);
+	if (!r.ok) return;
+	assert.equal(r.proc.steps.length, 3);
+	assert.deepEqual(r.proc.steps[0]?.codes, ['M593 P"ei2" F52 S0.075']);
+	assert.equal(r.proc.steps[0]?.expectFile, undefined);
+	assert.equal(r.proc.steps[0]?.label, "shaper ei2");
+	assert.deepEqual({ x: Number(r.proc.steps[0]?.expectPosition.x), y: Number(r.proc.steps[0]?.expectPosition.y) }, { x: 100, y: 100 });
+	assert.deepEqual(r.proc.steps.map((s) => s.expectFile), [undefined, "ver_Xp0.csv", "ver_Xm0.csv"]);
+});
+
+test("a verify plan's restore is still the PRIOR shaper, never the one under test", () => {
+	const verify: VerifyPlan = { kind: "verify", spec: EI2_SPEC, ring: ringPlan({ repeats: 1 }) };
+	const off = planProcedure(verify, freshPre({ shaping: NO_SHAPER }), config(), NOW);
+	assert.equal(off.ok, true);
+	if (!off.ok) return;
+	assert.deepEqual(off.proc.restore, ['M593 P"none"']);
+
+	const prior = planProcedure(verify, freshPre({ shaping: EI2_PRIOR }), config(), NOW);
+	assert.equal(prior.ok, true);
+	if (!prior.ok) return;
+	assert.deepEqual(prior.proc.restore, ['M593 P"ei2" F52 S0.075']);
+});
+
+test("a verify plan is refused for the same reasons its ring would be", () => {
+	const verify: VerifyPlan = { kind: "verify", spec: EI2_SPEC, ring: ringPlan({ start: { x: mm(220), y: mm(100) } }) };
+	const r = planProcedure(verify, freshPre(), config(), NOW);
+	assert.equal(r.ok, false);
+	if (r.ok) return;
+	assert.deepEqual(r.refusal, { kind: "outside-envelope", point: { x: 280, y: 100 } });
+});
+
+// --- sweep plan -------------------------------------------------------------
+
+const sweepPlan = (over: Partial<SweepPlan> = {}): SweepPlan => ({
+	kind: "sweep",
+	start: { x: mm(100), y: mm(100) },
+	distMm: mm(60),
+	speeds: [mmPerS(100), mmPerS(200)],
+	samples: 1500,
+	namePrefix: "sweep",
+	...over,
+});
+
+test("a sweep visits both corners: one capture per axis per speed", () => {
+	const r = planProcedure(sweepPlan(), freshPre(), config(), NOW);
+	assert.equal(r.ok, true);
+	if (!r.ok) return;
+	assert.deepEqual(r.proc.steps.map((s) => s.expectFile), [
+		"sweep_Xp0.csv",
+		"sweep_Yp0.csv",
+		"sweep_Xp1.csv",
+		"sweep_Yp1.csv",
+	]);
+	assert.deepEqual(r.proc.steps.map((s) => s.label), [
+		"X+ 100 mm/s",
+		"Y+ 100 mm/s",
+		"X+ 200 mm/s",
+		"Y+ 200 mm/s",
+	]);
+});
+
+test("a sweep's second speed is a different feed rate on the same geometry", () => {
+	const r = planProcedure(sweepPlan({ speeds: [mmPerS(100)] }), freshPre(), config(), NOW);
+	assert.equal(r.ok, true);
+	if (!r.ok) return;
+	assert.deepEqual(r.proc.steps[0]?.codes, [
+		"G90",
+		"G1 X100 Y100 F6000",
+		"M400",
+		"G4 P500",
+		'M956 P20.0 S1500 A2 F"sweep_Xp0.csv"',
+		"G1 X160 Y100 F6000",
+		"M400",
+		"G4 P1500",
+	]);
+	assert.deepEqual(r.proc.steps[1]?.codes, [
+		"G90",
+		"G1 X100 Y100 F6000",
+		"M400",
+		"G4 P500",
+		'M956 P20.0 S1500 A2 F"sweep_Yp0.csv"',
+		"G1 X100 Y160 F6000",
+		"M400",
+		"G4 P1500",
+	]);
+});
+
+test("a sweep is refused when its Y corner leaves the box, naming that corner", () => {
+	const r = planProcedure(sweepPlan({ start: { x: mm(100), y: mm(220) } }), freshPre({ axes: [axis("X", true, 100), axis("Y", true, 220)] }), config(), NOW);
+	assert.equal(r.ok, false);
+	if (r.ok) return;
+	assert.deepEqual(r.refusal, { kind: "outside-envelope", point: { x: 100, y: 280 } });
+});
+
+// --- I1: there is no other way to get either type ---------------------------
+
+test("read is the ONLY static producer of a Preconditions", () => {
+	// The compile-time half of I1 cannot be asserted at runtime: TypeScript's
+	// `private constructor` and the `#`-private brand are both erased. What a
+	// test CAN pin is the surface — a second factory added beside `read` shows
+	// up here, and whoever added it has to justify it.
+	const statics = Object.getOwnPropertyNames(Preconditions).filter((k) => !["length", "name", "prototype"].includes(k));
+	assert.deepEqual(statics, ["read"]);
+});
+
+test("planProcedure IS Procedure's only static, not a second route to one", () => {
+	const statics = Object.getOwnPropertyNames(Procedure).filter((k) => !["length", "name", "prototype"].includes(k));
+	assert.deepEqual(statics, ["plan"]);
+	assert.equal(planProcedure, (Procedure as unknown as { plan: unknown }).plan);
+});
