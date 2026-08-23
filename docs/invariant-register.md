@@ -21,7 +21,7 @@ and invariant claim mentions 13 -> 23, so no mechanism was deleted and no
 claim was lost in the gap. From here the ratchets make a dropped rung visible
 in the diff that drops it.
 
-**Totals:** 110 invariants · 88 at rung 6 or above · 22 below rung 6 (ceiling 22).
+**Totals:** 111 invariants · 89 at rung 6 or above · 22 below rung 6 (ceiling 22).
 
 ## bed
 
@@ -893,7 +893,15 @@ in the diff that drops it.
 
 **Why.** a control disabled with no reason is worse than a control that is not there — the operator cannot tell a refusal from a bug, and the whole point of returning `Refusal` as DATA rather than a boolean was that the reason survives to the screen Nothing here decides anything. Each sentence restates a verdict the procedure already reached (shaping/preconditions.ts, shaping/procedure.ts); the UI adds no gate of its own, because the firmware and the planner are the authorities on whether the machine may move.
 
-`packages/ui/src/shaping/copy.ts:9`
+`packages/ui/src/shaping/copy.ts:10`
+
+### `shaping/next-step-comes-from-the-readiness-it-shows` — rung 7
+
+**Mechanism.** derive, don't duplicate — `nextStep` is the ONLY producer of a `Workflow`, it calls `stepReadiness` exactly once per step, and the step it names as next is one of the very objects in `steps` (same reference, not an equal copy). No expression anywhere else decides "which step is next", because the pick is an index INTO that array and the array is built once, here. A caller cannot compute readiness a second time and get a different answer, because it has no reason to compute it at all — the answer arrives attached
+
+**Why.** the status card now says "do this next" in a prominent button. A second expression choosing that step would be the same drift as the caption above, one level up, and its failure mode is worse: a primary action pointing at a step the list beside it shows as blocked
+
+`packages/ui/src/shaping/steps.ts:23`
 
 ### `shaping/preconditions-are-a-fresh-read` — rung 7
 
@@ -909,7 +917,7 @@ in the diff that drops it.
 
 **Why.** the machine's prior shaper is knowable only BEFORE the run changes it. A restore derived from live state after a verify pass would faithfully re-apply the candidate under test and leave the operator believing the machine was back to baseline — a wrong belief about a setting that changes every subsequent print
 
-`packages/ui/src/shaping/procedure.ts:213`
+`packages/ui/src/shaping/procedure.ts:240`
 
 ### `shaping/results-file-is-parsed-not-cast` — rung 6
 
@@ -937,15 +945,13 @@ in the diff that drops it.
 
 **Why.** this is the feature's whole safety story. The lab sends 200 mm/s moves with nobody watching the axis, and the difference between a capture and a crash into the frame is whether those four facts were true at the moment of planning. A second way to build a run is a second place to forget one of them
 
-`packages/ui/src/shaping/procedure.ts:166`
+`packages/ui/src/shaping/procedure.ts:193`
 
 ### `shaping/step-readiness-has-one-answer` — rung 6
 
-**Mechanism.** choke-point — `stepReadiness` is the sole producer of a step's enabled/disabled state AND of the sentence beside it, from one switch over one input record. A button cannot be enabled while showing a reason it is not, because the two come out of the same call
+**Mechanism.** choke-point — `stepReadiness` is the sole producer of a step's enabled/disabled state AND of the sentence beside it AND of the reason-kind its chip renders, from one switch over one input record. A button cannot be enabled while showing a reason it is not, because all three come out of the same call: `enabled` is literally `block.kind === "none"`, evaluated here and nowhere else
 
 **Why.** the first version of this had the button's `disabled` on one expression and its caption on another; they agree until someone edits one of them, and the failure mode is a control that looks available and does nothing
-
-**Debt — promotion.** the note strings are assembled here while the refusal sentences live in copy.ts. Promote by moving these into copy.ts too, so there is one module anyone looking for the screen's words has to read.
 
 `packages/ui/src/shaping/steps.ts:12`
 

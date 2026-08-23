@@ -1,5 +1,6 @@
 /**
- * The words a `Refusal` is shown in.
+ * The words the Shaping screen says: a `Refusal`, a step's state, and what the
+ * primary action is about to do.
  *
  * Separated from the cards for two reasons. It is a pure function over a closed
  * union, so node can test every variant without a DOM; and it is ONE table, so
@@ -25,6 +26,7 @@
  */
 import type { Fingerprint } from "./engine/fit.ts";
 import type { Refusal } from "./preconditions.ts";
+import type { StepBlock, StepNeed, StepSpec, StepStatus } from "./steps.ts";
 
 /**
  * "X" -> "X"; "XY" -> "X and Y". The refusal carries the letters that failed
@@ -82,6 +84,147 @@ export function refusalText(r: Refusal): string {
 			throw new Error(`unknown refusal: ${String((unhandled as { kind: unknown }).kind)}`);
 		}
 	}
+}
+
+/* ---------------------------------------------------- the workflow's words */
+
+/**
+ * What a step is waiting for, as the one sentence beside its button.
+ *
+ * These used to be assembled in steps.ts while the refusal sentences lived
+ * here, which was a @debt on that module: two places to look for the screen's
+ * words. They are here now, and the promotion bought more than tidiness —
+ * `StepBlock` is a closed union, so this switch has a `never` arm and a block
+ * kind added without a sentence is a compile error, the same rung
+ * `refusalText` sits at.
+ *
+ * `none` is a sentence too. An available step SAYS it is available rather than
+ * saying nothing, because the slot beside every button has to be the same
+ * height whichever state it is in — this card is watched while the machine
+ * works, and a note appearing must not move the rows under it.
+ */
+export function stepNoteText(b: StepBlock): string {
+	switch (b.kind) {
+		case "none":
+			return "ready";
+		case "machine":
+			return refusalText(b.refusal);
+		case "input":
+			return NEED_NOTE[b.need];
+		case "off-screen":
+			// The card is not on the screen at all, and the remedy is to put it
+			// there — so the sentence is the imperative, not a description.
+			return `add the ${b.owner} card to this screen`;
+		case "not-built":
+			// The card IS there and still cannot do it. Today that means the run
+			// control has not been written yet; it stops being said the moment
+			// that card calls `offer`. Distinguishing this from the line above
+			// is the whole reason this union exists: one sentence for both is
+			// what made a missing feature read as a broken one.
+			return `the ${b.owner} card cannot run this yet`;
+		case "busy":
+			return "working…";
+		default: {
+			const unhandled: never = b;
+			throw new Error(`unknown step block: ${String((unhandled as { kind: unknown }).kind)}`);
+		}
+	}
+}
+
+const NEED_NOTE: Record<StepNeed, string> = {
+	fingerprint: "nothing measured yet",
+	candidates: "nothing ranked yet",
+	recommendation: "nothing to apply yet",
+};
+
+/**
+ * The chip on a step's row: three or four characters that say which of the
+ * seven states it is in, so the list can be read down without reading every
+ * sentence.
+ *
+ * Every one of these is at most seven characters, and the slot they share is
+ * sized against the longest — the mistake the source chips made was sizing a
+ * fixed-width chip against the SHORTEST string it could hold and ellipsing the
+ * rest.
+ */
+export function stepStatusText(s: StepStatus): string {
+	switch (s) {
+		case "done":
+			return "done";
+		case "next":
+			return "next";
+		case "ready":
+			return "ready";
+		case "blocked":
+			return "blocked";
+		case "off-screen":
+			return "no card";
+		case "not-built":
+			return "not yet";
+		case "busy":
+			return "working";
+		default: {
+			const unhandled: never = s;
+			throw new Error(`unknown step status: ${String(unhandled)}`);
+		}
+	}
+}
+
+/**
+ * How big the thing the primary action would do actually is.
+ *
+ * `unknown` is not a failure arm and is not decoration either: the sweep has
+ * no speed list to count until the card that builds one exists, and a button
+ * reading "Sweep T0 — 9 speeds" against a plan nobody has written would be a
+ * number this screen invented. Saying less is the honest answer, and it is why
+ * this is a union rather than an optional count that would default to zero.
+ */
+export type StepScope =
+	| { readonly kind: "captures"; readonly n: number }
+	| { readonly kind: "shapers"; readonly n: number }
+	| { readonly kind: "shaper"; readonly name: string }
+	| { readonly kind: "unknown" };
+
+/**
+ * What the primary action will DO, named with the numbers the plan carries.
+ *
+ * "Measure T0 — 12 captures" rather than "Measure": the operator is about to
+ * hand the machine twelve high-speed passes with nobody's hand on the jog
+ * wheel, and the count is the difference between a button and an informed
+ * consent. Every number here comes from the thing that would build the plan —
+ * the configured repeats, the shaper table, the candidate on the card — never
+ * from a constant written beside the sentence.
+ */
+export function stepActionText(spec: StepSpec, tool: number, scope: StepScope): string {
+	const what = `${spec.label} T${tool}`;
+	switch (scope.kind) {
+		case "captures":
+			return `${what} — ${scope.n} ${scope.n === 1 ? "capture" : "captures"}`;
+		case "shapers":
+			return `${what} — ${scope.n} ${scope.n === 1 ? "shaper" : "shapers"}`;
+		case "shaper":
+			return `${what} — ${scope.name}`;
+		case "unknown":
+			return what;
+		default: {
+			const unhandled: never = scope;
+			throw new Error(`unknown step scope: ${String((unhandled as { kind: unknown }).kind)}`);
+		}
+	}
+}
+
+/**
+ * The primary action when there is no next step, which happens exactly once
+ * per tool: every step's product is on the card.
+ *
+ * It still fills the slot — a region that empties when the work finishes moves
+ * everything under it on the one poll where the operator is looking hardest.
+ */
+export function allDoneAction(tool: number): { readonly label: string; readonly note: string } {
+	return {
+		label: `T${tool} is tuned`,
+		note: "every step is done — any of them can be run again below",
+	};
 }
 
 /**

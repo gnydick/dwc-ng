@@ -60,6 +60,33 @@ const POSITION_TOLERANCE_MM = 0.05;
 const CAPTURE_POLL_MS = 250;
 const CAPTURE_BUDGET_MS = 10_000;
 
+/**
+ * Out and back. A ring's return leg is a capture in its own right AND is what
+ * puts the carriage where the next repeat starts, so a repeat is two captures
+ * and there is no unmeasured move inside a run.
+ */
+const RING_DIRECTIONS = ["p", "m"] as const;
+
+/**
+ * The planar axes a fingerprint is built from. A measure run is one ring plan
+ * per axis; a sweep exercises both from a shared origin.
+ */
+export const PLANAR_AXES = ["X", "Y"] as const;
+
+/**
+ * How many captures a measure run produces, at the configured repeats.
+ *
+ * Exported because the status card promises the number in its primary action
+ * ("Measure T0 — 12 captures") and the Capture card states the same run in
+ * words. One producer for all three, so the count an operator consents to and
+ * the number of capture steps `plan` builds cannot be two arithmetics that
+ * drift — the whole point of the button naming a figure is that it is the real
+ * one.
+ */
+export function measureCaptureCount(repeats: number): number {
+	return repeats * RING_DIRECTIONS.length * PLANAR_AXES.length;
+}
+
 export type RingPlan = {
 	readonly kind: "ring";
 	readonly axis: "X" | "Y";
@@ -532,7 +559,7 @@ function ringSteps(plan: RingPlan, pre: Preconditions, origin: Point): Step[] {
 		// Out then back: the return leg is a capture in its own right AND is
 		// what puts the carriage where the next repeat starts, so the run never
 		// contains a move that is not being measured.
-		for (const dir of ["p", "m"] as const) {
+		for (const dir of RING_DIRECTIONS) {
 			const from = dir === "p" ? plan.start : far;
 			const to = dir === "p" ? far : plan.start;
 			steps.push(captureStep({
@@ -555,7 +582,7 @@ function sweepSteps(plan: SweepPlan, pre: Preconditions): Step[] {
 	const steps: Step[] = [];
 	let at = pre.position;
 	plan.speeds.forEach((speed, i) => {
-		for (const axis of ["X", "Y"] as const) {
+		for (const axis of PLANAR_AXES) {
 			const to = along(plan.start, axis, plan.distMm);
 			steps.push(captureStep({
 				at,

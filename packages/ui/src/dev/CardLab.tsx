@@ -118,7 +118,15 @@ export default function CardLab() {
 		backend: outer.backend,
 	};
 	const connected = (): boolean => true;
-	const service = createServicePool({ ...services, connected });
+	// The bench renders ONE card, so that card is the whole composition. A step
+	// whose owning card is not the featured one therefore reads as off-screen
+	// here, which is the truth about this bench and not a lab-only fiction: it
+	// is the same sentence the real screen shows when the operator removes it.
+	const service = createServicePool({
+		...services,
+		connected,
+		onScreen: (id: CardId) => id === featured(),
+	});
 
 	// Isolated canvas key — never touches a real screen's saved layout. Every
 	// card defaults to (0,0) at its registry natural size; only the featured
