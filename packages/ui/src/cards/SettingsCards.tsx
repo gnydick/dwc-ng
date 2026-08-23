@@ -11,7 +11,13 @@
 import { For, Index, Show, createMemo, createSignal } from "solid-js";
 import { createArmed } from "../control/armed.ts";
 import { useApp } from "../shell/context.ts";
-import { MAX_LABEL_LEN, DEFAULT_THERMAL_COLORS, type ThermalColors } from "../config/types.ts";
+import { MAX_LABEL_LEN, DEFAULT_THERMAL_COLORS, type Envelope, type ShapingDefaults, type ThermalColors } from "../config/types.ts";
+import { parseAccelAddr } from "../control/commands.ts";
+import { accelerometerOf } from "../shaping/preconditions.ts";
+import {
+	accelStatusText, draftEnvelope, draftOf, envelopeStatusText, judgeAccel, judgeDraft, sameDraft,
+	type EnvelopeAxis, type EnvelopeDraft, type EnvelopeVerdict,
+} from "../shaping/settingsDraft.ts";
 import { heaterSeries } from "../om/heaterSeries.ts";
 import { groundOf, theme } from "../shell/theme.ts";
 import { nearestCollision, isHexColor } from "../util/colorDistance.ts";
@@ -291,6 +297,273 @@ export function SensorNamesBody() {
 								}}
 							/>
 						</label>
+					)}
+				</For>
+			</Show>
+		</>
+	);
+}
+
+/** The two envelope rows, so the fields are addressed by NAME rather than by
+ *  an axis letter re-tested in four attributes. */
+const AXIS_ROWS = [
+	{ axis: "X", lo: "xLo", hi: "xHi" },
+	{ axis: "Y", lo: "yLo", hi: "yHi" },
+] as const satisfies ReadonlyArray<{
+	axis: EnvelopeAxis; lo: keyof EnvelopeDraft; hi: keyof EnvelopeDraft;
+}>;
+
+/**
+ * Motion defaults, one row each.
+ *
+ * Each row carries its own reader and its own patch builder rather than a bare
+ * key: `setShaping({ defaults: { [key]: n } })` with a union-typed key widens
+ * to an index signature and throws away the very field names ShapingDefaults
+ * exists to keep, so the row names its field in a form the compiler checks.
+ */
+const MOTION_ROWS = [
+	{
+		label: "Distance", unit: "mm", step: "1",
+		read: (d: ShapingDefaults): number => d.distMm,
+		patch: (distMm: number): Partial<ShapingDefaults> => ({ distMm }),
+	},
+	{
+		label: "Speed", unit: "mm/s", step: "10",
+		read: (d: ShapingDefaults): number => d.speedMmS,
+		patch: (speedMmS: number): Partial<ShapingDefaults> => ({ speedMmS }),
+	},
+	{
+		label: "Repeats", unit: "per axis", step: "1",
+		read: (d: ShapingDefaults): number => d.repeats,
+		patch: (repeats: number): Partial<ShapingDefaults> => ({ repeats }),
+	},
+	{
+		label: "Samples", unit: "M956 S", step: "100",
+		read: (d: ShapingDefaults): number => d.samples,
+		patch: (samples: number): Partial<ShapingDefaults> => ({ samples }),
+	},
+] as const;
+
+/**
+ * The Shaping Lab's settings: the motion envelope, the capture defaults, and
+ * which accelerometer belongs to which tool.
+ *
+ * This card is the ONLY way an envelope comes to exist (spec I8). Nothing
+ * ships one, nothing derives one from axis limits or the object model, and the
+ * lab refuses every procedure until a person has drawn the box — which is why
+ * the lab's refusal copy names this card by location ("Settings › Shaping").
+ *
+ * THE PROBLEM THIS CARD IS MOSTLY ABOUT. The envelope gate is whole-or-nothing:
+ * one reversed, blank or non-numeric bound drops the WHOLE box to `null`, not
+ * just its own axis. An editor that wrote and moved on would appear to accept
+ * a box it did not store. So every commit here writes through the store's one
+ * gate, reads the config BACK, and states what actually happened — which axis
+ * was refused, and that the envelope is now unset — in a slot that is always
+ * on screen, so saying it moves nothing.
+ *
+ * Nothing on this card validates anything. `setShaping` and `setAccelAddr` are
+ * the gates (config/parse.ts via config/store.ts) and the card's whole job is
+ * to make their verdicts legible; shaping/settingsDraft.ts carries the words
+ * and the per-axis probe, and both go through `asEnvelope` itself.
+ */
+export function ShapingBody() {
+	const app = useApp();
+	const stored = (): Envelope | null => app.config.config.shaping.envelope;
+
+	// `edit` is null while the four fields MIRROR the store, and holds the
+	// operator's own text otherwise. `committed` is the draft as it was at the
+	// last write, so the card can tell "typed but not applied" from "applied
+	// and refused" — two states that look identical in the input.
+	const [edit, setEdit] = createSignal<EnvelopeDraft | null>(null);
+	const [committed, setCommitted] = createSignal<EnvelopeDraft | null>(null);
+	const fields = createMemo<EnvelopeDraft>(() => edit() ?? draftOf(stored()));
+
+	const verdict = createMemo<EnvelopeVerdict>(() => {
+		const box = stored();
+		const typed = edit();
+		// Mirroring the store: whatever the store says IS the answer, so a
+		// Reset in the card header lands as "unset" without this card being
+		// told about it.
+		if (typed === null) return box === null ? { kind: "unset" } : { kind: "set", envelope: box };
+		const last = committed();
+		if (last === null || !sameDraft(last, typed)) return { kind: "pending" };
+		return judgeDraft(last, box);
+	});
+
+	const refused = (axis: EnvelopeAxis): boolean => {
+		const v = verdict();
+		return v.kind === "rejected" && v.axes.includes(axis);
+	};
+
+	const setBound = (key: keyof EnvelopeDraft, value: string): void => {
+		setEdit({ ...fields(), [key]: value });
+	};
+
+	const commitEnvelope = (): void => {
+		const draft = fields();
+		setCommitted(draft);
+		// The ONE write. draftEnvelope returns what `asEnvelope` minted, and
+		// setShaping runs the same gate again on the way into the overlay.
+		app.config.setShaping({ envelope: draftEnvelope(draft) });
+		// Read BACK. An accepted box replaces the operator's text with the
+		// numbers the gate kept, and hands the fields back to the store; a
+		// refused one leaves the text where it is, beside the reason.
+		if (stored() !== null) {
+			setEdit(null);
+			setCommitted(null);
+		}
+	};
+
+	// A refused motion default is invisible on its own — parseShapingDefaults
+	// drops the field and the effective value simply does not change — so the
+	// commit puts the kept value back in the input and says which field.
+	//
+	// The note describes the last motion COMMIT and is replaced by the next
+	// one; unlike the envelope's line it does not mirror the store, because
+	// there is nothing in the store to mirror — a refused default leaves the
+	// section byte-identical. So it also outlives a section Reset, which is
+	// the honest reading: Reset did not make that commit succeed.
+	const [motionNote, setMotionNote] = createSignal("");
+	const commitMotion = (
+		row: (typeof MOTION_ROWS)[number],
+		input: HTMLInputElement,
+	): void => {
+		const typed = Number(input.value);
+		app.config.setShaping({ defaults: row.patch(typed) });
+		const kept = row.read(app.config.config.shaping.defaults);
+		input.value = String(kept);
+		setMotionNote(kept === typed ? "" : `${row.label} refused — kept ${String(kept)}.`);
+	};
+
+	// Same two-signal shape as the envelope, per tool.
+	const [accelEdit, setAccelEdit] = createSignal<Record<number, string>>({});
+	const [accelCommitted, setAccelCommitted] = createSignal<Record<number, string>>({});
+	const storedAddr = (tool: number): string | undefined => app.config.config.shaping.accelByTool[tool];
+	const accelField = (tool: number): string => accelEdit()[tool] ?? storedAddr(tool) ?? "";
+	/** Does the machine report an accelerometer at this tool's address? The
+	 *  SAME lookup the preconditions read makes, so a row here and a disabled
+	 *  Capture button cannot disagree about whether the sensor is there. */
+	const accelPresent = (tool: number): boolean => {
+		const raw = storedAddr(tool);
+		if (raw === undefined) return false;
+		const addr = parseAccelAddr(raw);
+		return addr !== null && accelerometerOf(app.om.om, addr) !== null;
+	};
+	const accelStatus = (tool: number): string =>
+		accelStatusText(judgeAccel(
+			accelField(tool), accelCommitted()[tool] ?? null, storedAddr(tool), accelPresent(tool),
+		));
+	const forget = (map: Record<number, string>, tool: number): Record<number, string> => {
+		const next = { ...map };
+		delete next[tool];
+		return next;
+	};
+	const commitAccel = (tool: number): void => {
+		const text = accelField(tool).trim();
+		setAccelCommitted(prev => ({ ...prev, [tool]: text }));
+		if (text === "") app.config.clearAccelAddr(tool);
+		else app.config.setAccelAddr(tool, text);
+		// Read back, exactly as the envelope does: if the config now says what
+		// was typed, the row goes back to mirroring it.
+		if ((storedAddr(tool) ?? "") === text) {
+			setAccelEdit(prev => forget(prev, tool));
+			setAccelCommitted(prev => forget(prev, tool));
+		}
+	};
+
+	return (
+		<>
+			{/* No standing paragraph. Prose rewraps as the card is resized, and a
+			    hint here was the one child the layout audit reported drifting —
+			    the same reflow source Saved versions deleted for the same reason.
+			    Everything it said is said by the status line below the fields,
+			    which has to exist anyway: "Not set — shaping cannot move until
+			    you draw this box." */}
+			<span class="set-cap">Envelope</span>
+			<For each={AXIS_ROWS}>
+				{row => (
+					<div class="field">
+						<span class="field-label">{row.axis} range</span>
+						<input
+							type="number"
+							class="env-bound"
+							step="1"
+							aria-label={`Envelope ${row.axis} low`}
+							aria-invalid={refused(row.axis)}
+							value={fields()[row.lo]}
+							onInput={e => setBound(row.lo, e.currentTarget.value)}
+							onChange={commitEnvelope}
+							onKeyDown={e => { if (e.key === "Enter") commitEnvelope(); }}
+						/>
+						<span class="env-sep">to</span>
+						<input
+							type="number"
+							class="env-bound"
+							step="1"
+							aria-label={`Envelope ${row.axis} high`}
+							aria-invalid={refused(row.axis)}
+							value={fields()[row.hi]}
+							onInput={e => setBound(row.hi, e.currentTarget.value)}
+							onChange={commitEnvelope}
+							onKeyDown={e => { if (e.key === "Enter") commitEnvelope(); }}
+						/>
+						<span class="env-unit">mm</span>
+					</div>
+				)}
+			</For>
+			{/* ALWAYS rendered, at a fixed height. The refusal is the whole point
+			    of the card and it must not arrive by pushing everything below it
+			    down the screen — the same reserved-slot discipline .color-clash
+			    uses on the chart-colour rows. */}
+			<p class="env-status" role="status" classList={{ bad: verdict().kind === "rejected" }}>
+				{envelopeStatusText(verdict())}
+			</p>
+
+			<span class="set-cap">Motion defaults</span>
+			<For each={MOTION_ROWS}>
+				{row => (
+					<div class="field">
+						<span class="field-label">{row.label}</span>
+						<input
+							type="number"
+							step={row.step}
+							aria-label={row.label}
+							value={row.read(app.config.config.shaping.defaults)}
+							onChange={e => commitMotion(row, e.currentTarget)}
+						/>
+						<span class="env-unit">{row.unit}</span>
+					</div>
+				)}
+			</For>
+			<p class="env-status" role="status" classList={{ bad: motionNote() !== "" }}>{motionNote()}</p>
+
+			<span class="set-cap">Accelerometers</span>
+			<Show when={app.om.om.tools.length} fallback={<p class="job-empty">Waiting…</p>}>
+				<For each={app.om.om.tools}>
+					{tool => (
+						<Show when={tool}>
+							{t => (
+								<div class="field">
+									<span class="field-label">T{t().number}</span>
+									<input
+										type="text"
+										class="accel-addr"
+										placeholder="board.device"
+										aria-label={`T${String(t().number)} accelerometer address`}
+										value={accelField(t().number)}
+										onInput={e => setAccelEdit(prev => ({ ...prev, [t().number]: e.currentTarget.value }))}
+										onChange={() => commitAccel(t().number)}
+										onKeyDown={e => { if (e.key === "Enter") commitAccel(t().number); }}
+									/>
+									{/* Reserved, like the envelope's line: four tools that each
+									    gain and lose a sentence would reflow the card on every
+									    edit. */}
+									<span class="accel-status" role="status" title={accelStatus(t().number)}>
+										{accelStatus(t().number)}
+									</span>
+								</div>
+							)}
+						</Show>
 					)}
 				</For>
 			</Show>

@@ -452,6 +452,24 @@ export const CARD_DEFS = {
 		ariaLabel: "Sensor names",
 		size: { colSpan: 312, rowSpan: 72 },
 	}),
+	/**
+	 * The Shaping Lab's own settings: the motion envelope (the ONLY way one
+	 * comes to exist — spec I8), the capture-run defaults, and which
+	 * accelerometer belongs to which tool.
+	 *
+	 * The title is load-bearing, not decoration: the lab's refusal copy sends
+	 * the operator to "Settings › Shaping" by name, and a test pins the
+	 * phrase to this def plus the screen this card sits on.
+	 */
+	"settings-shaping": defineCard({
+		title: "Shaping",
+		ariaLabel: "Shaping",
+		tip: "config.shaping · M955 P",
+		// Measured in the Card Lab, 2026-08-23: floor 88 cols × 178 rows, stable
+		// across the height probes and with no child drift. 156 wide to sit in
+		// the Settings screen's column like its neighbours.
+		size: { colSpan: 156, rowSpan: 178 },
+	}),
 	/** Config snapshot history + one-click revert. */
 	"saved-versions": defineCard({
 		title: "Saved versions",
