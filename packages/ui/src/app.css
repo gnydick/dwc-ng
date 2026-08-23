@@ -4223,6 +4223,18 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; appe
 	width: 0; min-width: 0; padding: 0; overflow: hidden;
 }
 
+/* .panel-body is a flex COLUMN, so every direct child of it is shrinkable by
+   default — and contentRowSpan sums the children's own heights, so a body that
+   shrinks under a short card reports a floor that tracks the card instead of
+   its content. That is the hysteresis defect invariant A exists to catch, and
+   it is the same one `.shp-scroll` needed fixing for; every block these cards
+   put in a body gets the same treatment, once, here.
+   Measured 2026-08-22: the status card's row floor moved 2 cells across the
+   audit's 720 / 400 / 200 px probes without this, and 0 with it. */
+.shp-active, .shp-msg, .shp-warn, .shp-table, .shp-facts, .shp-steps, .shp-verified, .shp-line {
+	flex: 0 0 auto;
+}
+
 /* ---------- Shaping Lab (cards/ShapingCards.tsx) ----------
 
    Eight cards over one measurement session. Two rules govern every length
@@ -4355,6 +4367,20 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; appe
 	white-space: nowrap;
 }
 .shp-warn { margin: 0 0 calc(2 * var(--u)); color: var(--fault); font-size: calc(3.5 * var(--u)); }
+/* Always in the layout, only sometimes visible — the same discipline as
+   .fb-msg. This card is watched while the machine works, so a message arriving
+   must not push the table it sits above down the card. */
+.shp-msg {
+	margin: 0 0 calc(1 * var(--u));
+	min-height: calc(4.5 * var(--u));
+	font: 400 calc(3.5 * var(--u))/calc(4.5 * var(--u)) var(--font-body);
+	color: var(--fault);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	visibility: hidden;
+}
+.shp-msg.shp-msg-on { visibility: visible; }
 .shp-warn-inline { color: var(--gold); }
 .shp-ok-inline { color: var(--ok); }
 
@@ -4422,6 +4448,52 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; appe
 	text-transform: uppercase;
 	color: var(--ok);
 }
+
+/* The macro disclosure. A caret, not a link: opening a row costs a download,
+   and selecting a tool must not, so the two are separate controls in separate
+   cells. */
+.shp-c-open { width: calc(7 * var(--u)); }
+.shp-open {
+	font: 600 calc(3.25 * var(--u))/1 var(--font-display);
+	color: var(--silk-dim);
+	background: none;
+	border: 0;
+	padding: 0;
+	cursor: pointer;
+}
+.shp-open:hover { color: var(--accent); }
+/* The revealed tpost line. One line, ellipsised — a long M593 must not widen
+   the table's tracks, which are what keep the rows above it aligned. */
+.shp-macro-row td { font-size: calc(3.25 * var(--u)); }
+.shp-macro-row .shp-mono { font-size: calc(3.25 * var(--u)); }
+
+/* The workflow, one row per step. A LIST rather than a button bar: each step
+   carries a sentence saying what it is waiting for, and five captions under
+   five side-by-side buttons is unreadable at any card width this screen uses. */
+.shp-steps-cap { margin-top: calc(2 * var(--u)); }
+.shp-steps { list-style: none; margin: 0; padding: 0; }
+.shp-step {
+	display: flex;
+	align-items: center;
+	gap: calc(2.5 * var(--u));
+	padding: calc(0.75 * var(--u)) 0;
+}
+/* Declared, so every note starts at the same x whatever its button is called —
+   the column has to survive Measure and Rank sitting above each other. */
+.shp-step > .fb-tool { width: calc(20 * var(--u)); flex: 0 0 auto; text-align: center; }
+/* Always occupied (an available step says "ready"), one line, nowrap: this
+   text changes as the machine moves, and it must not be able to reflow the
+   rows below it while it does. */
+.shp-step-note {
+	flex: 1 1 auto;
+	min-width: 0;
+	font: 400 calc(3.375 * var(--u))/calc(5 * var(--u)) var(--font-body);
+	color: var(--gold);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.shp-step-note.shp-step-ready { color: var(--ok); }
 
 /* No `@media (max-width: …)` block, and that is a decision rather than an
    omission. These cards were written with one — fact rows stacking to a single

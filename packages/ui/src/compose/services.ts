@@ -49,7 +49,8 @@
  *      is what the operator was doing — the open file and selection — which is
  *      why that lives in browserMemory instead
  */
-import { createEffect, createResource, createSignal, getOwner, onCleanup, runWithOwner } from "solid-js";
+import { createEffect, createMemo, createResource, createSignal, getOwner, onCleanup, runWithOwner } from "solid-js";
+import { createStore } from "solid-js/store";
 import { createFileBrowser } from "../files/browser.ts";
 import { loadBrowserMemory, saveBrowserFile } from "../files/browserMemory.ts";
 import { fileUnderRoot } from "../files/path.ts";
@@ -58,6 +59,12 @@ import { createHeightMapStore } from "../heightmap/store.ts";
 import { cellPosition } from "../heightmap/parse.ts";
 import { createShapingStore } from "../shaping/store.ts";
 import { emptyResults, type ToolResults } from "../shaping/results.ts";
+import { Preconditions, type Refusal } from "../shaping/preconditions.ts";
+import { findShapingLine, toolMacroPath } from "../shaping/toolMacro.ts";
+import type { ShapingStep } from "../shaping/steps.ts";
+import { useEngine } from "../shaping/useEngine.ts";
+import { parseAccelAddr } from "../control/commands.ts";
+import { FileNotFoundError } from "@dwc-ng/connector";
 import type { AppServices } from "../shell/context.ts";
 
 /** What a service factory gets: the app services plus the uniform gate. */
@@ -208,6 +215,40 @@ function heightmapService(base: ServiceBaseCtx) {
 }
 
 /**
+ * What a tool's `tpost<N>.g` had to say about shaping — including the two
+ * states that exist before anyone has asked.
+ *
+ * `absent` and `unreadable` are separate on purpose: a tool with no post-select
+ * macro is an ordinary machine, and a download that failed is a transfer to
+ * retry. Collapsing them would tell an operator to create a file that already
+ * exists.
+ */
+export type MacroRead =
+	| { kind: "closed" }
+	| { kind: "reading" }
+	| { kind: "line"; line: string }
+	| { kind: "no-line" }
+	| { kind: "absent" }
+	| { kind: "unreadable" };
+
+/**
+ * How much of the ranking is kept.
+ *
+ * `rank` scores a grid — six shaper types over a frequency sweep at four
+ * damping values — and hands back every point of it sorted, which for the
+ * prototype's fingerprint is 2712 candidates. All of them would be kept twice
+ * over: as table rows on a card the operator scrolls, and as spec objects in
+ * the results file uploaded to the SD card, on a board whose HTTP server this
+ * project exists to be gentle with.
+ *
+ * Erring small on purpose. Too few is recoverable — re-rank with different
+ * options, or describe the shaper you wanted on the Custom card — while too
+ * many costs a six-figure DOM and a six-figure upload every time. Forty is five
+ * screenfuls of the candidates table and a few KB on the card.
+ */
+const RANKED_KEPT = 40;
+
+/**
  * The Shaping screen's shared state: the per-tool results store plus the three
  * selections its eight cards navigate by.
  *
@@ -281,6 +322,145 @@ function shapingService(base: ServiceBaseCtx) {
 
 	const resultsFor = (n: number): ToolResults => store.results[n] ?? emptyResults(n);
 
+	/**
+	 * The last thing this screen tried and could not do — a failed rank today, a
+	 * failed run tomorrow. Empty when there is nothing to report, and cleared by
+	 * the next attempt rather than by a timer, so it is still on screen when the
+	 * operator looks up.
+	 *
+	 * Separate from `store.error`, which is specifically "the results file on
+	 * the card is not one this build understands". Collapsing them would make a
+	 * transient worker failure look like a corrupt file.
+	 */
+	const [problem, setProblem] = createSignal("");
+
+	/**
+	 * The selected tool's accelerometer, as the M955/M956 builders address one,
+	 * or null when config names none for it.
+	 *
+	 * `parseAccelAddr` and not a cast: the overlay is untrusted text, and the
+	 * address brand has exactly one minting site (control/commands.ts) so that a
+	 * capture cannot be aimed at a board nobody chose.
+	 */
+	const accelFor = (n: number): ReturnType<typeof parseAccelAddr> =>
+		parseAccelAddr(base.config.config.shaping.accelByTool[n] ?? "");
+
+	/**
+	 * May the machine move for this tool right now, and if not, why?
+	 *
+	 * ONE reading, shared by every control on the screen. It re-derives on each
+	 * object-model poll, so what a disabled button says is never older than the
+	 * last poll — and, being a fresh `Preconditions.read` every time, it has no
+	 * way to return `stale`. Nothing here decides anything: `read` is the
+	 * authority and this is a memo over its answer.
+	 *
+	 * The one refusal this constructs itself is `no-accelerometer` with an EMPTY
+	 * address, which is not a machine verdict but a missing setting: with no
+	 * `accelByTool` entry there is no address to ask the board about. The copy
+	 * table (shaping/copy.ts) answers that case in its own words.
+	 */
+	const gate = createMemo((): Refusal | null => {
+		const addr = accelFor(tool());
+		if (addr === null) return { kind: "no-accelerometer", addr: "" };
+		const read = Preconditions.read(base.om.om, base.config.config.shaping, addr, Date.now());
+		return read.ok ? null : read.refusal;
+	});
+
+	/**
+	 * What `tpost<N>.g` has to say about shaping, read ONLY when the operator
+	 * opens that tool's row.
+	 *
+	 * Lazily, and that is the whole design: a four-tool machine would otherwise
+	 * cost four downloads on mount, on a board whose HTTP server tolerates very
+	 * few requests, to fill a column most sessions never look at.
+	 */
+	const [macros, setMacros] = createStore<Record<number, MacroRead>>({});
+	const macroFor = (n: number): MacroRead => macros[n] ?? { kind: "closed" };
+
+	const toggleMacro = (n: number): void => {
+		if (macroFor(n).kind !== "closed") {
+			setMacros(n, { kind: "closed" });
+			return;
+		}
+		setMacros(n, { kind: "reading" });
+		const path = toolMacroPath(n);
+		void (async () => {
+			try {
+				const line = findShapingLine(await base.connector.download(path));
+				setMacros(n, line === null ? { kind: "no-line" } : { kind: "line", line });
+			} catch (err) {
+				// A tool with no post-select macro is ordinary, and is not the same
+				// news as a transfer that failed — the operator can create the one
+				// and can only retry the other.
+				setMacros(n, err instanceof FileNotFoundError ? { kind: "absent" } : { kind: "unreadable" });
+			}
+		})();
+	};
+
+	/**
+	 * Rank the selected tool's fingerprint through the worker.
+	 *
+	 * It lives on the SERVICE rather than on a card because two cards offer it —
+	 * the status card's step list and (task F1) the Candidates table's own Rank
+	 * button — and a ranking computed two ways is a ranking that can disagree
+	 * with itself. Pure compute: no motion, so the gate does not apply; the only
+	 * precondition is a fingerprint to rank.
+	 */
+	const [ranking, setRanking] = createSignal(false);
+	const rank = async (): Promise<void> => {
+		const n = tool();
+		const fingerprint = resultsFor(n).fingerprint;
+		if (fingerprint === null || ranking()) return;
+		setRanking(true);
+		setProblem("");
+		try {
+			store.setCandidates(n, (await useEngine().rank(fingerprint)).slice(0, RANKED_KEPT));
+		} catch (err) {
+			// A worker that failed is not a machine that refused, and the
+			// operator has to be able to tell them apart: a silent failure here
+			// reads as "Rank does nothing", which is how the store-proxy clone
+			// bug survived being written.
+			setProblem(`ranking failed: ${err instanceof Error ? err.message : String(err)}`);
+		} finally {
+			setRanking(false);
+		}
+	};
+
+	/**
+	 * Which cards on THIS screen can actually carry out which step.
+	 *
+	 * The status card lists the workflow and reports each step's readiness, but
+	 * it does not run any of them: the Capture card owns the capture run, the
+	 * Sweep card the sweep, and so on, each with its own armed confirm. So the
+	 * button here calls the owning card's handler or is disabled — it never
+	 * grows a second implementation of a run, which on a screen with a status
+	 * card and a doing card is exactly the duplication that goes wrong.
+	 *
+	 * It is also a real state rather than scaffolding: compositions are the
+	 * operator's, and a Shaping screen they have removed the Capture card from
+	 * genuinely cannot measure. Saying which card does it is the useful answer.
+	 */
+	const [offered, setOffered] = createSignal<readonly ShapingStep[]>([]);
+	const handlers = new Map<ShapingStep, () => void>();
+	const offer = (step: ShapingStep, run: () => void): (() => void) => {
+		handlers.set(step, run);
+		setOffered(list => (list.includes(step) ? list : [...list, step]));
+		const withdraw = (): void => {
+			handlers.delete(step);
+			setOffered(list => list.filter(s => s !== step));
+		};
+		onCleanup(withdraw);
+		return withdraw;
+	};
+	const runStep = (step: ShapingStep): void => {
+		handlers.get(step)?.();
+	};
+
+	// Ranking has no card of its own to come from — it is arithmetic this
+	// service performs — so the service offers it and the step list needs no
+	// special case for the one step that is always available.
+	offer("rank", () => void rank());
+
 	/** Re-read every tool's file from the card. The results live in files the
 	 *  operator can also edit or copy in, exactly like the height map. */
 	const reload = (): void => {
@@ -291,6 +471,8 @@ function shapingService(base: ServiceBaseCtx) {
 		store, tool, setTool, resultsFor, reload,
 		results: (): ToolResults => resultsFor(tool()),
 		captureIndex, setCaptureIndex, candidateIndex, setCandidateIndex,
+		accelFor, gate, macroFor, toggleMacro, rank, ranking, problem, offer, runStep,
+		offers: (step: ShapingStep): boolean => offered().includes(step),
 	};
 }
 

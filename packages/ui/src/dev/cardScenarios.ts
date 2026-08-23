@@ -13,6 +13,7 @@
 import type { ObjectModel, Axis, Heater, Tool, Fan, Board } from "../om/types.ts";
 import { emptyModel } from "../om/types.ts";
 import { RESULTS_PATH, RESULTS_VERSION } from "../shaping/results.ts";
+import { toolMacroPath } from "../shaping/toolMacro.ts";
 
 export type ScenarioId = "idle" | "printing" | "paused" | "heater-fault" | "multi-tool" | "shaping-measured";
 
@@ -342,10 +343,37 @@ function ring1ResultsFile(tool: number): string {
  * A card that reports "not measured" is telling the truth; an error banner
  * about an unreadable file would not be.
  */
+/**
+ * A post-select macro of the shape these actually take on Gabe's machine: the
+ * heater wait, the offsets, and — on a carriage somebody has been tuning — a
+ * short history of commented-out attempts above the live `M593`.
+ *
+ * The commented lines are not decoration. They are the case `findShapingLine`
+ * exists for, and the case the Apply card (task G2) must not overwrite, so the
+ * lab shows a file that has them rather than an idealised one that does not.
+ */
+function toolMacroFile(tool: number, shaped: boolean): string {
+	const head = [`; tpost${tool}.g — after tool ${tool} is picked up`, `M116 P${tool}`, `G10 P${tool}`];
+	const tuning = shaped
+		? [
+			'; M593 P"zvdd" F17.5 S0.2   ; predicted best, measured a new 38 Hz ring',
+			'; M593 P"zvd" F52 S0.1',
+			'M593 P"ei2" F52 S0.1',
+		]
+		: [];
+	return [...head, ...tuning, ""].join("\n");
+}
+
 export function scenarioFile(id: ScenarioId, path: string): string | null {
 	for (const tool of [0, 1, 2, 3]) {
-		if (path !== RESULTS_PATH(tool)) continue;
-		return id === "shaping-measured" && tool === 0 ? ring1ResultsFile(tool) : emptyResultsFile(tool);
+		if (path === RESULTS_PATH(tool)) {
+			return id === "shaping-measured" && tool === 0 ? ring1ResultsFile(tool) : emptyResultsFile(tool);
+		}
+		// Only the shaping scenario answers for the tool macros: every other
+		// scenario leaves them to the stub, so nothing else in the lab changes.
+		if (path === toolMacroPath(tool) && id === "shaping-measured") {
+			return toolMacroFile(tool, tool === 0);
+		}
 	}
 	return null;
 }

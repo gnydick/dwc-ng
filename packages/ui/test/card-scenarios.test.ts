@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { scenarioFile, scenarioModel, SCENARIOS } from "../src/dev/cardScenarios.ts";
 import { parseResults, RESULTS_PATH } from "../src/shaping/results.ts";
+import { findShapingLine, toolMacroPath } from "../src/shaping/toolMacro.ts";
 
 test("every listed scenario builds a model", () => {
 	for (const s of SCENARIOS) {
@@ -79,6 +80,19 @@ test("shaping-measured carries the prototype session, artefact and all", () => {
 	assert.ok(artefacted[0]!.measured.X! > 1, "and it left MORE ring on X than no shaper at all");
 	// T0 is measured; the other three tools are present and empty.
 	assert.equal(parseResults(scenarioFile("shaping-measured", RESULTS_PATH(1))!)!.fingerprint, null);
+});
+
+test("shaping-measured serves a tpost macro whose live M593 the reader finds", () => {
+	const t0 = scenarioFile("shaping-measured", toolMacroPath(0));
+	assert.ok(t0 !== null, "T0 has a post-select macro");
+	// The file carries commented-out attempts above the live line, which is the
+	// shape the status card and task G2's rewrite both have to survive.
+	assert.match(t0!, /^;\s*M593/m, "the fixture must contain a commented-out attempt");
+	assert.equal(findShapingLine(t0!), 'M593 P"ei2" F52 S0.1');
+	// A tool nobody has tuned has a macro with no shaper line at all.
+	assert.equal(findShapingLine(scenarioFile("shaping-measured", toolMacroPath(2))!), null);
+	// Other scenarios leave the macros to the stub, so nothing else changes.
+	assert.equal(scenarioFile("printing", toolMacroPath(0)), null);
 });
 
 test("each call returns an independent model (no shared mutable state)", () => {

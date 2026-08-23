@@ -145,18 +145,21 @@ export const BED_COMPOSITION: Composition = {
  * default, so a fresh screen is each card fitted to its content.
  */
 export const SHAPING_COMPOSITION: Composition = {
-	"shaping-status": { col: 0, row: 0, colSpan: 156, rowSpan: 77 },
+	// status 77 -> 138 when it gained the five-step workflow list, the per-tool
+	// tpost disclosure and the reserved message line; the rest of the left
+	// column follows it down.
+	"shaping-status": { col: 0, row: 0, colSpan: 156, rowSpan: 138 },
 	"shaping-capture": { col: 156, row: 0, colSpan: 156, rowSpan: 66 },
-	"shaping-decay": { col: 0, row: 77, colSpan: 156, rowSpan: 75 },
+	"shaping-decay": { col: 0, row: 138, colSpan: 156, rowSpan: 75 },
 	"shaping-sweep": { col: 156, row: 66, colSpan: 156, rowSpan: 39 },
-	"shaping-candidates": { col: 0, row: 152, colSpan: 156, rowSpan: 75 },
+	"shaping-candidates": { col: 0, row: 213, colSpan: 156, rowSpan: 75 },
 	"shaping-custom": { col: 156, row: 105, colSpan: 156, rowSpan: 71 },
-	"shaping-verify": { col: 0, row: 227, colSpan: 156, rowSpan: 62 },
+	"shaping-verify": { col: 0, row: 288, colSpan: 156, rowSpan: 62 },
 	"shaping-apply": { col: 156, row: 176, colSpan: 156, rowSpan: 50 },
-	// The left column is the taller of the two (ends at 289); the full-width
+	// The left column is the taller of the two (ends at 350); the full-width
 	// strip clears both.
-	console: { col: 0, row: 289, colSpan: 312, rowSpan: 75 },
-	camera: { col: 0, row: 364, colSpan: 104, rowSpan: 75 },
+	console: { col: 0, row: 350, colSpan: 312, rowSpan: 75 },
+	camera: { col: 0, row: 425, colSpan: 104, rowSpan: 75 },
 };
 
 /** Settings: config-overlay editors + the save card (the former save-bar). */

@@ -487,8 +487,12 @@ export const CARD_DEFS = {
 		title: "Shaping",
 		ariaLabel: "Shaping status",
 		tip: "M593 · M955 · M956",
-		// Four tool rows of two lines each, plus the running-shaper line.
-		size: { colSpan: 156, rowSpan: 77 },
+		// Four tool rows of two lines each, the running-shaper line, and the
+		// five-step workflow list. MEASURED with every tpost row COLLAPSED,
+		// which is how the card opens: one open row needs ~11 more and all four
+		// need ~44, and reserving that for a disclosure most sessions use once
+		// is worse than letting the body scroll while it is open.
+		size: { colSpan: 156, rowSpan: 138 },
 	}),
 	/** The test motion: the box it may move in, the sensor, and the run. */
 	"shaping-capture": defineCard({

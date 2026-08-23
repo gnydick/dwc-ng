@@ -24,10 +24,13 @@
  * numeric cell is tabular, and a value that can be absent renders an em dash
  * rather than collapsing its row.
  */
-import { For, Show, createMemo, createSignal } from "solid-js";
+import { For, Match, Show, Switch, createMemo, createSignal } from "solid-js";
 import { cmd } from "../control/commands.ts";
 import { copyText } from "../shell/copyText.ts";
 import type { CardCtx } from "../compose/ctx.ts";
+import type { MacroRead } from "../compose/services.ts";
+import { SHAPING_STEPS, stepReadiness, type StepInputs, type StepSpec } from "../shaping/steps.ts";
+import { toolMacroPath } from "../shaping/toolMacro.ts";
 import type { ShapingConfig } from "../config/types.ts";
 import type { Shaping } from "../om/types.ts";
 import type { Artefact } from "../shaping/engine/artefact.ts";
@@ -128,16 +131,65 @@ function Artefacts(props: { artefacts: readonly Artefact[] }) {
 
 /* ------------------------------------------------------------------ 1. status */
 
+/** What a tool's tpost macro said, as one always-present line. Every arm is a
+ *  sentence: the row's height must not depend on which one it is in. */
+function MacroLine(props: { tool: number; read: MacroRead }) {
+	return (
+		<Switch fallback={<span class="shp-nil">reading {toolMacroPath(props.tool)}…</span>}>
+			<Match when={props.read.kind === "line" ? props.read : null}>
+				{found => <span class="shp-mono">{found().line}</span>}
+			</Match>
+			<Match when={props.read.kind === "no-line"}>
+				<span class="shp-nil">no M593 line in {toolMacroPath(props.tool)}</span>
+			</Match>
+			<Match when={props.read.kind === "absent"}>
+				<span class="shp-nil">no {toolMacroPath(props.tool)} on the card</span>
+			</Match>
+			<Match when={props.read.kind === "unreadable"}>
+				<span class="shp-warn-inline">could not read {toolMacroPath(props.tool)}</span>
+			</Match>
+		</Switch>
+	);
+}
+
 /**
- * Per-tool state of the whole session, and what the machine is running right
- * now. The tool picked here is the tool every other card on the screen is
- * about, which is why the row is a button rather than a click target on the
- * `<tr>`: it has to be reachable from a keyboard.
+ * Per-tool state of the whole session, what the machine is running right now,
+ * and what each step of the workflow is waiting for.
+ *
+ * Three things are worth saying about the construction.
+ *
+ * The tool picked here is the tool every other card on the screen is about,
+ * which is why the row's identity is a BUTTON rather than a click handler on
+ * the `<tr>`: it has to be reachable from a keyboard.
+ *
+ * `tpost<N>.g` is read only when a row is opened. A four-tool machine would
+ * otherwise cost four downloads on mount, against a board whose HTTP server
+ * tolerates very few, to fill a line most sessions never look at.
+ *
+ * The step list REPORTS; it does not decide. Each row's enabled state and its
+ * sentence come from one `stepReadiness` call over the planner's own refusal
+ * (shaping/steps.ts), and the button calls whichever card offered to carry the
+ * step out. There is no verdict invented here and no second implementation of
+ * a run — the firmware and the planner are the authorities, and the doing cards
+ * own the doing.
  */
 export function ShapingStatusBody(props: { ctx: CardCtx }) {
 	const svc = props.ctx.service("shaping");
 	const tools = createMemo(() => props.ctx.om.om.tools.filter(t => t !== null));
 	const shaping = (): Shaping => props.ctx.om.om.move.shaping;
+	const selected = (): ToolResults => svc.results();
+	// The card file the store could not read outranks a failed action: it is the
+	// one that makes everything else on screen wrong.
+	const message = (): string => svc.store.error() || svc.problem();
+
+	const inputsFor = (spec: StepSpec): StepInputs => ({
+		refusal: svc.gate(),
+		offered: svc.offers(spec.step),
+		hasFingerprint: selected().fingerprint !== null,
+		hasCandidates: selected().candidates.length > 0,
+		hasRecommendation: recommendation(selected()) !== null,
+		busy: spec.step === "rank" && svc.ranking(),
+	});
 
 	return (
 		<>
@@ -152,40 +204,89 @@ export function ShapingStatusBody(props: { ctx: CardCtx }) {
 					</span>
 				</Show>
 			</p>
-			<Show when={svc.store.error() !== ""}>
-				<p class="shp-warn">{svc.store.error()}</p>
-			</Show>
+			{/* ONE message line, always laid out. It was a <Show>, which meant the
+			    whole table jumped down the moment anything went wrong — on the
+			    card whose job is to be watched while the machine works. Hidden by
+			    visibility, so it occupies its row either way. */}
+			<p class="shp-msg" classList={{ "shp-msg-on": message() !== "" }}>{message()}</p>
 			<table class="shp-table shp-tools">
 				<colgroup>
+					<col class="shp-c-open" />
 					<col class="shp-c-tool" />
 					<col class="shp-c-mode" />
 					<col class="shp-c-mode" />
 					<col class="shp-c-state" />
 				</colgroup>
 				<thead>
-					<tr><th>Tool</th><th>X</th><th>Y</th><th>State</th></tr>
+					<tr><th /><th>Tool</th><th>X</th><th>Y</th><th>State</th></tr>
 				</thead>
 				<tbody>
-					<For each={tools()} fallback={<tr><td colspan="4" class="shp-nil">no tools on this machine</td></tr>}>
+					<For each={tools()} fallback={<tr><td colspan="5" class="shp-nil">no tools on this machine</td></tr>}>
 						{tool => (
-							<tr classList={{ "shp-on": svc.tool() === tool.number }}>
-								<td>
-									<button
-										class="shp-pick"
-										aria-pressed={svc.tool() === tool.number}
-										onClick={() => svc.setTool(tool.number)}
-									>
-										T{tool.number}
-									</button>
-								</td>
-								<td><ModeCell mode={svc.resultsFor(tool.number).fingerprint?.X ?? null} /></td>
-								<td><ModeCell mode={svc.resultsFor(tool.number).fingerprint?.Y ?? null} /></td>
-								<td class="shp-state">{progressOf(svc.resultsFor(tool.number))}</td>
-							</tr>
+							<>
+								<tr classList={{ "shp-on": svc.tool() === tool.number }}>
+									<td>
+										{/* The macro line is a SEPARATE disclosure from selecting the
+										    tool: opening it costs a download, and picking a tool must
+										    not. */}
+										<button
+											class="shp-open"
+											aria-expanded={svc.macroFor(tool.number).kind !== "closed"}
+											aria-label={`Show ${toolMacroPath(tool.number)}`}
+											onClick={() => svc.toggleMacro(tool.number)}
+										>
+											{svc.macroFor(tool.number).kind === "closed" ? "▸" : "▾"}
+										</button>
+									</td>
+									<td>
+										<button
+											class="shp-pick"
+											aria-pressed={svc.tool() === tool.number}
+											onClick={() => svc.setTool(tool.number)}
+										>
+											T{tool.number}
+										</button>
+									</td>
+									<td><ModeCell mode={svc.resultsFor(tool.number).fingerprint?.X ?? null} /></td>
+									<td><ModeCell mode={svc.resultsFor(tool.number).fingerprint?.Y ?? null} /></td>
+									<td class="shp-state">{progressOf(svc.resultsFor(tool.number))}</td>
+								</tr>
+								<Show when={svc.macroFor(tool.number).kind !== "closed"}>
+									<tr class="shp-macro-row">
+										<td />
+										<td colspan="4"><MacroLine tool={tool.number} read={svc.macroFor(tool.number)} /></td>
+									</tr>
+								</Show>
+							</>
 						)}
 					</For>
 				</tbody>
 			</table>
+			<p class="shp-active shp-steps-cap">
+				<span class="shp-cap">Steps</span>
+				<span class="shp-mono">T{svc.tool()}</span>
+			</p>
+			<ul class="shp-steps">
+				<For each={SHAPING_STEPS}>
+					{spec => {
+						const ready = createMemo(() => stepReadiness(spec, inputsFor(spec)));
+						return (
+							<li class="shp-step">
+								<button
+									class="fb-tool"
+									disabled={!ready().enabled}
+									onClick={() => svc.runStep(spec.step)}
+								>
+									{spec.label}
+								</button>
+								<span class="shp-step-note" classList={{ "shp-step-ready": ready().enabled }}>
+									{ready().note}
+								</span>
+							</li>
+						);
+					}}
+				</For>
+			</ul>
 		</>
 	);
 }
