@@ -21,7 +21,7 @@ and invariant claim mentions 13 -> 23, so no mechanism was deleted and no
 claim was lost in the gap. From here the ratchets make a dropped rung visible
 in the diff that drops it.
 
-**Totals:** 86 invariants · 64 at rung 6 or above · 22 below rung 6 (ceiling 22).
+**Totals:** 90 invariants · 68 at rung 6 or above · 22 below rung 6 (ceiling 22).
 
 ## bed
 
@@ -739,6 +739,40 @@ in the diff that drops it.
 
 `packages/ui/src/om/types.ts:346`
 
+## shaping/engine
+
+### `shaping/engine/capture-is-parsed` — rung 7
+
+**Mechanism.** sole-constructor type — Capture's constructor is private and the only caller of the internal mint is parseCapture below, which refuses a missing trailer, overflows, or an empty body. A Capture in hand therefore always has a real sample rate and a complete, overflow-free record; the fitter takes nothing else
+
+**Why.** a capture with overflows has gaps that shift every time in it, and one without the trailer has no rate at all — both would fit to a confident, wrong frequency
+
+`packages/ui/src/shaping/engine/capture.ts:5`
+
+### `shaping/engine/fingerprint-from-fit-only` — rung 7
+
+**Mechanism.** sole-constructor type — `Mode` carries a brand that only this module's fitDecay writes, and `Fingerprint` is produced only by aggregate(); the shaper ranking takes a Fingerprint, so it can never be handed a frequency somebody typed in. Custom user input enters through the shaper spec, never through a Fingerprint
+
+**Why.** M593's F and S are exactly what the plugin guesses; the ranking is only as honest as the provenance of the numbers it ranks against
+
+`packages/ui/src/shaping/engine/fit.ts:5`
+
+### `shaping/engine/shaper-definitions-are-one-table` — rung 8
+
+**Mechanism.** illegal state unrepresentable — ShaperSpec is a discriminated union, impulses() is one exhaustive switch with a `never` arm, and a named shaper carries F/S while a custom one carries H/T; there is no way to pair a type with the wrong parameter set, and adding a shaper type to ShaperType stops compilation until its arm exists
+
+**Why.** M593's named and custom forms take different parameters; emitting the wrong set is a silently different shaper on the machine
+
+`packages/ui/src/shaping/engine/shapers.ts:7`
+
+### `shaping/engine/shaping-units-are-types` — rung 7
+
+**Mechanism.** sole-constructor type — each unit has exactly one minting function here; a bare number is not assignable to Hz/Seconds/G/..., so a frequency cannot be passed where a duration is expected, and the mint refuses non-finite values so NaN never enters a fit
+
+**Why.** the decay fit, the shaper model and the G-code builders all mix seconds, hertz, g and mm; the 2026-08-22 prototype mixed them freely in Python and relied on the author remembering which was which
+
+`packages/ui/src/shaping/engine/units.ts:4`
+
 ## shell
 
 ### `shell/copy-failure-is-observable` — rung 6
@@ -847,7 +881,7 @@ in the diff that drops it.
 
 **Debt — promotion.** NOT build-failing, despite how it reads. `pnpm build` is `tsc -b && vite build` and never runs node:test; this repo has no CI and no git hook, so the gate is "someone ran `pnpm test`". Promote by running `pnpm test` from a pre-push hook or in CI → rung 6 (mechanically unavoidable on the path to main). Blocked on there being no CI in this repo.
 
-`packages/ui/src/index.css:157`
+`packages/ui/src/index.css:152`
 
 ## util
 

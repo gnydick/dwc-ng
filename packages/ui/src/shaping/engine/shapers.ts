@@ -1,16 +1,18 @@
-// Input-shaper impulse trains exactly as RepRapFirmware 3.6 builds them, so
-// the residual this engine predicts is the residual the firmware will leave.
-// Semantics were read from RRF's src/Movement/AxisShaper.cpp (3.6-dev) as
-// reference and rewritten here; nothing is copied.
-//
-// @invariant shaper-definitions-are-one-table
-// @rung 8  illegal state unrepresentable — ShaperSpec is a discriminated
-//          union, impulses() is one exhaustive switch with a `never` arm, and
-//          a named shaper carries F/S while a custom one carries H/T; there is
-//          no way to pair a type with the wrong parameter set, and adding a
-//          shaper type to ShaperType stops compilation until its arm exists
-// @why M593's named and custom forms take different parameters; emitting the
-//      wrong set is a silently different shaper on the machine
+/**
+ * Input-shaper impulse trains exactly as RepRapFirmware 3.6 builds them, so
+ * the residual this engine predicts is the residual the firmware will leave.
+ * Semantics were read from RRF's src/Movement/AxisShaper.cpp (3.6-dev) as
+ * reference and rewritten here; nothing is copied.
+ *
+ * @invariant shaper-definitions-are-one-table
+ * @rung 8  illegal state unrepresentable — ShaperSpec is a discriminated
+ *          union, impulses() is one exhaustive switch with a `never` arm, and
+ *          a named shaper carries F/S while a custom one carries H/T; there is
+ *          no way to pair a type with the wrong parameter set, and adding a
+ *          shaper type to ShaperType stops compilation until its arm exists
+ * @why M593's named and custom forms take different parameters; emitting the
+ *      wrong set is a silently different shaper on the machine
+ */
 
 import { type Hz, type Seconds } from "./units.ts";
 

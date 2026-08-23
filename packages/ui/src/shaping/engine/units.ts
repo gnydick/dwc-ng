@@ -1,13 +1,15 @@
-// Branded physical units for the shaping engine.
-//
-// @invariant shaping-units-are-types
-// @rung 7  sole-constructor type — each unit has exactly one minting function
-//          here; a bare number is not assignable to Hz/Seconds/G/..., so a
-//          frequency cannot be passed where a duration is expected, and the
-//          mint refuses non-finite values so NaN never enters a fit
-// @why the decay fit, the shaper model and the G-code builders all mix
-//      seconds, hertz, g and mm; the 2026-08-22 prototype mixed them freely in
-//      Python and relied on the author remembering which was which
+/**
+ * Branded physical units for the shaping engine.
+ *
+ * @invariant shaping-units-are-types
+ * @rung 7  sole-constructor type — each unit has exactly one minting function
+ *          here; a bare number is not assignable to Hz/Seconds/G/..., so a
+ *          frequency cannot be passed where a duration is expected, and the
+ *          mint refuses non-finite values so NaN never enters a fit
+ * @why the decay fit, the shaper model and the G-code builders all mix
+ *      seconds, hertz, g and mm; the 2026-08-22 prototype mixed them freely in
+ *      Python and relied on the author remembering which was which
+ */
 
 type Brand<U extends string> = number & { readonly __unit: U };
 

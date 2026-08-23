@@ -1,15 +1,17 @@
-// An accelerometer capture as RRF writes it with M956: a CSV of
-// `Sample,X,Y,Z` rows in g followed by a `Rate N, overflows M` trailer.
-//
-// @invariant capture-is-parsed
-// @rung 7  sole-constructor type — Capture's constructor is private and the
-//          only caller of the internal mint is parseCapture below, which
-//          refuses a missing trailer, overflows, or an empty body. A Capture
-//          in hand therefore always has a real sample rate and a complete,
-//          overflow-free record; the fitter takes nothing else
-// @why a capture with overflows has gaps that shift every time in it, and
-//      one without the trailer has no rate at all — both would fit to a
-//      confident, wrong frequency
+/**
+ * An accelerometer capture as RRF writes it with M956: a CSV of
+ * `Sample,X,Y,Z` rows in g followed by a `Rate N, overflows M` trailer.
+ *
+ * @invariant capture-is-parsed
+ * @rung 7  sole-constructor type — Capture's constructor is private and the
+ *          only caller of the internal mint is parseCapture below, which
+ *          refuses a missing trailer, overflows, or an empty body. A Capture
+ *          in hand therefore always has a real sample rate and a complete,
+ *          overflow-free record; the fitter takes nothing else
+ * @why a capture with overflows has gaps that shift every time in it, and
+ *      one without the trailer has no rate at all — both would fit to a
+ *      confident, wrong frequency
+ */
 
 import { hz, seconds, type Hz, type Seconds } from "./units.ts";
 

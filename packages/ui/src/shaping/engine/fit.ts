@@ -1,14 +1,16 @@
-// Fit the free ring-down after a stop: one dominant mode's frequency and
-// damping ratio, in real units.
-//
-// @invariant fingerprint-from-fit-only
-// @rung 7  sole-constructor type — `Mode` carries a brand that only this
-//          module's fitDecay writes, and `Fingerprint` is produced only by
-//          aggregate(); the shaper ranking takes a Fingerprint, so it can
-//          never be handed a frequency somebody typed in. Custom user input
-//          enters through the shaper spec, never through a Fingerprint
-// @why M593's F and S are exactly what the plugin guesses; the ranking is
-//      only as honest as the provenance of the numbers it ranks against
+/**
+ * Fit the free ring-down after a stop: one dominant mode's frequency and
+ * damping ratio, in real units.
+ *
+ * @invariant fingerprint-from-fit-only
+ * @rung 7  sole-constructor type — `Mode` carries a brand that only this
+ *          module's fitDecay writes, and `Fingerprint` is produced only by
+ *          aggregate(); the shaper ranking takes a Fingerprint, so it can
+ *          never be handed a frequency somebody typed in. Custom user input
+ *          enters through the shaper spec, never through a Fingerprint
+ * @why M593's F and S are exactly what the plugin guesses; the ranking is
+ *      only as honest as the provenance of the numbers it ranks against
+ */
 
 import { bandAnalytic, peakHz } from "./spectrum.ts";
 import { g, type G, type Hz, type Seconds } from "./units.ts";
