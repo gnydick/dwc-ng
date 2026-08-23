@@ -55,7 +55,10 @@ function base(): ObjectModel {
 	// board + one EXP3HC + four TOOL1LC, so the firmware card has real boards.
 	const board = (
 		name: string, shortName: string, canAddress: number, version: string, file: string, mcu: number,
-	): Board => ({ name, shortName, canAddress, firmwareVersion: version, firmwareFileName: file, mcuTemp: { current: mcu }, vIn: { current: 24.1 }, v12: canAddress === 0 ? { current: 12.1 } : null });
+	): Board => ({ name, shortName, canAddress, firmwareVersion: version, firmwareFileName: file, mcuTemp: { current: mcu }, vIn: { current: 24.1 }, v12: canAddress === 0 ? { current: 12.1 } : null,
+		// Only the tool boards carry one on this machine; the Shaping Lab reads
+		// exactly this to decide which boards it may capture from.
+		accelerometer: canAddress >= 20 ? { orientation: 41, points: 0, runs: 0 } : null });
 	model.boards = [
 		board("Duet 3 MB6HC", "MB6HC", 0, "3.6.3", "Duet3Firmware_MB6HC.bin", 38.2),
 		board("Duet 3 Expansion EXP3HC", "EXP3HC", 1, "3.6.3", "Duet3Firmware_EXP3HC.bin", 35.0),
@@ -84,6 +87,9 @@ function base(): ObjectModel {
 			meshDeviation: { mean: 0.012, deviation: 0.043 },
 			fadeHeight: 20,
 		},
+		// No shaper configured in the lab's base model — the Shaping Lab is what
+		// puts one here, so its "before" state stays reachable without a machine.
+		shaping: { type: "none", frequency: 0, damping: 0, amplitudes: [], delays: [] },
 	};
 	model.heat = {
 		bedHeaters: [0], chamberHeaters: [],

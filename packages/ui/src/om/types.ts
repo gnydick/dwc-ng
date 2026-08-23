@@ -69,12 +69,39 @@ export interface CurrentMove {
 	extrusionRate: number | null;
 }
 
+/**
+ * reference/objectmodel/src/move/InputShaping.ts:14-20 — the shaper M593 has
+ * configured, as the firmware reports it back.
+ *
+ * `type` is kept a plain string rather than a union of
+ * InputShapingType (same file, :3-12): the board is the authority on what
+ * shaper names its firmware knows, and a name this build has never heard of
+ * must still render as itself, not collapse to "none". The Shaping Lab's own
+ * candidate names are a separate, closed set (shaping/engine/shapers.ts).
+ *
+ * `amplitudes` and `delays` are PAIRWISE — impulse i is (amplitudes[i],
+ * delays[i]) — which is why conformShaping rejects a whole vector rather than
+ * dropping bad elements out of one of them.
+ */
+export interface Shaping {
+	/** "none" | "zvd" | "mzv" | "ei2" | "ei3" | "custom" | … (board's word). */
+	readonly type: string;
+	/** Centre frequency in Hz. 0 when no shaper is configured. */
+	readonly frequency: number;
+	/** Damping ratio ζ the shaper was solved for. */
+	readonly damping: number;
+	readonly amplitudes: readonly number[];
+	/** Seconds, cumulative from the first impulse (which is always 0). */
+	readonly delays: readonly number[];
+}
+
 export interface Move {
 	axes: Axis[];
 	currentMove: CurrentMove;
 	speedFactor: number;
 	extruders: Extruder[];
 	compensation: Compensation;
+	readonly shaping: Shaping;
 }
 
 /** reference/objectmodel/src/heat/Heater.ts */
@@ -151,6 +178,25 @@ export interface MachineState {
 	atxPower: boolean | null;
 }
 
+/**
+ * reference/objectmodel/src/boards/index.ts:7-11 (Accelerometer).
+ *
+ * PRESENCE IS THE POINT: `boards[n].accelerometer` is null on a board with no
+ * accelerometer wired to it, and that is the only thing that says whether
+ * M955/M956 can address that board at all. `points`/`runs` are the firmware's
+ * own capture counters, which is how a capture in flight is observed without
+ * polling the file system.
+ */
+export interface Accelerometer {
+	/** M955 I<n> axis-mapping code, e.g. 41. Defaults to 20 in RRF
+	 *  (reference/objectmodel/src/boards/index.ts:8). */
+	readonly orientation: number;
+	/** Samples collected by the run in progress. */
+	readonly points: number;
+	/** Captures completed since boot. */
+	readonly runs: number;
+}
+
 /** reference/objectmodel/src/boards/Board.ts */
 export interface Board {
 	name: string;
@@ -165,6 +211,15 @@ export interface Board {
 	mcuTemp: { current: number } | null;
 	vIn: { current: number } | null;
 	v12?: { current: number } | null;
+	/**
+	 * null = this board has no accelerometer (reference/objectmodel/src/boards/index.ts:50).
+	 *
+	 * conformModelKey guarantees the key EXISTS on every board it gates, but the
+	 * live d99fn patch route does not pass through that gate (see the @debt on
+	 * conformModelKey), so a consumer must test presence — `if (b.accelerometer)`
+	 * — rather than `=== null`, exactly as it must for mcuTemp and vIn.
+	 */
+	readonly accelerometer: Accelerometer | null;
 }
 
 /** reference/objectmodel/src/job/Build.ts (BuildObject) */
@@ -301,6 +356,7 @@ export function emptyModel(): ObjectModel {
 			speedFactor: 1,
 			extruders: [],
 			compensation: { type: "none", file: null, meshDeviation: null, fadeHeight: null },
+			shaping: { type: "none", frequency: 0, damping: 0, amplitudes: [], delays: [] },
 		},
 		sensors: { gpIn: [], endstops: [], filamentMonitors: [], probes: [] },
 		state: { status: "disconnected", currentTool: -1, machineMode: "FFF", displayMessage: "", upTime: 0, messageBox: null, atxPower: null },
@@ -311,6 +367,25 @@ export function emptyModel(): ObjectModel {
 const arrayOr = (value: unknown, fallback: unknown[]): unknown[] =>
 	Array.isArray(value) ? value : fallback;
 
+/** The one object test in this file: an OM node, not an array, not null. */
+const isObject = (v: unknown): v is Record<string, unknown> =>
+	typeof v === "object" && v !== null && !Array.isArray(v);
+
+/** Same gate as numberOrNull, with a promised value instead of null — used
+ *  wherever the declared type is a plain `number` and absence is not a state. */
+const numberOr = (value: unknown, fallback: number): number =>
+	numberOrNull(value) ?? fallback;
+
+/**
+ * A vector of finite numbers, ALL OR NOTHING. Dropping a bad element would
+ * silently re-pair two vectors read by index (shaping's amplitudes/delays), so
+ * one bad element costs the whole vector and the pairing stays true.
+ */
+const numberArrayOr = (value: unknown, fallback: readonly number[]): readonly number[] =>
+	Array.isArray(value) && value.every(n => numberOrNull(n) !== null)
+		? value as number[]
+		: fallback;
+
 /**
  * Parse currentMove's numbers at the refetch gate so the store's shape matches
  * its declared type. NOT the render guarantee: the live d99fn patch route
@@ -318,15 +393,52 @@ const arrayOr = (value: unknown, fallback: unknown[]): unknown[] =>
  * the point of display. See I-A in the design doc.
  */
 const conformCurrentMove = (value: unknown): CurrentMove => {
-	const v = typeof value === "object" && value !== null && !Array.isArray(value)
-		? value as Record<string, unknown>
-		: {};
+	const v: Record<string, unknown> = isObject(value) ? value : {};
 	return {
 		requestedSpeed: numberOrNull(v.requestedSpeed),
 		topSpeed: numberOrNull(v.topSpeed),
 		extrusionRate: numberOrNull(v.extrusionRate),
 	};
 };
+
+/**
+ * move.shaping is a promised object, never absent: "no shaper" is the type
+ * "none" with empty impulse vectors, not a missing key. A board that omits the
+ * subtree (or serves the shaper as a bare string, as an older firmware might)
+ * therefore costs the SHAPER, not the whole move subtree — same rule as
+ * compensation above.
+ */
+const conformShaping = (value: unknown, fallback: Shaping): Shaping => {
+	const v: Record<string, unknown> = isObject(value) ? value : {};
+	return {
+		type: typeof v.type === "string" ? v.type : fallback.type,
+		frequency: numberOr(v.frequency, fallback.frequency),
+		damping: numberOr(v.damping, fallback.damping),
+		amplitudes: numberArrayOr(v.amplitudes, fallback.amplitudes),
+		delays: numberArrayOr(v.delays, fallback.delays),
+	};
+};
+
+/** null is the answer for "this board has no accelerometer" AND for "what the
+ *  board sent cannot be one" — the caller of M955 must not be able to tell the
+ *  difference, because neither can be captured from. */
+const conformAccelerometer = (value: unknown): Accelerometer | null => {
+	if (!isObject(value)) return null;
+	return {
+		orientation: numberOr(value.orientation, 20),
+		points: numberOr(value.points, 0),
+		runs: numberOr(value.runs, 0),
+	};
+};
+
+/**
+ * boards[] is declared `(Board | null)[]` and the firmware card iterates it
+ * with `filter(b => b !== null)`, so an entry that is not an object is not a
+ * board — it becomes the null slot it already renders as, rather than a
+ * string the card would read `.canAddress` off.
+ */
+const conformBoard = (entry: unknown): unknown =>
+	isObject(entry) ? { ...entry, accelerometer: conformAccelerometer(entry.accelerometer) } : null;
 
 /**
  * The per-key shape gate at the OM's single entry (audit M8). The wire is a
@@ -377,11 +489,13 @@ const conformCurrentMove = (value: unknown): CurrentMove => {
  *       not be deleted as redundant.
  */
 export function conformModelKey(key: string, value: unknown): { ok: true; value: unknown } | { ok: false } {
-	const isObject = (v: unknown): v is Record<string, unknown> =>
-		typeof v === "object" && v !== null && !Array.isArray(v);
 	const defaults = emptyModel();
 	switch (key as keyof KnownModel) {
+		// boards is the one array key whose ELEMENTS are gated: the Shaping Lab
+		// reads accelerometer presence per board to decide what it may address,
+		// and "absent" and "null" must not be two different answers to that.
 		case "boards":
+			return Array.isArray(value) ? { ok: true, value: value.map(conformBoard) } : { ok: false };
 		case "fans":
 		case "tools":
 			return Array.isArray(value) ? { ok: true, value } : { ok: false };
@@ -417,6 +531,7 @@ export function conformModelKey(key: string, value: unknown): { ok: true; value:
 				// A board that omits compensation (or sends it as a scalar) must not
 				// cost the whole move subtree — fill, don't refuse.
 				compensation: isObject(value.compensation) ? value.compensation : d.compensation,
+				shaping: conformShaping(value.shaping, d.shaping),
 			} };
 		}
 		case "sensors": {

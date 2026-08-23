@@ -110,3 +110,109 @@ test("conform COMPLETES a subtree from defaults — which a partial patch must n
 	// them. That is why om-entry-shape-gate cannot simply reuse this on the
 	// patch route, and why om/speeds.ts's second parse is load bearing.
 });
+
+// Input shaping (move.shaping) and the per-board accelerometer, added for the
+// Shaping Lab. Both are read by code that indexes into them — the shaper
+// summary reads shaping.amplitudes[i]/delays[i] pairwise, and the accelerometer
+// presence decides whether a board can be captured from at all — so the gate
+// owes them the same promised shape it owes job.layers.
+test("a move subtree with no shaping conforms to the off shaper", () => {
+	const move = conformModelKey("move", { axes: [], extruders: [] });
+	assert.ok(move.ok);
+	if (move.ok) {
+		const shaping = (move.value as Record<string, unknown>).shaping as Record<string, unknown>;
+		assert.deepEqual(shaping, { type: "none", frequency: 0, damping: 0, amplitudes: [], delays: [] });
+	}
+});
+
+test("a served shaper passes through intact", () => {
+	const move = conformModelKey("move", {
+		axes: [], extruders: [],
+		shaping: {
+			type: "ei2", frequency: 52, damping: 0.075,
+			amplitudes: [0.335, 0.2641, 0.2242, 0.1767],
+			delays: [0, 0.00972, 0.0278, 0.03752],
+		},
+	});
+	assert.ok(move.ok);
+	if (move.ok) {
+		const s = (move.value as Record<string, unknown>).shaping as Record<string, unknown>;
+		assert.equal(s.type, "ei2");
+		assert.equal(s.frequency, 52);
+		assert.equal(s.damping, 0.075);
+		assert.deepEqual(s.amplitudes, [0.335, 0.2641, 0.2242, 0.1767]);
+		assert.deepEqual(s.delays, [0, 0.00972, 0.0278, 0.03752]);
+	}
+});
+
+test("a mis-typed shaper falls back to the off shaper's fields, not to strings", () => {
+	const move = conformModelKey("move", {
+		axes: [], extruders: [],
+		shaping: { type: 7, frequency: "52", damping: null, amplitudes: "x", delays: [1, "2"] },
+	});
+	assert.ok(move.ok);
+	if (move.ok) {
+		const s = (move.value as Record<string, unknown>).shaping as Record<string, unknown>;
+		assert.equal(s.type, "none", "a non-string type is not a shaper name");
+		assert.equal(s.frequency, 0);
+		assert.equal(s.damping, 0);
+		assert.deepEqual(s.amplitudes, []);
+		// Pairwise with delays: one bad element invalidates the whole vector,
+		// because dropping it would silently re-pair amplitudes to delays.
+		assert.deepEqual(s.delays, []);
+	}
+});
+
+test("a shaping key that is not an object costs the shaper, not the move subtree", () => {
+	const move = conformModelKey("move", { axes: [{ letter: "X" }], extruders: [], shaping: "ei2" });
+	assert.ok(move.ok);
+	if (move.ok) {
+		const v = move.value as Record<string, unknown>;
+		assert.deepEqual(v.axes, [{ letter: "X" }], "the rest of the subtree survives");
+		assert.deepEqual((v.shaping as Record<string, unknown>).type, "none");
+	}
+});
+
+test("a board without an accelerometer conforms to null, not to absent", () => {
+	const boards = conformModelKey("boards", [{ shortName: "MB6HC", canAddress: 0 }]);
+	assert.ok(boards.ok);
+	if (boards.ok) {
+		const b = (boards.value as Record<string, unknown>[])[0]!;
+		assert.equal(b.accelerometer, null);
+		assert.equal(b.shortName, "MB6HC", "served fields survive");
+	}
+});
+
+test("a board's accelerometer passes through", () => {
+	const boards = conformModelKey("boards", [
+		{ shortName: "TOOL1LC", canAddress: 20, accelerometer: { orientation: 41, points: 0, runs: 3 } },
+	]);
+	assert.ok(boards.ok);
+	if (boards.ok) {
+		const b = (boards.value as Record<string, unknown>[])[0]!;
+		assert.deepEqual(b.accelerometer, { orientation: 41, points: 0, runs: 3 });
+	}
+});
+
+test("board entries that cannot be a board become null, not garbage the card iterates", () => {
+	const boards = conformModelKey("boards", [null, "MB6HC", { shortName: "EXP3HC", accelerometer: 5 }]);
+	assert.ok(boards.ok);
+	if (boards.ok) {
+		const v = boards.value as unknown[];
+		assert.equal(v[0], null, "a null slot stays a null slot");
+		assert.equal(v[1], null, "a scalar entry is not a board");
+		assert.equal((v[2] as Record<string, unknown>).accelerometer, null, "a scalar accelerometer is no accelerometer");
+	}
+});
+
+test("a mis-typed accelerometer keeps the board and defaults its numbers", () => {
+	const boards = conformModelKey("boards", [
+		{ shortName: "TOOL1LC", accelerometer: { orientation: "41", points: null, runs: 3 } },
+	]);
+	assert.ok(boards.ok);
+	if (boards.ok) {
+		const b = (boards.value as Record<string, unknown>[])[0]!;
+		// 20 is RRF's own default orientation (reference/objectmodel/src/boards/index.ts:8).
+		assert.deepEqual(b.accelerometer, { orientation: 20, points: 0, runs: 3 });
+	}
+});
