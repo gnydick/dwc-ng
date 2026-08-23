@@ -220,7 +220,11 @@ export function createBaseModel(): Om {
 			noMovesBeforeHoming: true,
 			printingAcceleration: 3000,
 			queue: [{ gracePeriod: 0.01, length: 40 }],
-			shaping: { amplitudes: [], damping: 0.1, durations: [], frequency: 40, type: "none" },
+			// `delays`, not `durations` — the field name is the vendored
+			// @duet3d/objectmodel 3.6.3 class (reference/objectmodel/src/move/
+			// InputShaping.ts) and the real board's capture agrees. Disabled
+			// shaping is a single unit impulse, as the capture shows.
+			shaping: { amplitudes: [1], damping: 0.1, delays: [0], frequency: 40, type: "none" },
 			speedFactor: 1,
 			travelAcceleration: 5000,
 			workplaceNumber: 0,

@@ -117,6 +117,28 @@ export class VirtualSD {
 		return true;
 	}
 
+	/**
+	 * Create `path` and every missing directory above it. Idempotent, and it
+	 * lives here rather than at the call site so a writer needing a folder has
+	 * one call instead of a probe, a branch and a single-level `mkdir` loop of
+	 * its own — `mkdir` refuses a missing parent, which is easy to miss.
+	 */
+	ensureDir(path: string, date: string): boolean {
+		const segs = this.segments(path);
+		if (segs === null) return false;
+		let cur: VNode = this.root;
+		for (const seg of segs) {
+			if (cur.type !== "d") return false;
+			let next = cur.entries.get(seg);
+			if (next === undefined) {
+				next = { type: "d", date, entries: new Map() };
+				cur.entries.set(seg, next);
+			}
+			cur = next;
+		}
+		return cur.type === "d";
+	}
+
 	mkdir(path: string, date: string): boolean {
 		const loc = this.parent(path);
 		if (loc === null || loc.dir.entries.has(loc.name)) return false;

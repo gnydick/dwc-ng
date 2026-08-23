@@ -1,6 +1,7 @@
 import { createBaseModel, POLLED_KEYS, AMBIENT, type Om } from "./snapshot.ts";
 import { VirtualSD } from "./files.ts";
 import { executeGCode } from "./gcode.ts";
+import { AccelBank } from "./accelerometer.ts";
 import type { Scenario, ScenarioEvent } from "./scenarios/types.ts";
 
 /**
@@ -33,6 +34,15 @@ export class Machine {
 	extruderRelative = false;
 	/** M120/M121 saved-state stack (mode is the part we simulate). */
 	private modeStack: Array<{ axesRelative: boolean; extruderRelative: boolean }> = [];
+	/**
+	 * Modal feedrate in mm/min. G1 without F reuses the last one, exactly as
+	 * RRF does — and the accelerometer synth needs the speed of the move it is
+	 * capturing, so reading it off the line alone would give 0 for half of a
+	 * realistic sequence.
+	 */
+	feedRateMmPerMin = 6000;
+	/** Accelerometer configuration, the pending M956, and the ring the axes have. */
+	accel = new AccelBank();
 
 	pushMode(): void {
 		this.modeStack.push({ axesRelative: this.axesRelative, extruderRelative: this.extruderRelative });
@@ -126,6 +136,10 @@ export class Machine {
 		this.axesRelative = false;
 		this.extruderRelative = false;
 		this.modeStack = [];
+		this.feedRateMmPerMin = 6000;
+		// The board forgets its M955/M956 state across a reset; the carriage
+		// does not forget how it rings, so the modes survive.
+		this.accel.reset();
 		for (const key of POLLED_KEYS) this.bump(key);
 		this.onReset?.();
 	}
