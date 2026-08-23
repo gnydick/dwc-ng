@@ -21,7 +21,7 @@ and invariant claim mentions 13 -> 23, so no mechanism was deleted and no
 claim was lost in the gap. From here the ratchets make a dropped rung visible
 in the diff that drops it.
 
-**Totals:** 90 invariants · 68 at rung 6 or above · 22 below rung 6 (ceiling 22).
+**Totals:** 91 invariants · 69 at rung 6 or above · 22 below rung 6 (ceiling 22).
 
 ## bed
 
@@ -377,6 +377,14 @@ in the diff that drops it.
 
 ## control
 
+### `control/accelerometer-address-is-a-type` — rung 7
+
+**Mechanism.** sole-constructor type — the brand is unforgeable outside accelAddr(), so M955 and M956 cannot be handed a tool number, a heater index or a hand-formatted string. The board.device spelling AND the mainboard's bare form are decided once, in the only place that can mint one, so a second caller cannot spell it differently
+
+**Why.** P is board.device, not a device number: on this toolchanger every accelerometer is on a CAN toolboard, so a bare index would silently address the mainboard instead — a capture from the wrong sensor looks like a real capture and would be fitted, ranked and applied. The mainboard exception follows reference/dwc (plugins/InputShaping/RecordMotionProfileDialog.vue:273-277), which maps canAddress 0 to "0" and everything else to `${canAddress}.0`; the wiki (reference/duet-gcode.md, M955 notes) likewise says "Use P0 for an accelerometer connected locally". DWC and the board win over a general reading of the bb.nn form
+
+`packages/ui/src/control/commands.ts:174`
+
 ### `control/escape-disarms` — rung 6
 
 **Mechanism.** choke-point — createArmed is the only route to an armed control, and test/armed.test.ts walks src rejecting any `[armed, …]` signal not produced by it, so a new two-step control Escape cannot reach fails the suite by file and line
@@ -393,7 +401,7 @@ in the diff that drops it.
 
 **Why.** an unquoted operator filename reaching M98 was a real injection: a name containing a quote closed the parameter early and the remainder was parsed as further G-code, against a machine with heaters. Promoted from rung 5 on 2026-08-01 — it had been "the builders below all call it", which is inspection, and inspection is what the next builder skips. Control characters added 2026-08-05: the same early-close, by a route doubling cannot address. Not reachable at the time — a filename is already filtered by files/path.ts, and an `<input type="text">` strips newlines — but both of those barriers belong to OTHER systems (that parser, the DOM), and messagebox/ack.ts already has a path around the second: MessageBoxPrompt seeds its input straight from the board's `default`, so an unedited answer never passes through the DOM at all. What kept it safe was RRF being unable to put a newline in M291's F"..." parameter, which is RRF's guarantee to withdraw, not ours
 
-`packages/ui/src/control/commands.ts:66`
+`packages/ui/src/control/commands.ts:68`
 
 ## deploy
 
@@ -737,7 +745,7 @@ in the diff that drops it.
 
 **Debt — promotion.** two routes in means the gate is not a gate, and om/speeds.ts re-parses currentMove at the point of DISPLAY to cover the ungated one — a second mechanism for the same property, i.e. the drift hazard. CORRECTED 2026-08-01. This used to say "promote by routing both through one entry that brands what it produces". Following that literally would have introduced a bug, measured rather than reasoned about: this function FILLS IN defaults for absent arrays, so conforming a PARTIAL patch invents them. conformModelKey("heat", { heaters: [...] }) returns that patch plus bedHeaters: [] and chamberHeaters: [], and deep-merging those empties over the store wipes the real lists — on this machine the bed heater would vanish from the UI mid-print. Pinned by test/om-conform.test.ts. The two routes are not one operation with two callers. A wholesale subtree may be completed from defaults because it IS the whole truth; a live patch may never be, because absence there means "unchanged", not "empty". The real promotion is a conform that distinguishes the two — filling only on replacement — and only then can both share an entry. Until that exists, speeds.ts's second parse is load bearing and must not be deleted as redundant.
 
-`packages/ui/src/om/types.ts:346`
+`packages/ui/src/om/types.ts:458`
 
 ## shaping/engine
 
