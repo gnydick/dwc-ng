@@ -4827,6 +4827,13 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; appe
 .shp-src-pick { display: flex; gap: calc(1 * var(--u)); margin-left: auto; }
 .shp-src {
 	width: calc(22 * var(--u));
+	/* .shp-pick sets padding 0 and line-height 1, so a chip that adds a border
+	   sits it 1px off the glyphs. Height + matching line-height rather than
+	   padding: box-sizing is not global here, and padding on a fixed-width chip
+	   would push it past the 22u the row was measured with. 6u fits inside the
+	   controls row's declared 8u, so the card's floor is unchanged. */
+	height: calc(6 * var(--u));
+	line-height: calc(6 * var(--u));
 	text-align: center;
 	font-variant-numeric: tabular-nums;
 	box-shadow: inset 0 0 0 1px var(--hairline);
