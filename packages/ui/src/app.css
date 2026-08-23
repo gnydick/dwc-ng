@@ -4818,6 +4818,12 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; appe
 .shp-rescan { width: calc(16 * var(--u)); text-align: center; }
 /* Three sources, three counts, one width each — a count going from 0 to 276
    must not widen its own button and shuffle its neighbours. */
+/* The count is a COUNT, not an address. "Board 259" on a Duet reads as CAN
+   board 259, and "Tool 12" as tool 12 — both things this machine could
+   plausibly have. Parentheses in the markup say so; tabular figures keep the
+   chip from resizing as counts change while a listing streams in. */
+.shp-src-n { font-variant-numeric: tabular-nums; opacity: 0.72; }
+
 .shp-src-pick { display: flex; gap: calc(1 * var(--u)); margin-left: auto; }
 .shp-src {
 	width: calc(22 * var(--u));

@@ -825,9 +825,13 @@ export function ShapingDecayBody(props: { ctx: CardCtx }) {
 							<button
 								class="shp-pick shp-src"
 								aria-pressed={source() === s.id}
+								aria-label={`${s.label}: ${counts()[s.id]} captures`}
 								onClick={() => setSource(s.id)}
 							>
-								{s.label} {counts()[s.id]}
+								{/* Parenthesised, because on a Duet a bare "Board 259" reads as CAN
+								    address 259 and "Tool 12" as tool 12 — both real things this
+								    machine could have. The number is a count of captures. */}
+								{s.label} <span class="shp-src-n">({counts()[s.id]})</span>
 							</button>
 						)}
 					</For>
