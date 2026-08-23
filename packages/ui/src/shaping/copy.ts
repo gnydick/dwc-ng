@@ -303,3 +303,43 @@ export function sweepStateText(state: SweepState): string {
 		}
 	}
 }
+
+/**
+ * Which of the three collections the Decay card's list is showing.
+ *
+ * Three genuinely different things rather than one list with tags: what a
+ * tool's results file records, what the board's SD card holds, and what the
+ * operator dragged in this session.
+ */
+export type CaptureSource = "tool" | "board" | "imported";
+
+/**
+ * What a source chip reads.
+ *
+ * The tool source NAMES ITS TOOL — `T0`, not `Tool`. Reported by Gabe,
+ * 2026-08-23: a tool row says `ring1_Xp0.csv` with nothing on it saying whose
+ * session it belongs to, and on a four-head machine that is the one fact the
+ * list was missing. On the CHIP rather than in a per-row column, for two
+ * reasons: every row under this chip belongs to the same tool, so a column
+ * would repeat one word twelve times; and a seventh column would push the
+ * captures table — already the widest thing on the card — past the width the
+ * screen gives it. The chip is a declared 22u whatever it says, so naming the
+ * tool moves nothing beside it.
+ *
+ * A `never` arm and no default, like `refusalText`: a fourth source stops
+ * compilation here until someone has named it.
+ */
+export function captureSourceLabel(source: CaptureSource, tool: number): string {
+	switch (source) {
+		case "tool":
+			return `T${tool}`;
+		case "board":
+			return "Board";
+		case "imported":
+			return "Imported";
+		default: {
+			const unhandled: never = source;
+			throw new Error(`unknown capture source: ${String(unhandled)}`);
+		}
+	}
+}

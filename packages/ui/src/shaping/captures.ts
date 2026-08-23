@@ -174,15 +174,54 @@ export function matchesQuery(name: string, query: string): boolean {
 	return q === "" || name.toLowerCase().includes(q);
 }
 
-/** How deep a name family may go: `ring1_` and `ring1_v_`, never
- *  `ring1_v_zvdd_52_`. Two levels is what separates a run from its verify
- *  pass; past that the chips stop being families and become individual runs,
- *  which is what the text filter is for. */
+/**
+ * One chip in the family row: a slice of the listing, and EXACTLY the rows
+ * clicking it shows.
+ *
+ * `rows` is the whole point. It is not a count beside a rule for recomputing
+ * the same set later — it IS the set, and the number on the chip is its
+ * length, so the two cannot be made to disagree by editing one of them.
+ */
+export type CaptureFamily<T> = {
+	/** What the lit-chip signal holds: a name prefix, or REST_FAMILY. */
+	readonly key: string;
+	/** What the chip reads. */
+	readonly label: string;
+	/** The rows clicking this chip shows, in the order they were given. */
+	readonly rows: readonly T[];
+};
+
+/**
+ * The residual bucket's key: everything the named families did not take.
+ *
+ * A NUL, so it cannot collide with a family key however the operator names a
+ * run — every named key is a prefix of a real file name, and no file name on
+ * any filesystem this code will meet contains one.
+ */
+export const REST_FAMILY = "\u0000rest";
+
+/** What the chip row shows and what the table shows, from one call. */
+export type FamilyView<T> = {
+	/** The named families, biggest first. */
+	readonly families: readonly CaptureFamily<T>[];
+	/** Everything no named family took, or null when they took everything. */
+	readonly rest: CaptureFamily<T> | null;
+	/** Which chip is lit — null when none is, or when the lit one is gone. */
+	readonly lit: string | null;
+	/** The rows to render: the lit chip's own array, or all of them. */
+	readonly shown: readonly T[];
+};
+
+/**
+ * How deep a name family may go: `ring1_` and `ring1_v_`, never
+ * `ring1_v_zvdd_52_`. Two levels is what separates a run from its verify pass;
+ * past that the chips stop being families and become individual runs, which is
+ * what the text filter is for.
+ */
 const MAX_FAMILY_DEPTH = 2;
 
 /**
- * Name families present in a listing, biggest first — `ring1_`, `ring1_v_`,
- * `baseline_`.
+ * The name prefixes worth offering, most files first.
  *
  * DERIVED from the names rather than hard-coded, because the families are the
  * operator's own naming from months ago and no list written here could know
@@ -193,12 +232,17 @@ const MAX_FAMILY_DEPTH = 2;
  *
  * Depth is capped rather than left to the counts, and the reason is Gabe's
  * board. Ranking purely by count put `ring1_v_zv_52_` and `ring1_v_ei2_52_`
- * (12 each) in the list, which pushed everything else out AND made the
- * `ring1_v_` chip mean "the verify runs except those two" — see `inFamily`,
- * which subtracts the sub-families shown beside a family. Two levels keeps the
- * chips meaning what their names say.
+ * (12 each) at the top, which pushed everything else out AND made the
+ * `ring1_v_` chip beside them mean "the verify runs except those two".
+ *
+ * Ranked by the RAW tally, which is deliberately not the number the chip will
+ * end up showing: the `ring1_` bucket loses its 48 `ring1_v_` files to the
+ * longer chip beside it and ends up holding twelve. Ranking on the raw tally
+ * is what keeps the parent offered at all — on the count it ends up with,
+ * `ring1_` places sixth and the twelve captures nothing else can name go into
+ * the residual.
  */
-export function namePrefixes(names: readonly string[], max = 6): Array<{ prefix: string; count: number }> {
+function familyCandidates(names: readonly string[]): string[] {
 	const counts = new Map<string, number>();
 	for (const name of names) {
 		let depth = 0;
@@ -217,31 +261,121 @@ export function namePrefixes(names: readonly string[], max = 6): Array<{ prefix:
 		return true;
 	});
 	kept.sort((a, b) => (b[1] - a[1]) || (a[0] < b[0] ? -1 : 1));
-	return kept.slice(0, max).map(([prefix, count]) => ({ prefix, count }));
+	return kept.map(([prefix]) => prefix);
 }
 
 /**
- * Whether a name belongs to `family` and not to a longer family shown beside
- * it.
+ * The chip row and the rows under it, from ONE call over ONE definition of
+ * "belongs to this family".
  *
- * The distinction is the whole reason the chips are worth having. Gabe's board
- * holds 60 files starting `ring1_`: twelve baseline ring captures and 48
- * `ring1_v_` verify captures from the same morning. A plain prefix match on
- * `ring1_` returns all 60, and NO substring expresses "the twelve" — they are
+ * A PARTITION, and everything this function is for follows from that word.
+ * Every row lands in exactly one bucket — the longest named family whose
+ * prefix it starts with, or the residual — so:
+ *
+ *  - a chip's number is the length of the list clicking it produces, because
+ *    it IS that list;
+ *  - the buckets' lengths sum to the input, so an operator reading the row can
+ *    see that nothing is hidden from it;
+ *  - no name is unreachable, because `rest` holds whatever the named families
+ *    did not take.
+ *
+ * "Longest wins" is what makes a chip mean its own name. Gabe's board holds 60
+ * files starting `ring1_`: twelve baseline ring captures and 48 `ring1_v_`
+ * verify captures from the same morning. A plain prefix match on `ring1_`
+ * returns all 60, and NO substring expresses "the twelve" — they are
  * `ring1_Xp0` … `ring1_Ym2`, sharing nothing the verify files lack. So a
  * family means what a person means by it: this prefix, minus the sub-families
- * offered as their own chips.
+ * offered beside it.
  *
- * `family` of null is "no family filter", so the caller has one code path
- * whether or not a chip is lit.
+ * `lit` comes back as well as going in, and is null when the lit key names no
+ * bucket — a family the current listing no longer holds. The card renders
+ * `aria-pressed` from the answer rather than from what it asked, so a chip
+ * cannot read as lit while the table shows everything.
+ *
+ * @invariant family-count-is-the-family
+ * @rung 6  choke-point — the sole producer of the chips AND of the rows they
+ *          filter to. `shown` is one of the very arrays in `families`/`rest`
+ *          (same reference, not an equal copy) and a chip's number is that
+ *          array's `length`, so there is no second expression that could count
+ *          differently — no count is stored anywhere for one to drift from.
+ *          The buckets are built by assigning each row exactly once, so their
+ *          lengths sum to the input by construction rather than by agreement
+ * @why reported by Gabe, 2026-08-23, driving the deployed build against his
+ *      board: the `ring1_` chip said 60 files and produced 12. The label came
+ *      from a raw prefix tally and the click came from a filter that
+ *      subtracted the sub-families shown beside it — two expressions for one
+ *      claim, the same shape `step-readiness-has-one-answer` exists to
+ *      prevent. The same row also covered 141 of his 259 files, leaving 118 in
+ *      no bucket at all
+ * @limit nothing stops a caller filtering the listing by prefix itself instead
+ *        of asking; what is gone is the SECOND ANSWER, not the ability to
+ *        write a third. Promote by making a row unrenderable except through a
+ *        bucket
  */
-export function inFamily(name: string, family: string | null, families: readonly string[]): boolean {
-	if (family === null) return true;
-	if (!name.startsWith(family)) return false;
-	for (const other of families) {
-		if (other.length > family.length && other.startsWith(family) && name.startsWith(other)) return false;
+export function familyView<T extends { readonly file: string }>(
+	rows: readonly T[],
+	slots: number,
+	lit: string | null,
+): FamilyView<T> {
+	const chosen = familyCandidates(rows.map(r => r.file)).slice(0, Math.max(0, slots));
+	const buckets = new Map<string, T[]>(chosen.map(prefix => [prefix, []]));
+	const restRows: T[] = [];
+	for (const row of rows) {
+		let best = "";
+		for (const prefix of chosen) {
+			if (prefix.length > best.length && row.file.startsWith(prefix)) best = prefix;
+		}
+		if (best === "") restRows.push(row);
+		else buckets.get(best)!.push(row);
 	}
-	return true;
+	const families = [...buckets]
+		.filter(([, held]) => held.length > 0)
+		.map(([prefix, held]): CaptureFamily<T> => ({ key: prefix, label: prefix, rows: held }))
+		// Biggest first, by the count the chip SHOWS rather than the raw tally
+		// the candidates were ranked on — the row reads as a size order or it
+		// reads as nothing.
+		.sort((a, b) => (b.rows.length - a.rows.length) || (a.key < b.key ? -1 : 1));
+	const rest: CaptureFamily<T> | null = restRows.length === 0
+		? null
+		: { key: REST_FAMILY, label: "other", rows: restRows };
+	const active = (rest !== null && rest.key === lit ? rest : families.find(f => f.key === lit)) ?? null;
+	return { families, rest, lit: active?.key ?? null, shown: active === null ? rows : active.rows };
+}
+
+/**
+ * The captures a tick list names, in the order the table shows them.
+ *
+ * ORIGIN IS NOT CONSULTED, and that is the fix rather than an oversight. Where
+ * a capture's bytes come from is `CaptureRef`'s business and the loader
+ * answers it for all three origins — a board file and a tool's own capture
+ * name the same file in ACCEL_DIR and download identically, and an imported
+ * CSV is already in memory. Selectability was gated on `origin === "board"`,
+ * which conflated "can supply bytes" with a different question — whether the
+ * fit may be WRITTEN against a tool — and left twelve visible tool rows with
+ * no checkbox beside a button reading "Fit 0" (Gabe, 2026-08-23). The second
+ * question is answered by `importedCount`, where it belongs.
+ *
+ * Keyed by `key` rather than by file name, because two imports can be called
+ * `ring1_Xp0.csv` and a tick on one must not fit the other.
+ */
+export function chosenCaptures<T extends { readonly key: string; readonly ref: CaptureRef }>(
+	rows: readonly T[],
+	ticked: ReadonlySet<string>,
+): readonly CaptureRef[] {
+	return rows.filter(r => ticked.has(r.key)).map(r => r.ref);
+}
+
+/**
+ * How many of these captures came off the operator's own computer.
+ *
+ * The one question that DOES turn on origin: an imported CSV is not this
+ * machine's capture. It may be from another machine, another day or another
+ * printer entirely, so a fingerprint containing one cannot be written to a
+ * tool's results file as that tool's measurement — while it can be fitted,
+ * drawn and read like anything else. Zero means the batch is the machine's own.
+ */
+export function importedCount(refs: readonly CaptureRef[]): number {
+	return refs.reduce((n, ref) => n + (ref.kind === "import" ? 1 : 0), 0);
 }
 
 /**
@@ -302,7 +436,7 @@ const SPEED_NAME = /^(.+)_([XYxy])_(\d+)\.csv$/;
 /**
  * The speed-sweep families present in a listing, biggest first.
  *
- * DERIVED from the names, like `namePrefixes` and for the same reason: the
+ * DERIVED from the names, like `familyView` and for the same reason: the
  * naming is the operator's own, from months ago, and no list written here could
  * know it. `<prefix>_<axis>_<speed>.csv` is the shape the capture runs
  * themselves write, and 184 of the 259 CSVs on Gabe's board follow it.

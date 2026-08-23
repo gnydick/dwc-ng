@@ -10,7 +10,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { batchSummaryText, refusalText } from "../src/shaping/copy.ts";
+import { batchSummaryText, captureSourceLabel, refusalText } from "../src/shaping/copy.ts";
 import { prototypeFingerprint } from "./helpers/shaping.ts";
 import type { Refusal } from "../src/shaping/preconditions.ts";
 import { SHAPING_STEPS, stepReadiness, type StepInputs } from "../src/shaping/steps.ts";
@@ -225,4 +225,21 @@ test("an axis that never fitted is an em dash, not a zero", () => {
 	const line = batchSummaryText(6, 12, { ...fp, X: null, n: { X: 0, Y: 6 } });
 	assert.match(line, /X — /);
 	assert.ok(!line.includes("X 0.0 Hz"), line);
+});
+
+/* ------------------------------------------------ the Decay card's sources */
+
+test("the tool source names its tool, so a row's head is on screen", () => {
+	// Reported by Gabe, 2026-08-23: a tool-source row says `ring1_Xp0.csv` with
+	// nothing saying whose session it belongs to. On a four-head machine that
+	// is the fact the list was missing, and the chip is where it goes — every
+	// row under it belongs to the same tool.
+	assert.equal(captureSourceLabel("tool", 0), "T0");
+	assert.equal(captureSourceLabel("tool", 3), "T3");
+	assert.notEqual(captureSourceLabel("tool", 0), "Tool");
+});
+
+test("the other two sources are named for what they are, not for a tool", () => {
+	assert.equal(captureSourceLabel("board", 2), "Board");
+	assert.equal(captureSourceLabel("imported", 2), "Imported");
 });

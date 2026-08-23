@@ -21,7 +21,7 @@ and invariant claim mentions 13 -> 23, so no mechanism was deleted and no
 claim was lost in the gap. From here the ratchets make a dropped rung visible
 in the diff that drops it.
 
-**Totals:** 115 invariants · 93 at rung 6 or above · 22 below rung 6 (ceiling 22).
+**Totals:** 116 invariants · 94 at rung 6 or above · 22 below rung 6 (ceiling 22).
 
 ## bed
 
@@ -829,7 +829,7 @@ in the diff that drops it.
 
 **Why.** reported by Gabe, 2026-08-23: pick a capture on the Decay card, click a name-family chip that excludes it, and the chart plus every fitted number beside it blanked — even though the selection itself was intact. The filter exists to FIND rows; what is on screen is what the operator deliberately chose, and it stays until they choose another
 
-`packages/ui/src/shaping/captures.ts:361`
+`packages/ui/src/shaping/captures.ts:495`
 
 ### `shaping/capture-text-has-one-loader` — rung 6
 
@@ -911,13 +911,21 @@ in the diff that drops it.
 
 `packages/ui/src/shaping/copy.ts:10`
 
+### `shaping/family-count-is-the-family` — rung 6
+
+**Mechanism.** choke-point — the sole producer of the chips AND of the rows they filter to. `shown` is one of the very arrays in `families`/`rest` (same reference, not an equal copy) and a chip's number is that array's `length`, so there is no second expression that could count differently — no count is stored anywhere for one to drift from. The buckets are built by assigning each row exactly once, so their lengths sum to the input by construction rather than by agreement
+
+**Why.** reported by Gabe, 2026-08-23, driving the deployed build against his board: the `ring1_` chip said 60 files and produced 12. The label came from a raw prefix tally and the click came from a filter that subtracted the sub-families shown beside it — two expressions for one claim, the same shape `step-readiness-has-one-answer` exists to prevent. The same row also covered 141 of his 259 files, leaving 118 in no bucket at all @limit nothing stops a caller filtering the listing by prefix itself instead of asking; what is gone is the SECOND ANSWER, not the ability to write a third. Promote by making a row unrenderable except through a bucket
+
+`packages/ui/src/shaping/captures.ts:295`
+
 ### `shaping/fits-are-dropped-only-by-a-reload` — rung 7
 
 **Mechanism.** sole-constructor type — the returned object exposes `remember` and `forget` and nothing else; the Map is closed over and unreachable. There is no setter, no `clear(file)`, and no way to hand the cache a replacement, so the only code that can empty it is code that names `forget`, and that is `reload` alone. A selection change, a tool change or a failed batch cannot empty it because they have nothing to call
 
 **Why.** reported by Gabe, 2026-08-23: fit the twelve `ring1_` captures, click the `ring1_v_` chip, and every fit was gone. The fits had been derived from `runState`, which `clearRun` resets on every selection change — correctly, because "fitted 12 of 12" beside a changed set of ticks is a stale CLAIM. The numbers are not a claim about the selection, so they had no business living in the same value @limit session only, and deliberately: a cached fit is not a measurement anybody asked to keep. The results file is where a measurement is kept, against a named tool and through an armed confirm, and writing cache entries there would recreate exactly the manufactured-state problem that boundary exists to prevent
 
-`packages/ui/src/shaping/fitCache.ts:12`
+`packages/ui/src/shaping/fitCache.ts:18`
 
 ### `shaping/full-step-rate-is-measured-or-absent` — rung 7
 

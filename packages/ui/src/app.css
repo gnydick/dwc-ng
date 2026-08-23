@@ -4908,7 +4908,7 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; appe
    width, whatever basis it was given — measured: the filter row asked for 175u
    against the 146u its declared parts add up to. */
 .shp-decay-filter .fb-input { flex: 1 1 auto; width: calc(22 * var(--u)); }
-/* Name families derived from the listing (shaping/captures.ts namePrefixes),
+/* Name families derived from the listing (shaping/captures.ts familyView),
    because nobody remembers what they called a run three months ago. One track
    whatever the prefix: they range from `ring1_` to `baseline_X_`. */
 .shp-prefix {
@@ -4916,30 +4916,50 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; appe
 	   which holds `ring1_v_` and `baseline_`. At 18u with 1u padding the second
 	   chip rendered as `ring1_…`, indistinguishable from the first. */
 	width: calc(19 * var(--u));
-	/* Declared, so an EMPTY slot is the same box as a filled one. Without it an
+	/* Two lines — the family and how many captures are in it — because the
+	   number is the load-bearing half and no width that holds `baseline_` also
+	   holds `baseline_ 15`. 7u total against the row's declared 8u minimum, so
+	   the chips grew into space the row already had and nothing beside them
+	   moved.
+
+	   Declared, so an EMPTY slot is the same box as a filled one. Without it an
 	   empty button is 0 tall and the whole chip run shifts 6px down the moment
 	   a source has fewer families than the row has places. */
-	height: calc(5 * var(--u));
-	line-height: calc(5 * var(--u));
+	height: calc(7 * var(--u));
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
 	font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
-	font-size: calc(3.25 * var(--u));
 	padding: 0 calc(0.5 * var(--u));
 	box-shadow: inset 0 0 0 1px var(--hairline);
 	border-radius: var(--radius);
 	white-space: nowrap;
 	overflow: hidden;
+}
+.shp-prefix-name {
+	display: block;
+	font-size: calc(3.25 * var(--u));
+	line-height: calc(4 * var(--u));
+	overflow: hidden;
 	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+/* The count. Tabular, so 9 and 48 leave the chip the same size, and dim so the
+   family name stays the thing you read first. */
+.shp-prefix-n {
+	display: block;
+	font-size: calc(2.75 * var(--u));
+	line-height: calc(3 * var(--u));
+	font-variant-numeric: tabular-nums;
+	color: var(--silk-dim);
 }
 .shp-prefix[aria-pressed="true"] { box-shadow: inset 0 0 0 1px var(--accent); }
-.shp-count {
-	width: calc(16 * var(--u));
-	text-align: right;
-	font-variant-numeric: tabular-nums;
-	font-size: calc(3.25 * var(--u));
-	color: var(--silk-dim);
-	white-space: nowrap;
-	overflow: hidden;
-}
+/* Everything the named families did not take. It sits in the 16u the old
+   "N of M" readout held — deliberately, because that is what keeps the filter
+   row inside the 123u the captures table already asks for, so the table stays
+   the card's widest thing. Narrower than a family chip because "other" is
+   five characters and no listing can make it longer. */
+.shp-rest { width: calc(16 * var(--u)); }
 .shp-rescan { width: calc(16 * var(--u)); text-align: center; }
 /* Three sources, three counts, one width each — a count going from 0 to 276
    must not widen its own button and shuffle its neighbours. */

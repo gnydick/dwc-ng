@@ -29,7 +29,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { decaySeries, fitNote, type DecayView } from "../src/charts/decayData.ts";
 import { handle, type FitResult } from "../src/shaping/worker.ts";
-import { boardRef, byNewest, captureNameParts, createCaptureLoader, importRef, inFamily, isCaptureFile, matchesQuery, namePrefixes } from "../src/shaping/captures.ts";
+import { boardRef, byNewest, type CaptureRef, captureNameParts, chosenCaptures, createCaptureLoader, familyView, importedCount, importRef, isCaptureFile, matchesQuery } from "../src/shaping/captures.ts";
 import { aggregate, FIT_DEFAULTS, isMode, MAX_FIT_ZETA, MIN_CYCLES, type Axis, type Mode, type NoFit } from "../src/shaping/engine/fit.ts";
 import { hz } from "../src/shaping/engine/units.ts";
 
@@ -478,38 +478,213 @@ test("the sort is stable for entries recorded in the same second", () => {
 	assert.deepEqual(byNewest(byNewest(same)).map(e => e.name), ["a.csv", "m.csv", "z.csv"]);
 });
 
+/**
+ * `0:/sys/accelerometer` as Gabe's board actually holds it: 259 CSVs, the
+ * families and the counts he measured driving build `CRUgiM19` on 2026-08-23
+ * (GitHub #39).
+ *
+ * The numbers are the point, not the spellings. 141 of the files are in six
+ * named families and the OTHER 118 are one-offs and small runs from months of
+ * work — which is the shape that broke the chip row: three chips covered 141
+ * and nothing said where the rest had gone.
+ */
+const board259 = (): string[] => {
+	const out: string[] = [];
+	// The baseline ring capture: 4 tags x 3 repeats.
+	for (const tag of ["Xp", "Xm", "Yp", "Ym"]) {
+		for (let r = 0; r < 3; r++) out.push(`ring1_${tag}${r}.csv`);
+	}
+	// Its verify pass, four shapers over the same twelve moves.
+	for (const shaper of ["zv", "zvd", "zvdd", "ei2"]) {
+		for (const tag of ["Xp", "Xm", "Yp", "Ym"]) {
+			for (let r = 0; r < 3; r++) out.push(`ring1_v_${shaper}_52_${tag}${r}.csv`);
+		}
+	}
+	for (let i = 0; i < 24; i++) out.push(`A_${i}.csv`);
+	for (let i = 0; i < 24; i++) out.push(`B_${i}.csv`);
+	for (let i = 0; i < 18; i++) out.push(`C_${i}.csv`);
+	for (let i = 0; i < 15; i++) out.push(`baseline_X_${i}.csv`);
+	// The 118 nobody could reach: current, microstep and motor experiments from
+	// May onward, in families too small to earn a chip, plus one-offs.
+	for (const [prefix, n] of [["u20_", 8], ["u40_", 8], ["i1500_", 8], ["i1800_", 8], ["motorA_", 6], ["motorB_", 6], ["phase_k2000_", 6], ["phase_k4000_", 6]] as const) {
+		for (let i = 0; i < n; i++) out.push(`${prefix}${i}.csv`);
+	}
+	for (let i = 0; i < 62; i++) out.push(`oneoff${i}.csv`);
+	return out;
+};
+
+/** The listing as rows the card holds, which is what `familyView` partitions. */
+const rowsOf = (names: readonly string[]): Array<{ file: string }> => names.map(file => ({ file }));
+
+test("Gabe's listing is 259 captures, 141 of them in named families", () => {
+	// The fixture states what the other assertions are about. A drift here is a
+	// drift in what the tests below are testing.
+	const names = board259();
+	assert.equal(names.length, 259);
+	assert.equal(names.filter(n => n.startsWith("ring1_")).length, 60);
+	assert.equal(names.filter(n => n.startsWith("ring1_v_")).length, 48);
+	assert.equal(names.filter(n => /^[ABC]_/.test(n)).length, 66);
+	assert.equal(names.filter(n => n.startsWith("baseline_")).length, 15);
+});
+
+test("a chip's number IS the list clicking it produces — the same array", () => {
+	// The defect, in one assertion. `ring1_` labelled itself 60 and produced 12,
+	// because the label counted a raw prefix match and the click applied a
+	// filter that subtracted the sub-family beside it.
+	const rows = rowsOf(board259());
+	const view = familyView(rows, 3, null);
+	for (const chip of [...view.families, ...(view.rest === null ? [] : [view.rest])]) {
+		const clicked = familyView(rows, 3, chip.key);
+		assert.equal(clicked.shown.length, chip.rows.length, `${chip.label}: chip says ${chip.rows.length}, click yields ${clicked.shown.length}`);
+		assert.deepEqual(clicked.shown, chip.rows);
+	}
+});
+
+test("the chips and the residual sum to the listing, so nothing is hidden", () => {
+	const rows = rowsOf(board259());
+	const view = familyView(rows, 3, null);
+	const chips = [...view.families, ...(view.rest === null ? [] : [view.rest])];
+	const total = chips.reduce((n, chip) => n + chip.rows.length, 0);
+	assert.equal(total, 259, chips.map(c => `${c.label}=${c.rows.length}`).join(" "));
+	// And the residual is the 118 the chips used to lose. 259 - 48 - 24 - 12.
+	assert.equal(view.rest?.rows.length, 175);
+});
+
+test("no capture is unreachable: every name lands in exactly one bucket", () => {
+	const rows = rowsOf(board259());
+	const view = familyView(rows, 3, null);
+	const chips = [...view.families, ...(view.rest === null ? [] : [view.rest])];
+	const seen = new Map<string, number>();
+	for (const chip of chips) {
+		for (const row of chip.rows) seen.set(row.file, (seen.get(row.file) ?? 0) + 1);
+	}
+	assert.equal(seen.size, 259);
+	const wrong = [...seen].filter(([, n]) => n !== 1);
+	assert.deepEqual(wrong, [], "a name in two buckets, or in none");
+	for (const name of board259()) assert.ok(seen.has(name), `${name} is in no bucket`);
+});
+
 test("name families are derived from the listing, biggest first", () => {
-	const families = namePrefixes(listing().map(e => e.name), 4);
-	assert.deepEqual(families, [
-		{ prefix: "ring1_", count: 60 },
-		{ prefix: "ring1_v_", count: 48 },
-		{ prefix: "baseline_", count: 8 },
-	]);
+	const view = familyView(rowsOf(board259()), 3, null);
+	assert.deepEqual(
+		view.families.map(f => ({ prefix: f.label, count: f.rows.length })),
+		[{ prefix: "ring1_v_", count: 48 }, { prefix: "A_", count: 24 }, { prefix: "ring1_", count: 12 }],
+	);
+	assert.equal(view.rest?.label, "other");
 });
 
 test("two prefixes covering the same files are offered once, by the shorter name", () => {
-	const families = namePrefixes(["a_b_1.csv", "a_b_2.csv", "a_b_3.csv", "a_b_4.csv"]);
-	assert.deepEqual(families, [{ prefix: "a_", count: 4 }]);
+	const view = familyView(rowsOf(["a_b_1.csv", "a_b_2.csv", "a_b_3.csv", "a_b_4.csv"]), 3, null);
+	assert.deepEqual(view.families.map(f => f.label), ["a_"]);
+	assert.equal(view.families[0]!.rows.length, 4);
+	// Everything is in a family, so there is no residual chip to offer.
+	assert.equal(view.rest, null);
 });
 
 test("families stop at two levels, so a chip never means \"the rest of\"", () => {
 	// Ranking purely by count offered `ring1_v_zv_52_` as its own chip, which
 	// made the `ring1_v_` chip beside it mean the OTHER shapers. Capping depth
 	// is what keeps a chip's name true.
-	const names = listing().filter(isCaptureFile).map(e => e.name);
-	assert.ok(namePrefixes(names, 8).every(f => (f.prefix.match(/_/g) ?? []).length <= 2), JSON.stringify(namePrefixes(names, 8)));
+	const view = familyView(rowsOf(board259()), 8, null);
+	assert.ok(view.families.every(f => (f.label.match(/_/g) ?? []).length <= 2), JSON.stringify(view.families.map(f => f.label)));
 });
 
 test("the ring1_ family means the twelve, not the sixty", () => {
 	// The case the chips exist for: 60 files start `ring1_`, and 48 of them are
 	// the verify run. No substring picks out the other twelve.
-	const names = listing().filter(isCaptureFile).map(e => e.name);
-	const families = namePrefixes(names, 4).map(f => f.prefix);
-	const ring = names.filter(n => inFamily(n, "ring1_", families));
-	assert.equal(ring.length, 12, ring.join(", "));
-	assert.ok(ring.every(n => !n.startsWith("ring1_v_")));
-	assert.equal(names.filter(n => inFamily(n, "ring1_v_", families)).length, 48);
-	assert.equal(names.filter(n => inFamily(n, null, families)).length, names.length);
+	const rows = rowsOf(board259());
+	const view = familyView(rows, 3, "ring1_");
+	assert.equal(view.lit, "ring1_");
+	assert.equal(view.shown.length, 12, view.shown.map(r => r.file).join(", "));
+	assert.ok(view.shown.every(r => !r.file.startsWith("ring1_v_")));
+	assert.equal(familyView(rows, 3, "ring1_v_").shown.length, 48);
+	assert.equal(familyView(rows, 3, null).shown.length, 259);
+});
+
+test("a lit chip the listing no longer holds reads as nothing lit, and shows everything", () => {
+	// Switching source, or typing a query, can take a family away under the
+	// operator. A chip cannot be pressed while the table shows everything.
+	const view = familyView(rowsOf(["a_1.csv", "a_2.csv"]), 3, "ring1_");
+	assert.equal(view.lit, null);
+	assert.equal(view.shown.length, 2);
+});
+
+test("the residual is the lit bucket like any other, not a way of clearing the filter", () => {
+	const rows = rowsOf(board259());
+	const rest = familyView(rows, 3, null).rest!;
+	const view = familyView(rows, 3, rest.key);
+	assert.equal(view.lit, rest.key);
+	assert.equal(view.shown.length, 175);
+	// And it is exactly what the named families did not take.
+	assert.ok(view.shown.every(r => !r.file.startsWith("ring1_") && !r.file.startsWith("A_")));
+	assert.ok(view.shown.some(r => r.file.startsWith("u20_")), "u20_ is one of the 118");
+	assert.ok(view.shown.some(r => r.file.startsWith("motorB_")));
+	assert.ok(view.shown.some(r => r.file.startsWith("phase_k2000_")));
+	assert.ok(view.shown.some(r => r.file.startsWith("B_")), "a family too small for a chip is still reachable");
+});
+
+/* ---------------------------------------- ticking rows of any of the sources */
+
+const rowFor = (ref: CaptureRef): { key: string; ref: CaptureRef } => ({ key: ref.key, ref });
+
+test("a tool-source row can be ticked and counts toward Fit N", () => {
+	// Reported by Gabe, 2026-08-23: with the Tool chip lit, twelve rows were
+	// visible, none had a checkbox, and the button read "Fit 0". A tool's
+	// captures are ordinary files in 0:/sys/accelerometer and download
+	// identically to board rows, so nothing about them is unfittable — which is
+	// what makes re-fitting a stale tool<N>.json possible after #33 replaced
+	// the estimator.
+	const files = ["ring1_Xp0.csv", "ring1_Xm0.csv", "ring1_Yp0.csv"];
+	const rows = files.map(f => rowFor(boardRef(f)));
+	const ticked = new Set(rows.map(r => r.key));
+	const chosen = chosenCaptures(rows, ticked);
+	assert.equal(chosen.length, 3, "Fit N counts the tool rows");
+	assert.deepEqual(chosen.map(r => r.file), files);
+	// And they are board refs, so the loader downloads them like any other.
+	assert.ok(chosen.every(r => r.kind === "board"));
+});
+
+test("ticks are held by key, so two imports of the same name are two captures", () => {
+	const a = importRef(0, "ring1_Xp0.csv", "a");
+	const b = importRef(1, "ring1_Xp0.csv", "b");
+	const rows = [rowFor(a), rowFor(b)];
+	const chosen = chosenCaptures(rows, new Set([a.key]));
+	assert.equal(chosen.length, 1);
+	assert.equal(chosen[0], a, "the tick names one of the two, not both and not the other");
+});
+
+test("selection order is the order the table shows, not the order of the ticks", () => {
+	// The batch is downloaded in this order and the run's progress line names
+	// the file it is on, so it has to be the order on screen.
+	const rows = ["c.csv", "a.csv", "b.csv"].map(f => rowFor(boardRef(f)));
+	const chosen = chosenCaptures(rows, new Set(["board:a.csv", "board:b.csv", "board:c.csv"]));
+	assert.deepEqual(chosen.map(r => r.file), ["c.csv", "a.csv", "b.csv"]);
+});
+
+/**
+ * A BACKSTOP for the two pure functions above, not the mechanism.
+ *
+ * `chosenCaptures` and `importedCount` can only keep the two questions apart
+ * if the card asks them. The gate that caused this — a checkbox rendered
+ * `when={row.origin === "board"}` — was one expression in the JSX, and nothing
+ * in a type stops someone writing it again.
+ */
+test("the card does not consult a row's origin to decide what may be ticked", () => {
+	const card = readFileSync(new URL("../src/cards/ShapingCards.tsx", import.meta.url), "utf8");
+	const gates = card.split(/\r?\n/)
+		.map((line, i) => [i + 1, line] as const)
+		.filter(([, line]) => /origin\s*===\s*"board"/.test(line));
+	assert.deepEqual(gates, [], "a row's origin decides where its bytes come from, not whether it may be selected");
+	assert.ok(card.includes("chosenCaptures(rows(), selected())"), "the batch must come from the one function that ignores origin");
+});
+
+test("attribution is the question origin answers — and the only one", () => {
+	// Everything can be fitted; only the machine's own captures can be written
+	// against a tool. An imported CSV may be from another machine or another
+	// day, and a fingerprint mixing the two is unrecoverable from the file.
+	assert.equal(importedCount([boardRef("a.csv"), boardRef("b.csv")]), 0);
+	assert.equal(importedCount([boardRef("a.csv"), importRef(0, "b.csv", "x")]), 1);
+	assert.equal(importedCount([]), 0, "an empty batch is not an imported one");
 });
 
 test("the text filter is a case-insensitive substring, and empty matches everything", () => {
