@@ -56,6 +56,8 @@ import { fileUnderRoot } from "../files/path.ts";
 import { forcedJobInfoErrorNow } from "../dev/forcedJobInfoError.ts";
 import { createHeightMapStore } from "../heightmap/store.ts";
 import { cellPosition } from "../heightmap/parse.ts";
+import { createShapingStore } from "../shaping/store.ts";
+import { emptyResults, type ToolResults } from "../shaping/results.ts";
 import type { AppServices } from "../shell/context.ts";
 
 /** What a service factory gets: the app services plus the uniform gate. */
@@ -206,6 +208,93 @@ function heightmapService(base: ServiceBaseCtx) {
 }
 
 /**
+ * The Shaping screen's shared state: the per-tool results store plus the three
+ * selections its eight cards navigate by.
+ *
+ * All eight cards are views of one measurement session, so which TOOL is being
+ * tuned is the single most load-bearing piece of state on the screen — the
+ * status card picks it, and the other seven are entirely about it. A per-card
+ * signal would let the candidates table rank T0's fingerprint while the apply
+ * card offered to write T2's macro, each internally consistent and jointly
+ * wrong. One service, one answer.
+ *
+ * The results themselves come off the SD card through the store's single
+ * reader (shaping/store.ts `results-persist-through-one-writer`), loaded for
+ * every tool the machine reports rather than only the selected one: the status
+ * card's whole job is the per-tool table, and a table where four of five rows
+ * say "not measured" because nobody downloaded them is a lie, not a blank.
+ *
+ * Loading is gated on the connection being READY, for the same reason the
+ * height map is: mounting races rr_connect, and a download sent before the
+ * session exists comes back 401. `loaded` makes it once-per-tool-per-connection
+ * so a poll that reshapes the tools array cannot re-fetch the lot.
+ */
+function shapingService(base: ServiceBaseCtx) {
+	const store = createShapingStore(base.connector);
+	const [tool, setToolNow] = createSignal(0);
+	const [captureIndex, setCaptureIndex] = createSignal(0);
+	const [candidateIndex, setCandidateIndex] = createSignal(0);
+
+	/** Changing tool changes what the row indices MEAN, so they reset with it —
+	 *  a stale index would select a different capture, not no capture. */
+	const setTool = (next: number): void => {
+		setToolNow(next);
+		setCaptureIndex(0);
+		setCandidateIndex(0);
+	};
+
+	/**
+	 * Bumped by `reload`, read by the load effect: the ONE way a re-read is
+	 * asked for. A reload that called `store.load` directly would be a second
+	 * loading path beside the effect, free to disagree with it about which
+	 * tools exist — and it did nothing for the tools the operator was not
+	 * looking at, which is most of the status card.
+	 */
+	const [revision, setRevision] = createSignal(0);
+	const loaded = new Set<number>();
+	let lastRevision = -1;
+	createEffect(() => {
+		// Tracked first so a bump always re-runs this, whatever else is stale.
+		const rev = revision();
+		if (!base.connected()) {
+			loaded.clear();
+			lastRevision = -1;
+			return;
+		}
+		const numbers = base.om.om.tools.filter(t => t !== null).map(t => t.number);
+		// The selected tool is loaded even on a machine reporting no tools at
+		// all, so the rest of the screen has something to render against.
+		const wanted = numbers.length > 0 ? numbers : [tool()];
+		// A new revision re-reads everything; a re-run caused by the tools array
+		// alone fetches only what it has not seen on this connection.
+		const asked = rev !== lastRevision;
+		lastRevision = rev;
+		const missing = asked ? wanted : wanted.filter(n => !loaded.has(n));
+		if (missing.length === 0) return;
+		for (const n of missing) loaded.add(n);
+		// Sequential: RRF's embedded server tolerates very few concurrent
+		// requests, and this is a background read behind the live poll.
+		void (async () => {
+			for (const n of missing) await store.load(n);
+		})();
+	});
+
+	const resultsFor = (n: number): ToolResults => store.results[n] ?? emptyResults(n);
+
+	/** Re-read every tool's file from the card. The results live in files the
+	 *  operator can also edit or copy in, exactly like the height map. */
+	const reload = (): void => {
+		setRevision(r => r + 1);
+	};
+
+	return {
+		store, tool, setTool, resultsFor, reload,
+		results: (): ToolResults => resultsFor(tool()),
+		captureIndex, setCaptureIndex, candidateIndex, setCandidateIndex,
+	};
+}
+
+/**
  * The registry. `keyof typeof SERVICES` IS the ServiceId type — an unknown
  * service is a compile error at every use site.
  */
@@ -214,6 +303,7 @@ export const SERVICES = {
 	macrosBrowser: (base: ServiceBaseCtx) => domainBrowser(base, "0:/macros"),
 	sysBrowser: (base: ServiceBaseCtx) => domainBrowser(base, "0:/sys"),
 	heightmap: (base: ServiceBaseCtx) => heightmapService(base),
+	shaping: (base: ServiceBaseCtx) => shapingService(base),
 } as const;
 
 export type ServiceId = keyof typeof SERVICES;

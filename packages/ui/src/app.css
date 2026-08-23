@@ -4222,3 +4222,219 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; appe
 	visibility: hidden;
 	width: 0; min-width: 0; padding: 0; overflow: hidden;
 }
+
+/* ---------- Shaping Lab (cards/ShapingCards.tsx) ----------
+
+   Eight cards over one measurement session. Two rules govern every length
+   here. Column tracks are DECLARED, in u, on <col> elements keyed by role
+   rather than position, so a number changing from 8 to 108 moves nothing and
+   a column inserted later shifts no width (same discipline as .heat-table).
+   And every figure is tabular: this screen is read by comparing runs down a
+   column, and proportional digits make 0.049 and 0.103 hard to line up. */
+.shp-table {
+	width: 100%;
+	border-collapse: collapse;
+	table-layout: fixed;
+	font-variant-numeric: tabular-nums;
+	font-size: calc(3.5 * var(--u));
+}
+.shp-table th {
+	text-align: left;
+	font: 700 calc(3 * var(--u))/1 var(--font-display);
+	letter-spacing: 0.12em;
+	text-transform: uppercase;
+	color: var(--silk-dim);
+	padding: 0 calc(1.5 * var(--u)) calc(1.25 * var(--u));
+	white-space: nowrap;
+}
+/* Row rule as an inset shadow: a border would occupy layout, and a card's
+   floor is the sum of the layout-space lengths inside it. */
+.shp-table td {
+	padding: calc(1.5 * var(--u));
+	box-shadow: inset 0 1px 0 var(--hairline);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+/* Header and value in one column read as one column only if they agree: the
+   figures are right-aligned, so the caption over them is too. */
+.shp-num, .shp-table th.shp-num { text-align: right; }
+.shp-nil { color: var(--silk-dim); }
+.shp-mono { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; }
+.shp-table .shp-mono { font-size: calc(3.375 * var(--u)); }
+/* The selected row — the one every other card on the screen is about. */
+.shp-table tr.shp-on td { background: var(--mask-700); }
+
+/* Column tracks by role. Sums: tools 14+34+34+26 = 108u; captures
+   40+12+14+14+16 = 96u; candidates 20+12+12+12+12+14+11 = 93u;
+   impulses 8+20+20 = 48u. */
+.shp-c-tool { width: calc(14 * var(--u)); }
+.shp-c-mode { width: calc(34 * var(--u)); }
+.shp-c-state { width: calc(26 * var(--u)); }
+.shp-c-file { width: calc(40 * var(--u)); }
+.shp-c-ax { width: calc(12 * var(--u)); }
+.shp-c-num { width: calc(12 * var(--u)); }
+.shp-c-shaper { width: calc(20 * var(--u)); }
+.shp-c-ix { width: calc(8 * var(--u)); }
+.shp-captures .shp-c-num { width: calc(14 * var(--u)); }
+.shp-impulses .shp-c-num { width: calc(20 * var(--u)); }
+
+/* A fingerprint cell is two lines whether or not the axis fitted, so a tool
+   that gains a mode does not make its row taller than its neighbours. */
+.shp-tools td { height: calc(11 * var(--u)); vertical-align: top; }
+.shp-mode-f { display: block; font-weight: 600; }
+.shp-sub { display: block; color: var(--silk-dim); font-size: calc(3.125 * var(--u)); }
+.shp-state {
+	font: 600 calc(3.125 * var(--u))/1 var(--font-display);
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: var(--silk-dim);
+}
+
+/* Row selection is a real button, not a click handler on the <tr>: the tool
+   this picks is what the other seven cards render, so it has to be reachable
+   from a keyboard. */
+.shp-pick {
+	font: 600 calc(3.5 * var(--u))/1 var(--font-display);
+	letter-spacing: 0.06em;
+	color: var(--silk);
+	background: none;
+	border: 0;
+	padding: 0;
+	cursor: pointer;
+	max-width: 100%;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.shp-pick-wide { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: calc(3.375 * var(--u)); }
+.shp-pick:hover { color: var(--accent); }
+.shp-pick[aria-pressed="true"] { color: var(--accent); }
+
+/* A session can hold a dozen captures and a long candidate list, so the list
+   scrolls INSIDE the card rather than setting the card's height from however
+   many rows the last run happened to make.
+
+   `flex: 0 0 auto` is not decoration. .panel-body is a flex column, so without
+   it this box SHRINKS with the card — and contentRowSpan sums the children's
+   own heights, so the card's reported minimum then tracked its current height
+   (measured 2026-08-22: row minimum spread 23 cells across the audit's 720 /
+   400 / 200 px probes, which is the hysteresis defect invariant A exists to
+   catch). Fixed at its own height, the floor is the same number wherever the
+   card is dragged to.
+
+   `scrollbar-width: none` is the same rule .panel-body already carries, and
+   for a reason this sweep proved rather than assumed: a classic Windows
+   scrollbar is ~15 SCREEN pixels wide whatever --u is, so it enters the card's
+   min-content width as a term that does not scale. Measured 2026-08-22 before
+   the rule: Decay and Candidates each reported a column floor two stored cells
+   wider at 0.75 than at 1.5, failing card-floor-scale-invariant on the one
+   axis their content is otherwise entirely declared in u. */
+.shp-scroll {
+	flex: 0 0 auto;
+	max-height: calc(60 * var(--u));
+	overflow-y: auto;
+	scrollbar-width: none;
+}
+.shp-scroll::-webkit-scrollbar { display: none; }
+
+/* What the machine is running now. Always present, so gaining or losing a
+   shaper cannot reflow the table under it. */
+.shp-active {
+	display: flex;
+	align-items: baseline;
+	gap: calc(2 * var(--u));
+	margin: 0 0 calc(2 * var(--u));
+	min-height: calc(5 * var(--u));
+}
+.shp-cap {
+	font: 700 calc(3 * var(--u))/1 var(--font-display);
+	letter-spacing: 0.14em;
+	text-transform: uppercase;
+	color: var(--silk-dim);
+	white-space: nowrap;
+}
+.shp-warn { margin: 0 0 calc(2 * var(--u)); color: var(--fault); font-size: calc(3.5 * var(--u)); }
+.shp-warn-inline { color: var(--gold); }
+.shp-ok-inline { color: var(--ok); }
+
+/* Fact rows: a fixed label track so the values line up down the card and a
+   longer value cannot push its label out of column. */
+.shp-facts { margin: 0 0 calc(2 * var(--u)); font-size: calc(3.5 * var(--u)); }
+.shp-fact {
+	display: grid;
+	grid-template-columns: calc(24 * var(--u)) 1fr;
+	align-items: baseline;
+	gap: calc(2 * var(--u));
+	padding: calc(1.25 * var(--u)) 0;
+}
+.shp-fact + .shp-fact { box-shadow: inset 0 1px 0 var(--hairline); }
+.shp-fact dt {
+	font: 700 calc(3 * var(--u))/1.3 var(--font-display);
+	letter-spacing: 0.12em;
+	text-transform: uppercase;
+	color: var(--silk-dim);
+}
+.shp-fact dd { margin: 0; font-variant-numeric: tabular-nums; }
+
+/* The M593 line itself. Wraps rather than scrolling: a custom shaper's H/T
+   form is ~60 characters, and holding it on one line would make that width
+   the card's minimum for the sake of a string nobody measures against. */
+.shp-line {
+	margin: 0 0 calc(2 * var(--u));
+	padding: calc(1.5 * var(--u)) calc(2 * var(--u));
+	background: var(--mask-900);
+	box-shadow: inset 0 0 0 1px var(--hairline);
+	border-radius: var(--radius);
+	font: 400 calc(3.375 * var(--u))/1.5 ui-monospace, "Cascadia Code", Consolas, monospace;
+	overflow-wrap: anywhere;
+}
+
+.shp-verified { list-style: none; margin: 0; padding: 0; }
+.shp-verify { padding: calc(1.5 * var(--u)) 0; }
+.shp-verify + .shp-verify { box-shadow: inset 0 1px 0 var(--hairline); }
+.shp-verify-head {
+	display: flex;
+	flex-wrap: nowrap;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: calc(2 * var(--u));
+	margin: 0 0 calc(1 * var(--u));
+	font-size: calc(3.5 * var(--u));
+}
+.shp-measured { font-variant-numeric: tabular-nums; color: var(--silk-dim); white-space: nowrap; }
+.shp-notes { list-style: none; margin: 0; padding: 0; }
+.shp-note { font-size: calc(3.375 * var(--u)); padding-left: calc(4 * var(--u)); position: relative; }
+.shp-note::before { position: absolute; left: 0; }
+.shp-pro { color: var(--ok); }
+.shp-pro::before { content: "\2713"; }
+.shp-con { color: var(--fault); }
+.shp-con::before { content: "\2717"; }
+
+.shp-actions { display: flex; align-items: center; gap: var(--ctl-gap); }
+/* Reserved: the word appears after a copy and must not widen the row when it
+   does. */
+.shp-copied {
+	display: inline-block;
+	min-width: calc(14 * var(--u));
+	font: 600 calc(3.125 * var(--u))/1 var(--font-display);
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: var(--ok);
+}
+
+/* No `@media (max-width: …)` block, and that is a decision rather than an
+   omission. These cards were written with one — fact rows stacking to a single
+   column on a phone, narrower table tracks — and measured at a 504 px viewport
+   it made things WORSE, not better: the canvas is a fixed 624-cell grid that
+   PANS at narrow viewports (canvas width 2496 px on every screen, measured
+   2026-08-22 on Machine, Control, Bed and this one alike), so a card is exactly
+   as wide on a phone as on a monitor. Stacking bought no width and cost 67 px
+   of height, which the Capture card then overflowed at its own default size.
+
+   Card width is a property of the CARD — what the operator dragged it to — not
+   of the viewport, which is precisely why a viewport media query is the wrong
+   instrument for it (memory: dev-vs-device-check-breakpoints). What makes these
+   cards usable on a phone is that every length is in u: at the 0.75 scale step
+   the widest of the eight (Shaping, 118 cells) is 354 px, inside a 390 px
+   phone, and the narrowest is 198 px. */
