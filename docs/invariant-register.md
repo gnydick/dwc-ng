@@ -21,7 +21,7 @@ and invariant claim mentions 13 -> 23, so no mechanism was deleted and no
 claim was lost in the gap. From here the ratchets make a dropped rung visible
 in the diff that drops it.
 
-**Totals:** 108 invariants · 86 at rung 6 or above · 22 below rung 6 (ceiling 22).
+**Totals:** 110 invariants · 88 at rung 6 or above · 22 below rung 6 (ceiling 22).
 
 ## bed
 
@@ -71,9 +71,9 @@ in the diff that drops it.
 
 **Mechanism.** sole-constructor input — `decaySeries` takes a `FitResult` and nothing else. A FitResult is minted only by the engine worker (shaping/worker.ts) from one CSV, and carries its axis, its samples, its stop and its verdict together, so there are no two arguments that could come from two captures
 
-**Why.** the whole point of the card is to let an operator see why a fit came out as it did, which requires that what is drawn and what is printed be the same measurement Pure and JSX-free by design (the plan's data/JSX split): node:test cannot import a `.tsx`, and everything worth asserting about this chart is a number or a sentence, not a DOM.
+**Why.** the whole point of the card is to let an operator see why a fit came out as it did, which requires that what is drawn and what is printed be the same measurement
 
-`packages/ui/src/charts/decayData.ts:19`
+`packages/ui/src/charts/decayData.ts:38`
 
 ### `charts/the-in-progress-layer-is-never-a-statistic` — rung 6
 
@@ -101,7 +101,7 @@ in the diff that drops it.
 
 **Why.** a delete that removes a card from every screen at once is exactly the action whose scope the operator must see before confirming — "delete this card?" cannot precede stripping it from screens they forgot it was on. The plan freezes usage at arm time; the studio is modal over composition edits, so the frozen report cannot go stale between the two clicks
 
-`packages/ui/src/compose/screens.ts:419`
+`packages/ui/src/compose/screens.ts:424`
 
 ### `compose/composition-degrades-per-slot` — rung 6
 
@@ -823,6 +823,16 @@ in the diff that drops it.
 
 `packages/ui/src/shaping/captures.ts:18`
 
+### `shaping/editor-adds-no-second-envelope-gate` — rung 6
+
+**Mechanism.** choke-point — `asEnvelope` is the only thing here that can say anything about a range, and it is called with the draft's own numbers rather than consulted about a rule this module re-states. A test pins the two together: over a table of drafts, `rejectedAxes` is empty exactly when `draftEnvelope(d)` — which is the gate's own return value — is non-null
+
+**Why.** the gate is whole-or-nothing by design (one good axis is not a box), so an editor carrying its own per-axis rule would eventually disagree with it about which halves are acceptable, and the operator would be told a box was fine while `null` is what got stored
+
+**Debt — promotion.** rung 7 would be `asRange` exported as the axis-level gate and this module unable to express a range question any other way. Not done today because exporting it widens the surface that can mint a Range, which is the thing config/types.ts deliberately keeps to one function.
+
+`packages/ui/src/shaping/settingsDraft.ts:19`
+
 ## shaping/engine
 
 ### `shaping/engine/capture-is-parsed` — rung 7
@@ -843,13 +853,21 @@ in the diff that drops it.
 
 ### `shaping/engine/one-decay-window` — rung 6
 
-**Mechanism.** choke-point — `decayWindow` is the only place the analysis segment, its band centre, its envelope and the 15 %-of-peak decay bound are computed. `fitDecay` derives its verdict from this and nothing else, and `charts/decayData.ts` draws this and nothing else
+**Mechanism.** choke-point — `decayWindow` is the only place the analysis region is located. `fitDecay` fits this range and nothing else, and `charts/decayData.ts` frames, band-passes and lays its envelope over this range and nothing else, so sample 0 of the drawn envelope is sample 0 of the fitted data by construction rather than by two arithmetics that happen to agree
 
-**Why.** the chart exists to let an operator see WHY a fit came out as it did; a chart drawn from a second, independently-derived envelope can show a healthy decay beside a "decayed too fast" verdict and be believed
+**Why.** the chart exists to let an operator see WHY a fit came out as it did; a curve drawn over a region half a cycle away from the fitted one sits off the ring it claims to describe, and the picture would be believed
 
-**Debt — promotion.** the window is handed out as plain arrays, so a future caller could draw one window's envelope against another window's Mode. Promote by returning the Mode|NoFit alongside it from a single call, once a second consumer exists that needs both. Tracked with the E1 work item
+**Debt — promotion.** the region is handed out as two plain integers, so a future caller could frame one capture's region around another capture's Mode. Promote by returning the Mode|NoFit alongside it from a single call, once a second consumer exists that needs both. Tracked with the E1 work item
 
-`packages/ui/src/shaping/engine/fit.ts:85`
+`packages/ui/src/shaping/engine/fit.ts:151`
+
+### `shaping/engine/one-envelope-and-it-is-fitted` — rung 8
+
+**Mechanism.** illegal state unrepresentable — a ring-down's envelope is not stored as samples anywhere. It is `modeEnvelope()`: three numbers (peakG, f, zeta) evaluated as peakG·exp(-2π·f·zeta·t), with zeta bounded below by 0.005 on every route that mints a Mode (fitDecay, aggregate, reviveMode). The envelope is therefore strictly decreasing for every t by arithmetic, and there is no second producer to disagree with it — `spectrum.ts` deliberately exports no function that returns a measured envelope. The decay CHART (`charts/decayData.ts`) therefore draws `modeEnvelope` of the very Mode printed beside it: not a curve that agrees with the fit, the fit itself, plotted
+
+**Why.** measured 2026-08-23: an FFT band mask is zero-phase with a sinc kernel ~1/(2·rel·f) long, so its magnitude RISES for 20-50 ms after an abrupt ring onset before settling, then overshoots. Fed a pure decaying sinusoid — whose envelope cannot rise — the old estimator read 0.35× truth at the stop, 1.00× at 60 ms and 1.52× at 120 ms (18 Hz, zeta 0.127). Anchoring peakG and the 15 % floor on the argmax of that curve put the anchor wherever the artefact happened to peak, which is why ring1_Xp1 was rejected and its five siblings were not. Padding the input with run-in does not fix it: with a silent run-in the rise is still 46 ms, and on real captures the run-in only lets the deceleration bleed through the band instead. Against synthetic ground truth (4 ring phases × 3 noise seeds, decel pulse present) the old pipeline was 8-39 % out on zeta and 16-63 % LOW on peakG; the fit below is 1-9 % on zeta and 1-6 % on peakG over the same grid
+
+`packages/ui/src/shaping/engine/fit.ts:14`
 
 ### `shaping/engine/shaper-definitions-are-one-table` — rung 8
 
@@ -1017,15 +1035,15 @@ in the diff that drops it.
 
 **Debt — promotion.** the test reads the stylesheet as text. Rung 6 is emitting these widths from the same table definition the component renders from, so a column and its width are one fact rather than two that agree. The Tools card renders the same table without the control columns, so Current is the second cell rather than the fourth. Under role classes that fact needs no restatement of any OTHER column's width — which is what the positional version got wrong. 152 + 58 = 210.
 
-`packages/ui/src/app.css:779`
+`packages/ui/src/app.css:792`
 
 ### `ui/heavy-libraries-stay-behind-a-dynamic-import` — rung 4
 
-**Mechanism.** static analysis — test/lazy-bundle.test.ts walks src and checks both halves: that only editor/setup.ts, gcode/scene.ts and heightmap/surface3d.ts name a heavy package at all, and that those three are reached only by `import type` (erased, since verbatimModuleSyntax is on) or `import(...)`. A value import of scene.ts pulls Babylon in exactly as a direct import would, which is why one check is not enough
+**Mechanism.** static analysis — test/lazy-bundle.test.ts walks src and checks both halves: that only editor/setup.ts, gcode/scene.ts and heightmap/surface3d.ts name a heavy package at all, and that every module on the DYNAMIC_ONLY list — those three plus the Shaping Lab's cards/ShapingCards.tsx and charts/DecayChart.tsx — is reached only by `import type` (erased, since verbatimModuleSyntax is on) or `import(...)`. A value import of scene.ts pulls Babylon in exactly as a direct import would, which is why one check is not enough
 
-**Why.** CLAUDE.md's first hard constraint is that the board's HTTP server is weak and payload is expensive. Babylon is 232 KB gzipped — larger than the whole eager bundle — and CodeMirror is comparable. The failure is silent in the worst way: one static import adds a quarter-megabyte to what every load must serve, the app behaves identically on a dev machine, and the cost appears only as a slower first paint on hardware nobody profiles
+**Why.** CLAUDE.md's first hard constraint is that the board's HTTP server is weak and payload is expensive. Babylon is 232 KB gzipped — larger than the whole eager bundle — CodeMirror is comparable, and the eight shaping bodies were 32,589 B of a 483,328 B ceiling (measured 2026-08-23) for a screen that tunes a machine rather than runs one. The failure is silent in the worst way: one static import adds all of it back to what every load must serve, the app behaves identically on a dev machine, and the cost appears only as a slower first paint on hardware nobody profiles
 
-**Debt — promotion.** the owner set is a hand-maintained allowlist, which is debt by this project's own rule — a fourth lazy surface has to be added by name. It is the honest shape though: which boundaries are dynamic is a design decision, not something derivable from source. Promote by asserting against the BUILT chunk graph instead — the eager entry chunk must not reference a lazy vendor chunk — which measures the thing the constraint is actually about rather than a proxy for it.
+**Debt — promotion.** the owner set is a hand-maintained allowlist, which is debt by this project's own rule — a fifth lazy surface has to be added by name. It is the honest shape though: which boundaries are dynamic is a design decision, not something derivable from source. Promote by asserting against the BUILT chunk graph instead — the eager entry chunk must not reference a lazy chunk — which measures the thing the constraint is actually about rather than a proxy for it.
 
 `packages/ui/src/main.tsx:5`
 
@@ -1037,7 +1055,7 @@ in the diff that drops it.
 
 **Debt — promotion.** the scan is a brace walker over text, so it sees source order but not cascade subtleties (:is(), layers, differing specificity within a selector list). Rung 6 is generating the breakpoint blocks from one typed source, so ordering stops being something an author controls at all. (The palette entry's narrow-width rules are NOT here — they live in a second max-width block directly after the desktop ones further down.)
 
-`packages/ui/src/app.css:1467`
+`packages/ui/src/app.css:1480`
 
 ### `ui/unit-lengths` — rung 4
 

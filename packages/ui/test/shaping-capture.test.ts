@@ -7,7 +7,7 @@ import { hz } from "../src/shaping/engine/units.ts";
 const fx = (n: string): string => readFileSync(new URL(`./fixtures/shaping/${n}`, import.meta.url), "utf8");
 
 test("parseCapture reads rate from the trailer and all three axes", () => {
-	const r = parseCapture(fx("ring1_Xp0.csv"));
+	const r = parseCapture(fx("ring1/ring1_Xp0.csv"));
 	assert.ok(r.ok);
 	assert.equal(r.capture.rate, 1376);
 	assert.equal(r.capture.x.length, 1500);
@@ -32,7 +32,7 @@ test("parseCapture refuses a trailer with no samples", () => {
 });
 
 test("detectStop finds the end of the decel pulse in a real ring capture", () => {
-	const r = parseCapture(fx("ring1_Xp0.csv"));
+	const r = parseCapture(fx("ring1/ring1_Xp0.csv"));
 	assert.ok(r.ok);
 	const t = detectStop(r.capture.x, r.capture.rate);
 	assert.ok(t !== null && t > 0.4 && t < 0.45, `stop at ${String(t)} s (prototype: 0.425)`);

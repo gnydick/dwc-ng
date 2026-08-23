@@ -232,6 +232,26 @@ export function scenarioModel(id: ScenarioId): ObjectModel {
  * fingerprints it is derived the way the fitter's own decay window is —
  * ln(1/0.15) / (2·pi·zeta), the cycles a ring takes to fall to 15 % of its peak
  * — because a Mode cannot be revived without one. No card renders it.
+ *
+ * PRE-CORRECTION, ALL OF IT, and deliberately so.
+ *
+ * On 2026-08-23 GIT_33 replaced the band-mask envelope this session was
+ * measured with. Re-fitted from the same twelve captures the shipped engine now
+ * reads X zeta 0.110 peakG 0.101 g and Y zeta 0.034 peakG 0.121 g — peakG about
+ * double, Y damping about half. The frequencies are unchanged to the last digit
+ * (the spectral peak is the same computation), and the file names, the
+ * candidate specs and the 38 Hz artefact are unaffected.
+ *
+ * The baseline half was NOT migrated on its own, because this session's value
+ * is a set of numbers that agree with each other: the verify fingerprints are
+ * the same estimator's, their captures are not in this repo to re-measure, and
+ * a corrected baseline beside an uncorrected verify inverts the one result the
+ * scenario exists to show — zvdd F17.5 measuring WORSE than no shaper. Half a
+ * migration would make the bench tell the opposite of the truth. Re-measure the
+ * whole session, baseline and verify together, if the verify CSVs ever land
+ * here; until then it is one consistent 2026-08-22 session, and what the DECAY
+ * card draws on the bench is still a live fit by the current engine of
+ * `syntheticCapture`'s samples, whose model matches these numbers.
  */
 const RING1_FINGERPRINT = {
 	X: { f: 18.134033203125, zeta: 0.1268571930432652, peakG: 0.050196345221876666, cyclesFit: 2.1884765625 },

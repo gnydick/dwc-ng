@@ -36,7 +36,7 @@ import { toolMacroPath } from "../shaping/toolMacro.ts";
 import type { ShapingConfig } from "../config/types.ts";
 import type { Shaping } from "../om/types.ts";
 import type { Artefact } from "../shaping/engine/artefact.ts";
-import { FIT_DEFAULTS, isMode, type Axis, type Fingerprint, type Mode, type NoFit } from "../shaping/engine/fit.ts";
+import { isMode, MIN_CYCLES, type Axis, type Fingerprint, type Mode, type NoFit } from "../shaping/engine/fit.ts";
 import { type Candidate, customCandidate } from "../shaping/engine/rank.ts";
 import { convolve, type Impulses, type ShaperSpec, zv } from "../shaping/engine/shapers.ts";
 import { seconds } from "../shaping/engine/units.ts";
@@ -77,7 +77,7 @@ function fitReasonText(fit: Mode | NoFit): string {
 		case "short-decay":
 			// The verdict box says how nearly it made it; this cell has room
 			// only for the rule it missed, and quotes the fitter's own count.
-			return `under ${FIT_DEFAULTS.minCycles} cycles`;
+			return `under ${MIN_CYCLES} cycles`;
 		case "damping-out-of-range":
 			return "damping out of range";
 	}
@@ -404,8 +404,8 @@ const SOURCES: ReadonlyArray<{ id: DecaySource; label: string }> = [
  *  chart reads through themeColors, so there is one place per line. */
 const DECAY_KEY = [
 	{ cls: "shp-key-raw", label: "raw g" },
-	{ cls: "shp-key-env", label: "envelope" },
-	{ cls: "shp-key-fit", label: "fit" },
+	{ cls: "shp-key-ring", label: "ring" },
+	{ cls: "shp-key-env", label: "fitted ζ" },
 	{ cls: "shp-key-stop", label: "stop" },
 ] as const;
 
@@ -443,8 +443,8 @@ function rowReason(row: DecayRow): string {
 
 /**
  * One capture at a time: the raw trace, the stop the fitter found in it, the
- * band-passed envelope and the exponential the fit implies — with the numbers
- * beside the curve they were taken from.
+ * band-limited ring the fit was taken over and the fitted envelope laid over
+ * it — with the numbers beside the curve they were taken from.
  *
  * Three places a capture can come from, and the difference between them is not
  * cosmetic.

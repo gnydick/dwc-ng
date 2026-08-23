@@ -1,7 +1,13 @@
 /**
  * The ring-down of one capture: the raw accelerometer trace, the stop the
- * fitter located in it, the band-passed envelope, and the exponential the
- * fitted frequency and damping imply.
+ * fitter located in it, the band-limited ring the fit was taken over, and the
+ * fitted envelope laid on top of that ring.
+ *
+ * The envelope is `modeEnvelope()` of the very Mode the card prints beside the
+ * plot (engine/fit.ts, `one-envelope-and-it-is-fitted`) — the fit, plotted, not
+ * a second curve that agrees with it. There used to be two curves here, a
+ * measured band-mask envelope and the exponential it implied; the measurement
+ * was wrong near the stop and is gone (GIT_33).
  *
  * Same bridge to uPlot as TemperatureChart — build once, `setData` on change,
  * measure the HOST for height rather than uPlot's own root (which uPlot sizes
@@ -49,7 +55,7 @@ export function DecayChart(props: { view: () => DecayView | null }) {
 	const GRID = tokenAlpha("--silk-dim", 0.1, "#5a6b80");
 	const RAW = tokenAlpha("--silk-dim", 0.55, "#5a6b80");
 	const ENVELOPE = token("--accent", "#a85c17");
-	const FITTED = token("--gold", "#8a6a00");
+	const RING = token("--gold", "#8a6a00");
 	const STOP = token("--fault", "#b3271a");
 	const BAND = tokenAlpha("--accent", 0.07, "#a85c17");
 
@@ -139,8 +145,8 @@ export function DecayChart(props: { view: () => DecayView | null }) {
 			series: [
 				{},
 				{ label: "raw", stroke: RAW, width: 1, points: { show: false } },
+				{ label: "ring", stroke: RING, width: 1, points: { show: false } },
 				{ label: "envelope", stroke: ENVELOPE, width: 2, points: { show: false } },
-				{ label: "fit", stroke: FITTED, width: 2, dash: [6, 4], points: { show: false } },
 			],
 		};
 		plot = new uPlot(opts, EMPTY, plotEl);

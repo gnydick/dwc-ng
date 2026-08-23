@@ -92,10 +92,14 @@ export function refusalText(r: Refusal): string {
  * median of the fits that SUCCEEDED, so a capture the fitter declined is
  * absent from the numbers and present in the file — and a fingerprint from 11
  * of 12 looks exactly like one from 12 of 12 unless this says which it is.
- * That case is real: the shipped engine declines `ring1_Xp1.csv` as
- * `short-decay` on Gabe's own baseline run (GitHub #33 owns whether the
- * acceptance rule should change), so his first real fingerprint is a partial
- * one and must read as one.
+ *
+ * That case WAS real on Gabe's own baseline run: the band-mask estimator
+ * declined `ring1_Xp1.csv` as `short-decay` while its five identical siblings
+ * passed. GIT_33 replaced the estimator and all twelve now fit, so his first
+ * fingerprint is a complete one. The clause stays because the reason it was
+ * needed has not gone anywhere — a capture that ran short, a tool bumped
+ * mid-run, an axis that did not ring — and a partial fingerprint still has to
+ * read as one.
  *
  * The remainder clause appears only when there IS a remainder. A complete
  * aggregate that mentions captures it excluded reads as a partial one — the

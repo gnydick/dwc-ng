@@ -9,11 +9,20 @@
  * assertions are about the relationship between what this UI draws and what it
  * prints, which is the property the card exists to keep.
  *
- * `ring1_Xp1.csv` is here on purpose. The shipped engine declines it with
- * `short-decay` where the prototype's Python fitted it (GitHub #33, a
- * deliberate decision taken elsewhere). This suite PINS that verdict rather
- * than working around it, and pins that the card explains it as the near miss
- * it is — 1.88 of the 2 cycles a damping ratio needs.
+ * What this suite covers changed on 2026-08-23 (GIT_33). It used to pin
+ * `ring1_Xp1.csv` as a `short-decay` refusal, because the band-mask envelope
+ * estimator declined it while its five identical siblings passed. That
+ * estimator is gone: all twelve real captures now fit, and the worst X margin
+ * is 2.502 cycles against the 2 required. So the near-miss path is exercised
+ * with a SYNTHETIC ring built past MAX_FIT_ZETA — a case that is a near miss
+ * by arithmetic rather than by which way the noise fell — and the real
+ * captures are used for what they are: the thing the card actually draws.
+ *
+ * The chart's three lines are now raw · ring · envelope. The ring is the
+ * band-limited SIGNAL the fit was taken over (`spectrum.bandPass`) and the
+ * envelope is `modeEnvelope` of the Mode printed beside it. There is no longer
+ * a pair of curves that could disagree — the envelope IS the fit — so the
+ * assertions below are about the two staying anchored to the same region.
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -21,23 +30,63 @@ import { readFileSync } from "node:fs";
 import { decaySeries, fitNote, type DecayView } from "../src/charts/decayData.ts";
 import { handle, type FitResult } from "../src/shaping/worker.ts";
 import { boardRef, byNewest, captureNameParts, createCaptureLoader, importRef, inFamily, isCaptureFile, matchesQuery, namePrefixes } from "../src/shaping/captures.ts";
-import { aggregate, FIT_DEFAULTS, isMode, type Axis, type Mode, type NoFit } from "../src/shaping/engine/fit.ts";
+import { aggregate, FIT_DEFAULTS, isMode, MAX_FIT_ZETA, MIN_CYCLES, type Axis, type Mode, type NoFit } from "../src/shaping/engine/fit.ts";
 import { hz } from "../src/shaping/engine/units.ts";
 
 const fx = (n: string): string => readFileSync(new URL(`./fixtures/shaping/${n}`, import.meta.url), "utf8");
 
+/** One of the twelve ring1 captures, by its bare name. */
+const ring1 = (name: string): string => fx(`ring1/${name}`);
+
 /** A capture fitted the way the app fits one: through the worker's own entry. */
 function fitted(file: string, axis: Axis): FitResult {
-	const { response } = handle({ id: 1, kind: "fit", csv: fx(file), axis });
+	const { response } = handle({ id: 1, kind: "fit", csv: ring1(file), axis });
 	assert.equal(response.kind, "fit", `worker refused ${file}: ${JSON.stringify(response)}`);
 	return (response as Extract<typeof response, { kind: "fit" }>).result;
 }
 
 const viewOf = (file: string, axis: Axis): DecayView => decaySeries(fitted(file, axis));
 
+/**
+ * A capture built to a known answer: a deceleration pulse, then a decaying
+ * sinusoid of the requested damping.
+ *
+ * Written as a CSV and pushed through the SHIPPING worker entry, like every
+ * other fixture here, so nothing is stubbed. The point of building it rather
+ * than reaching for a real capture is that `zeta` decides the verdict by
+ * arithmetic: cyclesFit is ln(1/0.15)/(2π·zeta), so anything above
+ * MAX_FIT_ZETA (0.1510) is a short-decay refusal and anything below it fits,
+ * whatever the noise did that day.
+ */
+function syntheticCsv(f: number, zeta: number, amp: number, rate = 1376): string {
+	const n = Math.round(1.0 * rate);
+	const stop = Math.round(0.08 * rate);
+	const pulseFrom = Math.round(0.05 * rate);
+	const wn = 2 * Math.PI * f;
+	const wd = wn * Math.sqrt(1 - zeta * zeta);
+	const rows = ["Sample,X,Y,Z"];
+	for (let i = 0; i < n; i++) {
+		let v = 0;
+		if (i >= pulseFrom && i < stop) v = 1.2;
+		else if (i >= stop) {
+			const t = (i - stop) / rate;
+			v = amp * Math.exp(-zeta * wn * t) * Math.cos(wd * t);
+		}
+		rows.push(`${i},${v.toFixed(5)},0,1`);
+	}
+	rows.push(`Rate ${rate}, overflows 0`);
+	return rows.join("\n");
+}
+
+function syntheticFit(f: number, zeta: number, amp: number): FitResult {
+	const { response } = handle({ id: 21, kind: "fit", csv: syntheticCsv(f, zeta, amp), axis: "X" });
+	assert.equal(response.kind, "fit", JSON.stringify(response));
+	return (response as Extract<typeof response, { kind: "fit" }>).result;
+}
+
 /** One of the three lines, proven present — AlignedData is variadic, so its
  *  tail is typed as possibly-absent and the tests would otherwise be a wall
- *  of non-null assertions. */
+ *  of non-null assertions. 1 = raw, 2 = ring, 3 = envelope. */
 function line(view: DecayView, index: 1 | 2 | 3): Array<number | null> {
 	const series = view.data[index];
 	assert.ok(series !== undefined, `series ${index} is missing`);
@@ -81,40 +130,61 @@ test("the stop marker sits at the stop the fitter used, inside the capture", () 
 	assert.ok(view.window.toS <= view.durationS);
 });
 
-test("the envelope is drawn over the analysed window and nowhere else", () => {
+test("the ring and the envelope are drawn over the analysed window and nowhere else", () => {
+	// Both series cover exactly the region `decayWindow` handed the fitter, so
+	// sample 0 of the drawn envelope is sample 0 of the fitted data — the
+	// alignment `one-decay-window` exists to make unwritable.
 	const view = viewOf("ring1_Xp0.csv", "X");
 	assert.ok(view.window !== null);
 	const t = times(view);
-	const envelope = line(view, 2);
-	let inside = 0;
-	for (let i = 0; i < t.length; i++) {
-		const within = t[i]! >= view.window.fromS - 1e-9 && t[i]! < view.window.toS - 1e-9;
-		if (within) {
-			assert.notEqual(envelope[i], null, `no envelope at t=${t[i]}, inside the window`);
-			inside++;
-		} else {
-			assert.equal(envelope[i], null, `envelope at t=${t[i]}, outside the window`);
+	for (const index of [2, 3] as const) {
+		const series = line(view, index);
+		let inside = 0;
+		for (let i = 0; i < t.length; i++) {
+			const within = t[i]! >= view.window.fromS - 1e-9 && t[i]! < view.window.toS - 1e-9;
+			if (within) {
+				assert.notEqual(series[i], null, `series ${index}: nothing at t=${t[i]}, inside the window`);
+				inside++;
+			} else {
+				assert.equal(series[i], null, `series ${index}: a point at t=${t[i]}, outside the window`);
+			}
 		}
+		assert.ok(inside > 500, `series ${index}: only ${inside} points`);
 	}
-	assert.ok(inside > 500, `only ${inside} envelope points`);
+});
+
+test("the ring is a signal, not a magnitude — it swings through zero", () => {
+	// The old third series was a measured ENVELOPE, and reinstating one is
+	// exactly the regression `one-envelope-and-it-is-fitted` forbids. A band-
+	// passed signal is the thing that cannot be mistaken for one.
+	const ring = line(viewOf("ring1_Yp0.csv", "Y"), 2).filter((v): v is number => v !== null);
+	assert.ok(ring.length > 500);
+	assert.ok(ring.filter(v => v < -0.005).length > 20, "no negative excursions");
+	assert.ok(ring.filter(v => v > 0.005).length > 20, "no positive excursions");
 });
 
 /* ----------------------------------------- the drawn curve IS the fitted one */
 
-test("the envelope's peak is exactly the peak the fit reports", () => {
-	// The point of `one-decay-window`: the chart and the figure beside it come
-	// from a single computation, so this is an equality and not a tolerance.
+test("the envelope's first point is exactly the peak the fit reports", () => {
+	// The envelope IS the fit, evaluated: peakG·e^(-2pi·f·zeta·t) from sample 0
+	// of the analysed region. So this is an equality, not a tolerance, and the
+	// first point is peakG rather than a maximum arrived at by searching.
 	for (const [file, axis] of [["ring1_Xp0.csv", "X"], ["ring1_Yp0.csv", "Y"], ["ring1_Ym0.csv", "Y"]] as const) {
 		const capture = fitted(file, axis);
 		assert.ok(isMode(capture.fit), `${file} did not fit`);
-		const envelope = line(decaySeries(capture), 2);
+		const view = decaySeries(capture);
+		const envelope = line(view, 3);
+		const first = envelope.findIndex(v => v !== null);
+		assert.ok(view.window !== null);
+		assert.ok(Math.abs(times(view)[first]! - view.window.fromS) < 1e-12, `${file}: the envelope starts at the window`);
+		assert.equal(envelope[first], capture.fit.peakG as number, file);
 		let peak = 0;
 		for (const v of envelope) if (v !== null && v > peak) peak = v;
-		assert.equal(peak, capture.fit.peakG as number, file);
+		assert.equal(peak, capture.fit.peakG as number, `${file}: nothing later exceeds the first point`);
 	}
 });
 
-test("the fitted exponential starts at the peak and decays at the fitted rate", () => {
+test("the envelope decays at exactly the fitted rate, and only downwards", () => {
 	const capture = fitted("ring1_Yp0.csv", "Y");
 	assert.ok(isMode(capture.fit));
 	const mode: Mode = capture.fit;
@@ -123,67 +193,96 @@ test("the fitted exponential starts at the peak and decays at the fitted rate", 
 	const curve = line(view, 3);
 	const first = curve.findIndex(v => v !== null);
 	assert.ok(first > 0, "the curve must start somewhere inside the capture");
-	assert.ok(Math.abs(curve[first]! - (mode.peakG as number)) < 1e-12, "anchored at the reported peak");
-	// Every later point is the exponential the reported f and zeta imply.
 	const omega = 2 * Math.PI * (mode.f as number) * mode.zeta;
+	let previous = Infinity;
 	for (let i = first; i < curve.length; i++) {
 		if (curve[i] === null) continue;
 		const want = (mode.peakG as number) * Math.exp(-omega * (t[i]! - t[first]!));
 		assert.ok(Math.abs(curve[i]! - want) < 1e-12, `curve[${i}]`);
+		// Strictly decreasing everywhere. A rising envelope is precisely what
+		// the band-mask measurement used to draw, and what a fit cannot.
+		assert.ok(curve[i]! < previous, `envelope rose at ${i}`);
+		previous = curve[i]!;
 	}
-	// It is monotone and never grows — an exponential drawn upside down is the
-	// sign-flip this asserts against.
-	const last = curve.reduce<number | null>((acc, v) => (v === null ? acc : v), null);
-	assert.ok(last !== null && last < (mode.peakG as number));
 });
 
-test("a capture with no Mode gets no fitted curve, but keeps its envelope", () => {
-	const capture = fitted("ring1_Xp1.csv", "X");
-	assert.ok(!isMode(capture.fit));
+test("a capture with no Mode gets no envelope, but still shows the ring it measured", () => {
+	// A near miss must still be LOOKED at: the operator's question is "was that
+	// a real ring?", and the band trace answers it even though no damping was
+	// reported. Synthetic, because none of the twelve real captures misses any
+	// more.
+	const capture = syntheticFit(40, 0.19, 0.3);
+	assert.ok(!isMode(capture.fit), JSON.stringify(capture.fit));
+	assert.equal(capture.fit.reason, "short-decay");
 	const view = decaySeries(capture);
-	assert.ok(line(view, 3).every(v => v === null), "no exponential without a fitted damping");
-	assert.ok(line(view, 2).some(v => v !== null), "the envelope is still what was measured");
+	assert.ok(line(view, 3).every(v => v === null), "no envelope without a fitted damping");
+	assert.ok(line(view, 2).some(v => v !== null), "the ring the fit was taken over is still drawn");
+	assert.equal(view.decay, null, "and no decay span to mark");
 });
 
-/* --------------------------------------------------- the ring1_Xp1 near miss */
+/* ------------------------------------------------------------- the near miss */
 
-test("ring1_Xp1 is refused as short-decay, with the frequency and peak it did measure", () => {
-	// Pinned, not fixed: GitHub #33 owns whether the acceptance rule should
-	// change. If this ever starts fitting, that decision was taken and this
-	// test is the place it has to be acknowledged.
+test("ring1_Xp1 fits now, and reads like the five siblings it used to be split from", () => {
+	// The test this replaces pinned ring1_Xp1 as a `short-decay` refusal and
+	// said GitHub #33 owned whether the rule should change. It did change: the
+	// band-mask envelope that rejected this one capture is gone, and the
+	// acceptance rule is now an identity in zeta rather than a sample count
+	// between two noisy indices. So the premise inverts — this file must fit,
+	// and must land with its siblings rather than merely scrape in.
 	const capture = fitted("ring1_Xp1.csv", "X");
+	assert.ok(isMode(capture.fit), JSON.stringify(capture.fit));
+	assert.ok(Math.abs((capture.fit.f as number) - 17.84) < 0.01, `f ${capture.fit.f}`);
+	assert.ok(capture.fit.zeta < MAX_FIT_ZETA, `zeta ${capture.fit.zeta} must clear the cut`);
+	const view = decaySeries(capture);
+	assert.ok(view.cycles !== null);
+	assert.ok(view.cycles.sustained > MIN_CYCLES, `cycles ${view.cycles.sustained}`);
+	assert.match(view.note, /^Fitted over/);
+});
+
+test("a near miss is reported in cycles, just under the two the fit needs", () => {
+	// Synthetic and deliberately just past MAX_FIT_ZETA (0.1510): cyclesFit is
+	// ln(1/0.15)/(2pi*zeta), so 0.19 is a miss by arithmetic. The card's job is
+	// to say how nearly, and `cyclesFit` travels on the NoFit for that.
+	const view = decaySeries(syntheticFit(40, 0.19, 0.3));
+	assert.ok(view.cycles !== null);
+	assert.equal(view.cycles.needed, MIN_CYCLES);
+	assert.ok(view.cycles.sustained < view.cycles.needed, "it must read as a MISS");
+	assert.ok(view.cycles.sustained > 1.3, `sustained ${view.cycles.sustained}`);
+	// Close enough that the operator can see it was close.
+	assert.ok(view.cycles.sustained / view.cycles.needed > 0.7);
+});
+
+test("the note for a near miss names the miss, the count and what was measured", () => {
+	// The frequency in the sentence is the one the NoFit CARRIES, not the one
+	// the signal was built with: a rectangular-window spectral peak is biased
+	// low by the damping, and at zeta 0.19 a 40 Hz ring reads ~38 Hz. That bias
+	// is why MIN_CYCLES exists, and the card must print what was measured
+	// rather than flatter it.
+	const capture = syntheticFit(40, 0.19, 0.3);
 	assert.ok(!isMode(capture.fit));
 	const fit: NoFit = capture.fit;
-	assert.equal(fit.reason, "short-decay");
-	assert.equal(fit.f, hz(17.843505859375));
-	assert.ok(Math.abs((fit.peakG as number) - 0.0559) < 5e-4, `peak ${fit.peakG}`);
-});
-
-test("the near miss is reported in cycles, just under the two the fit needs", () => {
-	const view = viewOf("ring1_Xp1.csv", "X");
-	assert.ok(view.cycles !== null);
-	assert.equal(view.cycles.needed, FIT_DEFAULTS.minCycles);
-	assert.ok(Math.abs(view.cycles.sustained - 1.876) < 0.01, `sustained ${view.cycles.sustained}`);
-	assert.ok(view.cycles.sustained < view.cycles.needed, "it must read as a MISS");
-	// And close enough that the operator can see it was close.
-	assert.ok(view.cycles.sustained / view.cycles.needed > 0.9);
-});
-
-test("the note for ring1_Xp1 names the miss, the count and what was measured", () => {
-	const note = viewOf("ring1_Xp1.csv", "X").note;
-	assert.match(note, /Near miss/);
-	assert.match(note, /1\.88 cycles/);
-	assert.match(note, /needs 2/);
-	assert.match(note, /17\.8 Hz/);
-	assert.match(note, /0\.056 g/);
+	const view = decaySeries(capture);
+	assert.match(view.note, /Near miss/);
+	assert.match(view.note, new RegExp(`${view.cycles!.sustained.toFixed(2)} cycles`));
+	assert.match(view.note, /needs 2/);
+	assert.ok(view.note.includes(`${(fit.f as number).toFixed(1)} Hz`), view.note);
+	assert.ok(view.note.includes(`${(fit.peakG as number).toFixed(3)} g`), view.note);
+	// It really is the near miss it says: within 25 % of the two cycles needed.
+	assert.ok((fit.cyclesFit ?? 0) > 1.5, `cyclesFit ${fit.cyclesFit}`);
 });
 
 test("a capture that DID fit says so, over the cycles it fitted", () => {
 	const capture = fitted("ring1_Xp0.csv", "X");
 	assert.ok(isMode(capture.fit));
-	const note = decaySeries(capture).note;
-	assert.match(note, /^Fitted over 2\.20 cycles/);
-	assert.match(note, /15 % of it/);
+	const view = decaySeries(capture);
+	const note = view.note;
+	// The count in the sentence is the fit's own cyclesFit, not a second one.
+	assert.equal(note, `Fitted over ${capture.fit.cyclesFit.toFixed(2)} cycles, from the ring amplitude down to 15 % of it.`);
+	assert.match(note, /^Fitted over 2\.5\d cycles/);
+	// And the marked decay span really is that many periods of the fitted f.
+	assert.ok(view.decay !== null);
+	const periods = (view.decay.toS - view.decay.fromS) * (capture.fit.f as number);
+	assert.ok(Math.abs(periods - capture.fit.cyclesFit) < 1e-9, `${periods} vs ${capture.fit.cyclesFit}`);
 });
 
 /* --------------------------------------------------------- fitNote totality */
@@ -201,8 +300,10 @@ test("fitNote answers for every reason a fit can be declined", () => {
 test("fitNote quotes the fitter's own thresholds, not copies of them", () => {
 	const note = fitNote({ reason: "below-floor", peakG: 0.004 as never }, null);
 	assert.ok(note.includes(`${FIT_DEFAULTS.floorG} g floor`), note);
-	const near = fitNote({ reason: "short-decay", f: hz(18), peakG: 0.05 as never }, { sustained: 1.5, needed: FIT_DEFAULTS.minCycles });
-	assert.ok(near.includes(`needs ${FIT_DEFAULTS.minCycles}`), near);
+	const short = fitNote({ reason: "short-window" }, null);
+	assert.ok(short.includes(`${FIT_DEFAULTS.minWindowS} s`), short);
+	const near = fitNote({ reason: "short-decay", f: hz(18), peakG: 0.05 as never }, { sustained: 1.5, needed: MIN_CYCLES });
+	assert.ok(near.includes(`needs ${MIN_CYCLES}`), near);
 });
 
 /* ------------------------------------------------------------ capture naming */
@@ -283,6 +384,7 @@ test("a capture too short to analyse draws its trace and says there is nothing t
 	const view = decaySeries((response as Extract<typeof response, { kind: "fit" }>).result);
 	assert.equal(view.window, null);
 	assert.equal(view.cycles, null);
+	assert.equal(view.decay, null);
 	assert.equal(times(view).length, n, "the raw trace is still drawn in full");
 	assert.ok(line(view, 2).every(v => v === null));
 	assert.ok(line(view, 3).every(v => v === null));
@@ -420,25 +522,28 @@ test("the text filter is a case-insensitive substring, and empty matches everyth
 /* ------------------------------------ aggregating a batch of board captures */
 
 test("a batch aggregate counts only the captures that fitted, and says how many", () => {
-	// Four real captures off Gabe's machine. `ring1_Xp1.csv` is refused as
-	// short-decay (GitHub #33 owns whether that rule should change), so the
-	// fingerprint is built from three of the four — and the count is what the
-	// card puts on screen, because 3-of-4 and 4-of-4 medians look identical.
-	const files = ["ring1_Xp0.csv", "ring1_Xp1.csv", "ring1_Yp0.csv", "ring1_Ym0.csv"] as const;
-	const records = files.map(file => {
+	// Three real captures off Gabe's machine plus one synthetic that rings
+	// itself out too fast to fit. It used to be four real ones, with
+	// `ring1_Xp1.csv` supplying the refusal; since GIT_33 all twelve real
+	// captures fit, so the refusal has to be constructed. The property is
+	// unchanged and is the one the card depends on: 3-of-4 and 4-of-4 medians
+	// look identical, so the count is what goes on screen.
+	const real = ["ring1_Xp0.csv", "ring1_Yp0.csv", "ring1_Ym0.csv"] as const;
+	const records: Array<{ file: string; axis: Axis; fit: Mode | NoFit }> = real.map(file => {
 		const axis: Axis = captureNameParts(file).axis;
 		return { file, axis, fit: fitted(file, axis).fit };
 	});
+	records.splice(1, 0, { file: "synthetic-short.csv", axis: "X", fit: syntheticFit(40, 0.19, 0.3).fit });
 	const fingerprint = aggregate(records);
 	const contributed = fingerprint.n.X + fingerprint.n.Y;
 
 	assert.equal(records.length, 4);
-	assert.equal(contributed, 3, "ring1_Xp1 did not fit and must not be counted");
+	assert.equal(contributed, 3, "the short-decay capture did not fit and must not be counted");
 	assert.equal(fingerprint.n.X, 1);
 	assert.equal(fingerprint.n.Y, 2);
 	// The record for the refused capture is still there — the file keeps it, the
 	// medians do not.
-	const refused = records.find(r => r.file === "ring1_Xp1.csv")!;
+	const refused = records.find(r => r.file === "synthetic-short.csv")!;
 	assert.ok(!isMode(refused.fit) && refused.fit.reason === "short-decay");
 
 	// And the numbers are the surviving X capture's own, not an average dragged

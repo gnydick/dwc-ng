@@ -21,7 +21,7 @@ import {
 	type Impulse,
 } from "../src/accelerometer.ts";
 import {
-	bandEnvelope,
+	bandPass,
 	detectStop,
 	fitDecay,
 	aggregate,
@@ -58,14 +58,22 @@ function capture(m: Machine, path: string): Capture {
 	return parsed.capture;
 }
 
-/** Peak of the ring-down envelope at the mode's frequency, after the stop. */
+/**
+ * Peak of the band-limited ring at the mode's frequency, after the stop.
+ *
+ * The band-limited SIGNAL, not an envelope: the engine deliberately has no
+ * measured-envelope function, because a zero-phase band mask cannot report
+ * amplitude across the abrupt onset at a stop (see engine/spectrum.ts). A
+ * peak over the whole post-stop span is dominated by the interior, where the
+ * mask is honest, and this test only compares shaped against unshaped.
+ */
 function ringPeak(cap: Capture, axis: Float64Array, f: number): number {
 	const stop = detectStop(axis, cap.rate);
 	assert.ok(stop !== null, "no stop detected in the synthesized move");
 	const from = Math.round(stop * cap.rate);
-	const env = bandEnvelope(axis.slice(from), cap.rate, hz(f));
+	const band = bandPass(axis.slice(from), cap.rate, hz(f));
 	let peak = 0;
-	for (const v of env) peak = Math.max(peak, v);
+	for (const v of band) peak = Math.max(peak, Math.abs(v));
 	return peak;
 }
 

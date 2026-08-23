@@ -14,9 +14,18 @@
  *
  * Two halves, because either alone is insufficient:
  *  1. only the three owner modules may name the heavy packages at all;
- *  2. those owners may only be imported as `import type` (erased, since
- *     verbatimModuleSyntax is on) or via `import(...)`. A value import of
- *     scene.ts pulls Babylon in just as surely as importing Babylon directly.
+ *  2. every module on DYNAMIC_ONLY may only be imported as `import type`
+ *     (erased, since verbatimModuleSyntax is on) or via `import(...)`. A value
+ *     import of scene.ts pulls Babylon in just as surely as importing Babylon
+ *     directly.
+ *
+ * The second half covers more than the heavy-library owners. Our OWN code can
+ * be the payload: the Shaping Lab's eight card bodies and the decay chart were
+ * 32,589 B of the 483,328 B eager ceiling on 2026-08-23 — for a screen an
+ * operator opens to tune a machine, not to run one. They are behind one
+ * dynamic import in compose/cards.tsx, and one static import from anywhere
+ * would put every byte back with nothing to show for it. Same failure mode,
+ * same fence.
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -34,6 +43,23 @@ const SRC = join(dirname(fileURLToPath(import.meta.url)), "..", "src");
  */
 const LAZY_OWNERS = ["editor/setup.ts", "gcode/scene.ts", "heightmap/surface3d.ts"];
 const HEAVY = /"(codemirror|@codemirror\/|@babylonjs\/|@lezer\/)/;
+
+/**
+ * Every module that may only be reached through a dynamic import: the heavy-
+ * library owners above, plus our own code that is too big to serve on every
+ * board load.
+ *
+ * `cards/ShapingCards.tsx` is the Shaping Lab's eight bodies and drags the
+ * decay chart, the chart's data module and the FFT with it;
+ * `charts/DecayChart.tsx` is named separately so it cannot be re-imported
+ * eagerly by some future card while ShapingCards stays lazy. Both are reached
+ * only from compose/cards.tsx, via `lazy(() => import(...))`.
+ *
+ * Adding a name is the deliberate act this list exists to make — see the
+ * ledger row on the invariant (`heavy-libraries-stay-behind-a-dynamic-import`,
+ * declared on src/main.tsx).
+ */
+const DYNAMIC_ONLY = [...LAZY_OWNERS, "cards/ShapingCards.tsx", "charts/DecayChart.tsx"];
 
 function sourceFiles(): string[] {
 	const out: string[] = [];
@@ -61,13 +87,13 @@ test("only the lazy-loaded owners name a heavy package", () => {
 	assert.deepEqual(offenders, [], `these would pull a lazy library into the eager bundle:\n${offenders.join("\n")}`);
 });
 
-test("a lazy owner is only ever type-imported or dynamically imported", () => {
+test("a dynamic-only module is only ever type-imported or dynamically imported", () => {
 	const offenders: string[] = [];
 	for (const file of sourceFiles()) {
 		const self = rel(file);
-		if (LAZY_OWNERS.includes(self)) continue;
+		if (DYNAMIC_ONLY.includes(self)) continue;
 		readFileSync(file, "utf8").split("\n").forEach((line, i) => {
-			for (const owner of LAZY_OWNERS) {
+			for (const owner of DYNAMIC_ONLY) {
 				const base = owner.slice(owner.lastIndexOf("/") + 1);
 				if (!line.includes(base)) continue;
 				// `import type {...}` is erased; `await import("./scene.ts")` is the
@@ -78,4 +104,37 @@ test("a lazy owner is only ever type-imported or dynamically imported", () => {
 		});
 	}
 	assert.deepEqual(offenders, [], `a value import defeats the dynamic boundary:\n${offenders.join("\n")}`);
+});
+
+test("the fence would actually catch a static import of the shaping bodies", () => {
+	// The red check. A test that only ever passes proves nothing about whether
+	// it can fail, and this one is a regex over source text — the failure mode
+	// is a pattern that quietly matches nothing. So run the same rule over a
+	// line that IS the mistake, and over the two forms that are not.
+	const judge = (line: string): boolean => {
+		if (/^\s*import\s+type\b/.test(line) || /\bimport\s*\(/.test(line)) return false;
+		return /^\s*import\b/.test(line) && DYNAMIC_ONLY.some(o => line.includes(o.slice(o.lastIndexOf("/") + 1)));
+	};
+	assert.equal(judge('import { ShapingDecayBody } from "../cards/ShapingCards.tsx";'), true);
+	assert.equal(judge('import { DecayChart } from "../charts/DecayChart.tsx";'), true);
+	assert.equal(judge('import type { DecayChart } from "../charts/DecayChart.tsx";'), false);
+	assert.equal(judge('const m = await import("../cards/ShapingCards.tsx");'), false);
+});
+
+test("the shaping bodies really are behind a dynamic import in the registry", () => {
+	// The other direction: the fence above says nobody imports them statically,
+	// which is also true of a module nobody imports at all. This says the ONE
+	// place that renders them reaches them through `import(`, so the registry
+	// cannot quietly stop offering the cards and still pass.
+	const registry = readFileSync(join(SRC, "compose", "cards.tsx"), "utf8");
+	assert.match(registry, /lazy\(\s*async\s*\(\)\s*=>[\s\S]{0,200}?import\("\.\.\/cards\/ShapingCards\.tsx"\)/);
+	for (const body of [
+		"ShapingStatusBody", "ShapingCaptureBody", "ShapingDecayBody", "ShapingSweepBody",
+		"ShapingCandidatesBody", "ShapingCustomBody", "ShapingVerifyBody", "ShapingApplyBody",
+	]) {
+		assert.match(registry, new RegExp(`lazyShaping\\("${body}"\\)`), body);
+	}
+	// And the Settings card is deliberately NOT lazy: it is small and lives on
+	// a screen the operator uses constantly.
+	assert.match(registry, /"settings-shaping": \{ body: \(\) => <ShapingBody \/>/);
 });

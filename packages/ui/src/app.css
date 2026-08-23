@@ -348,6 +348,19 @@
 }
 .panel-body::-webkit-scrollbar { display: none; }
 
+/* The placeholder a lazily-loaded card body shows while its chunk is in
+   flight (compose/cards.tsx, the Shaping Lab's eight bodies).
+
+   It RESERVES the body box rather than collapsing it: flex:1 makes it take the
+   whole of .panel-body's column, so the card is the same size before and after
+   the chunk lands and nothing on the canvas moves. Deliberately blank — a
+   spinner or the word "Loading" on a card that resolves in a frame or two is
+   a flicker, and the card's title and header controls are already there. */
+.card-lazy {
+	flex: 1;
+	min-height: 0;
+}
+
 /* Both panel controls live in one absolutely-positioned cluster at the top
    right. Previously each carried its own corner offset and the orientation
    toggle used top/left — putting it directly on top of the card title. It now
@@ -4686,7 +4699,7 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; appe
    themeColors, so the key cannot come to disagree with the chart. */
 .shp-key-raw { color: var(--silk-dim); }
 .shp-key-env { color: var(--accent); }
-.shp-key-fit { color: var(--gold); }
+.shp-key-ring { color: var(--gold); }
 .shp-key-stop { color: var(--fault); }
 /* The verdict. THREE lines high always, hidden overflow, full text on the
    title: the four sentences it can hold are one and two lines long, and a box
