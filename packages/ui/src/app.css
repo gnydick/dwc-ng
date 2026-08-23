@@ -4495,6 +4495,150 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; appe
 }
 .shp-step-note.shp-step-ready { color: var(--ok); }
 
+/* ---------- Decay card figure (cards/ShapingCards.tsx · charts/DecayChart) ----
+
+   The card whose whole gesture is "click the next capture, look, click the
+   next one". Nothing below the chart may move when that happens, so every
+   block in this figure declares its own size: the plot has a floor, the facts
+   column reserves every row it can show, and the verdict box is a fixed three
+   lines whichever of its four sentences it is holding. */
+.shp-decay-figure {
+	flex: 1 1 auto;
+	display: flex;
+	flex-direction: row;
+	gap: var(--ctl-gap);
+	margin-bottom: calc(2 * var(--u));
+	/* The row's floor is whichever of its two children is taller, DECLARED
+	   rather than discovered: the facts column sits BESIDE the plot, so the
+	   plot's own 30u floor would let the card be dragged into the facts. Five
+	   fact rows at 7u, 1.5u of gap and four key rows at 4.5u is 55u, and the
+	   facts column wins — arithmetic over the same tokens the rows are sized
+	   by, so the floor cannot disagree with what is drawn. */
+	min-height: calc(55 * var(--u));
+}
+/* The plot's stage: relatively positioned so the empty-state message can sit
+   over the canvas without occupying any layout, and UNCONTAINED so the
+   ResizeObserver in DecayChart has a parent that reports resizes (a
+   size-contained element is not notified when its containing block resizes
+   it — the finding TemperatureChart records). */
+.shp-decay-stage { position: relative; flex: 1 1 0; display: flex; min-width: calc(44 * var(--u)); }
+.shp-decay-plot {
+	flex: 1;
+	position: relative;
+	/* A real floor on both axes, because contain: inline-size below silences
+	   this element's contents entirely: nothing inside it can state a width, so
+	   it has to state one itself or the card may shrink to nothing. The height
+	   is the same number DecayChart enforces in JS (MIN_PLOT_H). */
+	min-width: calc(40 * var(--u));
+	min-height: calc(30 * var(--u));
+	/* uPlot's root is sized in pixels from the number we hand it, which we take
+	   from THIS element's width — so its contents must not be allowed back into
+	   the card's intrinsic width or the two feed each other. */
+	contain: inline-size;
+}
+.shp-decay-plot > .uplot { position: absolute; inset: 0; }
+.shp-decay-empty {
+	position: absolute;
+	inset: 0;
+	margin: 0;
+	display: grid;
+	place-items: center;
+	color: var(--silk-dim);
+	font-size: calc(3.5 * var(--u));
+	pointer-events: none;
+}
+.shp-decay-side { flex: 0 0 auto; width: calc(48 * var(--u)); display: flex; flex-direction: column; }
+.shp-decay-facts { margin-bottom: calc(1.5 * var(--u)); }
+/* Every fact row is EXACTLY one line tall, whatever it holds.
+   min-height was not enough and the lab said so: at the shared 24u label track
+   the value column came out 56px, "2.02 / 2" wrapped onto a second line, and
+   the row stood 48px with a number and 29px with the em dash — so switching to
+   an axis that did not fit shifted the key below it by 19px. Nothing about a
+   fact row may depend on its content, so the height is fixed, the value never
+   wraps, and a value too long for the track is clipped rather than allowed to
+   change the geometry. */
+.shp-decay-facts .shp-fact {
+	grid-template-columns: calc(18 * var(--u)) 1fr;
+	height: calc(7 * var(--u));
+	align-items: center;
+	padding: 0;
+}
+.shp-decay-facts dt { white-space: nowrap; overflow: hidden; }
+.shp-decay-facts dd {
+	font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+	font-size: calc(3.125 * var(--u));
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+/* The chart's key. Four fixed rows: the series never change, so neither does
+   this — which is what lets the figure row above state an exact floor. */
+.shp-key { list-style: none; margin: 0; padding: 0; }
+.shp-key-item {
+	position: relative;
+	height: calc(4.5 * var(--u));
+	padding-left: calc(6 * var(--u));
+	font-size: calc(3.25 * var(--u));
+	color: var(--silk-dim);
+	line-height: calc(4.5 * var(--u));
+}
+/* The swatch as an inset shadow on a zero-size box: a bordered rule would
+   occupy layout space and enter the card's floor. */
+.shp-key-item::before {
+	content: "";
+	position: absolute;
+	left: 0;
+	top: calc(2 * var(--u));
+	width: calc(4 * var(--u));
+	height: 0;
+	box-shadow: 0 0 0 1px currentColor;
+}
+/* One place per line: these four are the tokens DecayChart reads through
+   themeColors, so the key cannot come to disagree with the chart. */
+.shp-key-raw { color: var(--silk-dim); }
+.shp-key-env { color: var(--accent); }
+.shp-key-fit { color: var(--gold); }
+.shp-key-stop { color: var(--fault); }
+/* The verdict. THREE lines high always, hidden overflow, full text on the
+   title: the four sentences it can hold are one and two lines long, and a box
+   that grew with the sentence would move the table under it every time the
+   operator clicked a capture that did not fit. */
+.shp-decay-note {
+	flex: 0 0 auto;
+	margin: 0 0 calc(2 * var(--u));
+	height: calc(15 * var(--u));
+	overflow: hidden;
+	color: var(--silk-dim);
+	font-size: calc(3.5 * var(--u));
+	line-height: calc(5 * var(--u));
+}
+.shp-decay-controls {
+	flex: 0 0 auto;
+	display: flex;
+	align-items: center;
+	gap: var(--ctl-gap);
+	margin-bottom: calc(2 * var(--u));
+	min-height: calc(8 * var(--u));
+}
+/* A <label> wrapping a file input is the only file picker a browser will let a
+   page style; the input itself is taken out of flow rather than hidden, so it
+   stays focusable from the keyboard. */
+.shp-import { position: relative; overflow: hidden; cursor: pointer; }
+.shp-import input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.shp-axis-pick { display: flex; gap: calc(1 * var(--u)); margin-left: auto; }
+.shp-axis-pick .shp-pick {
+	width: calc(8 * var(--u));
+	text-align: center;
+	box-shadow: inset 0 0 0 1px var(--hairline);
+	border-radius: var(--radius);
+}
+.shp-axis-pick .shp-pick[aria-pressed="true"] { box-shadow: inset 0 0 0 1px var(--accent); }
+.shp-axis-pick .shp-pick:disabled { opacity: 0.35; cursor: not-allowed; }
+/* A capture the operator brought in rather than one the board recorded. Colour
+   only — the row's geometry is identical either way. */
+.shp-imported { color: var(--gold); }
+.shp-imported[aria-pressed="true"] { color: var(--accent); }
+
 /* No `@media (max-width: …)` block, and that is a decision rather than an
    omission. These cards were written with one — fact rows stacking to a single
    column on a phone, narrower table tracks — and measured at a 504 px viewport

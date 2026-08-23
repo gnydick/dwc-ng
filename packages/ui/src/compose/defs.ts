@@ -506,9 +506,16 @@ export const CARD_DEFS = {
 		title: "Decay",
 		ariaLabel: "Shaping decay",
 		tip: "0:/sys/accelerometer",
-		// The list scrolls at 60u (.shp-scroll), so twelve captures and two need
-		// the same height and the floor does not grow with the session.
-		size: { colSpan: 156, rowSpan: 75 },
+		// 75 -> 159 for the chart (task E1). MEASURED with auditCard against the
+		// `shaping-measured` scenario, and it is a floor rather than a reading:
+		// the figure row declares 55u, the verdict box 15u, the controls 8u and
+		// the list scrolls at 60u, so twelve captures and two report the same
+		// number and nothing here grows with the session. The scale sweep puts
+		// it at 159 cells at BOTH 0.75 and 1.5 (rowDelta 0, colDelta 0), which
+		// is the claim that matters — the chart is a canvas, and a canvas sized
+		// in screen pixels is exactly what would have broken it. colStop is 104,
+		// well inside the 156 the screen gives every card on this composition.
+		size: { colSpan: 156, rowSpan: 159 },
 	}),
 	/** Frequency × speed: which peaks shaping can touch and which it cannot. */
 	"shaping-sweep": defineCard({

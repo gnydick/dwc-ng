@@ -24,7 +24,7 @@
  * numeric cell is tabular, and a value that can be absent renders an em dash
  * rather than collapsing its row.
  */
-import { For, Match, Show, Switch, createMemo, createSignal } from "solid-js";
+import { For, Match, Show, Switch, createEffect, createMemo, createSignal } from "solid-js";
 import { cmd } from "../control/commands.ts";
 import { copyText } from "../shell/copyText.ts";
 import type { CardCtx } from "../compose/ctx.ts";
@@ -34,12 +34,17 @@ import { toolMacroPath } from "../shaping/toolMacro.ts";
 import type { ShapingConfig } from "../config/types.ts";
 import type { Shaping } from "../om/types.ts";
 import type { Artefact } from "../shaping/engine/artefact.ts";
-import { isMode, type Fingerprint, type Mode, type NoFit } from "../shaping/engine/fit.ts";
+import { FIT_DEFAULTS, isMode, type Axis, type Fingerprint, type Mode, type NoFit } from "../shaping/engine/fit.ts";
 import { type Candidate, customCandidate } from "../shaping/engine/rank.ts";
 import { convolve, type Impulses, type ShaperSpec, zv } from "../shaping/engine/shapers.ts";
 import { seconds } from "../shaping/engine/units.ts";
-import type { CaptureRecord, ToolResults } from "../shaping/results.ts";
+import type { ToolResults } from "../shaping/results.ts";
 import type { VerifiedCandidate } from "../shaping/store.ts";
+import { DecayChart } from "../charts/DecayChart.tsx";
+import { decaySeries, type DecayView } from "../charts/decayData.ts";
+import { ACCEL_DIR, accelPath, boardRef, type CaptureRef, captureNameParts } from "../shaping/captures.ts";
+import { useEngine } from "../shaping/useEngine.ts";
+import type { FitResult } from "../shaping/worker.ts";
 
 /** The one em dash this screen uses for "no value", so every reserved slot
  *  fills with the same glyph and none of them is a different width. */
@@ -68,7 +73,9 @@ function fitReasonText(fit: Mode | NoFit): string {
 		case "below-floor":
 			return "no ringing";
 		case "short-decay":
-			return "decayed too fast";
+			// The verdict box says how nearly it made it; this cell has room
+			// only for the rule it missed, and quotes the fitter's own count.
+			return `under ${FIT_DEFAULTS.minCycles} cycles`;
 		case "damping-out-of-range":
 			return "damping out of range";
 	}
@@ -353,22 +360,279 @@ export function ShapingCaptureBody(props: { ctx: CardCtx }) {
 
 /* ------------------------------------------------------------------- 3. decay */
 
-/** Every capture on the card for this tool, and what the fit made of it. The
- *  selected row is the one the decay chart draws (task E1). */
+/** One pickable row: a capture the results file records, or one imported this
+ *  session. Both halves are the same shape, so the table has one body. */
+type DecayRow = {
+	readonly key: string;
+	readonly ref: CaptureRef;
+	readonly file: string;
+	readonly tag: string;
+	readonly imported: boolean;
+	readonly fit: Mode | NoFit | null;
+	readonly problem: string;
+};
+
+/** What the card is currently able to draw. A discriminated union rather than
+ *  a value plus two booleans: "loading and also failed" must not be sayable. */
+type Analysis =
+	| { readonly kind: "idle" }
+	| { readonly kind: "loading" }
+	| { readonly kind: "ok"; readonly result: FitResult }
+	| { readonly kind: "failed"; readonly why: string };
+
+/** The chart's key, as fixed rows. Colours live in app.css beside the ones the
+ *  chart reads through themeColors, so there is one place per line. */
+const DECAY_KEY = [
+	{ cls: "shp-key-raw", label: "raw g" },
+	{ cls: "shp-key-env", label: "envelope" },
+	{ cls: "shp-key-fit", label: "fit" },
+	{ cls: "shp-key-stop", label: "stop" },
+] as const;
+
+const AXES: readonly Axis[] = ["X", "Y"];
+
+/** What a row with no Mode has to say for itself, in one short cell. An import
+ *  the engine has not reached yet says so; one it refused says why. */
+function rowReason(row: DecayRow): string {
+	if (row.problem !== "") return row.problem;
+	if (row.fit === null) return "fitting…";
+	return fitReasonText(row.fit);
+}
+
+/**
+ * One capture at a time: the raw trace, the stop the fitter found in it, the
+ * band-passed envelope and the exponential the fit implies — with the numbers
+ * beside the curve they were taken from.
+ *
+ * The import is not a side door, it is the front one. Until the envelope
+ * editor exists (#31) this UI cannot run a measurement, so a CSV the operator
+ * picks off their own computer is the only way their own machine's ring-down
+ * reaches this screen. It needs no envelope, no homing and no motion: a file
+ * goes to the same worker every other capture goes to (`parseCapture` →
+ * `detectStop` → `fitDecay`) and what appears on screen is what THIS UI
+ * computed. Nothing here is copied from the prototype's output, and a file the
+ * parser refuses keeps its row and says why, in the engine's own words.
+ *
+ * Positional stability governs the layout. The plot is built once and fed by
+ * `setData`, the facts column reserves every row it can show and fills the
+ * absent ones with an em dash, and the verdict sits in a box of fixed height —
+ * so switching capture, switching axis, or picking one that does not fit moves
+ * nothing. The alternative was a card that jumps every time the operator
+ * clicks the next row of a twelve-row list, which is the one gesture this card
+ * exists for.
+ */
 export function ShapingDecayBody(props: { ctx: CardCtx }) {
 	const svc = props.ctx.service("shaping");
-	const captures = (): readonly CaptureRecord[] => svc.results().captures;
+
+	const rows = createMemo((): readonly DecayRow[] => [
+		...svc.results().captures.map((c): DecayRow => ({
+			key: boardRef(c.file).key,
+			ref: boardRef(c.file),
+			file: c.file,
+			tag: `${c.axis}${c.dir}${c.rep}`,
+			imported: false,
+			fit: c.fit,
+			problem: "",
+		})),
+		...svc.imports().map((c): DecayRow => ({
+			key: c.ref.key,
+			ref: c.ref,
+			file: c.ref.file,
+			tag: `${c.axis}${c.dir}${c.rep}`,
+			imported: true,
+			fit: c.fit,
+			problem: c.problem,
+		})),
+	]);
+
+	const picked = createMemo((): DecayRow | null => rows().find(r => r.key === svc.capturePick()) ?? null);
+
+	/**
+	 * Which axis of the picked capture to draw. Set when a row is picked, from
+	 * the file name where the name says (`ring1_Yp2.csv` is Y), and switchable
+	 * either way afterwards — an operator looking at a capture is entitled to
+	 * ask what the OTHER axis did during the same move.
+	 *
+	 * A plain signal written at pick time rather than an override layered over
+	 * a default: the two-value form has a state where the override belongs to
+	 * the previously selected capture.
+	 */
+	const [axis, setAxis] = createSignal<Axis>("X");
+
+	const pick = (row: DecayRow): void => {
+		svc.setCapturePick(row.key);
+		setAxis(captureNameParts(row.file).axis);
+	};
+
+	const [analysis, setAnalysis] = createSignal<Analysis>({ kind: "idle" });
+
+	/**
+	 * Load the picked capture and fit it, once per (capture, axis).
+	 *
+	 * `generation` is what makes a fast click down a list safe: a reply that
+	 * arrives after the operator has moved on is discarded rather than painted,
+	 * so the chart can never show capture 3's curve under capture 7's heading.
+	 * A download and a worker round-trip both take long enough for that
+	 * ordering to matter, and neither returns in a guaranteed order.
+	 */
+	let generation = 0;
+	createEffect(() => {
+		const row = picked();
+		const want = axis();
+		const mine = ++generation;
+		if (row === null) {
+			setAnalysis({ kind: "idle" });
+			return;
+		}
+		setAnalysis({ kind: "loading" });
+		void (async () => {
+			try {
+				const text = await svc.loadCapture(row.ref);
+				const result = await useEngine().fit(text, want);
+				if (mine === generation) setAnalysis({ kind: "ok", result });
+			} catch (err) {
+				// The engine's own words for a ParseError (worker.ts `describe`):
+				// "has 47 accelerometer overflows — repeat it" is actionable and
+				// "could not read the capture" is not.
+				if (mine === generation) setAnalysis({ kind: "failed", why: err instanceof Error ? err.message : String(err) });
+			}
+		})();
+	});
+
+	const view = createMemo((): DecayView | null => {
+		const a = analysis();
+		return a.kind === "ok" ? decaySeries(a.result) : null;
+	});
+
+	/** The fit the FACTS column reads: the one the chart was drawn from, never
+	 *  the row's stored copy, so the two cannot disagree about the same axis. */
+	const shownMode = createMemo((): Mode | null => {
+		const a = analysis();
+		return a.kind === "ok" && isMode(a.result.fit) ? a.result.fit : null;
+	});
+
+	/** The analysed capture itself, for the facts that are about the FILE
+	 *  rather than the fit (its sample rate and length). */
+	const analysed = createMemo((): FitResult | null => {
+		const a = analysis();
+		return a.kind === "ok" ? a.result : null;
+	});
+
+	/** One sentence, always. Which of the four states the card is in decides
+	 *  what it says; that it says exactly one is what keeps the box still. */
+	const verdict = createMemo((): string => {
+		const a = analysis();
+		switch (a.kind) {
+			case "idle":
+				return "Pick a capture below, or import a CSV from this computer, to see its ring-down.";
+			case "loading":
+				return "Reading the capture…";
+			case "failed":
+				return a.why;
+			case "ok":
+				return view()?.note ?? "";
+		}
+	});
+
+	const onFiles = (event: Event & { currentTarget: HTMLInputElement }): void => {
+		const input = event.currentTarget;
+		const files = Array.from(input.files ?? []);
+		// Cleared so re-picking the same file fires a change event again — the
+		// obvious second gesture after re-running a capture under the same name.
+		input.value = "";
+		void (async () => {
+			let first: string | null = null;
+			for (const file of files) {
+				const key = svc.addImport(file.name, await file.text());
+				first ??= key;
+			}
+			// Land on the first of a batch rather than the last: a dozen files
+			// dropped at once read top-down, and the list is in that order.
+			if (first !== null) {
+				svc.setCapturePick(first);
+				setAxis(captureNameParts(files[0]?.name ?? "").axis);
+			}
+		})();
+	};
 
 	return (
-		<Show
-			when={captures().length > 0}
-			fallback={
-				<p class="hint">
-					No captures for T{svc.tool()}. A run leaves its CSVs in 0:/sys/accelerometer
-					and lists them here with the frequency and damping fitted from each.
-				</p>
-			}
-		>
+		<>
+			<div class="shp-decay-figure">
+				<div class="shp-decay-stage">
+					<DecayChart view={view} />
+					{/* Out of flow, so the message that appears when there is nothing
+					    to draw costs no height and its arrival moves nothing. */}
+					<Show when={view() === null}>
+						<p class="shp-decay-empty">
+							<Switch fallback="No capture selected">
+								<Match when={analysis().kind === "loading"}>Reading…</Match>
+								<Match when={analysis().kind === "failed"}>Nothing to draw</Match>
+							</Switch>
+						</p>
+					</Show>
+				</div>
+				<div class="shp-decay-side">
+					<dl class="shp-facts shp-decay-facts">
+						<div class="shp-fact">
+							<dt>Frequency</dt>
+							<dd><Show when={shownMode()} fallback={<span class="shp-nil">{NONE}</span>}>{m => hz1(m().f)}</Show></dd>
+						</div>
+						<div class="shp-fact">
+							<dt>Damping</dt>
+							<dd><Show when={shownMode()} fallback={<span class="shp-nil">{NONE}</span>}>{m => zeta3(m().zeta)}</Show></dd>
+						</div>
+						<div class="shp-fact">
+							<dt>Peak</dt>
+							<dd><Show when={shownMode()} fallback={<span class="shp-nil">{NONE}</span>}>{m => g3(m().peakG)}</Show></dd>
+						</div>
+						<div class="shp-fact">
+							<dt>Cycles</dt>
+							<dd>
+								<Show when={view()?.cycles ?? null} fallback={<span class="shp-nil">{NONE}</span>}>
+									{c => <>{c().sustained.toFixed(2)} / {c().needed}</>}
+								</Show>
+							</dd>
+						</div>
+						<div class="shp-fact">
+							<dt>Capture</dt>
+							<dd>
+								<Show when={analysed()} fallback={<span class="shp-nil">{NONE}</span>}>
+									{r => <>{Math.round(r().rate)} Hz · {r().x.length}</>}
+								</Show>
+							</dd>
+						</div>
+					</dl>
+					<ul class="shp-key">
+						<For each={DECAY_KEY}>
+							{item => <li class="shp-key-item" classList={{ [item.cls]: true }}>{item.label}</li>}
+						</For>
+					</ul>
+				</div>
+			</div>
+			{/* Fixed height, so a two-line verdict and a one-line verdict leave the
+			    table in the same place. The full text is on the title for the case
+			    where a narrow card cannot show all of it. */}
+			<p class="shp-decay-note" title={verdict()}>{verdict()}</p>
+			<div class="shp-decay-controls">
+				<label class="fb-tool shp-import">
+					Import CSV…
+					<input type="file" accept=".csv,text/csv" multiple onChange={onFiles} />
+				</label>
+				<div class="shp-axis-pick" role="group" aria-label="Axis to fit">
+					<For each={AXES}>
+						{a => (
+							<button
+								class="shp-pick"
+								aria-pressed={axis() === a}
+								disabled={picked() === null}
+								onClick={() => setAxis(a)}
+							>
+								{a}
+							</button>
+						)}
+					</For>
+				</div>
+			</div>
 			<div class="shp-scroll">
 			<table class="shp-table shp-captures">
 				<colgroup>
@@ -382,23 +646,33 @@ export function ShapingDecayBody(props: { ctx: CardCtx }) {
 					<tr><th>Capture</th><th>Axis</th><th class="shp-num">f</th><th class="shp-num">ζ</th><th class="shp-num">peak</th></tr>
 				</thead>
 				<tbody>
-					<For each={captures()}>
-						{(capture, index) => (
-							<tr classList={{ "shp-on": svc.captureIndex() === index() }}>
+					<For
+						each={rows()}
+						fallback={
+							<tr>
+								<td colspan="5" class="shp-nil">
+									No captures for T{svc.tool()}. Import a CSV, or run a measurement to leave one in {ACCEL_DIR}.
+								</td>
+							</tr>
+						}
+					>
+						{row => (
+							<tr classList={{ "shp-on": svc.capturePick() === row.key }}>
 								<td>
 									<button
 										class="shp-pick shp-pick-wide"
-										aria-pressed={svc.captureIndex() === index()}
-										onClick={() => svc.setCaptureIndex(index())}
-										title={capture.file}
+										classList={{ "shp-imported": row.imported }}
+										aria-pressed={svc.capturePick() === row.key}
+										onClick={() => pick(row)}
+										title={row.imported ? `${row.file} — imported from this computer` : accelPath(row.file)}
 									>
-										{capture.file}
+										{row.file}
 									</button>
 								</td>
-								<td class="shp-mono">{capture.axis}{capture.dir}{capture.rep}</td>
+								<td class="shp-mono">{row.tag}</td>
 								<Show
-									when={isMode(capture.fit) ? capture.fit : null}
-									fallback={<td class="shp-num shp-nil" colspan="3">{fitReasonText(capture.fit)}</td>}
+									when={row.fit !== null && isMode(row.fit) ? row.fit : null}
+									fallback={<td class="shp-num shp-nil" colspan="3">{rowReason(row)}</td>}
 								>
 									{mode => (
 										<>
@@ -414,7 +688,7 @@ export function ShapingDecayBody(props: { ctx: CardCtx }) {
 				</tbody>
 			</table>
 			</div>
-		</Show>
+		</>
 	);
 }
 

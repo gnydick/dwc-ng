@@ -63,6 +63,7 @@ import { Preconditions, type Refusal } from "../shaping/preconditions.ts";
 import { findShapingLine, toolMacroPath } from "../shaping/toolMacro.ts";
 import type { ShapingStep } from "../shaping/steps.ts";
 import { useEngine } from "../shaping/useEngine.ts";
+import { captureNameParts, createCaptureLoader, type ImportedCapture, importRef } from "../shaping/captures.ts";
 import { parseAccelAddr } from "../control/commands.ts";
 import { FileNotFoundError } from "@dwc-ng/connector";
 import type { AppServices } from "../shell/context.ts";
@@ -273,14 +274,73 @@ const RANKED_KEPT = 40;
 function shapingService(base: ServiceBaseCtx) {
 	const store = createShapingStore(base.connector);
 	const [tool, setToolNow] = createSignal(0);
-	const [captureIndex, setCaptureIndex] = createSignal(0);
 	const [candidateIndex, setCandidateIndex] = createSignal(0);
 
-	/** Changing tool changes what the row indices MEAN, so they reset with it —
-	 *  a stale index would select a different capture, not no capture. */
+	/**
+	 * Which capture the Decay card is drawing, held as the source's KEY rather
+	 * than a row index.
+	 *
+	 * A key, because the list it points into has two halves — the captures the
+	 * results file records and the CSVs the operator imported this session —
+	 * and an index into the concatenation of those two moves onto a different
+	 * capture the moment either half grows. `null` is "nothing picked", which
+	 * is the state the card opens in and the state a tool change returns it to.
+	 */
+	const [capturePick, setCapturePick] = createSignal<string | null>(null);
+
+	/**
+	 * CSVs the operator brought in from their own computer this session.
+	 *
+	 * Deliberately NOT written to the results file. An imported capture is not
+	 * a measurement of this tool — it is a file, possibly from another machine
+	 * or another day, that the operator wants to look at — and recording it as
+	 * this tool's data would make the next fingerprint a mixture of the two.
+	 * They live for as long as the screen does and no longer.
+	 */
+	const [imports, setImports] = createSignal<readonly ImportedCapture[]>([]);
+	let importSeq = 0;
+
+	/**
+	 * Take one CSV in and put it, fitted, in the list.
+	 *
+	 * The row appears BEFORE the engine has an answer, with its fit null, so a
+	 * dozen files dropped at once land as a dozen rows that fill in — rather
+	 * than as nothing at all until the last one is done. The engine call is the
+	 * ordinary one every other capture goes through: `parseCapture` →
+	 * `detectStop` → `fitDecay` in the worker, never a shortcut, so the numbers
+	 * on an imported row are the numbers this UI computed and no one else's.
+	 *
+	 * A file the parser refuses is not dropped from the list. It keeps its row
+	 * and carries the engine's own reason (`worker.ts describe`), because
+	 * "nothing appeared" and "this file has overflows in it" are the two
+	 * outcomes an operator most needs told apart.
+	 */
+	const addImport = (file: string, text: string): string => {
+		const ref = importRef(importSeq++, file, text);
+		const parts = captureNameParts(file);
+		setImports(list => [...list, { ref, axis: parts.axis, dir: parts.dir, rep: parts.rep, fit: null, problem: "" }]);
+		// The row is replaced rather than patched in place: `ImportedCapture` is
+		// readonly through and through, so the only way to change one is to make
+		// another, and a half-updated row cannot exist.
+		const settle = (change: Partial<ImportedCapture>): void => {
+			setImports(list => list.map(c => (c.ref.key === ref.key ? { ...c, ...change } : c)));
+		};
+		void (async () => {
+			try {
+				settle({ fit: (await useEngine().fit(text, parts.axis)).fit });
+			} catch (err) {
+				settle({ problem: err instanceof Error ? err.message : String(err) });
+			}
+		})();
+		return ref.key;
+	};
+	const loader = createCaptureLoader(base.connector);
+
+	/** Changing tool changes which captures exist, so the selections reset with
+	 *  it — a stale one would select a different capture, not no capture. */
 	const setTool = (next: number): void => {
 		setToolNow(next);
-		setCaptureIndex(0);
+		setCapturePick(null);
 		setCandidateIndex(0);
 	};
 
@@ -470,7 +530,8 @@ function shapingService(base: ServiceBaseCtx) {
 	return {
 		store, tool, setTool, resultsFor, reload,
 		results: (): ToolResults => resultsFor(tool()),
-		captureIndex, setCaptureIndex, candidateIndex, setCandidateIndex,
+		capturePick, setCapturePick, imports, addImport, loadCapture: loader.text,
+		candidateIndex, setCandidateIndex,
 		accelFor, gate, macroFor, toggleMacro, rank, ranking, problem, offer, runStep,
 		offers: (step: ShapingStep): boolean => offered().includes(step),
 	};

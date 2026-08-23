@@ -14,6 +14,7 @@ import type { ObjectModel, Axis, Heater, Tool, Fan, Board } from "../om/types.ts
 import { emptyModel } from "../om/types.ts";
 import { RESULTS_PATH, RESULTS_VERSION } from "../shaping/results.ts";
 import { toolMacroPath } from "../shaping/toolMacro.ts";
+import { ACCEL_DIR, captureNameParts } from "../shaping/captures.ts";
 
 export type ScenarioId = "idle" | "printing" | "paused" | "heater-fault" | "multi-tool" | "shaping-measured";
 
@@ -334,6 +335,74 @@ function ring1ResultsFile(tool: number): string {
 	});
 }
 
+
+/* -------------------------------------------- accelerometer CSVs (card file) */
+
+/**
+ * A capture CSV for the Card Lab, GENERATED rather than shipped.
+ *
+ * The Decay card draws a real capture downloaded from `0:/sys/accelerometer`,
+ * and the lab's stub connector has to answer for one or the card has nothing
+ * to draw at any size — which is a problem for a bench whose whole job is
+ * measuring cards at their real content. Shipping the twelve 35 KB fixtures
+ * into a lab module was the alternative and it is the wrong one: they are test
+ * fixtures, not app data, and the lab would carry 420 KB to draw one curve.
+ *
+ * So this synthesises a ring-down with the shape RRF's `M956` writes: a
+ * `Sample,X,Y,Z` body and a `Rate N, overflows 0` trailer, an acceleration
+ * pulse, a cruise, a hard stop, and a damped sinusoid after it. The MODEL's
+ * frequency and damping are the machine's measured ones (X 18.1 Hz ζ 0.127,
+ * Y 51.6 Hz ζ 0.075 — tools/accel/runs/ring/ring1/fingerprint.json), because a
+ * lab curve at 5 Hz would not exercise the chart at the scale it will be read
+ * at. What comes back on screen is nevertheless whatever the ENGINE makes of
+ * these samples — the lab does not get to assert a fit, only to supply a file.
+ *
+ * It is not a substitute for the real thing anywhere but the bench: real
+ * captures reach the card through Import, and through the board in a session
+ * with a board.
+ */
+const RING_MODEL = {
+	X: { f: 18.1, zeta: 0.127, peakG: 0.05 },
+	Y: { f: 51.6, zeta: 0.075, peakG: 0.103 },
+} as const;
+
+/** Deterministic sensor noise, so a lab measurement repeats exactly. */
+function labNoise(seed: number): () => number {
+	let s = seed >>> 0;
+	return () => {
+		s = (Math.imul(s, 1664525) + 1013904223) >>> 0;
+		return (s / 4294967296 - 0.5) * 0.012;
+	};
+}
+
+export function syntheticCapture(file: string): string {
+	const { axis, dir, rep } = captureNameParts(file);
+	const rate = 1379;
+	const n = 1500;
+	const sign = dir === "+" ? 1 : -1;
+	const mode = RING_MODEL[axis];
+	const noise = labNoise(rep * 7919 + (axis === "X" ? 11 : 23) + (dir === "+" ? 0 : 101));
+	const wn = 2 * Math.PI * mode.f;
+	const wd = wn * Math.sqrt(1 - mode.zeta * mode.zeta);
+	// The move: accelerate 0.06–0.14 s, cruise, decelerate 0.35–0.43 s. The
+	// decel plateau is what detectStop locates, so it has to stand well above
+	// the 0.25 g threshold a 12 ms average is measured against.
+	const tStop = 0.43;
+	const rows = ["Sample,X,Y,Z"];
+	for (let i = 0; i < n; i++) {
+		const t = i / rate;
+		let a = 0;
+		if (t >= 0.06 && t < 0.14) a += sign * 0.62;
+		if (t >= 0.35 && t < tStop) a -= sign * 0.62;
+		if (t >= tStop) a += sign * mode.peakG * Math.exp(-mode.zeta * wn * (t - tStop)) * Math.cos(wd * (t - tStop));
+		const x = (axis === "X" ? a : 0) + noise();
+		const y = (axis === "Y" ? a : 0) + noise();
+		rows.push(`${i},${x.toFixed(4)},${y.toFixed(4)},${(1 + noise()).toFixed(4)}`);
+	}
+	rows.push(`Rate ${rate}, overflows 0`);
+	return rows.join("\n");
+}
+
 /**
  * The file a scenario would find at `path`, or null where it has none.
  *
@@ -365,6 +434,11 @@ function toolMacroFile(tool: number, shaped: boolean): string {
 }
 
 export function scenarioFile(id: ScenarioId, path: string): string | null {
+	// Every capture the shaping results file names, so clicking a row on the
+	// Decay card draws a curve on the bench exactly as it does on a machine.
+	if (id === "shaping-measured" && path.startsWith(`${ACCEL_DIR}/`) && path.endsWith(".csv")) {
+		return syntheticCapture(path.slice(ACCEL_DIR.length + 1));
+	}
 	for (const tool of [0, 1, 2, 3]) {
 		if (path === RESULTS_PATH(tool)) {
 			return id === "shaping-measured" && tool === 0 ? ring1ResultsFile(tool) : emptyResultsFile(tool);
