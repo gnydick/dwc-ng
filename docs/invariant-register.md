@@ -701,13 +701,13 @@ in the diff that drops it.
 
 ### `mock-duet/capture-files-come-only-from-the-synth` — rung 6
 
-**Mechanism.** choke-point — this is the sole route from a move to a file under `0:/sys/accelerometer`, and it consumes the armed record before it writes, so one M956 can produce at most one file. The G-code dispatch calls it and nothing else writes there
+**Mechanism.** choke-point — this is the sole route from a MOVE to a file under `0:/sys/accelerometer`, and it consumes the armed record before it writes, so one M956 can produce at most one file. It does not own the directory: `rr_upload` (server.ts) and the DSF `PUT /machine/file` route (dsf.ts) write arbitrary bytes to any path, exactly as a real board lets you upload a CSV there
 
-**Why.** a second writer would be a capture whose contents were not produced by the model the tests fit against, and the Shaping Lab's whole claim is that the numbers it shows came from the motion it commanded
+**Why.** a second route from a move would be a capture whose contents were not produced by the model the tests fit against, and the Shaping Lab's whole claim is that the numbers it shows came from the motion it commanded. An uploaded file is a different thing: the operator put it there deliberately, and the real board allows it too
 
 **Debt — promotion.** promotion to 7 is a `CaptureFile` type whose sole constructor takes the synth's output, with `VirtualSD.write` refusing plain bytes under that directory. That needs the SD store to know about capture paths, which is a bigger change to a shared type than this earns today.
 
-`packages/mock-duet/src/accelerometer.ts:553`
+`packages/mock-duet/src/accelerometer.ts:563`
 
 ### `mock-duet/captures-are-reproducible` — rung 6
 
@@ -717,7 +717,7 @@ in the diff that drops it.
 
 **Debt — promotion.** promotion to 7 is a branded `CaptureCsv` string type minted only here, so a hand-built CSV cannot reach the SD write in `onMove`. It is worth doing at the same time as the `CaptureFile` promotion filed under capture-files-come-only-from-the-synth, not before.
 
-`packages/mock-duet/src/accelerometer.ts:261`
+`packages/mock-duet/src/accelerometer.ts:271`
 
 ### `mock-duet/every-shaper-is-modelled` — rung 8
 
@@ -725,7 +725,7 @@ in the diff that drops it.
 
 **Why.** a shaper the mock silently failed to model would leave the ring at full height, and the Verify step would report a real shaper as having done nothing — a wrong verdict about the machine, produced by the test rig rather than measured
 
-`packages/mock-duet/src/accelerometer.ts:92`
+`packages/mock-duet/src/accelerometer.ts:102`
 
 ### `mock-duet/one-parameter-reader` — rung 6
 
@@ -745,7 +745,7 @@ in the diff that drops it.
 
 **Debt — promotion.** promotion to 7 needs the object model to be typed rather than `Record<string, any>`, which snapshot.ts holds open on purpose so the mock can replay captured responses verbatim.
 
-`packages/mock-duet/src/accelerometer.ts:606`
+`packages/mock-duet/src/accelerometer.ts:620`
 
 ### `mock-duet/sole-frame-parser` — rung 7
 

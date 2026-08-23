@@ -8,11 +8,21 @@
  * whole loop (capture, fingerprint, rank, verify, apply) to run with no
  * machine attached.
  *
- * Deliberately NOT shared with `packages/ui/src/shaping/engine`: the engine
- * analyses captures and this models the machine that produced them. If the
- * two shared a residual or a shaper table, "the engine recovers the mode the
- * mock was told to ring at" would be one implementation agreeing with itself.
- * The physics here is written from the standard input-shaping expressions.
+ * Deliberately NOT sharing code with `packages/ui/src/shaping/engine`: the
+ * engine analyses captures and this models the machine that produced them.
+ * The synthesis, the residual and the ring-down here are written from the
+ * standard input-shaping expressions, so "the engine recovers the mode the
+ * mock was told to ring at" exercises parse, stop detection, spectrum and
+ * decay fit against a signal none of them produced.
+ *
+ * The one thing the two DO share is the shaper coefficients themselves: the
+ * MZV amplitudes and the EI2/EI3 cubics in the damping ratio below are the
+ * same published constants as `engine/shapers.ts` uses, because both are
+ * modelling the same firmware and there is no second correct value for them.
+ * So the cross-check proves the analysis pipeline, NOT the coefficients — a
+ * transcription error in a cubic would agree with itself across both files.
+ * Those are pinned instead by the residual tests in the engine's own suite
+ * (a mistyped coefficient stops cancelling the mode it is tuned to).
  */
 
 import type { Machine } from "./machine.ts";
@@ -551,13 +561,17 @@ function defaultCaptureName(machine: Machine): string {
  * The armed capture fires on the next move that has X or Y in it.
  *
  * @invariant capture-files-come-only-from-the-synth
- * @rung 6  choke-point — this is the sole route from a move to a file under
+ * @rung 6  choke-point — this is the sole route from a MOVE to a file under
  *          `0:/sys/accelerometer`, and it consumes the armed record before it
- *          writes, so one M956 can produce at most one file. The G-code
- *          dispatch calls it and nothing else writes there
- * @why a second writer would be a capture whose contents were not produced by
- *      the model the tests fit against, and the Shaping Lab's whole claim is
- *      that the numbers it shows came from the motion it commanded
+ *          writes, so one M956 can produce at most one file. It does not own
+ *          the directory: `rr_upload` (server.ts) and the DSF `PUT
+ *          /machine/file` route (dsf.ts) write arbitrary bytes to any path,
+ *          exactly as a real board lets you upload a CSV there
+ * @why a second route from a move would be a capture whose contents were not
+ *      produced by the model the tests fit against, and the Shaping Lab's
+ *      whole claim is that the numbers it shows came from the motion it
+ *      commanded. An uploaded file is a different thing: the operator put it
+ *      there deliberately, and the real board allows it too
  * @debt promotion to 7 is a `CaptureFile` type whose sole constructor takes
  *       the synth's output, with `VirtualSD.write` refusing plain bytes under
  *       that directory. That needs the SD store to know about capture paths,
