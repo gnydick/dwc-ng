@@ -9,6 +9,21 @@ import { RequestQueue, type RequestPriority } from "./requestQueue.ts";
 import { isEmergencyStop } from "./emergency.ts";
 import { createLayerHistory, type LayerHistory, type LayerObservation } from "./layerHistory.ts";
 import { isPlainObject as isRecord, safeEntries } from "./safeObject.ts";
+import { realClock, type Clock, type TimerHandle } from "./clock.ts";
+
+// --- platform-timer shadow (invariant connector/clock-seam) -----------------
+// Module-scoped shadows of the platform's timers: `setTimeout(...)` in this
+// file is a COMPILE ERROR ("type 'never' has no call signatures"), not a silent
+// return to wall time. Every deferral here goes through the injected Clock, so
+// a test can drive a deadline instead of waiting it out. The declarations erase
+// to nothing at runtime; test/clock-fence.test.ts checks they are still here.
+declare const setTimeout: never;
+declare const clearTimeout: never;
+declare const setInterval: never;
+declare const clearInterval: never;
+declare const setImmediate: never;
+declare const performance: never;
+declare const AbortSignal: never;
 
 /**
  * Standalone-mode connector speaking RRF's rr_ HTTP dialect.
@@ -46,6 +61,13 @@ export interface PollConnectorOptions {
 	 * the loop with pollOnce() for determinism.
 	 */
 	autoPoll?: boolean;
+	/**
+	 * The clock every deferral on this connector runs on (see clock.ts).
+	 * Omitted = wall time, which is what production wants and what every
+	 * production call site gets without passing anything; a test hands in a
+	 * virtual clock and drives the deadlines instead of waiting them out.
+	 */
+	clock?: Clock;
 	events?: ConnectorEvents;
 }
 
@@ -75,12 +97,14 @@ export class PollConnector implements Connector {
 	private readonly uploadTimeoutMs: number;
 	private readonly autoPoll: boolean;
 	private readonly events: ConnectorEvents;
+	/** Every deferral below runs on THIS, never on the platform (clock.ts). */
+	private readonly clock: Clock;
 
 	private sessionKey: number | null = null;
 	private lastSeqs: Record<string, number> = {};
 	private lastVolSeqs: number[] = [];
-	private pollTimer: ReturnType<typeof setTimeout> | null = null;
-	private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+	private pollTimer: TimerHandle | null = null;
+	private reconnectTimer: TimerHandle | null = null;
 	/**
 	 * Serializes all traffic (RRF handles very few concurrent connections) AND
 	 * orders it: the poll heartbeat and user commands must not sit behind bulk
@@ -115,6 +139,7 @@ export class PollConnector implements Connector {
 		this.uploadTimeoutMs = options.uploadTimeoutMs ?? 300000;
 		this.autoPoll = options.autoPoll ?? true;
 		this.events = options.events ?? {};
+		this.clock = options.clock ?? realClock;
 	}
 
 	// ---------- lifecycle ----------
@@ -147,7 +172,7 @@ export class PollConnector implements Connector {
 
 	private async openSession(): Promise<void> {
 		const res = await this.rawRequest(
-			`rr_connect?password=${encodeURIComponent(this.password)}&time=${encodeURIComponent(isoNow())}&sessionKey=yes`,
+			`rr_connect?password=${encodeURIComponent(this.password)}&time=${encodeURIComponent(isoOf(this.clock.now()))}&sessionKey=yes`,
 		);
 		const body = await res.json() as { err: number; sessionKey?: number; isEmulated?: boolean; boardType?: string };
 		if (body.err === 1) throw new InvalidPasswordError();
@@ -214,7 +239,7 @@ export class PollConnector implements Connector {
 	}
 
 	private schedulePoll(): void {
-		this.pollTimer = setTimeout(() => {
+		this.pollTimer = this.clock.setTimeout(() => {
 			void this.pollOnce()
 				.then(() => {
 					if (this.status === "connected") this.schedulePoll();
@@ -230,7 +255,7 @@ export class PollConnector implements Connector {
 		this.sessionKey = null;
 		this.setStatus("reconnecting");
 		const attempt = (): void => {
-			this.reconnectTimer = setTimeout(() => {
+			this.reconnectTimer = this.clock.setTimeout(() => {
 				void this.openSession()
 					.then(() => this.fullSync())
 					.then(() => {
@@ -281,7 +306,7 @@ export class PollConnector implements Connector {
 		// command (M140, M106, M220 - most of them) left its caller hanging for
 		// five seconds. Nothing awaited sendCode, so it stayed invisible until a
 		// button tried to report when its command had actually landed.
-		setTimeout(() => {
+		this.clock.setTimeout(() => {
 			this.replyWaiters = this.replyWaiters.filter(w => w !== settle);
 			settle("");
 		}, REPLY_GRACE_MS);
@@ -317,7 +342,7 @@ export class PollConnector implements Connector {
 	private async sendEmergencyStop(code: string, retried: boolean): Promise<void> {
 		const res = await fetch(`${this.base}/rr_gcode?gcode=${encodeURIComponent(code)}`, {
 			headers: this.sessionKey !== null ? { "X-Session-Key": String(this.sessionKey) } : {},
-			signal: AbortSignal.timeout(this.requestTimeoutMs),
+			signal: this.clock.timeoutSignal(this.requestTimeoutMs),
 		});
 		if ((res.status === 401 || res.status === 403) && !retried) {
 			const body = await (await this.fetchConnect()).json() as { err: number; sessionKey?: number };
@@ -330,7 +355,7 @@ export class PollConnector implements Connector {
 	async upload(path: string, content: Uint8Array | string, onProgress?: (fraction: number) => void): Promise<void> {
 		const bytes = typeof content === "string" ? new TextEncoder().encode(content) : content;
 		const checksum = crc32(bytes).toString(16).padStart(8, "0");
-		const query = `rr_upload?name=${encodeURIComponent(path)}&crc32=${checksum}&time=${encodeURIComponent(isoNow())}`;
+		const query = `rr_upload?name=${encodeURIComponent(path)}&crc32=${checksum}&time=${encodeURIComponent(isoOf(this.clock.now()))}`;
 		// XHR, not fetch: only XHR reports upload-byte progress, and it takes the
 		// long uploadTimeoutMs a multi-MB file needs (a poll's 5s would abort it).
 		const body = await this.attemptUpload(query, bytes, onProgress, 0);
@@ -355,7 +380,7 @@ export class PollConnector implements Connector {
 			result = await this.requests.enqueue(() => this.xhrPost(path, bytes, onProgress), "low");
 		} catch (err) {
 			if (retry < this.maxRetries) {
-				await delay(this.retryDelayMs * (retry + 1));
+				await this.clock.sleep(this.retryDelayMs * (retry + 1));
 				return this.attemptUpload(path, bytes, onProgress, retry + 1);
 			}
 			throw new OperationFailedError(`${path}: ${(err as Error).message}`);
@@ -388,7 +413,7 @@ export class PollConnector implements Connector {
 				method: "POST",
 				body: bytes as BodyInit,
 				headers,
-				signal: AbortSignal.timeout(this.uploadTimeoutMs),
+				signal: this.clock.timeoutSignal(this.uploadTimeoutMs),
 			}).then(async res => ({ status: res.status, text: await res.text() }));
 		}
 		return new Promise((resolve, reject) => {
@@ -623,11 +648,11 @@ export class PollConnector implements Connector {
 				method: init?.method ?? "GET",
 				body: init?.body as BodyInit | undefined,
 				headers: this.sessionKey !== null ? { "X-Session-Key": String(this.sessionKey) } : {},
-				signal: AbortSignal.timeout(this.requestTimeoutMs),
+				signal: this.clock.timeoutSignal(this.requestTimeoutMs),
 			}), priority);
 		} catch (err) {
 			if (retry < this.maxRetries) {
-				await delay(this.retryDelayMs * (retry + 1));
+				await this.clock.sleep(this.retryDelayMs * (retry + 1));
 				return this.attemptRequest(path, init, retry + 1, priority);
 			}
 			throw new OperationFailedError(`${path}: ${(err as Error).message}`);
@@ -641,7 +666,7 @@ export class PollConnector implements Connector {
 				// blocking (original :180-190): drain it, then retry
 				try { await this.drainReplyDirect(); } catch { /* retry anyway */ }
 			} else {
-				await delay(this.retryDelayMs * (retry + 1));
+				await this.clock.sleep(this.retryDelayMs * (retry + 1));
 			}
 			return this.attemptRequest(path, init, retry + 1, priority);
 		}
@@ -663,7 +688,7 @@ export class PollConnector implements Connector {
 	private async drainReplyDirect(): Promise<void> {
 		const res = await this.requests.enqueue(() => fetch(`${this.base}/rr_reply`, {
 			headers: this.sessionKey !== null ? { "X-Session-Key": String(this.sessionKey) } : {},
-			signal: AbortSignal.timeout(this.requestTimeoutMs),
+			signal: this.clock.timeoutSignal(this.requestTimeoutMs),
 		}), "high");
 		const text = (await res.text()).trim();
 		if (text === "") return;
@@ -677,8 +702,8 @@ export class PollConnector implements Connector {
 	 *  emergency path's unqueued one, so the auth form exists once. */
 	private fetchConnect(): Promise<Response> {
 		return fetch(
-			`${this.base}/rr_connect?password=${encodeURIComponent(this.password)}&time=${encodeURIComponent(isoNow())}&sessionKey=yes`,
-			{ signal: AbortSignal.timeout(this.requestTimeoutMs) },
+			`${this.base}/rr_connect?password=${encodeURIComponent(this.password)}&time=${encodeURIComponent(isoOf(this.clock.now()))}&sessionKey=yes`,
+			{ signal: this.clock.timeoutSignal(this.requestTimeoutMs) },
 		);
 	}
 
@@ -697,19 +722,21 @@ export class PollConnector implements Connector {
 	}
 
 	private stopTimers(): void {
-		if (this.pollTimer !== null) clearTimeout(this.pollTimer);
-		if (this.reconnectTimer !== null) clearTimeout(this.reconnectTimer);
+		this.clock.clearTimeout(this.pollTimer);
+		this.clock.clearTimeout(this.reconnectTimer);
 		this.pollTimer = null;
 		this.reconnectTimer = null;
 	}
 }
 
-function isoNow(): string {
-	return new Date().toISOString().slice(0, 19);
-}
-
-function delay(ms: number): Promise<void> {
-	return new Promise(resolve => setTimeout(resolve, ms));
+/**
+ * The board wants the wall-clock time as a `time=` parameter. It reads the
+ * CONNECTOR'S clock rather than the platform's, so this file has exactly one
+ * notion of "now" -- under a virtual clock the board is simply told the virtual
+ * instant, which is what a test wants and what production never sees.
+ */
+function isoOf(ms: number): string {
+	return new Date(ms).toISOString().slice(0, 19);
 }
 
 /** Tolerantly lift one tick's raw model data into a synthesis observation. */

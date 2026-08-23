@@ -21,7 +21,7 @@ and invariant claim mentions 13 -> 23, so no mechanism was deleted and no
 claim was lost in the gap. From here the ratchets make a dropped rung visible
 in the diff that drops it.
 
-**Totals:** 116 invariants · 94 at rung 6 or above · 22 below rung 6 (ceiling 22).
+**Totals:** 117 invariants · 94 at rung 6 or above · 23 below rung 6 (ceiling 23).
 
 ## bed
 
@@ -325,6 +325,16 @@ in the diff that drops it.
 
 `packages/connector/src/requestQueue.ts:13`
 
+### `connector/clock-seam` — rung 4
+
+**Mechanism.** static analysis with a compile-time layer on top, and the rung is the weaker of the two because it is the one with COMPLETE coverage. test/clock-fence.test.ts walks every file under src/ and fails, by file and line, on any direct platform-timer reference outside this module — including in a file nobody has written yet, which is the case no compile-time rule can reach. On top of that, every module that imports `realClock` carries a module-scoped `declare const setTimeout: never` prelude, so in the files where a developer would actually reach for a timer the mistake is a COMPILE ERROR, not a silent return to wall time; the fence checks that prelude is still present, and derives WHICH files owe it from their imports rather than from a hand-maintained list
+
+**Why.** a deferral that reaches the platform directly is neither observable nor assertable — the only way to test it is to wait it out, which is slow and, being tuned to a quiet machine, flaky. This is not hypothetical: test/dsf-connector.test.ts was 12.9 s of a 15.1 s battery, essentially all of it asleep, and one timer written the old way puts it back there
+
+**Debt — promotion.** Two things, both named rather than left to be found. (1) The promotion that would close this properly is making the platform timers UNNAMEABLE in this package — drop the timer declarations from the connector tsconfig's lib and re-declare only what src actually uses, which turns every file into a compile error by default and retires the walk. CLAUDE.md already records that surface as large and fragile from the parallel attempt to shadow `fetch`, so it is filed, not attempted. (2) One gap the fence does not cover: PollConnector.xhrPost sets `xhr.timeout`, XMLHttpRequest's own budget. It is not a scheduling call, there is no clock-driven substitute short of reimplementing XHR, and the path is browser-only (Node has no XMLHttpRequest, so no test reaches it). It stays on wall time and is listed here so that is a decision rather than an oversight.
+
+`packages/connector/src/clock.ts:21`
+
 ### `connector/estop-is-never-queued` — rung 6
 
 **Mechanism.** choke-point — this is the one send path that does not go through `requests.enqueue`, reached only via `isEmergencyStop`, and its re-auth is unqueued too so a culled session cannot park the stop behind a slot either. Verified by search: five raw fetch sites in this file, and the other two are the XHR-less upload fallback and the shared rr_connect form
@@ -333,7 +343,7 @@ in the diff that drops it.
 
 **Debt — promotion.** the bypass is chosen by inspecting the code string. Promote by giving the e-stop its own method on the transport so "send this without a slot" is a distinct operation rather than a branch inside the general one, and cannot be reached by any other payload. One transparent re-auth on a culled session (also unqueued), then re-fire; any other failure surfaces to the button, which honestly reports "failed" rather than pretending.
 
-`packages/connector/src/PollConnector.ts:297`
+`packages/connector/src/PollConnector.ts:322`
 
 ### `connector/estop-vocabulary` — rung 6
 

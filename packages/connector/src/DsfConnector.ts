@@ -6,6 +6,21 @@ import {
 import { createDsfModel, type DsfModel, type DsfDigest } from "./dsfModel.ts";
 import { isEmergencyStop } from "./emergency.ts";
 import { isPlainObject } from "./safeObject.ts";
+import { realClock, type Clock, type TimerHandle } from "./clock.ts";
+
+// --- platform-timer shadow (invariant connector/clock-seam) -----------------
+// Module-scoped shadows of the platform's timers: `setTimeout(...)` in this
+// file is a COMPILE ERROR ("type 'never' has no call signatures"), not a silent
+// return to wall time. Every deferral here goes through the injected Clock, so
+// a test can drive a deadline instead of waiting it out. The declarations erase
+// to nothing at runtime; test/clock-fence.test.ts checks they are still here.
+declare const setTimeout: never;
+declare const clearTimeout: never;
+declare const setInterval: never;
+declare const clearInterval: never;
+declare const setImmediate: never;
+declare const performance: never;
+declare const AbortSignal: never;
 
 /**
  * SBC-mode connector speaking DSF's native /machine API (design:
@@ -37,6 +52,13 @@ export interface DsfConnectorOptions {
 	password?: string;
 	/** PING cadence; the liveness deadline is 2× this + 1 s (D5/C7). */
 	pingIntervalMs?: number;
+	/**
+	 * The clock every deferral on this connector runs on (see clock.ts).
+	 * Omitted = wall time, which is what production wants and what every
+	 * production call site gets without passing anything; a test hands in a
+	 * virtual clock and drives the deadlines instead of waiting them out.
+	 */
+	clock?: Clock;
 	/** Delay between reconnect attempts after a lost socket (D4/C8). */
 	reconnectDelayMs?: number;
 	/** Budget for one plain REST request (uploads get a generous multiple). */
@@ -59,6 +81,8 @@ export class DsfConnector implements Connector {
 	private readonly reconnectDelayMs: number;
 	private readonly requestTimeoutMs: number;
 	private readonly events: ConnectorEvents;
+	/** Every deferral below runs on THIS, never on the platform (clock.ts). */
+	private readonly clock: Clock;
 
 	/** DSF session key (numeric on the wire; kept as header text). Null =
 	 *  sessionless (no password set, or a pre-3.4-b4 DSF without connect). */
@@ -66,8 +90,8 @@ export class DsfConnector implements Connector {
 	/** The one live push socket. Per-socket state (model, lastSeen) lives in
 	 *  openSocket's closure, NOT here — see the C8 note there. */
 	private sock: WebSocket | null = null;
-	private pingTimer: ReturnType<typeof setInterval> | null = null;
-	private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+	private pingTimer: TimerHandle | null = null;
+	private reconnectTimer: TimerHandle | null = null;
 	/** True from disconnect() on: a dying socket must not start the ladder. */
 	private deliberate = false;
 
@@ -78,6 +102,7 @@ export class DsfConnector implements Connector {
 		this.reconnectDelayMs = options.reconnectDelayMs ?? 2000;
 		this.requestTimeoutMs = options.requestTimeoutMs ?? 5000;
 		this.events = options.events ?? {};
+		this.clock = options.clock ?? realClock;
 	}
 
 	// ---------- lifecycle ----------
@@ -109,7 +134,7 @@ export class DsfConnector implements Connector {
 			try {
 				await fetch(this.machineUrl("disconnect"), {
 					headers: { "X-Session-Key": this.sessionKey },
-					signal: AbortSignal.timeout(this.requestTimeoutMs),
+					signal: this.clock.timeoutSignal(this.requestTimeoutMs),
 				});
 			} catch {
 				// nothing to recover
@@ -132,7 +157,7 @@ export class DsfConnector implements Connector {
 		try {
 			res = await fetch(
 				`${this.machineUrl("connect")}?password=${encodeURIComponent(this.password)}`,
-				{ signal: AbortSignal.timeout(this.requestTimeoutMs) },
+				{ signal: this.clock.timeoutSignal(this.requestTimeoutMs) },
 			);
 		} catch {
 			return; // sessionless parity
@@ -171,7 +196,7 @@ export class DsfConnector implements Connector {
 			const ws = new WebSocket(this.machineUrl("").replace(/^http/, "ws") + query);
 			this.sock = ws;
 			let model: DsfModel | null = null;
-			let lastSeen = Date.now();
+			let lastSeen = this.clock.now();
 			let settled = false;
 
 			/**
@@ -217,7 +242,7 @@ export class DsfConnector implements Connector {
 			// merge, emit, ack — so no frame can slip past an await either.
 			ws.addEventListener("message", event => {
 				if (this.sock !== ws) return; // a torn-down socket must not emit or ack
-				lastSeen = Date.now();
+				lastSeen = this.clock.now();
 				const text = typeof event.data === "string" ? event.data : "";
 				if (text.trim() === "PONG") return; // liveness answer — consumed, never acked
 				let frame: unknown;
@@ -277,8 +302,8 @@ export class DsfConnector implements Connector {
 	private startLiveness(ws: WebSocket, lastSeenOf: () => number, die: (reason: string) => void): void {
 		this.stopLiveness(); // defensive: one timer, ever
 		const deadlineMs = 2 * this.pingIntervalMs + 1000;
-		this.pingTimer = setInterval(() => {
-			if (Date.now() - lastSeenOf() > deadlineMs) {
+		this.pingTimer = this.clock.setInterval(() => {
+			if (this.clock.now() - lastSeenOf() > deadlineMs) {
 				die(`no frame for ${deadlineMs} ms (liveness deadline)`);
 				return;
 			}
@@ -299,7 +324,7 @@ export class DsfConnector implements Connector {
 	}
 
 	private scheduleReconnect(): void {
-		this.reconnectTimer = setTimeout(() => {
+		this.reconnectTimer = this.clock.setTimeout(() => {
 			this.reconnectTimer = null;
 			void this.tryReconnect();
 		}, this.reconnectDelayMs);
@@ -363,7 +388,7 @@ export class DsfConnector implements Connector {
 				method: "POST",
 				body: code,
 				headers: this.sessionKey !== null ? { "X-Session-Key": this.sessionKey } : {},
-				signal: AbortSignal.timeout(this.requestTimeoutMs),
+				signal: this.clock.timeoutSignal(this.requestTimeoutMs),
 			});
 		} catch (err) {
 			throw new OperationFailedError(`emergency stop: ${(err as Error).message}`);
@@ -530,7 +555,7 @@ export class DsfConnector implements Connector {
 				method,
 				body: opts.body,
 				headers: this.sessionKey !== null ? { "X-Session-Key": this.sessionKey } : {},
-				signal: AbortSignal.timeout(opts.timeoutMs ?? this.requestTimeoutMs),
+				signal: this.clock.timeoutSignal(opts.timeoutMs ?? this.requestTimeoutMs),
 			});
 		} catch (err) {
 			throw new OperationFailedError(`${method} ${url}: ${(err as Error).message}`);
@@ -570,12 +595,12 @@ export class DsfConnector implements Connector {
 	}
 
 	private stopLiveness(): void {
-		if (this.pingTimer !== null) clearInterval(this.pingTimer);
+		this.clock.clearInterval(this.pingTimer);
 		this.pingTimer = null;
 	}
 
 	private stopReconnect(): void {
-		if (this.reconnectTimer !== null) clearTimeout(this.reconnectTimer);
+		this.clock.clearTimeout(this.reconnectTimer);
 		this.reconnectTimer = null;
 	}
 
