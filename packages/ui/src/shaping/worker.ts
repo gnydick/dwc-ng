@@ -32,10 +32,27 @@ export type FitResult = {
 	readonly fit: Mode | NoFit;
 };
 
+/**
+ * One row of a sweep request: a capture as TEXT, the speed the move was made
+ * at, how long that move took, and which of the three accelerometer channels
+ * to transform.
+ *
+ * The axis travels with the row rather than with the request, because a sweep
+ * is a set of captures and nothing stops a future caller mixing axes in one
+ * picture; `SweepRow` in the engine already takes it per row for that reason.
+ */
+export type SweepRequestRow = {
+	readonly speed: MmPerS;
+	readonly csv: string;
+	readonly moveS: Seconds;
+	/** 0 = X, 1 = Y, 2 = Z. Absent reads X, as `sweepMatrix` defines it. */
+	readonly axis?: 0 | 1 | 2;
+};
+
 export type EngineRequest = { readonly id: number } & (
 	| { readonly kind: "fit"; readonly csv: string; readonly axis: Axis }
 	| { readonly kind: "rank"; readonly fp: Fingerprint; readonly opts?: RankOptions }
-	| { readonly kind: "sweep"; readonly rows: ReadonlyArray<{ speed: MmPerS; csv: string; moveS: Seconds }>; readonly fullStepsPerMm: number; readonly maxHz?: number }
+	| { readonly kind: "sweep"; readonly rows: ReadonlyArray<SweepRequestRow>; readonly fullStepsPerMm: number; readonly maxHz?: number }
 	| { readonly kind: "artefact"; readonly baseline: Fingerprint; readonly verified: Fingerprint }
 );
 
@@ -88,7 +105,11 @@ export function handle(req: EngineRequest): { response: EngineResponse; transfer
 			case "rank":
 				return { response: { id: req.id, kind: "rank", result: rank(req.fp, req.opts) }, transfer: [] };
 			case "sweep": {
-				const rows = req.rows.map((r) => ({ speed: r.speed, capture: parsed(r.csv), moveS: r.moveS }));
+				// `axis` is forwarded rather than defaulted here: a Y-axis sweep
+				// analysed against the X channel would be a plot of the wrong
+				// carriage, and the only place that knows which axis a capture is
+				// of is the caller that chose the files.
+				const rows = req.rows.map((r) => ({ speed: r.speed, capture: parsed(r.csv), moveS: r.moveS, axis: r.axis }));
 				const result = sweepMatrix(rows, req.fullStepsPerMm, req.maxHz);
 				return { response: { id: req.id, kind: "sweep", result }, transfer: [result.amps.buffer, result.freqs.buffer] };
 			}

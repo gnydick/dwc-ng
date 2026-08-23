@@ -142,7 +142,10 @@ export const BED_COMPOSITION: Composition = {
  * (one stop, then every speed), Candidates next to Custom (the ranked list and
  * the train you build yourself), Verify next to Apply (what the machine
  * measured and the line it earns). Every rowSpan matches the card's own
- * default, so a fresh screen is each card fitted to its content.
+ * registry default (compose/defs.ts), so a fresh screen is each card fitted to
+ * its content — and that is a claim test/composition.test.ts now checks, because
+ * it had quietly stopped being true: Decay grew 75 -> 189 for its chart and
+ * nobody moved the two cards under it.
  */
 export const SHAPING_COMPOSITION: Composition = {
 	// status 77 -> 138 when it gained the five-step workflow list, the per-tool
@@ -150,16 +153,23 @@ export const SHAPING_COMPOSITION: Composition = {
 	// gained the next-step region; the rest of the left column follows it down.
 	"shaping-status": { col: 0, row: 0, colSpan: 156, rowSpan: 156 },
 	"shaping-capture": { col: 156, row: 0, colSpan: 156, rowSpan: 66 },
-	"shaping-decay": { col: 0, row: 156, colSpan: 156, rowSpan: 75 },
-	"shaping-sweep": { col: 156, row: 66, colSpan: 156, rowSpan: 39 },
-	"shaping-candidates": { col: 0, row: 231, colSpan: 156, rowSpan: 75 },
-	"shaping-custom": { col: 156, row: 105, colSpan: 156, rowSpan: 71 },
-	"shaping-verify": { col: 0, row: 306, colSpan: 156, rowSpan: 62 },
-	"shaping-apply": { col: 156, row: 176, colSpan: 156, rowSpan: 50 },
-	// The left column is the taller of the two (ends at 368); the full-width
-	// strip clears both.
-	console: { col: 0, row: 368, colSpan: 312, rowSpan: 75 },
-	camera: { col: 0, row: 443, colSpan: 104, rowSpan: 75 },
+	// Decay 75 -> 189: it grew for the chart (E1) and the board browser, and the
+	// screen was never re-flowed for it — the card was placed at less than half
+	// the height its own content declares. Everything below it in the left
+	// column moves down by the same 114.
+	"shaping-decay": { col: 0, row: 156, colSpan: 156, rowSpan: 189 },
+	// Sweep 39 -> 118 for the heat map (E2); the right column follows it down
+	// by 79. The card is the same ID, so a saved layout keeps whatever the
+	// operator dragged it to — this is the DEFAULT placement only.
+	"shaping-sweep": { col: 156, row: 66, colSpan: 156, rowSpan: 118 },
+	"shaping-candidates": { col: 0, row: 345, colSpan: 156, rowSpan: 75 },
+	"shaping-custom": { col: 156, row: 184, colSpan: 156, rowSpan: 71 },
+	"shaping-verify": { col: 0, row: 420, colSpan: 156, rowSpan: 62 },
+	"shaping-apply": { col: 156, row: 255, colSpan: 156, rowSpan: 50 },
+	// The left column is still the taller of the two (ends at 482, against the
+	// right column's 305); the full-width strip clears both.
+	console: { col: 0, row: 482, colSpan: 312, rowSpan: 75 },
+	camera: { col: 0, row: 557, colSpan: 104, rowSpan: 75 },
 };
 
 /** Settings: config-overlay editors + the save card (the former save-bar). */

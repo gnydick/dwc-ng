@@ -4764,7 +4764,10 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; appe
 	contain: inline-size;
 }
 .shp-decay-plot > .uplot { position: absolute; inset: 0; }
-.shp-decay-empty {
+/* Shared with the heat map's own empty state: both are an OVERLAY rather than a
+   replacement, so an unrun chart is the same shape as a finished one and
+   nothing moves when the first data arrives. */
+.shp-decay-empty, .shp-heat-empty {
 	position: absolute;
 	inset: 0;
 	margin: 0;
@@ -4884,7 +4887,10 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; appe
    the 0.75 and 1.5 scale steps, because glyph advances do not scale with --u.
    Widths in u and `min-width: 0` put the floor back where it belongs: on the
    table, whose tracks are declared. */
-.shp-decay-filter, .shp-batch {
+/* The Sweep card's two rows are the same control row and share the rule rather
+   than restating it: one declaration means one geometry, so a change to the
+   row's height cannot land on two of the three surfaces. */
+.shp-decay-filter, .shp-batch, .shp-sweep-bar {
 	flex: 0 0 auto;
 	display: flex;
 	flex-wrap: nowrap;
@@ -4895,7 +4901,7 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; appe
 }
 /* The rule the paragraph above is about. Applied to the ROWS rather than to
    each control, so a control added later cannot reintroduce the defect. */
-.shp-decay-filter > *, .shp-batch > * { min-width: 0; flex: 0 0 auto; }
+.shp-decay-filter > *, .shp-batch > *, .shp-sweep-bar > * { min-width: 0; flex: 0 0 auto; }
 /* `width`, not just a flex basis, and `min-width: 0` from the rule above. An
    <input> with `width: auto` has a content-based minimum of its `size` (20
    characters, ~42u here) and a flex item contributes THAT to an intrinsic
@@ -5004,7 +5010,7 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; appe
    ζ 0.126 · Y 51.7 Hz ζ 0.076…", the idle hint carries a sentence, and a box
    that grew with the longer of them would change the card's floor with its
    state — the same defect as a row that moves, one step removed. */
-.shp-batch-note {
+.shp-batch-note, .shp-sweep-note {
 	flex: 0 0 auto;
 	margin: 0;
 	height: calc(10 * var(--u));
@@ -5013,6 +5019,267 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; appe
 	font-size: calc(3.375 * var(--u));
 	line-height: calc(5 * var(--u));
 }
+/* Three lines rather than two: the sweep card's idle sentence has to state the
+   physics — which peak shaping can touch and which it cannot — and it is the
+   sentence an operator reads before their first sweep. */
+.shp-sweep-note { height: calc(15 * var(--u)); }
+
+/* ---------- Sweep card (cards/ShapingCards.tsx · charts/SweepHeatmap) --------
+
+   Speed x frequency x amplitude. Same governing rule as the Decay card: the
+   operator scans, picks a run, builds, looks — and nothing below the chart may
+   move while any of that happens. So every block declares its own size and the
+   chart's box comes from the STAGE rather than from the matrix in it. */
+/* Same declared-width discipline as the Decay card's rows, and for the same
+   measured reason: a flex child's min-width defaults to its MIN-CONTENT, so a
+   <select> holding `B_i1400_y8_5_f8_X` and a button reading `Save to T3` would
+   put their own glyph metrics — which do not scale with --u — into this card's
+   minimum width. The `> *` rule above applies it to the ROW, so a control added
+   later cannot reintroduce the defect. */
+.shp-sweep-bar .shp-cap { width: calc(8 * var(--u)); }
+/* The shared tool selection (compose/services.ts). Chips rather than a select
+   because this is the most load-bearing choice on the screen and it should be
+   one click, and because `aria-pressed` is what the status card's picker uses
+   — two surfaces onto one signal should look like one control. */
+.shp-tool-pick { display: flex; gap: calc(1 * var(--u)); overflow: hidden; }
+.shp-tool-chip {
+	width: calc(10 * var(--u));
+	height: calc(6 * var(--u));
+	line-height: calc(6 * var(--u));
+	text-align: center;
+	font-variant-numeric: tabular-nums;
+	box-shadow: inset 0 0 0 1px var(--hairline);
+	border-radius: var(--radius);
+}
+.shp-tool-chip[aria-pressed="true"] { box-shadow: inset 0 0 0 1px var(--accent); }
+/* Where the full-step line comes from, or the reason there is none. Takes the
+   slack so the chips stay left, clipped rather than wrapping: it is a caption,
+   and a caption that wrapped would make this row two lines on a narrow card. */
+.shp-sweep-step {
+	flex: 1 1 auto;
+	text-align: right;
+	font-size: calc(3.125 * var(--u));
+	color: var(--silk-dim);
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+/* A <select>'s min-content width is its LONGEST OPTION, and the longest here is
+   a family name off the operator's own board — `B_i1400_y8_5_f8_X · 2`. So the
+   width is declared AND floored, exactly as .shp-target .filament-pick is, and
+   the names that do not fit are the ones the text of the option ellipsises. */
+.shp-family { flex: 1 1 auto; width: calc(40 * var(--u)); min-width: calc(30 * var(--u)); }
+/* The plot's box, declared here and not by the chart.
+   60u because the heat map's own floor is 36u of data area plus 15.5u of
+   gutters below it and 5u above — 56.5u — and a plot at exactly its floor has
+   one pixel of slack for the rounding in a percentage-positioned tick. The
+   chart fills this absolutely, so its backing store can never reach the card's
+   intrinsic width (see the wrapper note in SweepHeatmap.tsx). */
+.shp-sweep-stage {
+	flex: 1 1 auto;
+	display: flex;
+	min-height: calc(60 * var(--u));
+	min-width: calc(60 * var(--u));
+	margin-bottom: calc(2 * var(--u));
+}
+/* Three facts on one line, in fixed thirds. Thirds rather than content-sized,
+   so `9 speeds 10-60 mm/s` and `—` occupy the same box and the line does not
+   reflow when the first matrix lands. */
+.shp-sweep-read {
+	flex: 0 0 auto;
+	display: grid;
+	grid-template-columns: 1fr 1fr 1fr;
+	gap: var(--ctl-gap);
+	margin: 0 0 calc(1.5 * var(--u));
+	height: calc(5 * var(--u));
+	line-height: calc(5 * var(--u));
+	font-size: calc(3.25 * var(--u));
+	color: var(--silk-dim);
+	font-variant-numeric: tabular-nums;
+}
+.shp-sweep-read > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.shp-sweep-read > span:nth-child(2) { text-align: center; }
+.shp-sweep-read > span:nth-child(3) { text-align: right; }
+
+/* ---------- The heat map itself (charts/SweepHeatmap.tsx) ----------
+
+   The chart was written with its host geometry inline, because the agent that
+   wrote it could not touch this file. It is here now, which buys the thing
+   inline style cannot: the four gutter widths are declared ONCE, as custom
+   properties on the host, and the six absolutely-positioned layers that have to
+   agree with the canvas about where the data area is read them instead of each
+   repeating four lengths. A gutter changed in one place cannot now put the
+   ticks and the canvas in different boxes.
+
+   What stays inline is only what is a FUNCTION OF THE DATA — a cell's
+   percentage offsets, a marker's x, the ramp's gradient — which is exactly the
+   split the rest of this app uses. */
+.shp-heat {
+	position: relative;
+	flex: 1;
+	/* 11u holds `200` at the label size with room to breathe; 3u on the right is
+	   half of the widest Hz label, so the last tick is not clipped. */
+	--heat-l: calc(11 * var(--u));
+	--heat-r: calc(3 * var(--u));
+	/* One row of fitted-mode labels above the plot. */
+	--heat-t: calc(5 * var(--u));
+	/* A row of Hz ticks (5u), then the axis title and the colour key (5.5u). */
+	--heat-tick: calc(5 * var(--u));
+	--heat-key: calc(5.5 * var(--u));
+	--heat-b: calc(10.5 * var(--u));
+	/* A floor on both axes: the data area must stay big enough that a column is
+	   wider than a pointer can be aimed at (charts/sweepData.ts MIN_CELL_W). */
+	min-width: calc(56 * var(--u));
+	min-height: calc(36 * var(--u));
+	font-variant-numeric: tabular-nums;
+}
+/* THE data area, and the reason the HTML text lines up with the canvas by
+   construction: every layer that has to agree about where the plot is uses this
+   one rule, so a percentage in a tick strip and a pixel in the canvas are the
+   same place. */
+.shp-heat-area {
+	position: absolute;
+	left: var(--heat-l);
+	right: var(--heat-r);
+	top: var(--heat-t);
+	bottom: var(--heat-b);
+}
+/* Hover paints NOTHING on the canvas: the ring and the tooltip are HTML layers
+   over it, so moving the pointer cannot trigger a repaint or a reflow. */
+.shp-heat-over { pointer-events: none; }
+/* The canvas is WRAPPED rather than inset directly — a replaced element with
+   `width: auto` takes its ATTRIBUTE size as an intrinsic size, so the backing
+   store's device-pixel width became a CSS width and the plot grew on every
+   measurement. Inside a plain block wrapper `width: 100%` is definite and the
+   intrinsic size never gets a vote. */
+.shp-heat-canvas {
+	display: block;
+	width: 100%;
+	height: 100%;
+	border-radius: var(--radius);
+	box-shadow: inset 0 0 0 1px var(--hairline);
+}
+/* The two tick strips. Same type, different box: one runs down the left gutter
+   and one across the bottom, and each is exactly as long as the data area's
+   matching side — which is what makes a percentage in HTML and a pixel on the
+   canvas the same place. */
+.shp-heat-speeds, .shp-heat-hz {
+	position: absolute;
+	font-size: calc(3 * var(--u));
+	color: var(--silk-dim);
+}
+.shp-heat-speeds {
+	left: 0;
+	width: var(--heat-l);
+	top: var(--heat-t);
+	bottom: var(--heat-b);
+}
+.shp-heat-speeds > span {
+	position: absolute;
+	right: calc(1.5 * var(--u));
+	transform: translateY(-50%);
+	white-space: nowrap;
+}
+/* The speed axis's title, in the top-left corner cell rather than in the tick
+   column — inside it, it collided with the topmost row's label. */
+/* The axis captions, in the same small-caps treatment: `mm/s` in the top-left
+   corner cell and `Hz (log)` under the plot. The corner rather than inside the
+   tick column, because there it collided with the topmost row's label. */
+.shp-heat-unit, .shp-heat-key {
+	position: absolute;
+	display: flex;
+	align-items: center;
+	font-size: calc(2.75 * var(--u));
+	color: var(--silk-dim);
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+}
+.shp-heat-unit {
+	left: 0;
+	top: 0;
+	width: var(--heat-l);
+	height: var(--heat-t);
+	justify-content: flex-end;
+	padding-right: calc(1.5 * var(--u));
+}
+.shp-heat-modes {
+	position: absolute;
+	left: var(--heat-l);
+	right: var(--heat-r);
+	top: 0;
+	height: var(--heat-t);
+}
+.shp-heat-modes > span {
+	bottom: calc(0.5 * var(--u));
+	font-size: calc(2.75 * var(--u));
+	color: var(--magenta);
+}
+/* The hovered cell, ringed in HTML. Two shadows: the inner one is the ring, the
+   outer one separates it from a saturated neighbour. */
+.shp-heat-ring {
+	position: absolute;
+	box-shadow: inset 0 0 0 1px var(--silk), 0 0 0 1px var(--mask-900);
+}
+.shp-heat-hz {
+	left: var(--heat-l);
+	right: var(--heat-r);
+	bottom: var(--heat-key);
+	height: var(--heat-tick);
+}
+/* Labels that hang off a position ON the axis: centred over their own x and
+   never wrapped, so a two-digit tick and a three-digit one point at the same
+   place. Shared with the fitted-mode labels above the plot. */
+.shp-heat-hz > span, .shp-heat-modes > span {
+	position: absolute;
+	transform: translateX(-50%);
+	white-space: nowrap;
+}
+.shp-heat-hz > span { top: calc(0.75 * var(--u)); }
+/* Axis title and colour key. Both are TEXT as well as colour: the scale is
+   never readable from the swatch alone. */
+.shp-heat-key {
+	left: var(--heat-l);
+	right: var(--heat-r);
+	bottom: 0;
+	height: var(--heat-key);
+	gap: calc(2 * var(--u));
+}
+.shp-heat-key .shp-heat-spacer { flex: 1; }
+/* A number is a number, not a heading. */
+.shp-heat-key .shp-heat-num { text-transform: none; letter-spacing: 0; }
+/* The loudest amplitude in the matrix, in a DECLARED box.
+   Measured: it renders as the em dash before a sweep exists and as `0.376 g`
+   after, and letting the flex row size it moved the swatch and the dB caption
+   24 px left the moment the first matrix arrived — three descendants moved by
+   data landing, on a card whose whole job is to be looked at. 14u holds
+   `0.0004 g`, the widest form `cellReadout` can produce. */
+.shp-heat-key .shp-heat-max {
+	width: calc(14 * var(--u));
+	text-align: right;
+	white-space: nowrap;
+	overflow: hidden;
+}
+.shp-heat-ramp {
+	width: calc(20 * var(--u));
+	height: calc(2 * var(--u));
+	box-shadow: inset 0 0 0 1px var(--hairline);
+	border-radius: var(--radius);
+}
+.shp-heat-tip {
+	position: absolute;
+	transform: translate(-50%, calc(-100% - 1 * var(--u)));
+	padding: calc(1 * var(--u)) calc(1.75 * var(--u));
+	background: var(--mask-700);
+	color: var(--silk);
+	box-shadow: inset 0 0 0 1px var(--hairline), 0 2px 8px rgba(0, 0, 0, 0.28);
+	border-radius: var(--radius);
+	white-space: nowrap;
+	font-size: calc(3 * var(--u));
+	display: flex;
+	gap: calc(1.5 * var(--u));
+}
+.shp-heat-tip .shp-heat-hz-v { color: var(--accent); }
 
 /* No `@media (max-width: …)` block, and that is a decision rather than an
    omission. These cards were written with one — fact rows stacking to a single

@@ -22,6 +22,14 @@
  * construction because the HTML strip and the canvas are literally the same
  * width.
  *
+ * WHERE THE GEOMETRY LIVES. In app.css, under `.shp-heat`, and not in this
+ * file: the four gutters are custom properties on the host and every layer that
+ * has to agree with the canvas about where the plot is uses one `.shp-heat-area`
+ * rule. What is inline here is only what is a FUNCTION OF THE DATA — a cell's
+ * percentage offsets, a marker's x, the ramp's gradient — which is the same
+ * split the rest of the app uses. (It was all inline when this component
+ * landed, because the agent that wrote it was not allowed to touch app.css.)
+ *
  * POSITIONAL STABILITY. Nothing in this component can move anything on the
  * page:
  *
@@ -48,19 +56,6 @@ import {
 	cellReadout, DYNAMIC_RANGE_DB, heatmapCells, parseColor, RAMP_FALLBACK, RAMP_STEPS, sweepRamp,
 	type HeatCell, type HeatLayout, type SweepMarker,
 } from "./sweepData.ts";
-
-/** The gutters around the data area. Text lives in these; the canvas does not. */
-const GUTTER_L = "calc(11 * var(--u))";
-const GUTTER_R = "calc(3 * var(--u))";
-/** Top: one row of fitted-mode labels. */
-const GUTTER_T = "calc(5 * var(--u))";
-/** Bottom: a row of Hz ticks, then a row carrying the axis title and the key. */
-const TICK_ROW = "calc(5 * var(--u))";
-const KEY_ROW = "calc(5.5 * var(--u))";
-const GUTTER_B = `calc(10.5 * var(--u))`;
-
-const LABEL_SIZE = "calc(3 * var(--u))";
-const TITLE_SIZE = "calc(2.75 * var(--u))";
 
 /** Device-pixel line weights, multiplied by the ratio at paint time. */
 const HAIRLINE_W = 1;
@@ -292,62 +287,19 @@ export function SweepHeatmap(props: SweepHeatmapProps) {
 	const key = createMemo(() => ramp().join(", "));
 
 	return (
-		<div
-			style={{
-				position: "relative",
-				flex: "1",
-				"min-width": "calc(56 * var(--u))",
-				"min-height": "calc(36 * var(--u))",
-			}}
-		>
+		<div class="shp-heat">
 			{/* Speed axis: one label per capture, at the row's centre. */}
-			<div
-				style={{
-					position: "absolute", left: "0", width: GUTTER_L, top: GUTTER_T, bottom: GUTTER_B,
-					"font-size": LABEL_SIZE, color: "var(--silk-dim)", "font-variant-numeric": "tabular-nums",
-				}}
-			>
+			<div class="shp-heat-speeds">
 				<For each={layout().speedTicks}>
-					{tick => (
-						<span
-							style={{
-								position: "absolute", right: "calc(1.5 * var(--u))",
-								top: pct(tick.y, layout().h), transform: "translateY(-50%)", "white-space": "nowrap",
-							}}
-						>
-							{Math.round(tick.speed)}
-						</span>
-					)}
+					{tick => <span style={{ top: pct(tick.y, layout().h) }}>{Math.round(tick.speed)}</span>}
 				</For>
 			</div>
-			{/* The speed axis's title sits in the top-left corner cell, clear of the
-			    topmost row label — inside the tick column it collided with it. */}
-			<div
-				style={{
-					position: "absolute", left: "0", top: "0", width: GUTTER_L, height: GUTTER_T,
-					display: "flex", "align-items": "center", "justify-content": "flex-end",
-					"padding-right": "calc(1.5 * var(--u))", "font-size": TITLE_SIZE, color: "var(--silk-dim)",
-					"letter-spacing": "0.08em", "text-transform": "uppercase",
-				}}
-			>
-				mm/s
-			</div>
+			<div class="shp-heat-unit">mm/s</div>
 
 			{/* Fitted-mode labels, above the lines they belong to. */}
-			<div style={{ position: "absolute", left: GUTTER_L, right: GUTTER_R, top: "0", height: GUTTER_T }}>
+			<div class="shp-heat-modes">
 				<For each={markers()}>
-					{m => (
-						<span
-							style={{
-								position: "absolute", bottom: "calc(0.5 * var(--u))",
-								left: pct(layout().xOfHz(m.hz), layout().w),
-								transform: "translateX(-50%)", "white-space": "nowrap",
-								"font-size": TITLE_SIZE, color: "var(--magenta)", "font-variant-numeric": "tabular-nums",
-							}}
-						>
-							{m.label}
-						</span>
-					)}
+					{m => <span style={{ left: pct(layout().xOfHz(m.hz), layout().w) }}>{m.label}</span>}
 				</For>
 			</div>
 
@@ -360,13 +312,10 @@ export function SweepHeatmap(props: SweepHeatmapProps) {
 			    read the bigger box, and it grew again. Seen on the first browser
 			    render, 2026-08-23. Inside a plain block wrapper, `width: 100%` is
 			    definite and the intrinsic size never gets a vote. */}
-			<div style={{ position: "absolute", left: GUTTER_L, right: GUTTER_R, top: GUTTER_T, bottom: GUTTER_B }}>
+			<div class="shp-heat-area">
 				<canvas
 					ref={canvasEl}
-					style={{
-						display: "block", width: "100%", height: "100%", "border-radius": "var(--radius)",
-						"box-shadow": "inset 0 0 0 1px var(--hairline)",
-					}}
+					class="shp-heat-canvas"
 					onPointerMove={onMove}
 					onPointerLeave={() => setHover(null)}
 				/>
@@ -375,20 +324,14 @@ export function SweepHeatmap(props: SweepHeatmapProps) {
 			{/* The hovered cell, ringed in HTML so hovering never repaints. */}
 			<Show when={hover()}>
 				{cell => (
-					<div
-						style={{
-							position: "absolute", left: GUTTER_L, right: GUTTER_R, top: GUTTER_T, bottom: GUTTER_B,
-							"pointer-events": "none",
-						}}
-					>
+					<div class="shp-heat-area shp-heat-over">
 						<div
+							class="shp-heat-ring"
 							style={{
-								position: "absolute",
 								left: pct(cell().x, layout().w),
 								top: pct(cell().y, layout().h),
 								width: pct(cell().w, layout().w),
 								height: pct(cell().h, layout().h),
-								"box-shadow": "inset 0 0 0 1px var(--silk), 0 0 0 1px var(--mask-900)",
 							}}
 						/>
 					</div>
@@ -397,49 +340,20 @@ export function SweepHeatmap(props: SweepHeatmapProps) {
 
 			{/* Frequency ticks. The strip is the same width as the canvas, so a
 			    percentage here and a pixel there are the same place. */}
-			<div
-				style={{
-					position: "absolute", left: GUTTER_L, right: GUTTER_R, bottom: KEY_ROW, height: TICK_ROW,
-					"font-size": LABEL_SIZE, color: "var(--silk-dim)", "font-variant-numeric": "tabular-nums",
-				}}
-			>
+			<div class="shp-heat-hz">
 				<For each={layout().hzTicks}>
-					{tick => (
-						<span
-							style={{
-								position: "absolute", top: "calc(0.75 * var(--u))",
-								left: pct(tick.x, layout().w), transform: "translateX(-50%)", "white-space": "nowrap",
-							}}
-						>
-							{tick.hz}
-						</span>
-					)}
+					{tick => <span style={{ left: pct(tick.x, layout().w) }}>{tick.hz}</span>}
 				</For>
 			</div>
 
 			{/* Axis title and colour key. Both are text as well as colour: the
 			    scale is never readable from the swatch alone. */}
-			<div
-				style={{
-					position: "absolute", left: GUTTER_L, right: GUTTER_R, bottom: "0", height: KEY_ROW,
-					display: "flex", "align-items": "center", gap: "calc(2 * var(--u))",
-					"font-size": TITLE_SIZE, color: "var(--silk-dim)",
-					"letter-spacing": "0.08em", "text-transform": "uppercase",
-				}}
-			>
+			<div class="shp-heat-key">
 				<span>Hz (log)</span>
-				<span style={{ flex: "1" }} />
-				<span style={{ "text-transform": "none", "letter-spacing": "0" }}>{DYNAMIC_RANGE_DB} dB</span>
-				<span
-					style={{
-						width: "calc(20 * var(--u))", height: "calc(2 * var(--u))",
-						"background-image": `linear-gradient(to right, ${key()})`,
-						"box-shadow": "inset 0 0 0 1px var(--hairline)", "border-radius": "var(--radius)",
-					}}
-				/>
-				<span style={{ "text-transform": "none", "letter-spacing": "0", "font-variant-numeric": "tabular-nums" }}>
-					{maxLabel()}
-				</span>
+				<span class="shp-heat-spacer" />
+				<span class="shp-heat-num">{DYNAMIC_RANGE_DB} dB</span>
+				<span class="shp-heat-ramp" style={{ "background-image": `linear-gradient(to right, ${key()})` }} />
+				<span class="shp-heat-num shp-heat-max">{maxLabel()}</span>
 			</div>
 
 			{/* The tooltip. An HTML layer over the canvas — never drawn into it —
@@ -449,31 +363,19 @@ export function SweepHeatmap(props: SweepHeatmapProps) {
 				{cell => {
 					const facts = createMemo(() => cellReadout(cell()));
 					return (
-					<div
-						style={{
-							position: "absolute", left: GUTTER_L, right: GUTTER_R, top: GUTTER_T, bottom: GUTTER_B,
-							"pointer-events": "none",
-						}}
-					>
-						<div
-							style={{
-								position: "absolute",
-								left: `clamp(0%, ${pct(cell().x + cell().w / 2, layout().w)}, 100%)`,
-								top: pct(cell().y, layout().h),
-								transform: "translate(-50%, calc(-100% - 1 * var(--u)))",
-								padding: "calc(1 * var(--u)) calc(1.75 * var(--u))",
-								background: "var(--mask-700)", color: "var(--silk)",
-								"box-shadow": "inset 0 0 0 1px var(--hairline), 0 2px 8px rgba(0,0,0,0.28)",
-								"border-radius": "var(--radius)", "white-space": "nowrap",
-								"font-size": LABEL_SIZE, "font-variant-numeric": "tabular-nums",
-								display: "flex", gap: "calc(1.5 * var(--u))",
-							}}
-						>
-							<span>{facts().speed}</span>
-							<span style={{ color: "var(--accent)" }}>{facts().hz}</span>
-							<span>{facts().amp}</span>
+						<div class="shp-heat-area shp-heat-over">
+							<div
+								class="shp-heat-tip"
+								style={{
+									left: `clamp(0%, ${pct(cell().x + cell().w / 2, layout().w)}, 100%)`,
+									top: pct(cell().y, layout().h),
+								}}
+							>
+								<span>{facts().speed}</span>
+								<span class="shp-heat-hz-v">{facts().hz}</span>
+								<span>{facts().amp}</span>
+							</div>
 						</div>
-					</div>
 					);
 				}}
 			</Show>
@@ -481,14 +383,7 @@ export function SweepHeatmap(props: SweepHeatmapProps) {
 			{/* Empty state as an OVERLAY, so an unrun sweep is the same shape as a
 			    finished one and nothing moves when the first matrix arrives. */}
 			<Show when={props.matrix() === null}>
-				<p
-					style={{
-						position: "absolute", inset: "0", margin: "0", display: "grid", "place-items": "center",
-						color: "var(--silk-dim)", "font-size": "calc(3.5 * var(--u))", "pointer-events": "none",
-					}}
-				>
-					No sweep yet
-				</p>
+				<p class="shp-heat-empty">No sweep yet</p>
 			</Show>
 		</div>
 	);

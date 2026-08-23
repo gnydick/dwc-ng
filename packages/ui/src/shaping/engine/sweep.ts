@@ -54,3 +54,32 @@ export function sweepMatrix(rows: ReadonlyArray<SweepRow>, fullStepsPerMm: numbe
 		maxHz,
 	};
 }
+
+/**
+ * How many of a matrix's rows the transform actually produced a spectrum for.
+ *
+ * `sweepMatrix` above SKIPS a row whose cruise window holds fewer than 64
+ * samples, leaving it all zeros — a real capture is never exactly zero in every
+ * bin, so an all-zero row means "not analysed" and nothing else. Derived from
+ * the matrix rather than reported alongside it, because a count carried beside
+ * the numbers is a count that can come to disagree with them.
+ *
+ * The case is real: a 1500-sample capture at 1379 Hz records 1.09 s, while a
+ * 100 mm move at 10 mm/s takes 10 s — so the record ends inside the move's
+ * first tenth and there is no cruise window in it at all. A sweep that painted
+ * that row as ground would read as "the machine is silent at 10 mm/s".
+ */
+export function analysedRows(matrix: SweepMatrix): number {
+	const nBins = matrix.freqs.length;
+	let n = 0;
+	for (let r = 0; r < matrix.speeds.length; r++) {
+		const base = r * nBins;
+		for (let k = 0; k < nBins; k++) {
+			if (matrix.amps[base + k] !== 0) {
+				n++;
+				break;
+			}
+		}
+	}
+	return n;
+}

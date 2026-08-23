@@ -27,6 +27,21 @@ export interface Axis {
 	max: number;
 	babystep: number;
 	visible: boolean;
+	/**
+	 * M92's rate, microsteps per mm, and M350's multiplier.
+	 *
+	 * OPTIONAL, unlike every field above, and that is the honest shape rather
+	 * than a lax one. Axis ENTRIES are not conformed — `conformModelKey` gates
+	 * the `move` subtree and fills its arrays, but it does not descend into
+	 * them — so what reaches a reader is whatever the firmware sent. Declaring
+	 * these `number | null` would promise a null that nothing produces; `?`
+	 * says what is true, which is that a board may simply not carry them.
+	 *
+	 * Read only through `shaping/fullStep.ts`, which validates both and returns
+	 * the quotient or a reason. Present on RRF 3.6 (Gabe's X: 80 and 16).
+	 */
+	stepsPerMm?: number;
+	microstepping?: { value?: number; interpolated?: boolean };
 }
 
 /** reference/objectmodel/src/move/Extruder.ts */

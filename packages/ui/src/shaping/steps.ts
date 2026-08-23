@@ -79,7 +79,7 @@ export interface StepSpec {
 
 export const SHAPING_STEPS: readonly StepSpec[] = [
 	{ step: "measure", label: "Measure", moves: true, owner: "Capture", ownerCard: "shaping-capture", produces: "fingerprint" },
-	{ step: "sweep", label: "Sweep", moves: true, owner: "Speed sweep", ownerCard: "shaping-sweep", produces: "sweep" },
+	{ step: "sweep", label: "Sweep", moves: true, owner: "Sweep heat map", ownerCard: "shaping-sweep", produces: "sweep" },
 	// No motion: ranking is arithmetic over a fingerprint already on the card,
 	// so the status card's own service offers it and this card is its owner.
 	{ step: "rank", label: "Rank", moves: false, owner: "Shaping", ownerCard: "shaping-status", needs: "fingerprint", produces: "candidates" },

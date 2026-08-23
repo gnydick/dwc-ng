@@ -21,7 +21,7 @@ and invariant claim mentions 13 -> 23, so no mechanism was deleted and no
 claim was lost in the gap. From here the ratchets make a dropped rung visible
 in the diff that drops it.
 
-**Totals:** 112 invariants · 90 at rung 6 or above · 22 below rung 6 (ceiling 22).
+**Totals:** 115 invariants · 93 at rung 6 or above · 22 below rung 6 (ceiling 22).
 
 ## bed
 
@@ -109,7 +109,7 @@ in the diff that drops it.
 
 **Why.** a delete that removes a card from every screen at once is exactly the action whose scope the operator must see before confirming — "delete this card?" cannot precede stripping it from screens they forgot it was on. The plan freezes usage at arm time; the studio is modal over composition edits, so the frozen report cannot go stale between the two clicks
 
-`packages/ui/src/compose/screens.ts:424`
+`packages/ui/src/compose/screens.ts:434`
 
 ### `compose/composition-degrades-per-slot` — rung 6
 
@@ -819,9 +819,17 @@ in the diff that drops it.
 
 **Debt — promotion.** two routes in means the gate is not a gate, and om/speeds.ts re-parses currentMove at the point of DISPLAY to cover the ungated one — a second mechanism for the same property, i.e. the drift hazard. CORRECTED 2026-08-01. This used to say "promote by routing both through one entry that brands what it produces". Following that literally would have introduced a bug, measured rather than reasoned about: this function FILLS IN defaults for absent arrays, so conforming a PARTIAL patch invents them. conformModelKey("heat", { heaters: [...] }) returns that patch plus bedHeaters: [] and chamberHeaters: [], and deep-merging those empties over the store wipes the real lists — on this machine the bed heater would vanish from the UI mid-print. Pinned by test/om-conform.test.ts. The two routes are not one operation with two callers. A wholesale subtree may be completed from defaults because it IS the whole truth; a live patch may never be, because absence there means "unchanged", not "empty". The real promotion is a conform that distinguishes the two — filling only on replacement — and only then can both share an entry. Until that exists, speeds.ts's second parse is load bearing and must not be deleted as redundant.
 
-`packages/ui/src/om/types.ts:473`
+`packages/ui/src/om/types.ts:488`
 
 ## shaping
+
+### `shaping/a-filter-finds-rows-it-does-not-choose-them` — rung 6
+
+**Mechanism.** choke-point — the pick is resolved here and nowhere else, against `all`. A caller cannot accidentally resolve it against the filtered list, because the filtered list is only ever used to answer the SECOND question. `hidden` is true only when there is a pick, so "nothing picked" and "the pick is hidden" stay distinguishable
+
+**Why.** reported by Gabe, 2026-08-23: pick a capture on the Decay card, click a name-family chip that excludes it, and the chart plus every fitted number beside it blanked — even though the selection itself was intact. The filter exists to FIND rows; what is on screen is what the operator deliberately chose, and it stays until they choose another
+
+`packages/ui/src/shaping/captures.ts:361`
 
 ### `shaping/capture-text-has-one-loader` — rung 6
 
@@ -902,6 +910,22 @@ in the diff that drops it.
 **Why.** a control disabled with no reason is worse than a control that is not there — the operator cannot tell a refusal from a bug, and the whole point of returning `Refusal` as DATA rather than a boolean was that the reason survives to the screen Nothing here decides anything. Each sentence restates a verdict the procedure already reached (shaping/preconditions.ts, shaping/procedure.ts); the UI adds no gate of its own, because the firmware and the planner are the authorities on whether the machine may move.
 
 `packages/ui/src/shaping/copy.ts:10`
+
+### `shaping/fits-are-dropped-only-by-a-reload` — rung 7
+
+**Mechanism.** sole-constructor type — the returned object exposes `remember` and `forget` and nothing else; the Map is closed over and unreachable. There is no setter, no `clear(file)`, and no way to hand the cache a replacement, so the only code that can empty it is code that names `forget`, and that is `reload` alone. A selection change, a tool change or a failed batch cannot empty it because they have nothing to call
+
+**Why.** reported by Gabe, 2026-08-23: fit the twelve `ring1_` captures, click the `ring1_v_` chip, and every fit was gone. The fits had been derived from `runState`, which `clearRun` resets on every selection change — correctly, because "fitted 12 of 12" beside a changed set of ticks is a stale CLAIM. The numbers are not a claim about the selection, so they had no business living in the same value @limit session only, and deliberately: a cached fit is not a measurement anybody asked to keep. The results file is where a measurement is kept, against a named tool and through an armed confirm, and writing cache entries there would recreate exactly the manufactured-state problem that boundary exists to prevent
+
+`packages/ui/src/shaping/fitCache.ts:12`
+
+### `shaping/full-step-rate-is-measured-or-absent` — rung 7
+
+**Mechanism.** illegal state unrepresentable — the result is a discriminated union, not a number with a sentinel. There is no `0`, no `NaN` and no default to fall through to: a caller that wants `perMm` must first narrow on `known`, and the arm that has no number carries the sentence saying why instead. Nothing can call `sweepMatrix` with a fabricated rate because there is no fabricated rate to pass
+
+**Why.** RRF reports `stepsPerMm` and `microstepping.value` per axis and the quotient is exact (Gabe's X: 80 ÷ 16 = 5 full steps/mm, so 100 mm/s excites 500 Hz). A board or firmware that omits either has to say so on the card — the alternative, defaulting to some common value, produces a plot that looks right and is not
+
+`packages/ui/src/shaping/fullStep.ts:17`
 
 ### `shaping/next-step-comes-from-the-readiness-it-shows` — rung 7
 
