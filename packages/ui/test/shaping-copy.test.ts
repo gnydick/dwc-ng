@@ -101,8 +101,9 @@ test("not-measurable names the settings that have to change", () => {
 // ---- step readiness -------------------------------------------------------
 
 const READY: StepInputs = {
-	refusal: null, offered: true,
-	hasFingerprint: true, hasCandidates: true, hasRecommendation: true, busy: false,
+	refusal: null, present: true, offered: true,
+	hasFingerprint: true, hasSweep: true, hasCandidates: true,
+	hasVerified: true, hasRecommendation: true, hasApplied: true, busy: false,
 };
 const spec = (step: string) => SHAPING_STEPS.find(s => s.step === step)!;
 
@@ -110,6 +111,7 @@ test("with everything in place, every step is enabled and says so", () => {
 	for (const s of SHAPING_STEPS) {
 		const r = stepReadiness(s, READY);
 		assert.equal(r.enabled, true, `${s.step} should be enabled`);
+		assert.equal(r.block.kind, "none");
 		assert.equal(r.note, "ready");
 	}
 });
@@ -126,15 +128,15 @@ test("a refusal disables the steps that MOVE, and only those", () => {
 test("a step whose input is missing says which one, before it says anything else", () => {
 	assert.deepEqual(
 		stepReadiness(spec("rank"), { ...READY, hasFingerprint: false }),
-		{ enabled: false, note: "nothing measured yet" },
+		{ enabled: false, block: { kind: "input", need: "fingerprint" }, note: "nothing measured yet" },
 	);
 	assert.deepEqual(
 		stepReadiness(spec("verify"), { ...READY, hasCandidates: false }),
-		{ enabled: false, note: "nothing ranked yet" },
+		{ enabled: false, block: { kind: "input", need: "candidates" }, note: "nothing ranked yet" },
 	);
 	assert.deepEqual(
 		stepReadiness(spec("apply"), { ...READY, hasRecommendation: false }),
-		{ enabled: false, note: "nothing to apply yet" },
+		{ enabled: false, block: { kind: "input", need: "recommendation" }, note: "nothing to apply yet" },
 	);
 });
 
@@ -142,24 +144,42 @@ test("the machine's answer outranks the tool's, because it is the one to go and 
 	// Verify is blocked BOTH ways. The operator can do something about an
 	// unhomed axis; "nothing ranked yet" would send them to the wrong card.
 	const both: StepInputs = { ...READY, refusal: { kind: "not-homed", axes: "XY" }, hasCandidates: false };
-	assert.deepEqual(stepReadiness(spec("verify"), both), { enabled: false, note: "home X and Y first" });
+	const r = stepReadiness(spec("verify"), both);
+	assert.equal(r.enabled, false);
+	assert.equal(r.block.kind, "machine");
+	assert.equal(r.note, "home X and Y first");
 });
 
-test("a step no card on the screen offers names the card that would", () => {
-	assert.deepEqual(
-		stepReadiness(spec("measure"), { ...READY, offered: false }),
-		{ enabled: false, note: "the Capture card runs this" },
-	);
+test("a step whose card is not on the screen says to add it", () => {
+	const r = stepReadiness(spec("measure"), { ...READY, present: false, offered: false });
+	assert.equal(r.enabled, false);
+	assert.equal(r.block.kind, "off-screen");
+	assert.equal(r.note, "add the Capture card to this screen");
+});
+
+test("a card that IS on the screen and still cannot run the step says so instead", () => {
+	// The distinction the whole ticket is about: an operator who removed the
+	// Capture card and a Capture card with no run control yet are two different
+	// problems, and one sentence for both made a missing feature read broken.
+	const r = stepReadiness(spec("measure"), { ...READY, present: true, offered: false });
+	assert.equal(r.enabled, false);
+	assert.equal(r.block.kind, "not-built");
+	assert.equal(r.note, "the Capture card cannot run this yet");
+	assert.notEqual(r.note, stepReadiness(spec("measure"), { ...READY, present: false, offered: false }).note);
 });
 
 test("a step already running is disabled while it runs", () => {
-	assert.deepEqual(stepReadiness(spec("rank"), { ...READY, busy: true }), { enabled: false, note: "working…" });
+	assert.deepEqual(
+		stepReadiness(spec("rank"), { ...READY, busy: true }),
+		{ enabled: false, block: { kind: "busy" }, note: "working…" },
+	);
 });
 
 test("every step's note is one line of prose, whatever state it is in", () => {
 	const states: StepInputs[] = [
 		READY,
 		{ ...READY, refusal: { kind: "no-envelope" } },
+		{ ...READY, present: false, offered: false },
 		{ ...READY, offered: false },
 		{ ...READY, busy: true },
 		{ ...READY, hasFingerprint: false, hasCandidates: false, hasRecommendation: false },

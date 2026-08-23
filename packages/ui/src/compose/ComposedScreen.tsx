@@ -56,7 +56,17 @@ export function ComposedScreen(props: { screenId: string }) {
 
 	// One pool per screen: shared card state (browser selections, the height
 	// map) provisions on first access and dies with the screen.
-	const service = createServicePool({ ...app, connected });
+	//
+	// `onScreen` reads the composition memo at CALL time, not at pool creation,
+	// so a card added or removed from the compose drawer changes the answer
+	// immediately — the composition is the total slot truth for a screen
+	// (see the ensureSlot/removeSlot effect below), so membership in it is what
+	// "this card is on the screen" means.
+	const service = createServicePool({
+		...app,
+		connected,
+		onScreen: (id: CardId) => composition()[id] !== undefined,
+	});
 
 	const ctxFor = (id: SlotId): CardCtx => ({
 		...app,

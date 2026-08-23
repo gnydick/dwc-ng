@@ -505,12 +505,25 @@ export const CARD_DEFS = {
 		title: "Shaping",
 		ariaLabel: "Shaping status",
 		tip: "M593 · M955 · M956",
-		// Four tool rows of two lines each, the running-shaper line, and the
-		// five-step workflow list. MEASURED with every tpost row COLLAPSED,
-		// which is how the card opens: one open row needs ~11 more and all four
-		// need ~44, and reserving that for a disclosure most sessions use once
-		// is worse than letting the body scroll while it is open.
-		size: { colSpan: 156, rowSpan: 138 },
+		// Four tool rows of two lines each, the running-shaper line, the
+		// next-step region and the five-step workflow list. MEASURED with every
+		// tpost row COLLAPSED, which is how the card opens: one open row needs
+		// ~11 more and all four need ~44, and reserving that for a disclosure
+		// most sessions use once is worse than letting the body scroll while it
+		// is open.
+		//
+		// 138 -> 156 for the next-step region (GIT_37): the caption+action row
+		// declares 8.5u, its sentence 5u on one line, and the rule and margins
+		// under it 4.5u; the step rows each gained an ordinal track and a state
+		// chip, both of which fit inside the row height the button already set.
+		// Re-measured with auditCard against `shaping-measured`: row stop 156,
+		// unchanged across the 720 / 400 / 200 px probes, body worth 141 of it.
+		// The COLUMN floor came down rather than up, 171 -> 125: the step
+		// sentences were voting their longest nowrap line into the card's
+		// minimum width, which had this card's floor 15 cells WIDER than the
+		// card itself (see .shp-step-note in app.css). 125 is now the tools
+		// table's declared tracks and nothing else.
+		size: { colSpan: 156, rowSpan: 156 },
 	}),
 	/** The test motion: the box it may move in, the sensor, and the run. */
 	"shaping-capture": defineCard({

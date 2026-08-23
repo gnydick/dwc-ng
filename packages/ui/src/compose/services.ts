@@ -62,6 +62,7 @@ import { type CaptureRecord, emptyResults, RESULTS_PATH, type ToolResults } from
 import { Preconditions, type Refusal } from "../shaping/preconditions.ts";
 import { findShapingLine, toolMacroPath } from "../shaping/toolMacro.ts";
 import type { ShapingStep } from "../shaping/steps.ts";
+import type { CardId } from "./defs.ts";
 import { useEngine } from "../shaping/useEngine.ts";
 import { ACCEL_DIR, boardRef, byNewest, captureNameParts, createCaptureLoader, type ImportedCapture, importRef, isCaptureFile, MAX_BATCH } from "../shaping/captures.ts";
 import { parseAccelAddr } from "../control/commands.ts";
@@ -72,6 +73,15 @@ import type { AppServices } from "../shell/context.ts";
 /** What a service factory gets: the app services plus the uniform gate. */
 export interface ServiceBaseCtx extends AppServices {
 	connected: () => boolean;
+	/**
+	 * Is this card in the composition the service's screen is rendering?
+	 *
+	 * A screen-level fact, so it belongs to the pool rather than to any card:
+	 * compositions are the operator's, and a Shaping screen they removed the
+	 * Capture card from genuinely cannot measure. Reactive — a card added from
+	 * the compose drawer changes the answer without a remount.
+	 */
+	onScreen: (id: CardId) => boolean;
 }
 
 /**
@@ -705,6 +715,12 @@ function shapingService(base: ServiceBaseCtx) {
 		candidateIndex, setCandidateIndex,
 		accelFor, gate, macroFor, toggleMacro, rank, ranking, problem, offer, runStep,
 		offers: (step: ShapingStep): boolean => offered().includes(step),
+		// Whether a step's OWNING card is on the screen at all, which is a
+		// different fact from whether it has offered to run the step: the first
+		// is the operator's composition, the second is whether that card has a
+		// run control yet. Telling them apart is what stops an unbuilt step
+		// reading as a broken one.
+		onScreen: base.onScreen,
 	};
 }
 
