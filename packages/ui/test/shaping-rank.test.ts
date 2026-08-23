@@ -44,7 +44,9 @@ test("newPeaks flags a 38 Hz ring that the unshaped machine did not have, and ig
 
 test("newPeaks ignores new peaks below the floor", () => {
 	const base = prototypeFingerprint();
-	const verified = { ...base, X: modeForTest(38.0, 0.13, 0.084) }; // fits, but its peak is ~0.03 g
+	// peakG is the ring amplitude at tStop + 10 ms, so the drive amplitude is
+	// scaled up by exp(zeta*wn*0.01) to land the reported peak near 0.03 g.
+	const verified = { ...base, X: modeForTest(38.0, 0.13, 0.041) };
 	assert.ok(verified.X.peakG < 0.05);
 	assert.equal(newPeaks(base, verified).length, 0);
 });

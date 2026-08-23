@@ -10,6 +10,13 @@ export type Artefact = { readonly axis: "X" | "Y"; readonly hz: Hz; readonly pea
 /**
  * Modes present in the verified fingerprint that are not within ±tolRel of
  * any mode in the baseline, with a peak of at least floorG.
+ *
+ * `floorG` is read against Mode.peakG, which since 2026-08-23 (GIT_33) is the
+ * ring amplitude rather than the argmax of a band-mask transient. The old
+ * number ran 16-63 % low, so this floor was effectively ~0.1 g of real ring;
+ * it is now the 0.05 g it says. Left at 0.05 deliberately: the smaller value
+ * is what the name always claimed, and 0.05 g of a mode the machine did not
+ * have before is worth telling the operator about.
  */
 export function newPeaks(baseline: Fingerprint, verified: Fingerprint, floorG = 0.05, tolRel = 0.15): Artefact[] {
 	const known: Mode[] = [baseline.X, baseline.Y].filter((m): m is Mode => m !== null);

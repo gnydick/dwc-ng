@@ -1,4 +1,4 @@
-import { For, Show, createEffect, createMemo, createSignal } from "solid-js";
+import { For, Show, createEffect, createMemo, createSignal, onMount } from "solid-js";
 import { createStore, produce, reconcile } from "solid-js/store";
 import { AppContext, type AppServices, useApp } from "../shell/context.ts";
 import { createTemperatureHistory } from "../om/temperature.ts";
@@ -9,12 +9,13 @@ import { PanelCanvas } from "../shell/PanelCanvas.tsx";
 import { createPanelCanvas } from "../shell/panelCanvas.ts";
 import { CARD_DEFS, allCardIds, type CardId } from "../compose/defs.ts";
 import { RegistryCard, cardTitleOf } from "../compose/RegistryCard.tsx";
+import { preloadLazyBodies } from "../compose/cards.tsx";
 import { CustomCard } from "../compose/CustomCard.tsx";
 import { CardStudio } from "../compose/CardStudio.tsx";
 import { customCardIds, isCustomCardId, isOrphanSlot, type CustomCardId, type SlotId } from "../compose/composition.ts";
 import { createServicePool } from "../compose/services.ts";
 import type { CardCtx } from "../compose/ctx.ts";
-import { SCENARIOS, scenarioModel, type ScenarioId } from "./cardScenarios.ts";
+import { SCENARIOS, scenarioFile, scenarioList, scenarioModel, type ScenarioId } from "./cardScenarios.ts";
 import { createStubConnector } from "@dwc-ng/connector";
 import { LayoutAuditAll, LayoutAuditPanel, ScaleSweepAll } from "./LayoutAuditPanel.tsx";
 
@@ -36,6 +37,34 @@ import { LayoutAuditAll, LayoutAuditPanel, ScaleSweepAll } from "./LayoutAuditPa
  */
 export default function CardLab() {
 	const outer = useApp();
+
+	// Warm every lazily-loaded card body (compose/cards.tsx) before anything is
+	// measured. The floor audit and the scale sweep read a RENDERED body's
+	// min-content height, and a body still in flight would be measured as its
+	// placeholder.
+	//
+	// Stated honestly: this closes a RACE, it does not fix an observed failure.
+	// Measured 2026-08-23 over the dev server, the sweep's own settleBench
+	// already outwaits the fetch — the shaping rows come out cell-for-cell
+	// identical with the preload, without it, and against a build with no lazy
+	// boundary at all (178/138/66/189/39/75/71/62/50 rows at 075). It is here
+	// because "the chunk arrives before settleBench gives up" is a property of
+	// how fast the file server is, and the lab is also where you LOOK at a
+	// card, where a placeholder on the bench is simply not the card.
+	//
+	// Dev-only. Nothing on an operator's path needs it: the placeholder reserves
+	// the body's space, so a card that resolves late moves nothing.
+	onMount(() => { void preloadLazyBodies(); });
+
+	// Warm every lazily-loaded card body before anything is measured.
+	//
+	// The floor audit and the scale sweep read a RENDERED body's min-content
+	// height; a body still in flight would be measured as its placeholder, and
+	// the lab would report a floor no card ever has. Both are button-driven, so
+	// a preload started at mount has resolved long before either runs — but the
+	// lab is also where you look AT a card, and a placeholder on the bench is
+	// not the card. Dev-only: nothing on an operator's path needs this, because
+	// the placeholder reserves the body's space (see compose/cards.tsx).
 
 	const [scenario, setScenario] = createSignal<ScenarioId>("printing");
 	const [featured, setFeatured] = createSignal<SlotId>("active-job-detailed");
@@ -68,10 +97,23 @@ export default function CardLab() {
 		om: model, setOm: setModel, connection, console: consoleLines, events: {},
 	};
 
+	// The stub echoes G-code and answers every read emptily. A scenario may also
+	// carry FILES — a card whose state lives on the SD card (the shaping results)
+	// has no other way to be looked at in the lab — so downloads consult the
+	// scenario first and fall through to the stub for everything else. Read at
+	// call time, not captured: switching scenario changes what the next read
+	// finds, which is what the Reload control on such a card is for.
+	const stub = createStubConnector(echo);
 	const services: AppServices = {
 		om: omStore,
 		config: outer.config, // real config so user axis-role/sensor labels render
-		connector: createStubConnector(echo),
+		connector: {
+			...stub,
+			download: async (path: string) => scenarioFile(scenario(), path) ?? stub.download(path),
+			// The Decay card browses a directory, and a bench that answers it
+			// with nothing cannot measure the card at the scale it is for.
+			list: async (dir: string) => scenarioList(scenario(), dir) ?? stub.list(dir),
+		},
 		temps: createTemperatureHistory(omStore),
 		backend: outer.backend,
 	};

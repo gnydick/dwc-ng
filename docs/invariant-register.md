@@ -21,7 +21,7 @@ and invariant claim mentions 13 -> 23, so no mechanism was deleted and no
 claim was lost in the gap. From here the ratchets make a dropped rung visible
 in the diff that drops it.
 
-**Totals:** 103 invariants · 81 at rung 6 or above · 22 below rung 6 (ceiling 22).
+**Totals:** 110 invariants · 88 at rung 6 or above · 22 below rung 6 (ceiling 22).
 
 ## bed
 
@@ -67,6 +67,14 @@ in the diff that drops it.
 
 ## charts
 
+### `charts/decay-view-comes-from-one-fitted-capture` — rung 7
+
+**Mechanism.** sole-constructor input — `decaySeries` takes a `FitResult` and nothing else. A FitResult is minted only by the engine worker (shaping/worker.ts) from one CSV, and carries its axis, its samples, its stop and its verdict together, so there are no two arguments that could come from two captures
+
+**Why.** the whole point of the card is to let an operator see why a fit came out as it did, which requires that what is drawn and what is printed be the same measurement
+
+`packages/ui/src/charts/decayData.ts:38`
+
 ### `charts/the-in-progress-layer-is-never-a-statistic` — rung 6
 
 **Mechanism.** choke-point — one `completed()`, private to this module, and both exports (layerChartData and layerStats) start by calling it. There is no path from job.layers to a rendered figure that does not pass through here, and the module's only consumer is LayersCard
@@ -93,7 +101,7 @@ in the diff that drops it.
 
 **Why.** a delete that removes a card from every screen at once is exactly the action whose scope the operator must see before confirming — "delete this card?" cannot precede stripping it from screens they forgot it was on. The plan freezes usage at arm time; the studio is modal over composition edits, so the frozen report cannot go stale between the two clicks
 
-`packages/ui/src/compose/screens.ts:384`
+`packages/ui/src/compose/screens.ts:424`
 
 ### `compose/composition-degrades-per-slot` — rung 6
 
@@ -805,6 +813,26 @@ in the diff that drops it.
 
 `packages/ui/src/om/types.ts:473`
 
+## shaping
+
+### `shaping/capture-text-has-one-loader` — rung 6
+
+**Mechanism.** choke-point — `CaptureLoader.text` is the only function that turns a CaptureRef into CSV, and a CaptureRef is the only thing it takes. A board file is downloaded at most once per session and answered from the cache after that, so no second call site can decide for itself whether to re-fetch
+
+**Why.** the board's HTTP server tolerates very few requests, and clicking down a list of twelve captures is exactly the gesture that would issue twelve downloads per click without a single owner of the cache
+
+`packages/ui/src/shaping/captures.ts:18`
+
+### `shaping/editor-adds-no-second-envelope-gate` — rung 6
+
+**Mechanism.** choke-point — `asEnvelope` is the only thing here that can say anything about a range, and it is called with the draft's own numbers rather than consulted about a rule this module re-states. A test pins the two together: over a table of drafts, `rejectedAxes` is empty exactly when `draftEnvelope(d)` — which is the gate's own return value — is non-null
+
+**Why.** the gate is whole-or-nothing by design (one good axis is not a box), so an editor carrying its own per-axis rule would eventually disagree with it about which halves are acceptable, and the operator would be told a box was fine while `null` is what got stored
+
+**Debt — promotion.** rung 7 would be `asRange` exported as the axis-level gate and this module unable to express a range question any other way. Not done today because exporting it widens the surface that can mint a Range, which is the thing config/types.ts deliberately keeps to one function.
+
+`packages/ui/src/shaping/settingsDraft.ts:19`
+
 ## shaping/engine
 
 ### `shaping/engine/capture-is-parsed` — rung 7
@@ -823,6 +851,24 @@ in the diff that drops it.
 
 `packages/ui/src/shaping/engine/fit.ts:5`
 
+### `shaping/engine/one-decay-window` — rung 6
+
+**Mechanism.** choke-point — `decayWindow` is the only place the analysis region is located. `fitDecay` fits this range and nothing else, and `charts/decayData.ts` frames, band-passes and lays its envelope over this range and nothing else, so sample 0 of the drawn envelope is sample 0 of the fitted data by construction rather than by two arithmetics that happen to agree
+
+**Why.** the chart exists to let an operator see WHY a fit came out as it did; a curve drawn over a region half a cycle away from the fitted one sits off the ring it claims to describe, and the picture would be believed
+
+**Debt — promotion.** the region is handed out as two plain integers, so a future caller could frame one capture's region around another capture's Mode. Promote by returning the Mode|NoFit alongside it from a single call, once a second consumer exists that needs both. Tracked with the E1 work item
+
+`packages/ui/src/shaping/engine/fit.ts:151`
+
+### `shaping/engine/one-envelope-and-it-is-fitted` — rung 8
+
+**Mechanism.** illegal state unrepresentable — a ring-down's envelope is not stored as samples anywhere. It is `modeEnvelope()`: three numbers (peakG, f, zeta) evaluated as peakG·exp(-2π·f·zeta·t), with zeta bounded below by 0.005 on every route that mints a Mode (fitDecay, aggregate, reviveMode). The envelope is therefore strictly decreasing for every t by arithmetic, and there is no second producer to disagree with it — `spectrum.ts` deliberately exports no function that returns a measured envelope. The decay CHART (`charts/decayData.ts`) therefore draws `modeEnvelope` of the very Mode printed beside it: not a curve that agrees with the fit, the fit itself, plotted
+
+**Why.** measured 2026-08-23: an FFT band mask is zero-phase with a sinc kernel ~1/(2·rel·f) long, so its magnitude RISES for 20-50 ms after an abrupt ring onset before settling, then overshoots. Fed a pure decaying sinusoid — whose envelope cannot rise — the old estimator read 0.35× truth at the stop, 1.00× at 60 ms and 1.52× at 120 ms (18 Hz, zeta 0.127). Anchoring peakG and the 15 % floor on the argmax of that curve put the anchor wherever the artefact happened to peak, which is why ring1_Xp1 was rejected and its five siblings were not. Padding the input with run-in does not fix it: with a silent run-in the rise is still 46 ms, and on real captures the run-in only lets the deceleration bleed through the band instead. Against synthetic ground truth (4 ring phases × 3 noise seeds, decel pulse present) the old pipeline was 8-39 % out on zeta and 16-63 % LOW on peakG; the fit below is 1-9 % on zeta and 1-6 % on peakG over the same grid
+
+`packages/ui/src/shaping/engine/fit.ts:14`
+
 ### `shaping/engine/shaper-definitions-are-one-table` — rung 8
 
 **Mechanism.** illegal state unrepresentable — ShaperSpec is a discriminated union, impulses() is one exhaustive switch with a `never` arm, and a named shaper carries F/S while a custom one carries H/T; there is no way to pair a type with the wrong parameter set, and adding a shaper type to ShaperType stops compilation until its arm exists
@@ -840,6 +886,14 @@ in the diff that drops it.
 `packages/ui/src/shaping/engine/units.ts:4`
 
 ## shaping
+
+### `shaping/every-refusal-has-copy` — rung 7
+
+**Mechanism.** totality — `refusalText` switches on the discriminant with a `never` arm and no default, so a variant added to `Refusal` stops compilation here until someone has written its sentence. That is not hypothetical: work item C added `not-measurable` after this table was specified, and the `never` arm is what turned a missing row into a compile error rather than a button that renders the empty string
+
+**Why.** a control disabled with no reason is worse than a control that is not there — the operator cannot tell a refusal from a bug, and the whole point of returning `Refusal` as DATA rather than a boolean was that the reason survives to the screen Nothing here decides anything. Each sentence restates a verdict the procedure already reached (shaping/preconditions.ts, shaping/procedure.ts); the UI adds no gate of its own, because the firmware and the planner are the authorities on whether the machine may move.
+
+`packages/ui/src/shaping/copy.ts:9`
 
 ### `shaping/preconditions-are-a-fresh-read` — rung 7
 
@@ -869,7 +923,7 @@ in the diff that drops it.
 
 ### `shaping/results-persist-through-one-writer` — rung 6
 
-**Mechanism.** choke-point — RESULTS_PATH is imported by this module alone, so the card file has exactly one reader (load) and one writer (save), and both go through parseResults/serializeResults
+**Mechanism.** choke-point — RESULTS_PATH is imported by this module alone, so the card file has exactly one reader (load) and one writer (save), and both go through parseResults/serializeResults. `save` also creates the directory chain the path needs, so "wrote the file" and "the place it goes exists" are one act rather than a precondition on whoever calls it
 
 **Why.** per-tool results written from two places would interleave a half-built session over a finished one, and a reader that skipped parseResults would put hand-edited numbers straight into a ranking
 
@@ -884,6 +938,16 @@ in the diff that drops it.
 **Why.** this is the feature's whole safety story. The lab sends 200 mm/s moves with nobody watching the axis, and the difference between a capture and a crash into the frame is whether those four facts were true at the moment of planning. A second way to build a run is a second place to forget one of them
 
 `packages/ui/src/shaping/procedure.ts:166`
+
+### `shaping/step-readiness-has-one-answer` — rung 6
+
+**Mechanism.** choke-point — `stepReadiness` is the sole producer of a step's enabled/disabled state AND of the sentence beside it, from one switch over one input record. A button cannot be enabled while showing a reason it is not, because the two come out of the same call
+
+**Why.** the first version of this had the button's `disabled` on one expression and its caption on another; they agree until someone edits one of them, and the failure mode is a control that looks available and does nothing
+
+**Debt — promotion.** the note strings are assembled here while the refusal sentences live in copy.ts. Promote by moving these into copy.ts too, so there is one module anyone looking for the screen's words has to read.
+
+`packages/ui/src/shaping/steps.ts:12`
 
 ### `shaping/verified-is-a-type` — rung 7
 
@@ -971,15 +1035,15 @@ in the diff that drops it.
 
 **Debt — promotion.** the test reads the stylesheet as text. Rung 6 is emitting these widths from the same table definition the component renders from, so a column and its width are one fact rather than two that agree. The Tools card renders the same table without the control columns, so Current is the second cell rather than the fourth. Under role classes that fact needs no restatement of any OTHER column's width — which is what the positional version got wrong. 152 + 58 = 210.
 
-`packages/ui/src/app.css:779`
+`packages/ui/src/app.css:792`
 
 ### `ui/heavy-libraries-stay-behind-a-dynamic-import` — rung 4
 
-**Mechanism.** static analysis — test/lazy-bundle.test.ts walks src and checks both halves: that only editor/setup.ts, gcode/scene.ts and heightmap/surface3d.ts name a heavy package at all, and that those three are reached only by `import type` (erased, since verbatimModuleSyntax is on) or `import(...)`. A value import of scene.ts pulls Babylon in exactly as a direct import would, which is why one check is not enough
+**Mechanism.** static analysis — test/lazy-bundle.test.ts walks src and checks both halves: that only editor/setup.ts, gcode/scene.ts and heightmap/surface3d.ts name a heavy package at all, and that every module on the DYNAMIC_ONLY list — those three plus the Shaping Lab's cards/ShapingCards.tsx and charts/DecayChart.tsx — is reached only by `import type` (erased, since verbatimModuleSyntax is on) or `import(...)`. A value import of scene.ts pulls Babylon in exactly as a direct import would, which is why one check is not enough
 
-**Why.** CLAUDE.md's first hard constraint is that the board's HTTP server is weak and payload is expensive. Babylon is 232 KB gzipped — larger than the whole eager bundle — and CodeMirror is comparable. The failure is silent in the worst way: one static import adds a quarter-megabyte to what every load must serve, the app behaves identically on a dev machine, and the cost appears only as a slower first paint on hardware nobody profiles
+**Why.** CLAUDE.md's first hard constraint is that the board's HTTP server is weak and payload is expensive. Babylon is 232 KB gzipped — larger than the whole eager bundle — CodeMirror is comparable, and the eight shaping bodies were 32,589 B of a 483,328 B ceiling (measured 2026-08-23) for a screen that tunes a machine rather than runs one. The failure is silent in the worst way: one static import adds all of it back to what every load must serve, the app behaves identically on a dev machine, and the cost appears only as a slower first paint on hardware nobody profiles
 
-**Debt — promotion.** the owner set is a hand-maintained allowlist, which is debt by this project's own rule — a fourth lazy surface has to be added by name. It is the honest shape though: which boundaries are dynamic is a design decision, not something derivable from source. Promote by asserting against the BUILT chunk graph instead — the eager entry chunk must not reference a lazy vendor chunk — which measures the thing the constraint is actually about rather than a proxy for it.
+**Debt — promotion.** the owner set is a hand-maintained allowlist, which is debt by this project's own rule — a fifth lazy surface has to be added by name. It is the honest shape though: which boundaries are dynamic is a design decision, not something derivable from source. Promote by asserting against the BUILT chunk graph instead — the eager entry chunk must not reference a lazy chunk — which measures the thing the constraint is actually about rather than a proxy for it.
 
 `packages/ui/src/main.tsx:5`
 
@@ -991,7 +1055,7 @@ in the diff that drops it.
 
 **Debt — promotion.** the scan is a brace walker over text, so it sees source order but not cascade subtleties (:is(), layers, differing specificity within a selector list). Rung 6 is generating the breakpoint blocks from one typed source, so ordering stops being something an author controls at all. (The palette entry's narrow-width rules are NOT here — they live in a second max-width block directly after the desktop ones further down.)
 
-`packages/ui/src/app.css:1467`
+`packages/ui/src/app.css:1480`
 
 ### `ui/unit-lengths` — rung 4
 

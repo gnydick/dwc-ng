@@ -11,7 +11,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { cmd, accelAddr } from "../src/control/commands.ts";
+import { cmd, accelAddr, parseAccelAddr } from "../src/control/commands.ts";
 import { impulses, type ShaperSpec } from "../src/shaping/engine/shapers.ts";
 import { hz, seconds, mm } from "../src/shaping/engine/units.ts";
 
@@ -76,6 +76,37 @@ test("the mainboard's own accelerometer is the bare P0 form, as dwc emits it", (
 	assert.equal(cmd.accelConfig(accelAddr(0, 0)), "M955 P0");
 	assert.equal(cmd.accelConfig(accelAddr(0, 1)), "M955 P0.1");
 	assert.equal(cmd.accelConfig(accelAddr(121, 0)), "M955 P121.0");
+});
+
+/**
+ * The config overlay stores an accelerometer as a plain string, so something
+ * has to turn it back into an address the builders accept. That parse is the
+ * only other way to obtain the brand, which makes its red cases worth as much
+ * as accelAddr's own: a config a person hand-edited on the SD card must not be
+ * able to aim a capture at a board nobody chose.
+ */
+test("parseAccelAddr round-trips a stored address through the sole constructor", () => {
+	assert.equal(parseAccelAddr("20.0"), accelAddr(20, 0));
+	assert.equal(parseAccelAddr("20.1"), accelAddr(20, 1));
+	// The mainboard's bare spelling comes out of accelAddr, not out of the input.
+	assert.equal(parseAccelAddr("0.0"), "0");
+	assert.equal(parseAccelAddr("0.1"), "0.1");
+});
+
+test("parseAccelAddr refuses anything that is not board.device", () => {
+	for (const bad of ["", "20", "20.", ".0", "20.0.1", "a.0", "20.b", " 20.0", "20.0 ", "-1.0", "20.-1", "1e2.0"]) {
+		assert.equal(parseAccelAddr(bad), null, `parseAccelAddr(${JSON.stringify(bad)}) should be null`);
+	}
+	// Padding is not a different address: the digits are parsed as numbers and
+	// the address is re-derived from them, so this is the same toolboard.
+	assert.equal(parseAccelAddr("020.0000"), accelAddr(20, 0));
+});
+
+test("parseAccelAddr refuses an address outside the CAN range rather than throwing", () => {
+	// accelAddr throws for these; the parse boundary's whole job is to have a
+	// null answer instead, because its input is untrusted config.
+	assert.equal(parseAccelAddr("127.0"), null);
+	assert.equal(parseAccelAddr("999.0"), null);
 });
 
 test("accelAddr refuses a nonsense address", () => {

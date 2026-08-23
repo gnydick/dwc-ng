@@ -26,7 +26,10 @@
  * @invariant results-persist-through-one-writer
  * @rung 6  choke-point — RESULTS_PATH is imported by this module alone, so the
  *          card file has exactly one reader (load) and one writer (save), and
- *          both go through parseResults/serializeResults
+ *          both go through parseResults/serializeResults. `save` also creates
+ *          the directory chain the path needs, so "wrote the file" and "the
+ *          place it goes exists" are one act rather than a precondition on
+ *          whoever calls it
  * @why per-tool results written from two places would interleave a half-built
  *      session over a finished one, and a reader that skipped parseResults
  *      would put hand-edited numbers straight into a ranking
@@ -41,7 +44,7 @@ import type { Fingerprint } from "./engine/fit.ts";
 import type { Candidate } from "./engine/rank.ts";
 import type { ShaperSpec } from "./engine/shapers.ts";
 import type { SweepMatrix } from "./engine/sweep.ts";
-import { type CaptureRecord, emptyResults, parseResults, RESULTS_PATH, serializeResults, type ToolResults } from "./results.ts";
+import { type CaptureRecord, emptyResults, parentDirs, parseResults, RESULTS_PATH, serializeResults, type ToolResults } from "./results.ts";
 
 // Declared, never exported, and with no runtime value: the brand exists only
 // in the type system, which is exactly where the guarantee is needed.
@@ -95,6 +98,18 @@ export type ShapingStore = {
 	load(tool: number): Promise<void>;
 	save(tool: number): Promise<void>;
 	setFingerprint(tool: number, fingerprint: Fingerprint | null): void;
+	/**
+	 * A whole measurement in one act: the fingerprint and the captures it was
+	 * aggregated from, replacing whatever the tool had.
+	 *
+	 * One call rather than `setFingerprint` plus N `addCapture`s, because those
+	 * two are not independent — a fingerprint is the aggregate OF those
+	 * captures, and any moment in which the store holds one without the other
+	 * is a state where the card would show a frequency that nothing on screen
+	 * accounts for. Captures REPLACE rather than append: a fingerprint run is
+	 * the tool's measurement, not an addition to a previous one.
+	 */
+	setMeasurement(tool: number, fingerprint: Fingerprint, captures: readonly CaptureRecord[]): void;
 	addCapture(tool: number, capture: CaptureRecord): void;
 	setSweep(tool: number, sweep: SweepMatrix | null): void;
 	setCandidates(tool: number, candidates: readonly Candidate[]): void;
@@ -104,8 +119,9 @@ export type ShapingStore = {
 	clear(tool: number): void;
 };
 
-/** The connector surface this store needs: reads, plus the one write that puts the file on the card. */
-export type ResultsConnector = ConnectorReads & Pick<ConnectorWrites, "upload">;
+/** The connector surface this store needs: reads, plus the two writes that put
+ *  the file on the card — the upload, and the directory it has to land in. */
+export type ResultsConnector = ConnectorReads & Pick<ConnectorWrites, "upload" | "mkdir">;
 
 export function createShapingStore(conn: ResultsConnector): ShapingStore {
 	const [results, setResults] = createStore<Record<number, ToolResults>>({});
@@ -163,11 +179,33 @@ export function createShapingStore(conn: ResultsConnector): ShapingStore {
 
 		save: async (tool: number): Promise<void> => {
 			const current = unwrap(results[tool] ?? emptyResults(tool));
-			await conn.upload(RESULTS_PATH(tool), serializeResults(current));
+			const path = RESULTS_PATH(tool);
+			// The directory chain first. RRF's rr_upload does not create it and
+			// `0:/sys/dwc-ng/shaping/` does not exist on a machine that has
+			// never saved one — which is every machine, this being the first
+			// writer. Each level is attempted and its rejection ignored,
+			// because "already exists" and "parent missing" are the same
+			// rejection from this API and only the upload can tell us which
+			// mattered: if the chain really is absent the upload fails next
+			// line, with the error the operator needs to see.
+			for (const dir of parentDirs(path)) {
+				await conn.mkdir(dir).catch(() => undefined);
+			}
+			await conn.upload(path, serializeResults(current));
 		},
 
 		setFingerprint: (tool, fingerprint): void => {
 			patch(tool, () => ({ fingerprint }));
+		},
+		setMeasurement: (tool, fingerprint, captures): void => {
+			// Candidates and verified go with it, and that is the honest
+			// behaviour rather than tidiness. A Candidate is a spec SCORED
+			// against a fingerprint and a VerifiedCandidate is a comparison
+			// AGAINST one; carrying either across a new measurement would
+			// silently re-interpret it against a baseline it was never measured
+			// with. `applied` stays: it records what is on the machine, which a
+			// new measurement does not change.
+			patch(tool, () => ({ fingerprint, captures: [...captures], candidates: [], verified: [] }));
 		},
 		addCapture: (tool, capture): void => {
 			patch(tool, (c) => ({ captures: [...c.captures, capture] }));

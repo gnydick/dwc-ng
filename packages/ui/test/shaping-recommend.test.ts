@@ -36,12 +36,22 @@ test("mzv always carries the RRF-ordering con", () => {
 });
 
 test("measured-damping pro exactly when S is within 0.02 of a fitted zeta", () => {
-	for (const S of [0.05, 0.1, 0.15, 0.2]) {
+	// One grid value is placed ON a measured zeta so both branches of the rule
+	// are exercised whatever the fingerprint's damping happens to be. The
+	// default grid alone cannot promise that: it is a fixed ladder and the
+	// measured zeta is wherever the machine puts it.
+	const onMeasured = Math.round(fp.Y!.zeta * 1000) / 1000;
+	const grid = [0.05, 0.1, 0.15, 0.2, onMeasured];
+	const local = rank(fp, { sValues: grid });
+	const pick = (S: number) => local.find((c) => c.spec.type === "ei2" && "F" in c.spec && c.spec.F === 52 && c.spec.S === S)!;
+	let sawPro = false;
+	for (const S of grid) {
 		const expected = [fp.X!, fp.Y!].some((m) => Math.abs(S - m.zeta) <= 0.02);
-		const got = rules(prosCons(find("ei2", 52, S), { fp, toolsConfigured: 1 })).includes("pro:measured-damping");
+		const got = rules(prosCons(pick(S), { fp, toolsConfigured: 1 })).includes("pro:measured-damping");
 		assert.equal(got, expected, `S ${S} (zeta X ${fp.X!.zeta.toFixed(3)}, Y ${fp.Y!.zeta.toFixed(3)})`);
+		sawPro ||= got;
 	}
-	assert.ok([0.05, 0.1, 0.15, 0.2].some((S) => [fp.X!, fp.Y!].some((m) => Math.abs(S - m.zeta) <= 0.02)), "at least one grid S is near a measured zeta");
+	assert.ok(sawPro, "no grid S exercised the positive branch");
 });
 
 test("a verified candidate with an artefact gets the artefact con and no unverified con", () => {

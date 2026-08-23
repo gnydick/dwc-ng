@@ -55,17 +55,25 @@ test("peakHz resolves a short burst to within 0.5 Hz", () => {
 for (const [f, zeta, amp] of [
 	[14, 0.05, 0.3],
 	[38, 0.1, 0.5],
-	[55, 0.15, 0.2],
+	// 0.13, not 0.15: MAX_FIT_ZETA is 0.1510, so a case at 0.15 sits 0.6 %
+	// from the acceptance edge and would be decided by the noise seed. The
+	// edge itself is tested deliberately below, from both sides.
+	[55, 0.13, 0.2],
 	[90, 0.03, 0.4],
 ] as const) {
 	test(`fitDecay recovers ${f} Hz / zeta ${zeta} from a noisy synthetic decay`, () => {
 		const r = fitDecay(synthDecay(f, zeta, amp), hz(1344), seconds(0.03));
 		assert.ok(isMode(r), `no fit: ${JSON.stringify(r)}`);
-		// A ring that dies in ~2 cycles (zeta 0.15) is located only to ~5 %;
-		// lighter damping resolves to 2 %. Documented limit of the estimator.
-		const fTol = zeta >= 0.15 ? 0.06 : 0.02;
+		// `f` is the spectral peak, and a rectangular-window peak of a damped
+		// burst is biased by the damping: ~5 % at zeta 0.15, ~2 % below 0.1.
+		const fTol = zeta >= 0.12 ? 0.06 : 0.02;
 		assert.ok(Math.abs(r.f - f) / f < fTol, `f ${r.f}`);
 		assert.ok(Math.abs(r.zeta - zeta) / zeta < 0.25, `zeta ${r.zeta}`);
+		// peakG means the ring amplitude at the first sample of the analysis
+		// region (tStop + 10 ms) — the property the band-envelope estimator
+		// got 16-63 % wrong until 2026-08-23.
+		const trueAmp = amp * Math.exp(-zeta * 2 * Math.PI * f * 0.01);
+		assert.ok(Math.abs(r.peakG - trueAmp) / trueAmp < 0.15, `peakG ${r.peakG} vs ${trueAmp}`);
 	});
 }
 
@@ -74,26 +82,27 @@ test("fitDecay on noise alone reports below-floor, not a number", () => {
 	assert.ok(!isMode(r) && r.reason === "below-floor");
 });
 
-test("fitDecay reproduces the prototype's X fingerprint from a real capture", () => {
-	const r = parseCapture(fx("ring1_Xp0.csv"));
+// Frequency still reproduces the prototype exactly; damping deliberately does
+// NOT — see shaping-decay.test.ts, which pins all twelve real captures and the
+// reason the prototype's zeta was high.
+test("fitDecay reproduces the prototype's X frequency from a real capture", () => {
+	const r = parseCapture(fx("ring1/ring1_Xp0.csv"));
 	assert.ok(r.ok);
 	const tStop = detectStop(r.capture.x, r.capture.rate);
 	assert.ok(tStop !== null);
 	const fit = fitDecay(r.capture.x, r.capture.rate, tStop);
 	assert.ok(isMode(fit), JSON.stringify(fit));
 	assert.ok(Math.abs(fit.f - 18.1) < 0.5, `X f ${fit.f}`); // prototype 18.1
-	assert.ok(Math.abs(fit.zeta - 0.127) < 0.03, `X zeta ${fit.zeta}`); // prototype 0.125
 });
 
-test("fitDecay reproduces the prototype's Y fingerprint from a real capture", () => {
-	const r = parseCapture(fx("ring1_Yp0.csv"));
+test("fitDecay reproduces the prototype's Y frequency from a real capture", () => {
+	const r = parseCapture(fx("ring1/ring1_Yp0.csv"));
 	assert.ok(r.ok);
 	const tStop = detectStop(r.capture.y, r.capture.rate);
 	assert.ok(tStop !== null);
 	const fit = fitDecay(r.capture.y, r.capture.rate, tStop);
 	assert.ok(isMode(fit), JSON.stringify(fit));
 	assert.ok(Math.abs(fit.f - 51.7) < 1, `Y f ${fit.f}`); // prototype 51.7
-	assert.ok(Math.abs(fit.zeta - 0.087) < 0.03, `Y zeta ${fit.zeta}`); // prototype 0.087
 });
 
 test("aggregate takes per-axis medians and reports spread and count", () => {

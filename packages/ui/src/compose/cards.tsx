@@ -9,7 +9,7 @@
  * controls (the float-right zone), also declared here so a composed card and
  * its legacy wrapper share one implementation.
  */
-import type { JSX } from "solid-js";
+import { lazy, Suspense, type JSX } from "solid-js";
 import { PositionBody } from "../cards/PositionCard.tsx";
 import { FilamentEditorBody } from "../cards/FilamentEditor.tsx";
 import { ToolsHeatersBody } from "../cards/ToolsHeatersCard.tsx";
@@ -38,6 +38,83 @@ import { ConsoleBody } from "../shell/ConsolePanel.tsx";
 import { CameraBody, CameraHideAction } from "../shell/CameraPanel.tsx";
 import type { CardId } from "./defs.ts";
 import type { CardCtx } from "./ctx.ts";
+
+/**
+ * The Shaping Lab's eight bodies, behind ONE dynamic import.
+ *
+ * They are the largest thing on the registry and they are reached from a single
+ * screen an operator visits to tune a machine, not to run one — the exact shape
+ * the eager budget (packages/deploy/eager-budget.json) exists to keep off the
+ * critical path. Measured 2026-08-23: eager fell from 492,903 B to 460,314 B
+ * when they moved behind this boundary — 32,589 B of a 483,328 B ceiling a cold
+ * DSF load has to fit under, and the difference between 9,575 B over budget and
+ * 23,014 B of headroom. The alternative offered was raising the budget for the
+ * third time in one night, which is not a fix.
+ *
+ * ONE import specifier for all eight, deliberately. Solid's `lazy` dedupes on
+ * the promise, and the bundler emits one chunk per specifier — so the eight
+ * cards of a screen that is always composed together arrive in one request
+ * rather than eight, which is the constraint RRF's HTTP server actually has.
+ *
+ * Not lazy: `settings-shaping`. It is small, and it lives on Settings, a screen
+ * the operator uses constantly.
+ *
+ * The boundary is FENCED, not merely intended: `ShapingCards.tsx` and
+ * `charts/DecayChart.tsx` are on the DYNAMIC_ONLY list in
+ * `test/lazy-bundle.test.ts`, so a static import of either from anywhere under
+ * src/ fails the suite. That is the same mechanism, and the same declared
+ * invariant, that keeps Babylon and CodeMirror out —
+ * `heavy-libraries-stay-behind-a-dynamic-import`, declared on main.tsx, which
+ * is the root of the eager bundle and therefore where the claim belongs.
+ */
+const lazyShaping = <K extends keyof typeof import("../cards/ShapingCards.tsx")>(name: K) =>
+	lazy(async () => ({ default: (await import("../cards/ShapingCards.tsx"))[name] as (props: { ctx: CardCtx }) => JSX.Element }));
+
+const ShapingStatusBody = lazyShaping("ShapingStatusBody");
+const ShapingCaptureBody = lazyShaping("ShapingCaptureBody");
+const ShapingDecayBody = lazyShaping("ShapingDecayBody");
+const ShapingSweepBody = lazyShaping("ShapingSweepBody");
+const ShapingCandidatesBody = lazyShaping("ShapingCandidatesBody");
+const ShapingCustomBody = lazyShaping("ShapingCustomBody");
+const ShapingVerifyBody = lazyShaping("ShapingVerifyBody");
+const ShapingApplyBody = lazyShaping("ShapingApplyBody");
+
+/**
+ * Every lazy body, warmed. Dev surfaces call this because they MEASURE cards:
+ * the Card Lab's floor audit and scale sweep read a rendered body's min-content
+ * height, and a body still in flight would be measured as its placeholder.
+ *
+ * Nothing on an operator's path needs it — the placeholder reserves the body's
+ * space, so a card that resolves late changes nothing about the page.
+ */
+export function preloadLazyBodies(): Promise<unknown> {
+	return Promise.all([
+		ShapingStatusBody.preload(), ShapingCaptureBody.preload(), ShapingDecayBody.preload(),
+		ShapingSweepBody.preload(), ShapingCandidatesBody.preload(), ShapingCustomBody.preload(),
+		ShapingVerifyBody.preload(), ShapingApplyBody.preload(),
+	]);
+}
+
+/**
+ * A lazy body inside its own <Suspense>, with the body's space reserved.
+ *
+ * The <Card> chrome is NOT inside this — RegistryCard renders it from the def's
+ * metadata before this component is even reached, so the title, the tip and the
+ * header actions are there on the first frame and only the content waits. The
+ * fallback fills the body box (`.card-lazy` is `flex: 1` inside .panel-body's
+ * column), so nothing on the canvas moves when the chunk lands. Measured with
+ * the chunk BLOCKED at the network: all eight cards report the same rect to the
+ * pixel suspended as loaded. Positional stability is the rule this
+ * whole screen is built to; a card that jumps when its body arrives is a defect,
+ * not a loading state.
+ */
+function Lazy(props: { component: (p: { ctx: CardCtx }) => JSX.Element; ctx: CardCtx }): JSX.Element {
+	return (
+		<Suspense fallback={<div class="card-lazy" aria-busy="true" />}>
+			<props.component ctx={props.ctx} />
+		</Suspense>
+	);
+}
 
 export interface CardRender {
 	body: (ctx: CardCtx) => JSX.Element;
@@ -97,6 +174,23 @@ export const CARD_RENDER: Record<CardId, CardRender> = {
 	"camera-config": { body: () => <CameraConfigBody />, actions: resetAction("camera") },
 	"sensor-names": { body: () => <SensorNamesBody />, actions: resetAction("sensorNames") },
 	"settings-shaping": { body: () => <ShapingBody />, actions: resetAction("shaping") },
+	// The Shaping Lab. Every body is a view of ONE service (the per-tool results
+	// store and the screen's selections), so the eight cards cannot disagree
+	// about which tool is being tuned — see compose/services.ts `shaping`.
+	"shaping-status": {
+		body: ctx => <Lazy component={ShapingStatusBody} ctx={ctx} />,
+		// Re-read this tool's results file. It lives on the SD card beside
+		// config.g, so the operator can put one there or edit one out from under
+		// the screen — the same reason the height map carries a Reload.
+		actions: ctx => <button class="link-btn" onClick={() => ctx.service("shaping").reload()}>Reload</button>,
+	},
+	"shaping-capture": { body: ctx => <Lazy component={ShapingCaptureBody} ctx={ctx} /> },
+	"shaping-decay": { body: ctx => <Lazy component={ShapingDecayBody} ctx={ctx} /> },
+	"shaping-sweep": { body: ctx => <Lazy component={ShapingSweepBody} ctx={ctx} /> },
+	"shaping-candidates": { body: ctx => <Lazy component={ShapingCandidatesBody} ctx={ctx} /> },
+	"shaping-custom": { body: ctx => <Lazy component={ShapingCustomBody} ctx={ctx} /> },
+	"shaping-verify": { body: ctx => <Lazy component={ShapingVerifyBody} ctx={ctx} /> },
+	"shaping-apply": { body: ctx => <Lazy component={ShapingApplyBody} ctx={ctx} /> },
 	"saved-versions": { body: () => <SavedVersionsBody /> },
 	"config-save": { body: () => <ConfigSaveBody /> },
 };
