@@ -21,7 +21,7 @@ and invariant claim mentions 13 -> 23, so no mechanism was deleted and no
 claim was lost in the gap. From here the ratchets make a dropped rung visible
 in the diff that drops it.
 
-**Totals:** 111 invariants · 89 at rung 6 or above · 22 below rung 6 (ceiling 22).
+**Totals:** 112 invariants · 90 at rung 6 or above · 22 below rung 6 (ceiling 22).
 
 ## bed
 
@@ -74,6 +74,14 @@ in the diff that drops it.
 **Why.** the whole point of the card is to let an operator see why a fit came out as it did, which requires that what is drawn and what is printed be the same measurement
 
 `packages/ui/src/charts/decayData.ts:38`
+
+### `charts/one-pixel-mapping-for-paint-and-hover` — rung 7
+
+**Mechanism.** sole-constructor type — a `HeatLayout` is minted only by `heatmapCells`, and `cellAt` does not recompute a rectangle: it indexes the same `cells` array the painter draws and returns a cell only after checking the point against THAT cell's own rect. A tooltip therefore cannot name a cell other than the one drawn under the cursor, and a layout bug shows up as "no tooltip", never as "wrong number"
+
+**Why.** the tooltip is the only place the operator reads an exact frequency, and a tooltip that is one column out is worse than no tooltip — it would name 250 Hz over a 260 Hz stripe and send them shaping a mode that shaping cannot reach
+
+`packages/ui/src/charts/sweepData.ts:51`
 
 ### `charts/the-in-progress-layer-is-never-a-statistic` — rung 6
 
