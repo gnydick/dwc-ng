@@ -23,96 +23,19 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import type { FileListEntry, GcodeCommand } from "@dwc-ng/connector";
-import { planProcedure, CAPTURE_DIR, type ProcEvent, type RingPlan, type RunConnector, type VerifyPlan } from "../src/shaping/procedure.ts";
+import { planProcedure, CAPTURE_DIR, type ProcEvent, type RingPlan, type VerifyPlan } from "../src/shaping/procedure.ts";
 import type { ObjectModel } from "../src/om/types.ts";
 import { hz } from "../src/shaping/engine/units.ts";
 import type { ShaperSpec } from "../src/shaping/engine/shapers.ts";
-import { EI2_PRIOR, NOW, config, freshPre, modelWith, ringPlan } from "./helpers/shapingMachine.ts";
+import {
+	EI2_PRIOR, FAKE_CSV, NOW, config, drain, errorOf, fakeBoard, freshPre, kinds,
+	modelWith, ringPlan, testClock, type Fake, type FakeOptions,
+} from "./helpers/shapingMachine.ts";
 
-const CSV = "0,0.01,0.02,0.03\nRate 1344, overflows 0\n";
+const CSV = FAKE_CSV;
 const EI2_SPEC: ShaperSpec = { type: "ei2", F: hz(52), S: 0.075 };
 const OFF = 'M593 P"none"';
 const EI2_LINE = 'M593 P"ei2" F52 S0.075';
-
-/** Instant, deterministic time. Every poll advances the clock by its own wait,
- *  so the 10 s budget is exercised for real without the suite sleeping. */
-function testClock(): { now: () => number; sleep: (ms: number) => Promise<void> } {
-	let t = 0;
-	return { now: () => t, sleep: async (ms: number): Promise<void> => { t += ms; } };
-}
-
-type FakeOptions = {
-	/** Throw from here to reject the nth send ATTEMPT (0-based over the whole
-	 *  run, so a rejected attempt still consumes its number). */
-	onSend?: (code: string, nth: number) => void;
-	/** How many directory listings pass before an armed capture's file lands. */
-	fileAfterPolls?: number;
-	/** Files already in the accelerometer directory when the run starts. */
-	preexisting?: readonly string[];
-	/** Millimetres of error the simulated carriage introduces on every move. */
-	driftOnMove?: number;
-};
-
-type Fake = { conn: RunConnector; sent: string[]; listed: string[]; downloaded: string[] };
-
-function fakeBoard(model: ObjectModel, opts: FakeOptions = {}): Fake {
-	const sent: string[] = [];
-	const listed: string[] = [];
-	const downloaded: string[] = [];
-	const present = new Set<string>(opts.preexisting ?? []);
-	let pending: { file: string; ticks: number }[] = [];
-	let attempts = 0;
-
-	const setAt = (x: number, y: number): void => {
-		for (const a of model.move.axes) {
-			if (a.letter === "X") a.userPosition = x;
-			if (a.letter === "Y") a.userPosition = y;
-		}
-	};
-	const bumpRuns = (): void => {
-		const b = model.boards.find((e) => e !== null && e.canAddress === 20);
-		const accel = b?.accelerometer;
-		if (accel) (accel as { runs: number }).runs += 1;
-	};
-
-	const conn: RunConnector = {
-		async sendCode(code: GcodeCommand): Promise<string> {
-			opts.onSend?.(String(code), attempts++);
-			sent.push(String(code));
-			const armed = /^M956 .* F"(.+)"$/.exec(String(code));
-			if (armed !== null) pending.push({ file: armed[1] ?? "", ticks: opts.fileAfterPolls ?? 0 });
-			const move = /^G1 X(-?[\d.]+) Y(-?[\d.]+) F/.exec(String(code));
-			if (move !== null) setAt(Number(move[1]) + (opts.driftOnMove ?? 0), Number(move[2]));
-			return "";
-		},
-		async list(dir: string): Promise<FileListEntry[]> {
-			listed.push(dir);
-			const ready = pending.filter((p) => p.ticks <= 0);
-			pending = pending.filter((p) => p.ticks > 0).map((p) => ({ file: p.file, ticks: p.ticks - 1 }));
-			for (const p of ready) { present.add(p.file); bumpRuns(); }
-			return [...present].map((name) => ({ type: "f" as const, name, size: 1 }));
-		},
-		async download(path: string): Promise<string> {
-			downloaded.push(path);
-			return CSV;
-		},
-	};
-	return { conn, sent, listed, downloaded };
-}
-
-async function drain(gen: AsyncGenerator<ProcEvent, void, void>): Promise<ProcEvent[]> {
-	const out: ProcEvent[] = [];
-	for await (const ev of gen) out.push(ev);
-	return out;
-}
-
-const kinds = (events: readonly ProcEvent[]): string[] => events.map((e) => e.kind);
-
-const errorOf = (events: readonly ProcEvent[]): string => {
-	const failed = events.filter((e) => e.kind === "failed");
-	return failed.length === 0 ? "" : (failed[failed.length - 1] as { error: string }).error;
-};
 
 /** A planned ring on a fresh machine, with the fake board wired to that model. */
 function ready(fake: FakeOptions = {}, over: Partial<RingPlan> = {}): Fake & { proc: ReturnType<typeof plannedRing>; model: ObjectModel } {

@@ -24,7 +24,8 @@ import type { ShaperSpec } from "../src/shaping/engine/shapers.ts";
 import type { Shaping } from "../src/om/types.ts";
 import {
 	BOX, EI2_PRIOR, MAINBOARD, NO_SHAPER, NOW, TOOLBOARD,
-	axis, board, config, freshPre, modelWith, ringPlan, type ModelOverrides,
+	axis, board, config, drain, fakeBoard, freshPre, kinds, modelWith, ringPlan, sentBy, testClock,
+	type ModelOverrides,
 } from "./helpers/shapingMachine.ts";
 
 // --- refusals from Preconditions.read ---------------------------------------
@@ -174,11 +175,15 @@ test("a Y ring names its files on Y", () => {
 	assert.deepEqual(r.proc.steps.map((s) => s.expectFile), ["probe_Yp0.csv", "probe_Ym0.csv"]);
 });
 
-test("every capture step emits exactly [G90, G1 start, M400, G4, M956, G1 end, M400, G4]", () => {
+test("every capture step puts exactly [G90, G1 start, M400, G4, M956, G1 end, M400, G4] on the wire", async () => {
+	const model = modelWith();
 	const r = planProcedure(ringPlan({ repeats: 1 }), freshPre(), config(), NOW);
 	assert.equal(r.ok, true);
 	if (!r.ok) return;
-	assert.deepEqual(r.proc.steps[0]?.codes, [
+	// A procedure does not hand out its commands — running it against a fake
+	// board is how you see them, which is also the thing worth asserting.
+	const sent = await sentBy(r.proc, model);
+	assert.deepEqual(sent.slice(0, 8), [
 		"G90",
 		"G1 X100 Y100 F12000",
 		"M400",
@@ -188,7 +193,7 @@ test("every capture step emits exactly [G90, G1 start, M400, G4, M956, G1 end, M
 		"M400",
 		"G4 P1500",
 	]);
-	assert.deepEqual(r.proc.steps[1]?.codes, [
+	assert.deepEqual(sent.slice(8, 16), [
 		"G90",
 		"G1 X160 Y100 F12000",
 		"M400",
@@ -200,19 +205,32 @@ test("every capture step emits exactly [G90, G1 start, M400, G4, M956, G1 end, M
 	]);
 });
 
-test("each step carries the position the carriage must already be at", () => {
+test("`preview` is the same sequence the board will hear — a preview that lied would be worse than none", async () => {
+	const model = modelWith();
+	const r = planProcedure(ringPlan({ repeats: 2 }), freshPre(), config(), NOW);
+	assert.equal(r.ok, true);
+	if (!r.ok) return;
+	assert.deepEqual(r.proc.preview, await sentBy(r.proc, model));
+	assert.equal(r.proc.preview[r.proc.preview.length - 1], 'M593 P"none"', "the restore is part of what the run will do");
+});
+
+test("the steps chain: each one starts where the last left the carriage", async () => {
+	const model = modelWith({ axes: [axis("X", true, 120), axis("Y", true, 140)] });
 	const r = planProcedure(ringPlan({ repeats: 2 }), freshPre({ axes: [axis("X", true, 120), axis("Y", true, 140)] }), config(), NOW);
 	assert.equal(r.ok, true);
 	if (!r.ok) return;
-	assert.deepEqual(
-		r.proc.steps.map((s) => ({ x: Number(s.expectPosition.x), y: Number(s.expectPosition.y) })),
-		[
-			{ x: 120, y: 140 }, // where the OM said the carriage was
-			{ x: 160, y: 100 }, // the far end of the first out-move
-			{ x: 100, y: 100 },
-			{ x: 160, y: 100 },
-		],
-	);
+	// Every step carries the position the carriage must ALREADY be at, and the
+	// run refuses on a mismatch — so a run that reaches `done` against a board
+	// that only ever moves where it is told is the proof that the chain holds.
+	const fake = fakeBoard(model);
+	const events = await drain(r.proc.run(fake.conn, () => model, testClock()));
+	assert.deepEqual(kinds(events), ["step", "capture", "step", "capture", "step", "capture", "step", "capture", "done", "restored"]);
+	assert.deepEqual(fake.sent.filter((c) => c.startsWith("G1")), [
+		"G1 X100 Y100 F12000", "G1 X160 Y100 F12000", // out from where the OM said we were
+		"G1 X160 Y100 F12000", "G1 X100 Y100 F12000", // and back
+		"G1 X100 Y100 F12000", "G1 X160 Y100 F12000",
+		"G1 X160 Y100 F12000", "G1 X100 Y100 F12000",
+	]);
 });
 
 test("step labels name the axis, direction, speed and repeat", () => {
@@ -238,85 +256,77 @@ test("the procedure keeps the Preconditions it was planned from", () => {
 });
 
 // --- restore (I2) -----------------------------------------------------------
+//
+// Observed on the wire, not read off a field: the restore is `#`-private now,
+// and "what does the board hear last?" is the question that actually matters.
 
-test('restore turns shaping off when the machine had none', () => {
-	const r = planProcedure(ringPlan(), freshPre({ shaping: NO_SHAPER }), config(), NOW);
-	assert.equal(r.ok, true);
-	if (!r.ok) return;
-	assert.deepEqual(r.proc.restore, ['M593 P"none"']);
-});
+const RESTORES: ReadonlyArray<{ name: string; prior: Shaping; want: string }> = [
+	{ name: "no shaper: shaping is switched off", prior: NO_SHAPER, want: 'M593 P"none"' },
+	{ name: "a named shaper is reinstated exactly", prior: EI2_PRIOR, want: 'M593 P"ei2" F52 S0.075' },
+	{
+		name: "a custom shaper is restored impulse for impulse",
+		prior: { type: "custom", frequency: 40, damping: 0.1, amplitudes: [0.335, 0.2641, 0.2242, 0.1767], delays: [0, 0.00972, 0.0278, 0.03752] },
+		want: 'M593 P"custom" H0.3350:0.2641:0.2242 T0.00972:0.02780:0.03752',
+	},
+	{
+		name: "a shaper this build has never heard of is restored from its reported train",
+		prior: { type: "zvddddd", frequency: 40, damping: 0.1, amplitudes: [0.335, 0.2641, 0.2242, 0.1767], delays: [0, 0.00972, 0.0278, 0.03752] },
+		want: 'M593 P"custom" H0.3350:0.2641:0.2242 T0.00972:0.02780:0.03752',
+	},
+	{
+		name: "a shaper reporting no usable train restores to off rather than to a guess",
+		prior: { type: "custom", frequency: 40, damping: 0.1, amplitudes: [], delays: [] },
+		want: 'M593 P"none"',
+	},
+];
 
-test("restore reinstates the exact prior named shaper", () => {
-	const r = planProcedure(ringPlan(), freshPre({ shaping: EI2_PRIOR }), config(), NOW);
-	assert.equal(r.ok, true);
-	if (!r.ok) return;
-	assert.deepEqual(r.proc.restore, ['M593 P"ei2" F52 S0.075']);
-});
-
-test("a prior custom shaper is restored impulse for impulse", () => {
-	const prior: Shaping = {
-		type: "custom",
-		frequency: 40,
-		damping: 0.1,
-		amplitudes: [0.335, 0.2641, 0.2242, 0.1767],
-		delays: [0, 0.00972, 0.0278, 0.03752],
-	};
-	const r = planProcedure(ringPlan(), freshPre({ shaping: prior }), config(), NOW);
-	assert.equal(r.ok, true);
-	if (!r.ok) return;
-	assert.deepEqual(r.proc.restore, ['M593 P"custom" H0.3350:0.2641:0.2242 T0.00972:0.02780:0.03752']);
-});
-
-test("a shaper this build has never heard of is restored from its reported impulse train", () => {
-	const prior: Shaping = {
-		type: "zvddddd",
-		frequency: 40,
-		damping: 0.1,
-		amplitudes: [0.335, 0.2641, 0.2242, 0.1767],
-		delays: [0, 0.00972, 0.0278, 0.03752],
-	};
-	const r = planProcedure(ringPlan(), freshPre({ shaping: prior }), config(), NOW);
-	assert.equal(r.ok, true);
-	if (!r.ok) return;
-	assert.deepEqual(r.proc.restore, ['M593 P"custom" H0.3350:0.2641:0.2242 T0.00972:0.02780:0.03752']);
-});
-
-test("a shaper that reports no usable train restores to off rather than to a guess", () => {
-	const prior: Shaping = { type: "custom", frequency: 40, damping: 0.1, amplitudes: [], delays: [] };
-	const r = planProcedure(ringPlan(), freshPre({ shaping: prior }), config(), NOW);
-	assert.equal(r.ok, true);
-	if (!r.ok) return;
-	assert.deepEqual(r.proc.restore, ['M593 P"none"']);
-});
+for (const row of RESTORES) {
+	test(`restore — ${row.name}`, async () => {
+		const model = modelWith({ shaping: row.prior });
+		const r = planProcedure(ringPlan({ repeats: 1 }), freshPre({ shaping: row.prior }), config(), NOW);
+		assert.equal(r.ok, true);
+		if (!r.ok) return;
+		const sent = await sentBy(r.proc, model);
+		assert.equal(sent[sent.length - 1], row.want, "the last thing the board hears");
+		assert.equal(sent.filter((c) => c.startsWith("M593")).length, 1, "and the only M593 a ring sends");
+	});
+}
 
 // --- verify plan ------------------------------------------------------------
 
 const EI2_SPEC: ShaperSpec = { type: "ei2", F: hz(52), S: 0.075 };
 
-test("a verify plan prepends the shaper as step 0 and leaves the ring untouched", () => {
+test("a verify plan prepends the shaper as step 0 and leaves the ring untouched", async () => {
+	const model = modelWith({ shaping: EI2_PRIOR });
 	const verify: VerifyPlan = { kind: "verify", spec: EI2_SPEC, ring: ringPlan({ repeats: 1, namePrefix: "ver" }) };
 	const r = planProcedure(verify, freshPre({ shaping: EI2_PRIOR }), config(), NOW);
 	assert.equal(r.ok, true);
 	if (!r.ok) return;
 	assert.equal(r.proc.steps.length, 3);
-	assert.deepEqual(r.proc.steps[0]?.codes, ['M593 P"ei2" F52 S0.075']);
 	assert.equal(r.proc.steps[0]?.expectFile, undefined);
 	assert.equal(r.proc.steps[0]?.label, "shaper ei2");
-	assert.deepEqual({ x: Number(r.proc.steps[0]?.expectPosition.x), y: Number(r.proc.steps[0]?.expectPosition.y) }, { x: 100, y: 100 });
-	assert.deepEqual(r.proc.steps.map((s) => s.expectFile), [undefined, "ver_Xp0.csv", "ver_Xm0.csv"]);
+	assert.deepEqual(r.proc.steps.map((st) => st.expectFile), [undefined, "ver_Xp0.csv", "ver_Xm0.csv"]);
+	const sent = await sentBy(r.proc, model);
+	assert.deepEqual(sent[0], 'M593 P"ei2" F52 S0.075', "step 0 is the candidate, sent before anything moves");
+	assert.equal(sent[1], "G90", "and the ring follows unchanged");
 });
 
-test("a verify plan's restore is still the PRIOR shaper, never the one under test", () => {
+test("a verify plan's restore is still the PRIOR shaper, never the one under test", async () => {
 	const verify: VerifyPlan = { kind: "verify", spec: EI2_SPEC, ring: ringPlan({ repeats: 1 }) };
+
+	const offModel = modelWith({ shaping: NO_SHAPER });
 	const off = planProcedure(verify, freshPre({ shaping: NO_SHAPER }), config(), NOW);
 	assert.equal(off.ok, true);
 	if (!off.ok) return;
-	assert.deepEqual(off.proc.restore, ['M593 P"none"']);
+	const offSent = await sentBy(off.proc, offModel);
+	assert.equal(offSent[offSent.length - 1], 'M593 P"none"');
 
+	const priorModel = modelWith({ shaping: EI2_PRIOR });
 	const prior = planProcedure(verify, freshPre({ shaping: EI2_PRIOR }), config(), NOW);
 	assert.equal(prior.ok, true);
 	if (!prior.ok) return;
-	assert.deepEqual(prior.proc.restore, ['M593 P"ei2" F52 S0.075']);
+	const priorSent = await sentBy(prior.proc, priorModel);
+	assert.equal(priorSent[priorSent.length - 1], 'M593 P"ei2" F52 S0.075');
 });
 
 test("a verify plan is refused for the same reasons its ring would be", () => {
@@ -357,11 +367,13 @@ test("a sweep visits both corners: one capture per axis per speed", () => {
 	]);
 });
 
-test("a sweep's second speed is a different feed rate on the same geometry", () => {
+test("a sweep's speed is a different feed rate on the same geometry", async () => {
+	const model = modelWith();
 	const r = planProcedure(sweepPlan({ speeds: [mmPerS(100)] }), freshPre(), config(), NOW);
 	assert.equal(r.ok, true);
 	if (!r.ok) return;
-	assert.deepEqual(r.proc.steps[0]?.codes, [
+	const sent = await sentBy(r.proc, model);
+	assert.deepEqual(sent.slice(0, 8), [
 		"G90",
 		"G1 X100 Y100 F6000",
 		"M400",
@@ -371,7 +383,7 @@ test("a sweep's second speed is a different feed rate on the same geometry", () 
 		"M400",
 		"G4 P1500",
 	]);
-	assert.deepEqual(r.proc.steps[1]?.codes, [
+	assert.deepEqual(sent.slice(8, 16), [
 		"G90",
 		"G1 X100 Y100 F6000",
 		"M400",

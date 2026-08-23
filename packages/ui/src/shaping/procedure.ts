@@ -95,12 +95,28 @@ export type Plan = RingPlan | SweepPlan | VerifyPlan;
  * — the run loop compares it against a fresh model read and fails the run on a
  * mismatch. It is not a target and nothing moves the machine to it.
  */
-export type Step = {
+type Step = {
 	readonly codes: readonly GcodeCommand[];
 	/** The capture this step produces, if it produces one. */
 	readonly expectFile?: string;
 	readonly label: string;
 	readonly expectPosition: Point;
+};
+
+/**
+ * A step as the CARDS see it: what it is called and what it will leave behind,
+ * and deliberately not the commands that do it.
+ *
+ * This is the whole of the projection, because it is the whole of what the
+ * screen needs. The progress strip names steps and counts them; the capture
+ * card draws its map from `plannedSegments(plan)` — from the PLAN, which the
+ * card built and already holds — so positions are not needed here, and the
+ * G-code is behind `preview` as plain strings that no `sendCode` will accept.
+ */
+export type StepView = {
+	readonly label: string;
+	/** The capture this step will produce, when it produces one. */
+	readonly expectFile?: string;
 };
 
 /**
@@ -158,13 +174,17 @@ export type PlanResult =
  *          two routes. `plan` takes a `Preconditions`, which is itself
  *          obtainable only from a fresh object-model read, so a run cannot
  *          exist that was not gated on idle, homed, sensor-present and
- *          inside-the-box. `run` is the only method that sends anything, and
- *          the only two things it can send are `steps[].codes` and `restore`,
- *          both built by `plan` — there is no corrective move, no re-plan and
- *          no second command source inside the run loop, so what reaches the
- *          machine is exactly what the refusals were evaluated against. The
- *          universal `x as unknown as T` escape is not counted against this
- *          rung
+ *          inside-the-box. The commands themselves live in `#steps` and
+ *          `#restore`, whose names are unwritable outside this file, so no
+ *          caller anywhere can obtain a `GcodeCommand` belonging to a
+ *          procedure — the cards get `steps`, a projection carrying labels and
+ *          capture names, and `preview`, plain `string`s that `sendCode` does
+ *          not accept. `run` is therefore the only route from a plan to the
+ *          machine, and the only two things it sends are those two private
+ *          fields, both built by `plan`: no corrective move, no re-plan, no
+ *          second command source, so what reaches the machine is exactly what
+ *          the refusals were evaluated against. The universal
+ *          `x as unknown as T` escape is not counted against this rung
  * @why this is the feature's whole safety story. The lab sends 200 mm/s moves
  *      with nobody watching the axis, and the difference between a capture and
  *      a crash into the frame is whether those four facts were true at the
@@ -177,22 +197,21 @@ export class Procedure {
 	 *  time rather than to run time. */
 	readonly #plannedAt: number;
 
-	readonly steps: readonly Step[];
-
-	// Worth being precise about what the two invariants below do NOT cover:
-	// `steps` is public, and its `codes` are already-branded GcodeCommands, so
-	// code OUTSIDE this module could read them and send them itself, skipping
-	// the restore entirely. The motion fence (test/shaping-motion-fence.test.ts)
-	// pins `sendCode(` to this file, but it walks src/shaping only — a card
-	// under src/cards is not in its scope. Privatising `steps` would close it;
-	// the plan declares the field as part of the cross-work-item interface, so
-	// it stays public here and this note stays with it.
+	/**
+	 * The steps, and the commands inside them. `#`-private, and that is the
+	 * mechanism rather than a style choice: these are already-branded
+	 * `GcodeCommand`s, so anything that could read them could send them, and
+	 * sending them outside `run` would skip the restore. Outside this file the
+	 * name cannot even be written. What the cards get instead is `steps`, a
+	 * projection with no codes in it.
+	 */
+	readonly #steps: readonly Step[];
 
 	/**
 	 * The commands that put the shaper back as it was found.
 	 *
 	 * @invariant restore-is-structural
-	 * @rung 7  sole-constructor type — this is a `readonly` field of a class
+	 * @rung 7  sole-constructor type — this is a `#`-private field of a class
 	 *          whose only constructor is private and whose only producer is
 	 *          `plan`, which always computes it from `pre.priorShaping`. There
 	 *          is no setter, no optional argument and no code path that yields
@@ -205,27 +224,65 @@ export class Procedure {
 	 *          position check, and a consumer that abandons the generator with
 	 *          `break` or `.return()` — all put the shaper back; the last of
 	 *          those works because the awaits complete before execution
-	 *          suspends at that yield, whether or not anyone is still reading
+	 *          suspends at that yield, whether or not anyone is still reading.
+	 *          Nothing outside this file can reach these commands to send them
+	 *          itself and skip the `finally`: `preview` renders them as plain
+	 *          strings for display and `sendCode` will not take one
 	 * @why the machine's prior shaper is knowable only BEFORE the run changes
 	 *      it. A restore derived from live state after a verify pass would
 	 *      faithfully re-apply the candidate under test and leave the operator
 	 *      believing the machine was back to baseline — a wrong belief about a
 	 *      setting that changes every subsequent print
 	 */
-	readonly restore: readonly GcodeCommand[];
+	readonly #restore: readonly GcodeCommand[];
+
 	/** The reading this was planned from — the run loop re-checks positions
-	 *  against it rather than against anything it reads for itself. */
+	 *  against it rather than against anything it reads for itself. Carries no
+	 *  commands, so it is handed out whole. */
 	readonly pre: Preconditions;
+
+	// Both projections are built ONCE, here, and handed out as the same frozen
+	// arrays every time. Not an optimisation: a getter that allocated per read
+	// would hand a Solid <For> a new array on every render and rebuild the
+	// progress strip's rows on each poll. A procedure is immutable, so a value
+	// derived at construction cannot drift from what it was derived from.
+	readonly #stepViews: readonly StepView[];
+	readonly #preview: readonly string[];
 
 	private constructor(plannedAt: number, steps: readonly Step[], restore: readonly GcodeCommand[], pre: Preconditions) {
 		this.#plannedAt = plannedAt;
-		this.steps = steps;
-		this.restore = restore;
+		this.#steps = steps;
+		this.#restore = restore;
 		this.pre = pre;
+		this.#stepViews = Object.freeze(steps.map((s) =>
+			Object.freeze(s.expectFile === undefined ? { label: s.label } : { label: s.label, expectFile: s.expectFile }),
+		));
+		this.#preview = Object.freeze([...steps.flatMap((s) => s.codes.map(String)), ...restore.map(String)]);
 	}
 
 	get plannedAt(): number {
 		return this.#plannedAt;
+	}
+
+	/** What the run will do, for the screen: one entry per step, in order.
+	 *  `steps.length` is the count a progress strip needs; the array position
+	 *  is the `index` a `step` event reports. */
+	get steps(): readonly StepView[] {
+		return this.#stepViews;
+	}
+
+	/**
+	 * Every command this run will send, in order, restore last — as PLAIN
+	 * STRINGS, for a card that shows the operator what it is about to do
+	 * before an armed confirm ("controls wear their G-code").
+	 *
+	 * Deliberately unbranded. A display value that could be fed back to
+	 * `sendCode` would be the same hole as a public `#steps` wearing a
+	 * different hat; a `string` is not a `GcodeCommand` and will not compile
+	 * there.
+	 */
+	get preview(): readonly string[] {
+		return this.#preview;
 	}
 
 	/**
@@ -249,10 +306,10 @@ export class Procedure {
 	async *run(conn: RunConnector, om: () => ObjectModel, opts: RunOptions = {}): AsyncGenerator<ProcEvent, void, void> {
 		const clock: Clock = { sleep: opts.sleep ?? realSleep, now: opts.now ?? Date.now, signal: opts.signal };
 		try {
-			for (const [index, step] of this.steps.entries()) {
+			for (const [index, step] of this.#steps.entries()) {
 				if (opts.signal?.aborted === true) return;
 
-				const where = `step ${index + 1} of ${this.steps.length} (${step.label})`;
+				const where = `step ${index + 1} of ${this.#steps.length} (${step.label})`;
 				const mismatch = positionMismatch(om(), step.expectPosition);
 				if (mismatch !== null) {
 					yield { kind: "failed", error: `${where}: ${mismatch}` };
@@ -292,7 +349,7 @@ export class Procedure {
 			// suspends at the yield, whether or not anyone is still listening.
 			// Nothing here consults `signal`, because a cancelled run is exactly
 			// the case that must still be undone.
-			const problem = await sendAll(conn, this.restore);
+			const problem = await sendAll(conn, this.#restore);
 			if (problem === null) yield { kind: "restored" };
 			else yield { kind: "failed", error: `restore failed: ${describe(problem.failed)}` };
 		}
