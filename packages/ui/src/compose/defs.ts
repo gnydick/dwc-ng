@@ -553,12 +553,23 @@ export const CARD_DEFS = {
 	}),
 	/** Frequency × speed: which peaks shaping can touch and which it cannot. */
 	"shaping-sweep": defineCard({
-		title: "Speed sweep",
-		ariaLabel: "Shaping speed sweep",
-		tip: "M956 · G1 F",
-		// The smallest of the eight: measured with no sweep recorded, which is
-		// the state it ships in. The heatmap (task E2) will raise this.
-		size: { colSpan: 156, rowSpan: 39 },
+		title: "Sweep heat map",
+		ariaLabel: "Shaping sweep heat map",
+		tip: "0:/sys/accelerometer · speed × Hz",
+		// 39 -> 118 when the three text rows became the heat map (E2). MEASURED
+		// with auditCard against the `shaping-measured` scenario, and it is a
+		// FLOOR rather than a reading of some content: the tool row and the run
+		// row declare 8u each, the plot stage 60u, the readout 5u and the status
+		// line 15u, and every one of those is a declared length. Checked with no
+		// sweep, with the nine-speed `lowspeed_stock_X` matrix drawn, and with a
+		// pointer over the loudest cell — 118 rows in all three, body worth 103
+		// of it, no child moved. colStop 125 sits inside the 156 the screen
+		// gives it, and is set by the run row's declared tracks.
+		//
+		// The ID is unchanged on purpose: it is the key saved layouts are stored
+		// under, so renaming it would drop the card off every screen the
+		// operator has already arranged.
+		size: { colSpan: 156, rowSpan: 118 },
 	}),
 	/** Ranked shapers with their predicted residual and robustness. */
 	"shaping-candidates": defineCard({

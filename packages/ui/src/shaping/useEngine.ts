@@ -7,14 +7,13 @@ import type { Artefact } from "./engine/artefact.ts";
 import type { Axis, Fingerprint } from "./engine/fit.ts";
 import type { Candidate, RankOptions } from "./engine/rank.ts";
 import type { SweepMatrix } from "./engine/sweep.ts";
-import type { MmPerS, Seconds } from "./engine/units.ts";
 import { unwrap } from "solid-js/store";
-import type { EngineRequest, EngineResponse, EngineResult, FitResult } from "./worker.ts";
+import type { EngineRequest, EngineResponse, EngineResult, FitResult, SweepRequestRow } from "./worker.ts";
 
 export type Engine = {
 	fit(csv: string, axis: Axis): Promise<FitResult>;
 	rank(fp: Fingerprint, opts?: RankOptions): Promise<Candidate[]>;
-	sweep(rows: ReadonlyArray<{ speed: MmPerS; csv: string; moveS: Seconds }>, fullStepsPerMm: number, maxHz?: number): Promise<SweepMatrix>;
+	sweep(rows: ReadonlyArray<SweepRequestRow>, fullStepsPerMm: number, maxHz?: number): Promise<SweepMatrix>;
 	artefact(baseline: Fingerprint, verified: Fingerprint): Promise<Artefact[]>;
 	terminate(): void;
 };

@@ -81,7 +81,7 @@ test("built-in screen compositions are collision-free and round-trip parse", asy
 	const {
 		MACHINE_COMPOSITION, CONTROL_COMPOSITION, ACTIVITY_COMPOSITION,
 		JOBS_COMPOSITION, MACROS_COMPOSITION, SYSTEM_COMPOSITION, BED_COMPOSITION,
-		SETTINGS_COMPOSITION,
+		SETTINGS_COMPOSITION, SHAPING_COMPOSITION,
 	} = await import("../src/compose/screens.ts");
 	const { hasCollisions } = await import("../src/shell/panelCanvas.ts");
 	for (const [name, composition] of [
@@ -93,6 +93,11 @@ test("built-in screen compositions are collision-free and round-trip parse", asy
 		["system", SYSTEM_COMPOSITION],
 		["bed", BED_COMPOSITION],
 		["settings", SETTINGS_COMPOSITION],
+		// Shaping was missing from this list, which is how its Decay card came
+		// to be placed at 75 rows against the 189 its own content declares:
+		// nothing overlapped, so nothing complained, and the card below it
+		// simply started 114 rows too early.
+		["shaping", SHAPING_COMPOSITION],
 	] as const) {
 		// keys are CardIds by type; prove the runtime data survives its own boundary
 		assert.deepEqual(parseComposition(composition), composition, `${name} round-trips`);
@@ -154,4 +159,38 @@ test("no two registry cards share an aria-label", () => {
 	}
 	const clashes = [...byLabel.entries()].filter(([, ids]) => ids.length > 1);
 	assert.deepEqual(clashes, [], `cards sharing an aria-label: ${JSON.stringify(clashes)}`);
+});
+
+/**
+ * The Shaping screen places every card at the size the registry says it needs.
+ *
+ * A composition MAY place a card smaller — the operator drags cards to whatever
+ * they like, and a saved layout is theirs. What a SHIPPED default may not do is
+ * hand a card less room than its own content declares, because the card then
+ * arrives clipped on a screen nobody has touched yet. That is what happened
+ * here: Decay grew 75 -> 189 for its ring-down chart and the screen it lives on
+ * was never re-flowed, and the collision check above could not see it because
+ * the slots still did not overlap.
+ *
+ * Rung 3 and honest about it: the real promotion is a composition that DERIVES
+ * these spans from `CARD_DEFS` rather than restating them, which would delete
+ * the failure mode instead of reporting it. Scoped to Shaping because the other
+ * built-ins genuinely do place shared cards (console, camera) at per-screen
+ * sizes, and pinning those would be pinning a decision rather than an
+ * invariant.
+ */
+test("every Shaping card is placed at its own registry size, and the columns do not overlap", async () => {
+	const { SHAPING_COMPOSITION } = await import("../src/compose/screens.ts");
+	for (const [id, slot] of Object.entries(SHAPING_COMPOSITION)) {
+		if (!id.startsWith("shaping-") || slot === undefined) continue;
+		const natural = CARD_DEFS[id as CardId].size;
+		assert.equal(slot.rowSpan, natural.rowSpan, `${id} rowSpan: placed ${slot.rowSpan}, needs ${natural.rowSpan}`);
+		assert.equal(slot.colSpan, natural.colSpan, `${id} colSpan`);
+	}
+	// And the full-width strips clear BOTH columns, which a collision check
+	// alone would also pass if a strip were placed above the taller of the two.
+	const bottom = Math.max(...Object.entries(SHAPING_COMPOSITION)
+		.filter(([id]) => id.startsWith("shaping-"))
+		.map(([, s]) => (s === undefined ? 0 : s.row + s.rowSpan)));
+	assert.ok(SHAPING_COMPOSITION.console!.row >= bottom, `console at ${SHAPING_COMPOSITION.console!.row}, cards end at ${bottom}`);
 });

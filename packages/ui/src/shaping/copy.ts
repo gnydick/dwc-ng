@@ -27,6 +27,7 @@
 import type { Fingerprint } from "./engine/fit.ts";
 import type { Refusal } from "./preconditions.ts";
 import type { StepBlock, StepNeed, StepSpec, StepStatus } from "./steps.ts";
+import type { SweepState } from "./sweepRun.ts";
 
 /**
  * "X" -> "X"; "XY" -> "X and Y". The refusal carries the letters that failed
@@ -258,4 +259,47 @@ export function batchSummaryText(contributed: number, total: number, fingerprint
 		? ""
 		: ` ${missed === 1 ? "One capture" : `${missed} captures`} did not fit and ${missed === 1 ? "is" : "are"} excluded from the medians.`;
 	return `Fitted ${contributed} of ${total} captures — ${axis("X")} · ${axis("Y")}.${rest}`;
+}
+
+/**
+ * What the sweep card says while a sweep is being built, and afterwards.
+ *
+ * A `never` arm and no default, exactly like `refusalText`: a state added to
+ * `SweepState` stops compilation here until someone has written its sentence,
+ * because a card whose status line silently renders "" is indistinguishable
+ * from one that is broken.
+ *
+ * The idle sentence is where the PHYSICS is stated, and its direction is the
+ * one thing on this card that must not be got wrong. Forced vibration FOLLOWS
+ * the speed — the motors' full-step rate is speed × steps/mm — so it draws a
+ * ridge that climbs as the carriage goes faster, and no shaper can move it.
+ * Ringing sits at ONE frequency whatever the speed and draws a vertical stripe,
+ * and that is the only thing shaping can cancel.
+ */
+export function sweepStateText(state: SweepState): string {
+	switch (state.kind) {
+		case "idle":
+			return "Pick a run and build its heat map. A ridge that climbs with speed is the motors' full-step rate — speed × steps/mm — and no shaper can move it. A stripe at one frequency whatever the speed is a structural mode, which is what shaping cancels.";
+		case "loading":
+			return `Reading ${state.done + 1} of ${state.total}: ${state.file}`;
+		case "computing":
+			return `Transforming ${state.total} captures — one spectrum per speed.`;
+		case "built": {
+			const missed = state.rows - state.analysed;
+			const rest = missed === 0
+				? ""
+				: ` ${missed === 1 ? "One capture holds" : `${missed} captures hold`} too little constant-velocity motion to transform and ${missed === 1 ? "is" : "are"} drawn empty.`;
+			return `${state.family}: ${state.analysed} of ${state.rows} speeds, held for T${state.tool}.${rest} Nothing is written to the card until you save it.`;
+		}
+		case "saving":
+			return `Writing T${state.tool}'s results…`;
+		case "saved":
+			return `Saved. T${state.tool}'s results file now carries this sweep.`;
+		case "failed":
+			return state.why;
+		default: {
+			const unhandled: never = state;
+			throw new Error(`unknown sweep state: ${String(unhandled)}`);
+		}
+	}
 }

@@ -28,7 +28,7 @@ import { For, Match, Show, Switch, createEffect, createMemo, createSignal } from
 import { cmd } from "../control/commands.ts";
 import { copyText } from "../shell/copyText.ts";
 import { createArmed } from "../control/armed.ts";
-import { allDoneAction, batchSummaryText, stepActionText, stepStatusText, type StepScope } from "../shaping/copy.ts";
+import { allDoneAction, batchSummaryText, stepActionText, stepStatusText, sweepStateText, type StepScope } from "../shaping/copy.ts";
 import type { CardCtx } from "../compose/ctx.ts";
 import type { MacroRead } from "../compose/services.ts";
 import { nextStep, SHAPING_STEPS, type ShapingStep, type StepInputs, type StepSpec } from "../shaping/steps.ts";
@@ -44,8 +44,12 @@ import { measureCaptureCount } from "../shaping/procedure.ts";
 import { RESULTS_PATH, type ToolResults } from "../shaping/results.ts";
 import type { VerifiedCandidate } from "../shaping/store.ts";
 import { DecayChart } from "../charts/DecayChart.tsx";
+import { SweepHeatmap } from "../charts/SweepHeatmap.tsx";
+import { fingerprintMarkers, type SweepMarker } from "../charts/sweepData.ts";
+import type { SweepMatrix } from "../shaping/engine/sweep.ts";
+import type { FullStep } from "../shaping/fullStep.ts";
 import { decaySeries, type DecayView } from "../charts/decayData.ts";
-import { ACCEL_DIR, accelPath, boardRef, type CaptureRef, captureNameParts, inFamily, matchesQuery, MAX_BATCH, namePrefixes } from "../shaping/captures.ts";
+import { ACCEL_DIR, accelPath, boardRef, type CaptureRef, captureNameParts, inFamily, matchesQuery, MAX_BATCH, namePrefixes, resolvePick, type SweepFamily } from "../shaping/captures.ts";
 import { useEngine } from "../shaping/useEngine.ts";
 import type { FitResult } from "../shaping/worker.ts";
 
@@ -609,15 +613,19 @@ export function ShapingDecayBody(props: { ctx: CardCtx }) {
 		if (next === "board") svc.wantBoard();
 	};
 
-	/** The fits this session's batch produced, by file name, so a board row
-	 *  fills in as soon as the engine has looked at it. Derived from the run
-	 *  rather than stored beside it — one place holds the fits. */
-	const batchFits = createMemo((): ReadonlyMap<string, Mode | NoFit> => {
-		const run = svc.runState();
-		const map = new Map<string, Mode | NoFit>();
-		if (run.kind === "fitted") for (const r of run.records) map.set(r.file, r.fit);
-		return map;
-	});
+	/**
+	 * Every fit this SESSION has taken, by file name — not just the current
+	 * batch's.
+	 *
+	 * It reads the service's cache rather than `runState`, and that is the whole
+	 * fix for "the data is lost when you change the filter" (Gabe, 2026-08-23).
+	 * `clearRun` fires on every selection change, correctly — a summary reading
+	 * "fitted 12 of 12" beside a changed set of ticks is a stale claim — but the
+	 * NUMBERS are not a claim about the selection. A fit is a pure function of a
+	 * file's bytes, so a row shows its frequency if this session has ever fitted
+	 * that file, whichever chip is lit.
+	 */
+	const batchFits = (): ReadonlyMap<string, Mode | NoFit> => svc.fits();
 
 	const allRows = createMemo((): readonly DecayRow[] => {
 		switch (source()) {
@@ -689,7 +697,28 @@ export function ShapingDecayBody(props: { ctx: CardCtx }) {
 		imported: svc.imports().length,
 	}));
 
-	const picked = createMemo((): DecayRow | null => rows().find(r => r.key === svc.capturePick()) ?? null);
+	/**
+	 * The capture the chart is drawing — resolved against the UNFILTERED list.
+	 *
+	 * The filter and the family chips exist to FIND a row; they do not decide
+	 * what is on screen. Resolving against `rows()` meant that clicking a chip
+	 * that excluded the picked capture blanked the chart and every number beside
+	 * it, even though the selection itself was intact (Gabe, 2026-08-23). A
+	 * capture the operator deliberately picked stays drawn until they pick
+	 * another one.
+	 *
+	 * Still scoped to the current SOURCE, and deliberately: the three sources
+	 * are three different collections rather than one list with tags, and the
+	 * key already carries which — a `board:` key cannot resolve inside the
+	 * imported list, so a source switch is a genuine change of what there is to
+	 * pick from rather than a filter over it.
+	 */
+	const resolved = createMemo(() => resolvePick(allRows(), rows(), svc.capturePick()));
+	const picked = (): DecayRow | null => resolved().picked;
+	/** True when the drawn capture is not among the rows the filter is showing.
+	 *  One line says so, rather than leaving a chart with no highlighted row and
+	 *  no reason for it. */
+	const pickedHidden = (): boolean => resolved().hidden;
 
 	/**
 	 * Which axis of the picked capture to draw. Set when a row is picked, from
@@ -769,8 +798,13 @@ export function ShapingDecayBody(props: { ctx: CardCtx }) {
 				return "Reading the capture…";
 			case "failed":
 				return a.why;
-			case "ok":
-				return view()?.note ?? "";
+			case "ok": {
+				const note = view()?.note ?? "";
+				// The one case where the chart and the list disagree about what is
+				// interesting. Appended rather than replacing the fit's own verdict:
+				// the numbers are still the point, this is why no row is lit.
+				return pickedHidden() ? `${note} (${picked()?.file ?? ""} is hidden by the filter.)` : note;
+			}
 		}
 	});
 
@@ -834,9 +868,23 @@ export function ShapingDecayBody(props: { ctx: CardCtx }) {
 		}
 	});
 
+	/**
+	 * The armed tool, WRAPPED — because T0 is a number and `<Show when={0}>` is
+	 * a fallback.
+	 *
+	 * The button read "Confirm" while the line under it went on showing the
+	 * batch report, for the default tool and no other: `armed()` of 0 is falsy,
+	 * so the confirm sentence — the one that names the file about to be written
+	 * — never appeared for T0. An object is truthy whatever number it carries.
+	 */
+	const arming = createMemo((): { tool: number } | null => {
+		const tool = armed();
+		return tool === null ? null : { tool };
+	});
+
 	const saveLabel = createMemo((): string => {
 		const tool = target();
-		if (armed() !== null) return "Confirm";
+		if (arming() !== null) return "Confirm";
 		return tool === null ? "Save…" : `Save to T${tool}`;
 	});
 
@@ -1140,8 +1188,8 @@ export function ShapingDecayBody(props: { ctx: CardCtx }) {
 				</button>
 			</div>
 			<p class="shp-batch-note" classList={{ "shp-warn-inline": svc.runState().kind === "failed" }}>
-				<Show when={armed()} fallback={batchReport()}>
-					{tool => <>Confirm: write T{tool()}&apos;s fingerprint to {RESULTS_PATH(tool())}. Escape cancels.</>}
+				<Show when={arming()} fallback={batchReport()}>
+					{a => <>Confirm: write T{a().tool}&apos;s fingerprint to {RESULTS_PATH(a().tool)}. Escape cancels.</>}
 				</Show>
 			</p>
 		</>
@@ -1150,45 +1198,206 @@ export function ShapingDecayBody(props: { ctx: CardCtx }) {
 
 /* ------------------------------------------------------------------- 4. sweep */
 
-/** The speed sweep's extent. The heatmap itself is task E2; what a sweep IS
- *  for is worth saying on the card that will hold it. */
+/**
+ * Speed x frequency x amplitude for one tool, built from captures the board
+ * already holds.
+ *
+ * WHAT THE PICTURE IS FOR, since every choice on this card follows from it.
+ * Two kinds of vibration show up in a moving machine and only one of them is
+ * shapeable:
+ *
+ *  - FORCED vibration follows the speed. The motors' torque ripple peaks once
+ *    per full step, so a move at `v` mm/s excites `v x fullStepsPerMm` Hz — a
+ *    ridge that climbs across the plot as the rows get faster. No shaper can
+ *    move it; current, microstepping and the mechanics can.
+ *  - RINGING sits at one frequency whatever the speed, because a structure does
+ *    not know how fast the carriage is going. It draws a vertical stripe, and
+ *    it is the only thing `M593` cancels.
+ *
+ * The dashed locus the chart lays over the cells is exactly "where a peak would
+ * be if it were forced", so a ridge lying along it is motor ripple and a stripe
+ * crossing it is a mode. That line is drawn from `fullStepsPerMm`, which is why
+ * this card refuses to build anything until the object model has told it what
+ * that is (shaping/fullStep.ts): a plausible default would draw a confident
+ * lie.
+ *
+ * THIS CARD IS A VIEW. It runs no motion — the machine-moving sweep belongs to
+ * the Capture card and arrives with its own armed confirm — so it neither
+ * offers the `sweep` step nor plans one. What it does is find the sweeps
+ * ALREADY on the SD card: 184 of the 259 CSVs in `0:/sys/accelerometer` are
+ * named `<prefix>_<axis>_<speed>.csv`, which is a set of the same move at
+ * several speeds and therefore already a sweep. The board listing, the download
+ * cache and the worker are the SAME ones the Decay card browses through — one
+ * `rr_filelist` per connection between the two cards, and a capture downloaded
+ * for one is not downloaded again for the other.
+ *
+ * Positional stability: the chart's box is reserved by the stage's own floor
+ * rather than by what is in it, the tool row and the run row are declared
+ * heights whether or not the card has scanned, the readout is one fixed line
+ * that fills with em dashes before a sweep exists, and the status line is a
+ * fixed two. So scanning, building, saving and switching tool move nothing.
+ */
 export function ShapingSweepBody(props: { ctx: CardCtx }) {
 	const svc = props.ctx.service("shaping");
+	const tools = createMemo(() => props.ctx.om.om.tools.filter(t => t !== null));
+	const [pick, setPick] = createSignal<string>("");
+	const [armed, setArmed] = createArmed<number>();
+
+	const sweep = (): SweepMatrix | null => svc.results().sweep;
+
+	/**
+	 * The chosen family, resolved by ID against the current listing rather than
+	 * held as an object: the listing is re-read by Rescan, and a captured object
+	 * would go on naming files a later scan no longer has.
+	 */
+	const family = createMemo((): SweepFamily | null => svc.families().find(f => f.id === pick()) ?? null);
+
+	/** The full-step rate for the axis the CHOSEN run drove — X until one is,
+	 *  which is the right guess on this board: of its 84 speed families exactly
+	 *  one (`baseline_y_Y`) is a Y run. */
+	const step = createMemo((): FullStep => svc.fullStepFor(family()?.axis ?? "X"));
+
+	/** Where the forced-vibration locus comes from, or the reason there is none.
+	 *  One accessor over the union so the JSX reads a string and never narrows —
+	 *  the two arms are a fact and a refusal, and both belong in the same slot
+	 *  so neither changes the row's height. */
+	const stepText = (): string => {
+		const v = step();
+		return v.known ? v.from : v.why;
+	};
+
+	/** Both fitted modes, marked on the frequency axis. Both rather than the
+	 *  swept axis's alone: a `SweepMatrix` does not record which axis it is of,
+	 *  so choosing one here would be a guess — and the labels say which is
+	 *  which, so marking both costs nothing. */
+	const markers = createMemo((): readonly SweepMarker[] => {
+		const fp = svc.results().fingerprint;
+		return fp === null ? [] : fingerprintMarkers([{ axis: "X", hz: fp.X?.f ?? null }, { axis: "Y", hz: fp.Y?.f ?? null }]);
+	});
+
+	const busy = (): boolean => {
+		const k = svc.sweepState().kind;
+		return k === "loading" || k === "computing" || k === "saving";
+	};
+
+	/** One line of facts, in fixed slots. Before a sweep exists every slot holds
+	 *  the em dash, so the line is the same shape either way and the arrival of
+	 *  a matrix moves nothing under it. */
+	const readout = createMemo((): readonly [string, string, string] => {
+		const m = sweep();
+		if (m === null) return [NONE, NONE, NONE];
+		const speeds = m.speeds.map(Number);
+		const fs = m.fullStepHz.map(Number);
+		return [
+			`${speeds.length} speeds ${Math.min(...speeds)}-${Math.max(...speeds)} mm/s`,
+			`0-${m.maxHz.toFixed(0)} Hz in ${m.freqs.length} bins`,
+			`full-step ${Math.min(...fs).toFixed(0)}-${Math.max(...fs).toFixed(0)} Hz`,
+		];
+	});
+
+	/** The armed tool, wrapped: T0 is 0 and `<Show when={0}>` renders the
+	 *  fallback, so the confirm sentence would never appear for the default
+	 *  tool. Same defect the Decay card's save bar had. */
+	const arming = createMemo((): { tool: number } | null => {
+		const tool = armed();
+		return tool === null ? null : { tool };
+	});
+
+	const save = (): void => {
+		const n = svc.tool();
+		if (armed() === n) {
+			setArmed(null);
+			void svc.saveSweep();
+			return;
+		}
+		setArmed(n);
+	};
+
 	return (
-		<Show
-			when={svc.results().sweep}
-			fallback={
-				<p class="hint">
-					No sweep for T{svc.tool()}. A sweep repeats the same move at a range of
-					speeds. A peak whose frequency <em>rises with the speed</em> is forced
-					vibration — the motors' own step rate, which is speed × steps/mm — and
-					input shaping cannot touch it. A peak that stays at the{" "}
-					<em>same frequency</em> at every speed is a structural mode ringing at
-					its own natural frequency, which is what shaping is for.
-				</p>
-			}
-		>
-			{sweep => (
-				<dl class="shp-facts">
-					<div class="shp-fact">
-						<dt>Speeds</dt>
-						<dd class="shp-mono">
-							{sweep().speeds.length} from {Math.min(...sweep().speeds)} to {Math.max(...sweep().speeds)} mm/s
-						</dd>
-					</div>
-					<div class="shp-fact">
-						<dt>Band</dt>
-						<dd class="shp-mono">0 to {sweep().maxHz.toFixed(0)} Hz in {sweep().freqs.length} bins</dd>
-					</div>
-					<div class="shp-fact">
-						<dt>Full-step line</dt>
-						<dd class="shp-mono">
-							{Math.min(...sweep().fullStepHz).toFixed(0)} to {Math.max(...sweep().fullStepHz).toFixed(0)} Hz
-						</dd>
-					</div>
-				</dl>
-			)}
-		</Show>
+		<>
+			{/* Which tool this sweep is about — the SHARED selection, so picking
+			    here moves every other card on the screen with it. Eight cards
+			    disagreeing about which head is being tuned is the failure the one
+			    service exists to prevent (compose/services.ts). */}
+			<div class="shp-sweep-bar">
+				<span class="shp-cap">Tool</span>
+				<div class="shp-tool-pick" role="group" aria-label="Tool being tuned">
+					<For each={tools()} fallback={<span class="shp-nil">no tools</span>}>
+						{t => (
+							<button
+								class="shp-pick shp-tool-chip"
+								aria-pressed={svc.tool() === t.number}
+								onClick={() => { setArmed(null); svc.setTool(t.number); }}
+							>
+								T{t.number}
+							</button>
+						)}
+					</For>
+				</div>
+				<span class="shp-sweep-step" classList={{ "shp-warn-inline": !step().known }} title={stepText()}>
+					{stepText()}
+				</span>
+			</div>
+			{/* The run to draw, and the two acts. Nothing here moves the machine. */}
+			<div class="shp-sweep-bar">
+				<span class="shp-cap">Run</span>
+				<select
+					class="filament-pick shp-family"
+					aria-label="Speed sweep to draw"
+					value={pick()}
+					onChange={e => setPick(e.currentTarget.value)}
+				>
+					<option value="">{svc.families().length === 0 ? "— scan the card —" : "— choose —"}</option>
+					<For each={svc.families()}>
+						{f => <option value={f.id}>{f.id} · {f.members.length}</option>}
+					</For>
+				</select>
+				<button
+					class="fb-tool shp-pick-n"
+					disabled={family() === null || busy() || !step().known}
+					onClick={() => {
+						const f = family();
+						if (f !== null) void svc.buildSweep(f);
+					}}
+				>
+					Build {family()?.members.length ?? 0}
+				</button>
+				{/* The listing is asked for on a GESTURE and never on a render: 259
+				    entries is several `rr_filelist` pages against a server that
+				    tolerates very few requests, and the Decay card's browser shares
+				    the answer. */}
+				<button
+					class="fb-tool shp-rescan"
+					disabled={svc.boardState() === "reading"}
+					onClick={() => svc.refreshBoard()}
+				>
+					{svc.boardState() === "unread" ? "Scan" : "Rescan"}
+				</button>
+				<button
+					class="fb-tool shp-save"
+					classList={{ "shp-arming": armed() !== null }}
+					disabled={sweep() === null || busy()}
+					onClick={save}
+				>
+					{armed() === null ? `Save to T${svc.tool()}` : "Confirm"}
+				</button>
+			</div>
+			{/* The stage declares the plot's box, so the chart never sizes the card
+			    and the card never has to be resized when a matrix arrives. */}
+			<div class="shp-sweep-stage">
+				<SweepHeatmap matrix={sweep} markers={markers} />
+			</div>
+			<p class="shp-sweep-read">
+				<span>{readout()[0]}</span>
+				<span>{readout()[1]}</span>
+				<span>{readout()[2]}</span>
+			</p>
+			<p class="shp-sweep-note" classList={{ "shp-warn-inline": svc.sweepState().kind === "failed" }}>
+				<Show when={arming()} fallback={sweepStateText(svc.sweepState())}>
+					{a => <>Confirm: write T{a().tool}&apos;s results, this sweep included, to {RESULTS_PATH(a().tool)}. Escape cancels.</>}
+				</Show>
+			</p>
+		</>
 	);
 }
 

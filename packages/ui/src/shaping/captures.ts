@@ -97,11 +97,25 @@ export type ImportedCapture = {
 export type CaptureLoader = {
 	/** The CSV, downloaded once per board file and cached thereafter. */
 	text(ref: CaptureRef): Promise<string>;
+	/**
+	 * Drop every cached download.
+	 *
+	 * For the one gesture that means "the card is not what I last read": the
+	 * Shaping screen's Reload. A capture re-run under a name that already
+	 * exists is the ordinary way these files change — `importRef` says so about
+	 * the imported half — so a reload that kept the old bytes would re-fit
+	 * yesterday's move and label it with today's file name. Imports are
+	 * unaffected: their text is IN the ref, so there is nothing here to forget.
+	 */
+	forget(): void;
 };
 
 export function createCaptureLoader(conn: Pick<ConnectorReads, "download">): CaptureLoader {
 	const cache = new Map<string, string>();
 	return {
+		forget: (): void => {
+			cache.clear();
+		},
 		text: async (ref: CaptureRef): Promise<string> => {
 			if (ref.kind === "import") return ref.text;
 			const hit = cache.get(ref.key);
@@ -247,3 +261,121 @@ export function inFamily(name: string, family: string | null, families: readonly
  * warning.
  */
 export const MAX_BATCH = 48;
+
+/* --------------------------------------------------- speed sweeps in the names */
+
+/**
+ * One capture of a sweep: the file, and the speed its name declares.
+ */
+export type SweepMember = { readonly file: string; readonly speed: number };
+
+/**
+ * A set of captures of the SAME move at different speeds, which is what a
+ * sweep is.
+ *
+ * `id` is `<prefix>_<axis>` exactly as the files spell it (`lowspeed_stock_X`,
+ * `base_x`), because that is what the operator named the run and it is the
+ * only handle they have on it months later.
+ */
+export type SweepFamily = {
+	readonly id: string;
+	/** The axis the run drove, read from the name's own letter. */
+	readonly axis: Axis;
+	/** Ascending by speed, one entry per distinct speed. */
+	readonly members: readonly SweepMember[];
+};
+
+/**
+ * The most captures one sweep will download and transform.
+ *
+ * A cap for the same reason MAX_BATCH is one: every row is a download out of
+ * RRF's embedded server plus an FFT. Sixteen because the largest real family on
+ * Gabe's board is nine (`lowspeed_stock_X`, 10–60 mm/s) and the next is four —
+ * so the cap refuses nothing anybody has actually run, while a name pattern
+ * that accidentally collected fifty files cannot become fifty requests.
+ */
+export const MAX_SWEEP = 16;
+
+/** `lowspeed_stock_X_30.csv` → prefix `lowspeed_stock`, axis `X`, speed 30. */
+const SPEED_NAME = /^(.+)_([XYxy])_(\d+)\.csv$/;
+
+/**
+ * The speed-sweep families present in a listing, biggest first.
+ *
+ * DERIVED from the names, like `namePrefixes` and for the same reason: the
+ * naming is the operator's own, from months ago, and no list written here could
+ * know it. `<prefix>_<axis>_<speed>.csv` is the shape the capture runs
+ * themselves write, and 184 of the 259 CSVs on Gabe's board follow it.
+ *
+ * A family needs at least `min` DISTINCT speeds — two points already answer
+ * "does this peak move when I go faster", which is the only question the chart
+ * asks. Duplicates of one speed are not a second point, so they are collapsed:
+ * a repeat run under the same speed would otherwise draw two identical rows and
+ * make the picture look twice as resolved as it is.
+ *
+ * Sorted by member count descending, then by id, so the run that is actually a
+ * sweep comes first in a picker holding eighty two-point families.
+ */
+export function speedFamilies(names: readonly string[], min = 2): SweepFamily[] {
+	const byId = new Map<string, { axis: Axis; bySpeed: Map<number, string> }>();
+	for (const name of names) {
+		const m = SPEED_NAME.exec(name);
+		if (m === null) continue;
+		const speed = Number(m[3]);
+		if (!Number.isFinite(speed) || speed <= 0) continue;
+		const id = `${m[1]!}_${m[2]!}`;
+		const axis: Axis = m[2]!.toUpperCase() === "Y" ? "Y" : "X";
+		let entry = byId.get(id);
+		if (entry === undefined) {
+			entry = { axis, bySpeed: new Map<number, string>() };
+			byId.set(id, entry);
+		}
+		// First name wins for a repeated speed, and the listing reaches this
+		// newest-first, so the surviving row is the most recent capture at that
+		// speed rather than whichever the directory happened to hold longest.
+		if (!entry.bySpeed.has(speed)) entry.bySpeed.set(speed, name);
+	}
+	const out: SweepFamily[] = [];
+	for (const [id, entry] of byId) {
+		if (entry.bySpeed.size < min) continue;
+		const members = [...entry.bySpeed]
+			.sort((a, b) => a[0] - b[0])
+			.map(([speed, file]): SweepMember => ({ speed, file }));
+		out.push({ id, axis: entry.axis, members });
+	}
+	out.sort((a, b) => (b.members.length - a.members.length) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+	return out;
+}
+
+/* ------------------------------------------------ what a filtered list shows */
+
+/**
+ * The row a selection names, and whether the filter is currently hiding it.
+ *
+ * ONE function returning BOTH, and that is the whole point. The two answers
+ * have to come from the same pair of lists: a card that resolved the pick
+ * against the shown rows and the hidden-ness against the full ones would
+ * report a state that cannot exist, and a card that resolved the pick against
+ * the SHOWN rows loses the pick the moment a filter excludes it.
+ *
+ * @invariant a-filter-finds-rows-it-does-not-choose-them
+ * @rung 6  choke-point — the pick is resolved here and nowhere else, against
+ *          `all`. A caller cannot accidentally resolve it against the filtered
+ *          list, because the filtered list is only ever used to answer the
+ *          SECOND question. `hidden` is true only when there is a pick, so
+ *          "nothing picked" and "the pick is hidden" stay distinguishable
+ * @why reported by Gabe, 2026-08-23: pick a capture on the Decay card, click a
+ *      name-family chip that excludes it, and the chart plus every fitted
+ *      number beside it blanked — even though the selection itself was intact.
+ *      The filter exists to FIND rows; what is on screen is what the operator
+ *      deliberately chose, and it stays until they choose another
+ */
+export function resolvePick<T extends { readonly key: string }>(
+	all: readonly T[],
+	shown: readonly T[],
+	key: string | null,
+): { readonly picked: T | null; readonly hidden: boolean } {
+	if (key === null) return { picked: null, hidden: false };
+	const picked = all.find(r => r.key === key) ?? null;
+	return { picked, hidden: picked !== null && !shown.some(r => r.key === key) };
+}

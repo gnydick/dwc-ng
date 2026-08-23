@@ -64,10 +64,15 @@ import { findShapingLine, toolMacroPath } from "../shaping/toolMacro.ts";
 import type { ShapingStep } from "../shaping/steps.ts";
 import type { CardId } from "./defs.ts";
 import { useEngine } from "../shaping/useEngine.ts";
-import { ACCEL_DIR, boardRef, byNewest, captureNameParts, createCaptureLoader, type ImportedCapture, importRef, isCaptureFile, MAX_BATCH } from "../shaping/captures.ts";
+import { ACCEL_DIR, boardRef, byNewest, captureNameParts, createCaptureLoader, type ImportedCapture, importRef, isCaptureFile, MAX_BATCH, MAX_SWEEP, speedFamilies, type SweepFamily } from "../shaping/captures.ts";
 import { parseAccelAddr } from "../control/commands.ts";
 import { type FileListEntry, FileNotFoundError } from "@dwc-ng/connector";
-import { aggregate, type Fingerprint } from "../shaping/engine/fit.ts";
+import { aggregate, type Axis, type Fingerprint, type Mode, type NoFit } from "../shaping/engine/fit.ts";
+import { type FullStep, fullStepPerMm } from "../shaping/fullStep.ts";
+import { mmPerS, seconds } from "../shaping/engine/units.ts";
+import { analysedRows } from "../shaping/engine/sweep.ts";
+import type { SweepState } from "../shaping/sweepRun.ts";
+import { createFitCache } from "../shaping/fitCache.ts";
 import type { AppServices } from "../shell/context.ts";
 
 /** What a service factory gets: the app services plus the uniform gate. */
@@ -452,6 +457,34 @@ function shapingService(base: ServiceBaseCtx) {
 	 * `contributed` says how many of how many, which is the figure that keeps a
 	 * partial aggregate from reading as a complete one.
 	 */
+	/**
+	 * Every capture this session has fitted, by file name — a browser that
+	 * remembers what it has looked at.
+	 *
+	 * A fit is a PURE FUNCTION of a file's bytes: `parseCapture` → `detectStop`
+	 * → `fitDecay`, with no clock, no machine state and no tool in it. Two runs
+	 * over the same file cannot disagree, so there is no correctness reason ever
+	 * to discard one — and every discarded fit costs a download out of an
+	 * embedded HTTP server plus an FFT.
+	 *
+	 * It is deliberately NOT `runState`. That one is the CURRENT batch's
+	 * progress and summary, and it is right for `clearRun` to drop it when the
+	 * selection changes: "fitted 12 of 12" beside a different set of ticks is a
+	 * stale claim. The numbers themselves are not a claim about the selection,
+	 * so they stay. Reported by Gabe, 2026-08-23: fit the twelve `ring1_`
+	 * captures, click the `ring1_v_` chip, and every fit was gone.
+	 *
+	 * Not written to the card, and not keyed by tool. A cached fit is not a
+	 * measurement anybody asked to keep — the results file is where a
+	 * measurement is kept, deliberately and against a named tool — and a file's
+	 * ring-down does not depend on which head the screen is looking at.
+	 *
+	 * Unbounded on purpose: the whole directory is 276 files and a fit is five
+	 * numbers, so the cap would cost more thought than the memory it saved.
+	 */
+	const [fits, setFits] = createSignal<ReadonlyMap<string, Mode | NoFit>>(new Map());
+	const fitCache = createFitCache(setFits);
+
 	const [runState, setRunState] = createSignal<BatchState>({ kind: "idle" });
 
 	const fitBoardCaptures = async (files: readonly string[]): Promise<void> => {
@@ -471,6 +504,9 @@ function shapingService(base: ServiceBaseCtx) {
 			try {
 				const result = await useEngine().fit(await loader.text(boardRef(file)), parts.axis);
 				records.push({ file, axis: parts.axis, dir: parts.dir, rep: parts.rep, fit: result.fit, tStop: result.tStop });
+				// Remembered as it lands rather than at the end, so a batch that
+				// fails on its ninth file keeps the eight it already paid for.
+				fitCache.remember(file, result.fit);
 			} catch (err) {
 				setRunState({ kind: "failed", why: `${file}: ${err instanceof Error ? err.message : String(err)}` });
 				return;
@@ -513,6 +549,120 @@ function shapingService(base: ServiceBaseCtx) {
 
 	const clearRun = (): void => {
 		setRunState({ kind: "idle" });
+	};
+
+	/* ------------------------------------------------------------- speed sweep */
+
+	/**
+	 * The speed-sweep runs the board's own capture directory holds.
+	 *
+	 * Derived from the SAME listing the Decay card browses — one `rr_filelist`
+	 * per connection, shared — so the two cards cannot disagree about what is on
+	 * the card, and switching to the Sweep card costs no request of its own.
+	 */
+	const families = createMemo((): readonly SweepFamily[] => speedFamilies(board().map(e => e.name)));
+
+	/**
+	 * The full-step rate of one axis, off the object model.
+	 *
+	 * On the SERVICE rather than in the card because the card must not be the
+	 * place that decides it: the number sets where the "forced vibration" locus
+	 * is drawn, and a second derivation would eventually disagree with this one.
+	 * Re-derived per read, so a `M350` sent from the console moves the line on
+	 * the next poll.
+	 */
+	const fullStepFor = (axis: Axis): FullStep => fullStepPerMm(base.om.om.move.axes, axis);
+
+	const [sweepState, setSweepState] = createSignal<SweepState>({ kind: "idle" });
+
+	/**
+	 * Turn one family of speed-suffixed captures into a `SweepMatrix`.
+	 *
+	 * Every capture reaches the transform by the same route a fitted one does —
+	 * the cached loader, then the worker — so the numbers in the picture are
+	 * ones this UI computed from that machine's own bytes, and a file already
+	 * downloaded for the Decay card is not downloaded twice.
+	 *
+	 * Two inputs are NOT guessed here, and neither is negotiable:
+	 *
+	 *  - `fullStepsPerMm` comes from the object model or the run is refused. It
+	 *    decides where the forced-vibration locus is drawn, and a plausible
+	 *    default would draw a confident lie (shaping/fullStep.ts).
+	 *  - the move DISTANCE comes from `shaping.defaults.distMm`, the same
+	 *    setting the Capture card states and Settings edits, because `moveS` is
+	 *    distance ÷ speed and nothing in a capture file records how far the
+	 *    carriage went. One setting, two readers, no third opinion.
+	 *
+	 * The tool is `tool()` at the moment of the call — the Sweep card carries
+	 * the tool picker itself, so the head this is attributed to is the one on
+	 * screen beside the button. Nothing is written to the card here; `saveSweep`
+	 * is the separate, explicit act, for the same reason `saveMeasurement` is.
+	 */
+	const buildSweep = async (family: SweepFamily): Promise<void> => {
+		const state = sweepState().kind;
+		if (state === "loading" || state === "computing") return;
+		if (family.members.length === 0) return;
+		// The cap lives here, on the one route that would issue the requests —
+		// a disabled button is a suggestion, this is the thing that downloads.
+		if (family.members.length > MAX_SWEEP) {
+			setSweepState({ kind: "failed", why: `${family.id} has ${family.members.length} captures; a sweep is capped at ${MAX_SWEEP}.` });
+			return;
+		}
+		const step = fullStepFor(family.axis);
+		if (!step.known) {
+			setSweepState({ kind: "failed", why: step.why });
+			return;
+		}
+		const distMm = base.config.config.shaping.defaults.distMm;
+		if (!(Number.isFinite(distMm) && distMm > 0)) {
+			setSweepState({ kind: "failed", why: "the excitation move has no length — set one in Settings › Input shaping." });
+			return;
+		}
+		const n = tool();
+		const channel = family.axis === "Y" ? (1 as const) : (0 as const);
+		const rows: Array<{ speed: ReturnType<typeof mmPerS>; csv: string; moveS: ReturnType<typeof seconds>; axis: 0 | 1 | 2 }> = [];
+		try {
+			for (const [index, member] of family.members.entries()) {
+				setSweepState({ kind: "loading", done: index, total: family.members.length, file: member.file });
+				rows.push({
+					speed: mmPerS(member.speed),
+					csv: await loader.text(boardRef(member.file)),
+					moveS: seconds(distMm / member.speed),
+					axis: channel,
+				});
+			}
+			setSweepState({ kind: "computing", total: rows.length });
+			const matrix = await useEngine().sweep(rows, step.perMm);
+			store.setSweep(n, matrix);
+			setSweepState({
+				kind: "built",
+				tool: n,
+				family: family.id,
+				rows: matrix.speeds.length,
+				analysed: analysedRows(matrix),
+			});
+		} catch (err) {
+			setSweepState({ kind: "failed", why: `${family.id}: ${err instanceof Error ? err.message : String(err)}` });
+		}
+	};
+
+	/**
+	 * Write the selected tool's results — sweep included — to the card.
+	 *
+	 * Explicit rather than folded into `buildSweep`, and the reason is a
+	 * measurement: a nine-speed matrix serialises to 134 KiB, which is a large
+	 * upload to put on RRF's embedded server without being asked. The card
+	 * states the size beside the button.
+	 */
+	const saveSweep = async (): Promise<void> => {
+		const n = tool();
+		setSweepState({ kind: "saving", tool: n });
+		try {
+			await store.save(n);
+			setSweepState({ kind: "saved", tool: n });
+		} catch (err) {
+			setSweepState({ kind: "failed", why: `could not write ${RESULTS_PATH(n)}: ${err instanceof Error ? err.message : String(err)}` });
+		}
 	};
 
 	/** Changing tool changes which captures exist, so the selections reset with
@@ -701,8 +851,16 @@ function shapingService(base: ServiceBaseCtx) {
 	offer("rank", () => void rank());
 
 	/** Re-read every tool's file from the card. The results live in files the
-	 *  operator can also edit or copy in, exactly like the height map. */
+	 *  operator can also edit or copy in, exactly like the height map.
+	 *
+	 *  This is also the one gesture that means "the card is not what I last
+	 *  read", so it drops the two session caches with it: the downloaded CSV
+	 *  text and the fits taken from it. Re-running a capture under a name that
+	 *  already exists is the ordinary way these files change, and a reload that
+	 *  kept either would show yesterday's ring-down under today's file name. */
 	const reload = (): void => {
+		loader.forget();
+		fitCache.forget();
 		setRevision(r => r + 1);
 	};
 
@@ -712,6 +870,7 @@ function shapingService(base: ServiceBaseCtx) {
 		capturePick, setCapturePick, imports, addImport, loadCapture: loader.text,
 		board, boardState, boardError, wantBoard, refreshBoard,
 		runState, fitBoardCaptures, saveMeasurement, clearRun,
+		fits, families, fullStepFor, sweepState, buildSweep, saveSweep,
 		candidateIndex, setCandidateIndex,
 		accelFor, gate, macroFor, toggleMacro, rank, ranking, problem, offer, runStep,
 		offers: (step: ShapingStep): boolean => offered().includes(step),

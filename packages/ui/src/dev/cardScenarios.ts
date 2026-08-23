@@ -35,10 +35,31 @@ export const SCENARIOS: Scenario[] = [
 	{ id: "shaping-measured", label: "Shaping measured", note: "T0 fingerprinted, ranked and verified — including the shaper that added a 38 Hz ring." },
 ];
 
-const axis = (letter: string, position: number, homed = true, visible = true): Axis => ({
-	letter, homed, machinePosition: position, userPosition: position,
-	min: 0, max: 320, babystep: 0, visible,
-});
+/**
+ * Steps/mm and microstepping per axis, as the real toolchanger reports them
+ * (packages/mock-duet/captures/om-snapshot-2026-07-12.json).
+ *
+ * They are here because the Sweep card's whole overlay is derived from them:
+ * X at 80 steps/mm and 16x microstepping is 5 FULL steps/mm, so a 50 mm/s move
+ * excites 250 Hz — which is where this machine's carriage mode happens to sit.
+ * A bench with no steps/mm would show that card its refusal and nothing else.
+ */
+const DRIVE: Record<string, { stepsPerMm: number; micro: number }> = {
+	X: { stepsPerMm: 80, micro: 16 }, Y: { stepsPerMm: 80, micro: 16 },
+	Z: { stepsPerMm: 6400, micro: 64 }, U: { stepsPerMm: 6400, micro: 64 },
+	V: { stepsPerMm: 6400, micro: 64 }, W: { stepsPerMm: 6400, micro: 64 },
+	C: { stepsPerMm: 100, micro: 8 },
+};
+
+const axis = (letter: string, position: number, homed = true, visible = true): Axis => {
+	const drive = DRIVE[letter] ?? { stepsPerMm: 80, micro: 16 };
+	return {
+		letter, homed, machinePosition: position, userPosition: position,
+		min: 0, max: 320, babystep: 0, visible,
+		stepsPerMm: drive.stepsPerMm,
+		microstepping: { value: drive.micro, interpolated: true },
+	};
+};
 
 const heater = (current: number, active: number, standby: number, state: string): Heater => ({
 	active, standby, current, max: 300, state,
@@ -396,7 +417,71 @@ function labNoise(seed: number): () => number {
 	};
 }
 
+/**
+ * A constant-velocity capture for a `<prefix>_<axis>_<speed>.csv` name — what a
+ * sweep is made of, and a different animal from a ring-down.
+ *
+ * There is no stop in it. A sweep capture records the CRUISE, and what the
+ * transform finds there is the two things the heat map exists to tell apart:
+ *
+ *  - a FORCED line at `speed x FULL_STEPS_PER_MM`, plus its half order, which
+ *    moves up the frequency axis as the rows get faster;
+ *  - a FIXED structural line at `CARRIAGE_HZ`, which does not.
+ *
+ * And the case that makes the picture worth drawing: when the forced line
+ * lands on the fixed one — 50 mm/s x 5 = 250 Hz on this machine — the two
+ * multiply instead of adding. That is the single loudest cell in Gabe's real
+ * `lowspeed_stock_X` sweep (0.566 g against 0.17 g at 40 mm/s), and it is why
+ * "the 250 Hz mode is unshapeable" and "the motors excite it at exactly one
+ * speed" are the same finding.
+ *
+ * Modelled, not copied: the amplitudes here are of the right order and the
+ * frequencies are this machine's, but every number the card shows is one the
+ * ENGINE computed from these samples.
+ */
+const FULL_STEPS_PER_MM = 5;
+const CARRIAGE_HZ = 250;
+
+function syntheticCruise(file: string, speed: number): string {
+	// The axis is the name's own letter — `speedFamilies` reads it the same way,
+	// so the bench and the card cannot disagree about which channel a row is of.
+	const letter = /_[Yy]_\d+\.csv$/.test(file) ? "Y" : "X";
+	const rate = 1379;
+	const n = 1500;
+	const noise = labNoise(Math.round(speed) * 104729 + (letter === "Y" ? 7 : 3));
+	const forced = speed * FULL_STEPS_PER_MM;
+	// How close the forced line is to the carriage mode, as a resonance gain:
+	// a lightly damped mode driven at its own frequency answers far harder than
+	// one driven a hundred hertz away.
+	const detune = (forced - CARRIAGE_HZ) / (0.06 * CARRIAGE_HZ);
+	const gain = 1 + 18 / (1 + detune * detune);
+	const aForced = 0.004 * (speed / 10) * gain;
+	const aHalf = 0.02;
+	const aMode = 0.012;
+	const rows = ["Sample,X,Y,Z"];
+	for (let i = 0; i < n; i++) {
+		const t = i / rate;
+		// A short ramp to speed, then cruise for the rest of the record: at
+		// 10 mm/s the real capture ends long before the move does, which is
+		// exactly the case cruiseWindow has to survive.
+		const ramp = t < 0.12 ? t / 0.12 : 1;
+		const a =
+			ramp * aForced * Math.sin(2 * Math.PI * forced * t) +
+			ramp * aHalf * Math.sin(2 * Math.PI * (forced / 2) * t + 1.1) +
+			ramp * aMode * Math.sin(2 * Math.PI * 38 * t + 0.4) +
+			(t < 0.12 ? 0.5 : 0);
+		const x = (letter === "X" ? a : 0) + noise();
+		const y = (letter === "Y" ? a : 0) + noise();
+		rows.push(`${i},${x.toFixed(4)},${y.toFixed(4)},${(1 + noise()).toFixed(4)}`);
+	}
+	rows.push(`Rate ${rate}, overflows 0`);
+	return rows.join("\n");
+}
+
 export function syntheticCapture(file: string): string {
+	// A name that declares a speed is a sweep row, and a sweep row is a cruise.
+	const sweepName = /_[XYxy]_(\d+)\.csv$/.exec(file);
+	if (sweepName !== null) return syntheticCruise(file, Number(sweepName[1]));
 	const { axis, dir, rep } = captureNameParts(file);
 	const rate = 1379;
 	const n = 1500;
@@ -511,6 +596,20 @@ function accelListing(): FileListEntry[] {
 	for (const axis of ["X", "Y"]) for (const speed of [20, 50, 100, 200]) for (let rep = 0; rep < 2; rep++) {
 		add(`baseline_${axis}_${speed}_${rep}.csv`, stamp("2026-08-22", 10 + out.length));
 	}
+	// The SWEEPS: `<prefix>_<axis>_<speed>.csv`, one capture per speed. 184 of
+	// the 259 CSVs on Gabe's board are named this way, and `lowspeed_stock_X` —
+	// nine speeds from 10 to 60 mm/s — is the best of them, because its
+	// full-step line crosses the 250 Hz carriage mode in the middle of the
+	// range. The two-speed families are the rest of that morning's driver sweep
+	// and they are here so the picker has to cope with eighty of them.
+	for (const speed of [10, 15, 20, 25, 30, 33, 40, 50, 60]) {
+		add(`lowspeed_stock_X_${speed}.csv`, stamp("2026-08-22", 3 + speed));
+	}
+	for (const speed of [50, 100, 150]) add(`vec100_30_X_${speed}.csv`, stamp("2026-05-19", 40 + speed));
+	for (const trial of ["u12", "u16", "u20", "u24", "i1400", "i1600", "ms64_I0", "ms64_I1"]) {
+		for (const speed of [50, 100]) add(`${trial}_X_${speed}.csv`, stamp("2026-08-22", 200 + speed));
+	}
+	for (const speed of [50, 100, 200]) add(`baseline_y_Y_${speed}.csv`, stamp("2026-08-22", 60 + speed));
 	// Months of older work, in the families a machine accumulates.
 	const older: Array<[string, string]> = [
 		["motorA_i", "2026-08-05"], ["motorB_i", "2026-07-28"], ["phase_k", "2026-07-14"],
