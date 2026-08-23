@@ -1,4 +1,4 @@
 {
-  "maxEagerBytes": 423424,
-  "note": "413.5 KiB. Raised 2026-08-21 from 410,624 for global unit scaling: measured main 406,415 B -> branch 414,690 B, +8,275 B, all of it the stylesheet (calc(n * var(--u)) is longer than a px literal, ~870 times). Same ~8.5 KB headroom as the 2026-08-03 seed (401,859 B). RAW bytes, because DSF's Kestrel serves uncompressed. Raising this is a deliberate commit, not a fix."
+  "maxEagerBytes": 460800,
+  "note": "450 KiB. Raised 2026-08-22 from 423,424 for the Shaping Lab's eight cards: measured main 422,092 B -> branch 450,905 B, +28,813 B, the card bodies and their .shp-* stylesheet. Gabe's call, asked and answered when the gate refused the D1 preview deploy: ship it eagerly rather than put the screen behind a dynamic import. Note main had only 1,332 B of headroom left, so this raise is also restoring room the previous ceiling no longer had; new headroom 9,895 B. Work items E-G still owe this budget their charts (uPlot, a canvas heatmap, the residual chart) and will need re-measuring. RAW bytes, because DSF's Kestrel serves uncompressed. Raising this is a deliberate commit, not a fix."
 }
