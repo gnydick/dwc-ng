@@ -1,7 +1,13 @@
 /**
- * Every capture this session has fitted, by file name — the difference between
- * a browser that remembers what it has looked at and one that forgets whenever
- * you touch it.
+ * Every capture this session has fitted, by CaptureRef key — the difference
+ * between a browser that remembers what it has looked at and one that forgets
+ * whenever you touch it.
+ *
+ * By key rather than by file name, because the key is what is unique. Two
+ * imported CSVs can both be called `ring1_Xp0.csv` (a re-run, a second
+ * machine) and neither is the board's file of that name — see `importRef` —
+ * so a cache keyed by name would show one capture's frequency on another
+ * capture's row the moment imports became fittable.
  *
  * A fit is a PURE FUNCTION of a capture file's bytes: `parseCapture` →
  * `detectStop` → `fitDecay`, with no clock, no machine state and no tool in it.
@@ -32,15 +38,15 @@
 import type { Mode, NoFit } from "./engine/fit.ts";
 
 export type FitCache = {
-	/** What this session made of `file`, or undefined if it has never looked. */
-	get(file: string): Mode | NoFit | undefined;
+	/** What this session made of `key`, or undefined if it has never looked. */
+	get(key: string): Mode | NoFit | undefined;
 	/** Everything fitted so far. A new object per change, so a Solid signal
 	 *  holding one notifies on `remember`. */
 	all(): ReadonlyMap<string, Mode | NoFit>;
-	/** Record one fit. Recording the same file twice is defined and identical —
-	 *  the input decides the output — so a re-fit is free rather than a
-	 *  conflict. */
-	remember(file: string, fit: Mode | NoFit): void;
+	/** Record one fit. Recording the same capture twice is defined and
+	 *  identical — the input decides the output — so a re-fit is free rather
+	 *  than a conflict. */
+	remember(key: string, fit: Mode | NoFit): void;
 	/**
 	 * Drop everything. The ONLY route out, and it exists for one gesture: the
 	 * Shaping screen's Reload, which means "the card is not what I last read".
@@ -63,12 +69,12 @@ export type FitCache = {
 export function createFitCache(onChange: (fits: ReadonlyMap<string, Mode | NoFit>) => void = () => undefined): FitCache {
 	let fits = new Map<string, Mode | NoFit>();
 	return {
-		get: (file: string): Mode | NoFit | undefined => fits.get(file),
+		get: (key: string): Mode | NoFit | undefined => fits.get(key),
 		all: (): ReadonlyMap<string, Mode | NoFit> => fits,
-		remember: (file: string, fit: Mode | NoFit): void => {
+		remember: (key: string, fit: Mode | NoFit): void => {
 			// Replaced rather than mutated: the map is what a signal holds, and a
 			// mutated Map is a value Solid has no way to see has changed.
-			fits = new Map(fits).set(file, fit);
+			fits = new Map(fits).set(key, fit);
 			onChange(fits);
 		},
 		forget: (): void => {

@@ -28,7 +28,7 @@ import { For, Match, Show, Switch, createEffect, createMemo, createSignal } from
 import { cmd } from "../control/commands.ts";
 import { copyText } from "../shell/copyText.ts";
 import { createArmed } from "../control/armed.ts";
-import { allDoneAction, batchSummaryText, stepActionText, stepStatusText, sweepStateText, type StepScope } from "../shaping/copy.ts";
+import { allDoneAction, batchSummaryText, type CaptureSource, captureSourceLabel, stepActionText, stepStatusText, sweepStateText, type StepScope } from "../shaping/copy.ts";
 import type { CardCtx } from "../compose/ctx.ts";
 import type { MacroRead } from "../compose/services.ts";
 import { nextStep, SHAPING_STEPS, type ShapingStep, type StepInputs, type StepSpec } from "../shaping/steps.ts";
@@ -49,7 +49,7 @@ import { fingerprintMarkers, type SweepMarker } from "../charts/sweepData.ts";
 import type { SweepMatrix } from "../shaping/engine/sweep.ts";
 import type { FullStep } from "../shaping/fullStep.ts";
 import { decaySeries, type DecayView } from "../charts/decayData.ts";
-import { ACCEL_DIR, accelPath, boardRef, type CaptureRef, captureNameParts, inFamily, matchesQuery, MAX_BATCH, namePrefixes, resolvePick, type SweepFamily } from "../shaping/captures.ts";
+import { ACCEL_DIR, accelPath, boardRef, type CaptureFamily, type CaptureRef, captureNameParts, chosenCaptures, familyView, matchesQuery, MAX_BATCH, resolvePick, type SweepFamily } from "../shaping/captures.ts";
 import { useEngine } from "../shaping/useEngine.ts";
 import type { FitResult } from "../shaping/worker.ts";
 
@@ -507,19 +507,16 @@ type Analysis =
 /**
  * Which set of captures the list is showing.
  *
- * Three, and they are genuinely three different things rather than one list
- * with tags: what this tool's results file records, what the board's SD card
- * holds, and what the operator dragged in this session. Only the middle one
- * can be fingerprinted against a tool, and that is a property of where the
- * bytes came from — see the batch bar.
+ * Three, and they are genuinely three different collections rather than one
+ * list with tags: what this tool's results file records, what the board's SD
+ * card holds, and what the operator dragged in this session. All three can be
+ * ticked and fitted — where a capture's bytes come from is the loader's
+ * business, and it answers for all three. What only the first two can do is be
+ * SAVED against a tool; see `BatchAttribution`.
  */
-type DecaySource = "tool" | "board" | "imported";
+type DecaySource = CaptureSource;
 
-const SOURCES: ReadonlyArray<{ id: DecaySource; label: string }> = [
-	{ id: "tool", label: "Tool" },
-	{ id: "board", label: "Board" },
-	{ id: "imported", label: "Imported" },
-];
+const SOURCES: readonly DecaySource[] = ["tool", "board", "imported"];
 
 /** The chart's key, as fixed rows. Colours live in app.css beside the ones the
  *  chart reads through themeColors, so there is one place per line. */
@@ -533,15 +530,23 @@ const DECAY_KEY = [
 const AXES: readonly Axis[] = ["X", "Y"];
 
 /**
- * At most this many name families are offered as one-click filters.
+ * At most this many NAMED families are offered as one-click filters. The
+ * residual bucket sits beside them in a place of its own, so the row holds
+ * four buttons and always the same four.
  *
  * Three, and the number is a MEASUREMENT rather than a taste: every control on
  * the filter row is a declared width, so the row's contribution to the card's
- * minimum width is arithmetic — 22u of input, 18u per chip, 18u of count, 16u
- * of Rescan and 2u per gap. Three chips puts that at 120u, just inside the
- * 123u the captures table already asks for, so the table stays the widest
- * thing on the card and the chips cost nothing. A fourth would make the FILTER
- * ROW the card's minimum width, which is absurd for a row of shortcuts.
+ * minimum width is arithmetic — 22u of input, 19u per named chip, 16u for the
+ * residual, 16u of Rescan and 2u per gap, which is 121u, just inside the 123u
+ * the captures table already asks for. The table therefore stays the widest
+ * thing on the card and the chip row costs nothing.
+ *
+ * The residual took the place of the old `N of M` readout rather than being
+ * added beside it, and that is what kept the arithmetic where it was — a
+ * fourth NAMED chip would put the row at 140u and make it, absurdly, the
+ * card's minimum width. Neither number went missing: M is on the source chip
+ * (`Board (276)`) and N is on the Select button under the table, which reads
+ * `Select 276` because that is exactly what it would select.
  */
 const PREFIX_CHIPS = 3;
 
@@ -554,11 +559,12 @@ function shortWhen(date: string | undefined): string {
 	return m === null ? date.slice(0, 16) : `${m[2]}-${m[3]} ${m[4]}:${m[5]}`;
 }
 
-/** What a row with no Mode has to say for itself, in one short cell. A board
- *  capture nobody has fitted yet says nothing rather than pretending. */
+/** What a row with no Mode has to say for itself, in one short cell. A capture
+ *  nobody has fitted yet says so rather than pretending — except an import,
+ *  which is fitted the moment it arrives, so a blank one is still in flight. */
 function rowReason(row: DecayRow): string {
 	if (row.problem !== "") return row.problem;
-	if (row.fit === null) return row.origin === "board" ? "not fitted" : "fitting…";
+	if (row.fit === null) return row.origin === "imported" ? "fitting…" : "not fitted";
 	return fitReasonText(row.fit);
 }
 
@@ -598,8 +604,10 @@ export function ShapingDecayBody(props: { ctx: CardCtx }) {
 	const svc = props.ctx.service("shaping");
 	const [source, setSourceNow] = createSignal<DecaySource>("tool");
 	const [query, setQuery] = createSignal("");
-	/** The lit name-family chip, separate from the text filter because the two
-	 *  ask different questions and are ANDed — see `inFamily`. */
+	/** The lit chip's key, separate from the text filter because the two ask
+	 *  different questions: the query narrows the listing, the chip picks one
+	 *  bucket of what is left. What is LIT comes back from `familyView`, not
+	 *  from here — a key naming no bucket reads as nothing lit. */
 	const [family, setFamily] = createSignal<string | null>(null);
 	const [selected, setSelected] = createSignal<ReadonlySet<string>>(new Set<string>());
 	const [target, setTarget] = createSignal<number | null>(null);
@@ -630,27 +638,36 @@ export function ShapingDecayBody(props: { ctx: CardCtx }) {
 	const allRows = createMemo((): readonly DecayRow[] => {
 		switch (source()) {
 			case "tool":
-				return svc.results().captures.map((c): DecayRow => ({
-					key: boardRef(c.file).key,
-					ref: boardRef(c.file),
-					file: c.file,
-					tag: `${c.axis}${c.dir}${c.rep}`,
-					origin: "tool",
-					when: NONE,
-					fit: c.fit,
-					problem: "",
-				}));
+				return svc.results().captures.map((c): DecayRow => {
+					const ref = boardRef(c.file);
+					return {
+						key: ref.key,
+						ref,
+						file: c.file,
+						tag: `${c.axis}${c.dir}${c.rep}`,
+						origin: "tool",
+						when: NONE,
+						// THIS session's fit wins over the stored one. #33 replaced the
+						// estimator on 2026-08-23, so what a results file records may
+						// have been computed by a fitter that no longer exists; re-fit a
+						// tool row and the row shows the number the app would write, not
+						// the one it is about to replace.
+						fit: batchFits().get(ref.key) ?? c.fit,
+						problem: "",
+					};
+				});
 			case "board":
 				return svc.board().map((entry): DecayRow => {
 					const parts = captureNameParts(entry.name);
+					const ref = boardRef(entry.name);
 					return {
-						key: boardRef(entry.name).key,
-						ref: boardRef(entry.name),
+						key: ref.key,
+						ref,
 						file: entry.name,
 						tag: parts.matched ? `${parts.axis}${parts.dir}${parts.rep}` : NONE,
 						origin: "board",
 						when: shortWhen(entry.date),
-						fit: batchFits().get(entry.name) ?? null,
+						fit: batchFits().get(ref.key) ?? null,
 						problem: "",
 					};
 				});
@@ -662,34 +679,46 @@ export function ShapingDecayBody(props: { ctx: CardCtx }) {
 					tag: `${c.axis}${c.dir}${c.rep}`,
 					origin: "imported",
 					when: NONE,
-					fit: c.fit,
+					fit: batchFits().get(c.ref.key) ?? c.fit,
 					problem: c.problem,
 				}));
 		}
 	});
 
-	/** Name families, derived from the listing itself — nothing here knows what
-	 *  the operator called a run in May. */
-	const prefixes = createMemo(() => namePrefixes(allRows().map(r => r.file), PREFIX_CHIPS));
+	/** What the text filter admits. The chips partition THIS rather than the
+	 *  whole listing, so a chip's number is true while a query is typed too. */
+	const queried = createMemo((): readonly DecayRow[] => allRows().filter(r => matchesQuery(r.file, query())));
 
 	/**
-	 * The chip row, always the same length.
+	 * The chip row and the rows under it, from ONE call.
+	 *
+	 * `familyView` returns buckets that HOLD their rows, and `shown` is one of
+	 * those very arrays — so the number on a chip is the length of the list
+	 * clicking it produces, and the buckets sum to `queried()`. That is the
+	 * whole fix for "each crumb button filter presents too small numbers so
+	 * they don't sum to 259" (Gabe, 2026-08-23): the label and the action used
+	 * to be two expressions, and the `ring1_` chip said 60 while producing 12.
+	 */
+	const browse = createMemo(() => familyView(queried(), PREFIX_CHIPS, family()));
+
+	/**
+	 * The chip row, always the same four buttons.
 	 *
 	 * Padded with empty slots because the number of families depends on the
 	 * source — the board has three, the tool's twelve captures have one — and a
 	 * row that gains and loses buttons moves the search box beside it every time
 	 * the operator changes source. Measured: the input went 192px to 352px and
 	 * two chips slid 160px sideways.
+	 *
+	 * The residual is NOT one of these slots; it has its own fixed place at the
+	 * end of the row, so it never moves when a source has fewer families.
 	 */
-	const chipSlots = createMemo((): ReadonlyArray<{ prefix: string; count: number } | null> => {
-		const found = prefixes();
+	const chipSlots = createMemo((): ReadonlyArray<CaptureFamily<DecayRow> | null> => {
+		const found = browse().families;
 		return Array.from({ length: PREFIX_CHIPS }, (_, i) => found[i] ?? null);
 	});
 
-	const rows = createMemo((): readonly DecayRow[] => {
-		const families = prefixes().map(p => p.prefix);
-		return allRows().filter(r => matchesQuery(r.file, query()) && inFamily(r.file, family(), families));
-	});
+	const rows = (): readonly DecayRow[] => browse().shown;
 
 	const counts = createMemo(() => ({
 		tool: svc.results().captures.length,
@@ -810,20 +839,36 @@ export function ShapingDecayBody(props: { ctx: CardCtx }) {
 
 	/* --------------------------------------------------------- selection */
 
-	const selectable = (): boolean => source() === "board";
-	const chosen = createMemo((): readonly string[] => rows().filter(r => selected().has(r.file)).map(r => r.file));
+	/**
+	 * The captures the tick boxes name.
+	 *
+	 * Origin is not consulted, here or on the checkbox. A row's origin decides
+	 * where its BYTES come from, and the loader answers that for all three: a
+	 * tool row and a board row name the same file in `0:/sys/accelerometer` and
+	 * download identically, and an import is already in memory. Gating
+	 * selection on it left twelve visible tool rows with no checkbox beside a
+	 * button reading "Fit 0" (Gabe, 2026-08-23) — and no way in the app to
+	 * re-fit a `tool<N>.json` written by the estimator #33 replaced.
+	 *
+	 * Whether the result may be SAVED against a tool is the other question, and
+	 * it is answered where it belongs: `BatchAttribution`, from the refs.
+	 *
+	 * Keyed by `key`, not by file name: two imports can be called
+	 * `ring1_Xp0.csv` and a tick on one must not fit the other.
+	 */
+	const chosen = createMemo((): readonly CaptureRef[] => chosenCaptures(rows(), selected()));
 
-	const toggle = (file: string): void => {
+	const toggle = (key: string): void => {
 		setSelected(prev => {
 			const next = new Set(prev);
-			if (next.has(file)) next.delete(file);
-			else next.add(file);
+			if (next.has(key)) next.delete(key);
+			else next.add(key);
 			return next;
 		});
 		svc.clearRun();
 	};
 	const selectShown = (): void => {
-		setSelected(new Set(rows().map(r => r.file)));
+		setSelected(new Set(rows().map(r => r.key)));
 		svc.clearRun();
 	};
 	const clearSelection = (): void => {
@@ -832,9 +877,17 @@ export function ShapingDecayBody(props: { ctx: CardCtx }) {
 	};
 
 	const tools = createMemo(() => props.ctx.om.om.tools.filter(t => t !== null));
-	const fitted = createMemo(() => {
+	/**
+	 * A fit that may be WRITTEN — not merely one that exists.
+	 *
+	 * The Save button reads this, so the one state that has to be told apart is
+	 * "fitted, and these were this machine's own captures". An imported batch
+	 * fits and draws like any other and simply has nothing to attribute, which
+	 * the batch line says in words beside the greyed button.
+	 */
+	const attributable = createMemo(() => {
 		const run = svc.runState();
-		return run.kind === "fitted" ? run : null;
+		return run.kind === "fitted" && run.attribution.kind === "machine" ? run : null;
 	});
 
 	/**
@@ -851,14 +904,18 @@ export function ShapingDecayBody(props: { ctx: CardCtx }) {
 		const run = svc.runState();
 		switch (run.kind) {
 			case "idle":
-				if (!selectable()) return "Only captures on the board can be attributed to a tool — they are that machine's own, written by M956.";
 				return rows().length > MAX_BATCH
 					? `${rows().length} captures shown. Filter to one measurement run — at most ${MAX_BATCH} — before selecting: a fingerprint is the median of one session, not of everything the card has ever held.`
-					: "Tick the board captures of one measurement run, fit them, and write the fingerprint to a tool.";
+					: "Tick the captures of one measurement run, fit them, and write the fingerprint to a tool.";
 			case "running":
 				return `Fitting ${run.done + 1} of ${run.total}: ${run.file}`;
 			case "fitted":
-				return batchSummaryText(run.contributed, run.total, run.fingerprint);
+				// The attribution's sentence is APPENDED to the numbers rather than
+				// replacing them: an imported batch still fitted, and its medians are
+				// the point of looking at it. What it cannot do is be written.
+				return run.attribution.kind === "machine"
+					? batchSummaryText(run.contributed, run.total, run.fingerprint)
+					: `${batchSummaryText(run.contributed, run.total, run.fingerprint)} ${run.attribution.why}`;
 			case "saving":
 				return `Writing ${RESULTS_PATH(run.tool)}…`;
 			case "saved":
@@ -989,14 +1046,15 @@ export function ShapingDecayBody(props: { ctx: CardCtx }) {
 						{s => (
 							<button
 								class="shp-pick shp-src"
-								aria-pressed={source() === s.id}
-								aria-label={`${s.label}: ${counts()[s.id]} captures`}
-								onClick={() => setSource(s.id)}
+								aria-pressed={source() === s}
+								aria-label={`${captureSourceLabel(s, svc.tool())}: ${counts()[s]} captures`}
+								onClick={() => setSource(s)}
 							>
 								{/* Parenthesised, because on a Duet a bare "Board 259" reads as CAN
-								    address 259 and "Tool 12" as tool 12 — both real things this
-								    machine could have. The number is a count of captures. */}
-								{s.label} <span class="shp-src-n">({counts()[s.id]})</span>
+								    address 259 and "T0 12" as twelve of something. The number is a
+								    count of captures. The tool source names its tool, so a row
+								    under it is attributable to a head by looking. */}
+								{captureSourceLabel(s, svc.tool())} <span class="shp-src-n">({counts()[s]})</span>
 							</button>
 						)}
 					</For>
@@ -1036,17 +1094,41 @@ export function ShapingDecayBody(props: { ctx: CardCtx }) {
 							{p => (
 								<button
 									class="shp-pick shp-prefix"
-									aria-pressed={family() === p().prefix}
-									onClick={() => setFamily(family() === p().prefix ? null : p().prefix)}
-									title={`${p().count} files start with ${p().prefix}`}
+									aria-pressed={browse().lit === p().key}
+									aria-label={`${p().label}: ${p().rows.length} captures`}
+									onClick={() => setFamily(browse().lit === p().key ? null : p().key)}
+									title={`${p().rows.length} captures whose name starts ${p().label}`}
 								>
-									{p().prefix}
+									<span class="shp-prefix-name">{p().label}</span>
+									{/* The number IS the bucket's length — same array the click
+									    renders — so it cannot describe a different set. */}
+									<span class="shp-prefix-n">{p().rows.length}</span>
 								</button>
 							)}
 						</Show>
 					)}
 				</For>
-				<span class="shp-count">{rows().length} of {allRows().length}</span>
+				{/* Everything the named families did not take, in the place the old
+				    "N of M" readout held. Without it 118 of Gabe's 259 files were in
+				    no bucket and nothing said so; with it the four numbers sum to the
+				    listing, which is how an operator sees that nothing is hidden. */}
+				<Show
+					when={browse().rest}
+					fallback={<button class="shp-pick shp-prefix shp-rest" disabled aria-hidden="true" tabindex="-1" />}
+				>
+					{r => (
+						<button
+							class="shp-pick shp-prefix shp-rest"
+							aria-pressed={browse().lit === r().key}
+							aria-label={`Everything else: ${r().rows.length} captures`}
+							onClick={() => setFamily(browse().lit === r().key ? null : r().key)}
+							title={`${r().rows.length} captures in no family the row names`}
+						>
+							<span class="shp-prefix-name">{r().label}</span>
+							<span class="shp-prefix-n">{r().rows.length}</span>
+						</button>
+					)}
+				</Show>
 				<button
 					class="fb-tool shp-rescan"
 					disabled={source() !== "board"}
@@ -1103,15 +1185,16 @@ export function ShapingDecayBody(props: { ctx: CardCtx }) {
 						{row => (
 							<tr classList={{ "shp-on": svc.capturePick() === row.key }}>
 								<td>
-									<Show when={row.origin === "board"}>
-										<input
-											type="checkbox"
-											class="shp-check"
-											aria-label={`Include ${row.file} in the fingerprint`}
-											checked={selected().has(row.file)}
-											onChange={() => toggle(row.file)}
-										/>
-									</Show>
+									{/* Every row, whatever its origin. All three can supply
+									    bytes; whether the fit may be SAVED is settled by
+									    BatchAttribution, not by whether you may tick a box. */}
+									<input
+										type="checkbox"
+										class="shp-check"
+										aria-label={`Include ${row.file} in the fingerprint`}
+										checked={selected().has(row.key)}
+										onChange={() => toggle(row.key)}
+									/>
 								</td>
 								<td>
 									<button
@@ -1152,14 +1235,14 @@ export function ShapingDecayBody(props: { ctx: CardCtx }) {
 			  arms first (control/armed.ts, so Escape backs out).
 			*/}
 			<div class="shp-batch">
-				<button class="fb-tool shp-pick-n" disabled={!selectable() || rows().length === 0 || rows().length > MAX_BATCH} onClick={selectShown}>
+				<button class="fb-tool shp-pick-n" disabled={rows().length === 0 || rows().length > MAX_BATCH} onClick={selectShown}>
 					Select {rows().length}
 				</button>
 				<button class="fb-tool shp-pick-n" disabled={selected().size === 0} onClick={clearSelection}>Clear</button>
 				<button
 					class="fb-tool shp-pick-n"
 					disabled={chosen().length === 0 || chosen().length > MAX_BATCH || svc.runState().kind === "running"}
-					onClick={() => void svc.fitBoardCaptures(chosen())}
+					onClick={() => void svc.fitCaptures(chosen())}
 				>
 					Fit {chosen().length}
 				</button>
@@ -1181,7 +1264,7 @@ export function ShapingDecayBody(props: { ctx: CardCtx }) {
 				<button
 					class="fb-tool shp-save"
 					classList={{ "shp-arming": armed() !== null }}
-					disabled={fitted() === null || target() === null}
+					disabled={attributable() === null || target() === null}
 					onClick={save}
 				>
 					{saveLabel()}

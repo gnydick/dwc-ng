@@ -64,7 +64,7 @@ import { findShapingLine, toolMacroPath } from "../shaping/toolMacro.ts";
 import type { ShapingStep } from "../shaping/steps.ts";
 import type { CardId } from "./defs.ts";
 import { useEngine } from "../shaping/useEngine.ts";
-import { ACCEL_DIR, boardRef, byNewest, captureNameParts, createCaptureLoader, type ImportedCapture, importRef, isCaptureFile, MAX_BATCH, MAX_SWEEP, speedFamilies, type SweepFamily } from "../shaping/captures.ts";
+import { ACCEL_DIR, boardRef, byNewest, captureNameParts, type CaptureRef, createCaptureLoader, type ImportedCapture, importedCount, importRef, isCaptureFile, MAX_BATCH, MAX_SWEEP, speedFamilies, type SweepFamily } from "../shaping/captures.ts";
 import { parseAccelAddr } from "../control/commands.ts";
 import { type FileListEntry, FileNotFoundError } from "@dwc-ng/connector";
 import { aggregate, type Axis, type Fingerprint, type Mode, type NoFit } from "../shaping/engine/fit.ts";
@@ -249,6 +249,28 @@ export type MacroRead =
 	| { kind: "unreadable" };
 
 /**
+ * Whether a fitted batch may be written against a tool — carrying the records
+ * ONLY when it may.
+ *
+ * The two questions the old `origin === "board"` gate confused, separated.
+ * ANY capture can supply bytes: a board file and a tool's own capture name the
+ * same file in `0:/sys/accelerometer` and download identically, and an
+ * imported CSV is already in memory. So anything on the card can be ticked and
+ * fitted, which is what makes re-fitting a tool's stored captures possible at
+ * all after the estimator changes (#33).
+ *
+ * ATTRIBUTION is the other question, and it is a real distinction rather than
+ * a leftover: an imported CSV may be from another machine or another day, so
+ * recording it as this tool's measurement would make the next fingerprint a
+ * mixture of two machines. The records — the only thing `store.setMeasurement`
+ * can be given — exist solely in the `machine` arm, so the writer cannot be
+ * reached with imported data without the compiler objecting first.
+ */
+export type BatchAttribution =
+	| { readonly kind: "machine"; readonly records: readonly CaptureRecord[] }
+	| { readonly kind: "imported"; readonly why: string };
+
+/**
  * A batch fingerprint run, as one value.
  *
  * A union rather than a bag of flags: "running and also saved", "fitted with no
@@ -265,7 +287,7 @@ export type BatchState =
 	| {
 		readonly kind: "fitted";
 		readonly fingerprint: Fingerprint;
-		readonly records: readonly CaptureRecord[];
+		readonly attribution: BatchAttribution;
 		readonly contributed: number;
 		readonly total: number;
 	}
@@ -440,26 +462,8 @@ function shapingService(base: ServiceBaseCtx) {
 	});
 
 	/**
-	 * Fit a set of the board's own captures and aggregate them into a
-	 * fingerprint, WITHOUT writing anything.
-	 *
-	 * Two phases on purpose. This one is the measurement: every file is
-	 * downloaded through the same cached loader the chart uses and fitted by
-	 * the same worker call (`parseCapture` → `detectStop` → `fitDecay`), so
-	 * every number in the result is one this UI computed from that machine's
-	 * own bytes. The second phase — writing it against a tool — is a separate,
-	 * armed act, because attributing a measurement to the wrong head is the
-	 * mistake a toolchanger makes easily and cannot see afterwards.
-	 *
-	 * A file that does not fit still gets a CaptureRecord, carrying its NoFit.
-	 * `aggregate` takes the median of the fits that succeeded, so a rejected
-	 * capture is excluded from the numbers and still present in the file — and
-	 * `contributed` says how many of how many, which is the figure that keeps a
-	 * partial aggregate from reading as a complete one.
-	 */
-	/**
-	 * Every capture this session has fitted, by file name — a browser that
-	 * remembers what it has looked at.
+	 * Every capture this session has fitted, by CaptureRef key — a browser
+	 * that remembers what it has looked at.
 	 *
 	 * A fit is a PURE FUNCTION of a file's bytes: `parseCapture` → `detectStop`
 	 * → `fitDecay`, with no clock, no machine state and no tool in it. Two runs
@@ -487,36 +491,74 @@ function shapingService(base: ServiceBaseCtx) {
 
 	const [runState, setRunState] = createSignal<BatchState>({ kind: "idle" });
 
-	const fitBoardCaptures = async (files: readonly string[]): Promise<void> => {
-		if (files.length === 0 || runState().kind === "running") return;
+	/**
+	 * Fit a set of captures and aggregate them into a fingerprint, WITHOUT
+	 * writing anything.
+	 *
+	 * Two phases on purpose. This one is the measurement: every capture reaches
+	 * the engine through the same cached loader the chart uses and the same
+	 * worker call (`parseCapture` → `detectStop` → `fitDecay`), so every
+	 * number in the result is one this UI computed from those bytes. The second
+	 * phase — writing it against a tool — is a separate, armed act, because
+	 * attributing a measurement to the wrong head is the mistake a toolchanger
+	 * makes easily and cannot see afterwards.
+	 *
+	 * Takes REFS rather than file names, which is what lets it fit anything the
+	 * card can show: a tool's own recorded captures (the only way to re-fit a
+	 * stale `tool<N>.json` after an estimator change, #33) and an imported CSV
+	 * as readily as a board file. What an import cannot do is be SAVED against
+	 * a tool, and `attribution` below is where that is settled.
+	 *
+	 * A file that does not fit still gets a CaptureRecord, carrying its NoFit.
+	 * `aggregate` takes the median of the fits that succeeded, so a rejected
+	 * capture is excluded from the numbers and still present in the file — and
+	 * `contributed` says how many of how many, which is the figure that keeps a
+	 * partial aggregate from reading as a complete one.
+	 */
+	const fitCaptures = async (refs: readonly CaptureRef[]): Promise<void> => {
+		if (refs.length === 0 || runState().kind === "running") return;
 		// The cap lives HERE rather than on the button, so the one route that
 		// downloads a batch is the one that refuses an unreasonable one. A
 		// disabled button is a suggestion; this is the thing that would issue
 		// the requests.
-		if (files.length > MAX_BATCH) {
-			setRunState({ kind: "failed", why: `${files.length} captures is more than one measurement run — filter to at most ${MAX_BATCH} before fitting.` });
+		if (refs.length > MAX_BATCH) {
+			setRunState({ kind: "failed", why: `${refs.length} captures is more than one measurement run — filter to at most ${MAX_BATCH} before fitting.` });
 			return;
 		}
 		const records: CaptureRecord[] = [];
-		for (const [index, file] of files.entries()) {
-			setRunState({ kind: "running", done: index, total: files.length, file });
-			const parts = captureNameParts(file);
+		for (const [index, ref] of refs.entries()) {
+			setRunState({ kind: "running", done: index, total: refs.length, file: ref.file });
+			const parts = captureNameParts(ref.file);
 			try {
-				const result = await useEngine().fit(await loader.text(boardRef(file)), parts.axis);
-				records.push({ file, axis: parts.axis, dir: parts.dir, rep: parts.rep, fit: result.fit, tStop: result.tStop });
+				// One route whatever the origin: the cached loader answers a board
+				// file with a download and an import from the bytes it already
+				// holds, so this loop cannot care which it was handed.
+				const result = await useEngine().fit(await loader.text(ref), parts.axis);
+				records.push({ file: ref.file, axis: parts.axis, dir: parts.dir, rep: parts.rep, fit: result.fit, tStop: result.tStop });
 				// Remembered as it lands rather than at the end, so a batch that
-				// fails on its ninth file keeps the eight it already paid for.
-				fitCache.remember(file, result.fit);
+				// fails on its ninth file keeps the eight it already paid for. By
+				// the ref's KEY, which is what the rows are identified by — two
+				// imports can share a file name and neither is the board's file.
+				fitCache.remember(ref.key, result.fit);
 			} catch (err) {
-				setRunState({ kind: "failed", why: `${file}: ${err instanceof Error ? err.message : String(err)}` });
+				setRunState({ kind: "failed", why: `${ref.file}: ${err instanceof Error ? err.message : String(err)}` });
 				return;
 			}
 		}
 		const fingerprint = aggregate(records.map(r => ({ axis: r.axis, fit: r.fit })));
+		const imported = importedCount(refs);
 		setRunState({
 			kind: "fitted",
 			fingerprint,
-			records,
+			// The records travel only when the batch is this machine's own. An
+			// imported CSV is a file the operator brought, not a capture of this
+			// tool, so there is nothing here for `saveMeasurement` to write.
+			attribution: imported === 0
+				? { kind: "machine", records }
+				: {
+					kind: "imported",
+					why: `${imported === 1 ? "One capture was" : `${imported} captures were`} imported from this computer, so this fit cannot be written to a tool — a tool's results file records that machine's own captures.`,
+				},
 			contributed: fingerprint.n.X + fingerprint.n.Y,
 			total: records.length,
 		});
@@ -531,10 +573,13 @@ function shapingService(base: ServiceBaseCtx) {
 	 */
 	const saveMeasurement = async (tool: number): Promise<void> => {
 		const run = runState();
-		if (run.kind !== "fitted") return;
+		// Both halves are the type's, not a policy written here: there are no
+		// records to write unless the run is `fitted` AND its captures were this
+		// machine's own, so the narrowing is what makes the call below compile.
+		if (run.kind !== "fitted" || run.attribution.kind !== "machine") return;
 		setRunState({ kind: "saving", tool });
 		try {
-			store.setMeasurement(tool, run.fingerprint, run.records);
+			store.setMeasurement(tool, run.fingerprint, run.attribution.records);
 			await store.save(tool);
 			setRunState({ kind: "saved", tool, contributed: run.contributed, total: run.total });
 			// The screen follows the tool just measured: every other card on it
@@ -869,7 +914,7 @@ function shapingService(base: ServiceBaseCtx) {
 		results: (): ToolResults => resultsFor(tool()),
 		capturePick, setCapturePick, imports, addImport, loadCapture: loader.text,
 		board, boardState, boardError, wantBoard, refreshBoard,
-		runState, fitBoardCaptures, saveMeasurement, clearRun,
+		runState, fitCaptures, saveMeasurement, clearRun,
 		fits, families, fullStepFor, sweepState, buildSweep, saveSweep,
 		candidateIndex, setCandidateIndex,
 		accelFor, gate, macroFor, toggleMacro, rank, ranking, problem, offer, runStep,
