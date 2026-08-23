@@ -144,7 +144,7 @@ export const SETTINGS_COMPOSITION: Composition = {
 	"thermal-colors": { col: 156, row: 161, colSpan: 156, rowSpan: 60 },
 	"sensor-names": { col: 0, row: 237, colSpan: 312, rowSpan: 72 },
 	"filament-editor": { col: 0, row: 309, colSpan: 312, rowSpan: 130 },
-	// The Shaping Lab's editor — "Settings › Shaping", the place the lab's own
+	// The Shaping Lab's editor — "Settings › Input shaping", the place the lab's own
 	// refusal copy sends the operator. Its own row rather than squeezed beside
 	// something: it is three stacked groups (box, motion, accelerometers) and
 	// the column it needs is wider than half this screen leaves.

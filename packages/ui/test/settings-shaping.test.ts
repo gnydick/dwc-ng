@@ -45,7 +45,7 @@ const draft = (xLo: string, xHi: string, yLo: string, yHi: string): EnvelopeDraf
  * place did not, which is the whole of #31 — so the phrase is assembled from
  * the screen registry and the card registry rather than written down twice.
  */
-test('the card is reachable exactly where the refusal copy says: "Settings › Shaping"', () => {
+test('the card is reachable exactly where the refusal copy says: "Settings › Input shaping"', () => {
 	assert.ok("settings-shaping" in CARD_DEFS, "the card is registered");
 	assert.ok("settings-shaping" in SETTINGS_COMPOSITION, "and placed on the Settings screen");
 	// compose/cards.tsx is JSX and cannot be imported under node's type
@@ -54,7 +54,7 @@ test('the card is reachable exactly where the refusal copy says: "Settings › S
 	// reading the file is enough to see the body is wired.
 	assert.match(src("compose/cards.tsx"), /"settings-shaping":\s*\{ body: \(\) => <ShapingBody \/>/);
 	const location = `${BUILTIN_SCREENS.settings.name} › ${cardTitleOf("settings-shaping")}`;
-	assert.equal(location, "Settings › Shaping");
+	assert.equal(location, "Settings › Input shaping");
 });
 
 /**

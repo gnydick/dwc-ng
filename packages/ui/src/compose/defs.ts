@@ -458,12 +458,12 @@ export const CARD_DEFS = {
 	 * accelerometer belongs to which tool.
 	 *
 	 * The title is load-bearing, not decoration: the lab's refusal copy sends
-	 * the operator to "Settings › Shaping" by name, and a test pins the
+	 * the operator to "Settings › Input shaping" by name, and a test pins the
 	 * phrase to this def plus the screen this card sits on.
 	 */
 	"settings-shaping": defineCard({
-		title: "Shaping",
-		ariaLabel: "Shaping",
+		title: "Input shaping",
+		ariaLabel: "Input shaping",
 		tip: "config.shaping · M955 P",
 		// Measured in the Card Lab, 2026-08-23: floor 88 cols × 178 rows, stable
 		// across the height probes and with no child drift. 156 wide to sit in

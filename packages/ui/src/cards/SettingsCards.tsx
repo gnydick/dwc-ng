@@ -351,7 +351,7 @@ const MOTION_ROWS = [
  * This card is the ONLY way an envelope comes to exist (spec I8). Nothing
  * ships one, nothing derives one from axis limits or the object model, and the
  * lab refuses every procedure until a person has drawn the box — which is why
- * the lab's refusal copy names this card by location ("Settings › Shaping").
+ * the lab's refusal copy names this card by location ("Settings › Input shaping").
  *
  * THE PROBLEM THIS CARD IS MOSTLY ABOUT. The envelope gate is whole-or-nothing:
  * one reversed, blank or non-numeric bound drops the WHOLE box to `null`, not
