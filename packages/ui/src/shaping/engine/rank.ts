@@ -55,6 +55,19 @@ export function rank(fp: Fingerprint, opts: RankOptions = {}): Candidate[] {
 	return out;
 }
 
+/**
+ * Score ONE spec against a fingerprint, exactly as `rank` scores the grid.
+ *
+ * The reason this is exported rather than kept private to `rank`: a candidate
+ * persisted to the SD card is written as its SPEC alone and re-scored through
+ * here on read. Storing the residuals as well would be the same number in two
+ * places, and the copy on the card is the one nobody recomputes when the
+ * fingerprint or the shaper model changes.
+ */
+export function candidateFor(spec: ShaperSpec, fp: Fingerprint): Candidate {
+	return evaluate(spec, fp);
+}
+
 export function customCandidate(spec: Extract<ShaperSpec, { type: "custom" }>, fp: Fingerprint): Candidate {
 	return evaluate(spec, fp);
 }

@@ -166,6 +166,68 @@ export const DEFAULT_THERMAL_COLORS: ThermalColors = {
 	hot: "#c2380f",
 };
 
+/**
+ * An inclusive `[lo, hi]` bound with `lo < hi`, so it always denotes a
+ * NON-EMPTY span. Minted only by `asRange` (config/parse.ts) — the type
+ * cannot say "ordered", so the one gate that checks it is the only producer.
+ */
+export type Range = readonly [number, number];
+
+/**
+ * The rectangle of bed the shaping lab is allowed to move the carriage in.
+ *
+ * It is deliberately WHOLE: there is no half-envelope, because a box missing
+ * an axis cannot answer "is this point inside?" and anything that cannot
+ * answer that must not gate motion. `asEnvelope` returns one or `null`.
+ */
+export interface Envelope {
+	readonly x: Range;
+	readonly y: Range;
+}
+
+/** Motion parameters a capture run starts from; every one is user-editable. */
+export interface ShapingDefaults {
+	/** Length of the excitation move, mm. */
+	readonly distMm: number;
+	/** Feed for that move, mm/s. */
+	readonly speedMmS: number;
+	/** Captures per axis per direction. */
+	readonly repeats: number;
+	/** Accelerometer samples per capture (M956 S). */
+	readonly samples: number;
+}
+
+/**
+ * Input-shaping lab configuration.
+ *
+ * @invariant envelope-is-config-not-default
+ * @rung 6  choke-point — `envelope` ships as `null` and the ONLY producer of a
+ *          non-null one is `asEnvelope` (config/parse.ts), which both the
+ *          untrusted-overlay boundary and the store's `setShaping` call. There
+ *          is no code path that derives a box from the object model's axis
+ *          limits, and no literal reaches `overlay.shaping.envelope` without
+ *          passing that gate. PARTIALITY is already rung 7 and needs no gate:
+ *          `Envelope | null` is a union, so DeepPartial does not descend into
+ *          it and `{ x: [...] }` alone is a compile error in ConfigOverlay.
+ *          What the type cannot say is `lo < hi`; that is what asRange checks
+ * @why a shaping run drives the carriage the full length of the envelope at
+ *      high speed. A guessed extent — axis limits, a shipped default, a
+ *      half-entered box — is a crash into the frame. Refusing to move until a
+ *      human has stated the box makes the machine's safe region a fact someone
+ *      asserted, never one this UI inferred
+ * @debt promote to rung 7 by branding `Envelope` so a hand-written object
+ *       literal is not assignable and a future writer physically cannot skip
+ *       `asEnvelope`. Blocked on the brand having to survive JSON round-trips
+ *       to the SD card; today the guarantee is "one gate, two callers".
+ */
+export interface ShapingConfig {
+	/** The permitted XY box. `null` = unset; motion is refused (spec I8). */
+	readonly envelope: Envelope | null;
+	readonly defaults: ShapingDefaults;
+	/** Tool number → accelerometer address "board.slot" (M955/M956 P). */
+	readonly accelByTool: Readonly<Record<number, string>>;
+}
+
 export interface UiConfig {
 	/** Axis letter → human role label ("U" → "Z motor 1"). RRF has no
 	 * notion of axis roles; this is per-machine UI metadata. */
@@ -195,6 +257,10 @@ export interface UiConfig {
 	/** Commands re-sent on an interval to override a running job — fan speed
 	 *  pins (keyed "fan:<n>") and arbitrary user rows. See PinnedCommand. */
 	pins: PinnedCommand[];
+	/** Input-shaping lab: the motion envelope (unset by default — see
+	 *  ShapingConfig), the capture-run defaults, and the per-tool
+	 *  accelerometer address. */
+	shaping: ShapingConfig;
 }
 
 export type DeepPartial<T> = {
@@ -224,6 +290,12 @@ export const DEFAULT_CONFIG: UiConfig = {
 	screens: { custom: {}, renames: {}, hidden: [], layouts: {} },
 	cards: {},
 	pins: [],
+	// envelope: null is the invariant, not an omission — see ShapingConfig.
+	shaping: {
+		envelope: null,
+		defaults: { distMm: 60, speedMmS: 200, repeats: 3, samples: 1500 },
+		accelByTool: {},
+	},
 };
 
 /** Where the overlay lives on the machine's SD card. */

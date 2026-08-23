@@ -13,7 +13,7 @@
  */
 
 import { bandAnalytic, peakHz } from "./spectrum.ts";
-import { g, type G, type Hz, type Seconds } from "./units.ts";
+import { g, type G, hz, type Hz, type Seconds } from "./units.ts";
 
 declare const modeBrand: unique symbol;
 
@@ -135,4 +135,59 @@ export function aggregate(fits: ReadonlyArray<{ axis: Axis; fit: Mode | NoFit }>
 	const x = per("X");
 	const y = per("Y");
 	return { X: x.mode, Y: y.mode, n: { X: x.n, Y: y.n }, spreadHz: { X: x.spread, Y: y.spread } };
+}
+
+/**
+ * The deserialization arm of the Mode producer. A Mode fitted in an earlier
+ * session and written to the SD card comes back through HERE — validated field
+ * by field against the same acceptance band `fitDecay` applies — rather than
+ * being cast at the read site. Keeping it in this module is the point: the
+ * brand stays unwritable everywhere else, so `Mode` still has exactly one
+ * module that can mint one.
+ *
+ * Note honestly what this does and does not buy. It restores "a Mode is a
+ * plausible measurement in the units the fitter produces"; it does not restore
+ * "this number came off an accelerometer", because a hand-edited card file
+ * cannot be told from a real one. That is the same trust the config overlay
+ * gets, and the reason a Fingerprint read from the card is only ever used to
+ * RANK, never to move.
+ */
+export function reviveMode(raw: unknown): Mode | null {
+	if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return null;
+	const v = raw as Record<string, unknown>;
+	const { f, zeta, peakG, cyclesFit } = v;
+	if (typeof f !== "number" || typeof zeta !== "number" || typeof peakG !== "number" || typeof cyclesFit !== "number") return null;
+	if (![f, zeta, peakG, cyclesFit].every((n) => Number.isFinite(n))) return null;
+	if (!(f > 0 && f <= 2000)) return null;
+	// The band fitDecay itself accepts; outside it the fitter would have
+	// returned "damping-out-of-range" instead of a Mode.
+	if (!(zeta >= 0.005 && zeta <= 0.5)) return null;
+	if (!(peakG >= 0) || !(cyclesFit > 0)) return null;
+	return { f: hz(f), zeta, peakG: g(peakG), cyclesFit } as Mode;
+}
+
+/** Same boundary for a whole Fingerprint: one bad mode refuses the lot. */
+export function reviveFingerprint(raw: unknown): Fingerprint | null {
+	if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return null;
+	const v = raw as Record<string, unknown>;
+	// `undefined` means "present but not a Mode" and refuses the whole
+	// fingerprint; a JSON null is a legitimate "this axis did not fit".
+	const axis = (key: Axis): Mode | null | undefined => {
+		if (v[key] === null) return null;
+		return reviveMode(v[key]) ?? undefined;
+	};
+	const X = axis("X");
+	const Y = axis("Y");
+	if (X === undefined || Y === undefined) return null;
+	const pair = (raw2: unknown, ok: (n: number) => boolean): { X: number; Y: number } | null => {
+		if (typeof raw2 !== "object" || raw2 === null || Array.isArray(raw2)) return null;
+		const o = raw2 as Record<string, unknown>;
+		if (typeof o.X !== "number" || typeof o.Y !== "number") return null;
+		if (!ok(o.X) || !ok(o.Y)) return null;
+		return { X: o.X, Y: o.Y };
+	};
+	const n = pair(v.n, (x) => Number.isInteger(x) && x >= 0);
+	const spreadHz = pair(v.spreadHz, (x) => Number.isFinite(x) && x >= 0);
+	if (n === null || spreadHz === null) return null;
+	return { X, Y, n, spreadHz };
 }

@@ -2,15 +2,26 @@ import { createStore, reconcile, unwrap } from "solid-js/store";
 import type { Connector } from "@dwc-ng/connector";
 import { FileNotFoundError } from "@dwc-ng/connector";
 import { isPlainObject, safeEntries } from "@dwc-ng/connector";
-import { parseOverlay, parseOverlayPayload } from "./parse.ts";
+import { asEnvelope, isAccelAddr, parseOverlay, parseOverlayPayload, parseShapingDefaults } from "./parse.ts";
 import {
 	CONFIG_CACHE_KEY, CONFIG_FILE, CONFIG_VERSION, DEFAULT_CONFIG, MAX_SNAPSHOTS,
 	MAX_LABEL_LEN, DEFAULT_SNAPSHOT_LABEL,
 	isUserScreenId,
 	type CameraConfig, type ConfigOverlay, type ConfigSnapshot, type CustomCardId,
-	type DockSensorRef, type BedConfig, type MacrosConfig, type SlotRect, type ThermalColors,
-	type UiConfig, type UserScreenId,
+	type DockSensorRef, type BedConfig, type Envelope, type MacrosConfig, type ShapingDefaults,
+	type SlotRect, type ThermalColors, type UiConfig, type UserScreenId,
 } from "./types.ts";
+
+/**
+ * What a caller may change about the shaping section. `envelope` is declared
+ * whole (both axes, both bounds) so a partial box is not even sayable; the
+ * ordering it cannot express is checked by `asEnvelope`.
+ */
+export interface ShapingPatch {
+	/** A user-entered box, or `null` to unset it. */
+	envelope?: Envelope | null;
+	defaults?: Partial<ShapingDefaults>;
+}
 
 export interface ConfigStore {
 	/** Effective config = defaults + overlay. Read this in the UI. */
@@ -45,6 +56,21 @@ export interface ConfigStore {
 	clearSensorName(key: string): void;
 	setMacros(patch: Partial<MacrosConfig>): void;
 	setBed(patch: Partial<BedConfig>): void;
+
+	/**
+	 * Patch the shaping section.
+	 *
+	 * `envelope` goes through `asEnvelope` — the SAME gate the SD file passes
+	 * — so a reversed, half-entered or non-numeric box from the Settings
+	 * editor lands as `null` (unset) rather than as a box a run would trust.
+	 * The type cannot express "lo < hi", which is exactly why there is one
+	 * gate and no second route to this field (spec I8).
+	 */
+	setShaping(patch: ShapingPatch): void;
+	/** Point one tool at its accelerometer ("board.slot"). A malformed
+	 *  address is ignored, exactly as it is from the SD file. */
+	setAccelAddr(toolNumber: number, addr: string): void;
+	clearAccelAddr(toolNumber: number): void;
 
 	/** Create a user screen; returns its minted stable id ("u-…"). */
 	addScreen(name: string): UserScreenId;
@@ -284,6 +310,39 @@ export function createConfigStore(): ConfigStore {
 		},
 		setBed(patch) {
 			apply(draft => { draft.bed = { ...draft.bed, ...patch }; });
+		},
+		setShaping(patch) {
+			apply(draft => {
+				const next = { ...draft.shaping };
+				if ("envelope" in patch) {
+					const envelope = asEnvelope(patch.envelope);
+					// Unset is spelled by ABSENCE — the overlay's own word for
+					// "never customized" — and the default it falls back to is
+					// null, which is the invariant (spec I8), not a placeholder.
+					if (envelope === null) delete next.envelope;
+					else next.envelope = envelope;
+				}
+				if (patch.defaults !== undefined) {
+					next.defaults = { ...next.defaults, ...parseShapingDefaults(patch.defaults) };
+				}
+				draft.shaping = next;
+			});
+		},
+		setAccelAddr(toolNumber, addr) {
+			if (!isAccelAddr(addr)) return;
+			apply(draft => {
+				draft.shaping = {
+					...draft.shaping,
+					accelByTool: { ...draft.shaping?.accelByTool, [toolNumber]: addr },
+				};
+			});
+		},
+		clearAccelAddr(toolNumber) {
+			apply(draft => {
+				const accelByTool = { ...draft.shaping?.accelByTool };
+				delete accelByTool[toolNumber];
+				draft.shaping = { ...draft.shaping, accelByTool };
+			});
 		},
 
 		addScreen(name) {

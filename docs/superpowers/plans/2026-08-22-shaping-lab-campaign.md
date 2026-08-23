@@ -357,18 +357,26 @@ export type RingPlan = { kind: "ring"; axis: "X"|"Y"; start: { x: Mm; y: Mm }; d
 export type SweepPlan = { kind: "sweep"; start: { x: Mm; y: Mm }; distMm: Mm; speeds: MmPerS[]; samples: number; namePrefix: string }
 export type VerifyPlan = { kind: "verify"; spec: ShaperSpec; ring: RingPlan }
 export type Plan = RingPlan | SweepPlan | VerifyPlan
-export type Step = { readonly codes: readonly GcodeCommand[]; readonly expectFile?: string; readonly label: string; readonly expectPosition: { x: Mm; y: Mm } }
-export class Procedure { private constructor(readonly steps: readonly Step[], readonly restore: readonly GcodeCommand[], readonly pre: Preconditions) ... }
+type Step = { readonly codes: readonly GcodeCommand[]; readonly expectFile?: string; readonly label: string; readonly expectPosition: { x: Mm; y: Mm } }   // NOT exported — see below
+export type StepView = { readonly label: string; readonly expectFile?: string }
+export class Procedure {
+  private constructor(...); readonly #steps: readonly Step[]; readonly #restore: readonly GcodeCommand[]
+  readonly pre: Preconditions; get plannedAt(): number
+  get steps(): readonly StepView[]      // labels + capture names, NO codes
+  get preview(): readonly string[]      // every command in send order, restore last, as plain strings for display
+}
 export function planProcedure(plan: Plan, pre: Preconditions, cfg: ShapingConfig, now: number): { ok: true; proc: Procedure } | { ok: false; refusal: Refusal }
 ```
 Rules: `stale` if `now − pre.readAt > 2000 ms`; every point of the plan (start, start+dist on the axis, and for `X-Y` variants both corners) must be inside `cfg.envelope`; `restore` = `[cmd.inputShaping(pre.priorShaping as spec)]` or `[cmd.shapingOff()]` when prior type is `none` — computed at plan time only (I2). Each `Step` carries the position the carriage must be at before its codes run.
 
-- [ ] **Step 1: Failing tests** — table-driven: each `Refusal` variant from a crafted OM/config; a valid ring plan yields `2·repeats` capture steps per direction with `expectFile` names `${prefix}_X{p|m}{i}.csv` and codes in the exact order `[G90, G1 start, M400, G4, M956, G1 end, M400, G4]`; `restore` equals `M593 P"none"` when prior is none and `M593 P"ei2" F52 S0.075` when prior is that; a verify plan prepends `M593 <spec>` as step 0 and its restore is the prior.
+**A procedure never hands out its commands (2026-08-22, D–G authors read this).** `#steps` and `#restore` are `#`-private, so no code outside `procedure.ts` can obtain a `GcodeCommand` belonging to a procedure — which is what makes `run()` the only route to the machine and the `finally` restore unskippable. Were `steps` public, a card under `src/cards/` (which the motion fence does not walk) could take the already-branded codes and send them itself, skipping the restore and leaving a test shaper live on the machine: exactly the failure I2 exists to prevent. Cards get `steps` (labels + capture names, for the progress strip) and `preview` (plain `string`s, for showing the operator what an armed confirm will send — a `string` is not assignable to `sendCode`). The XY map's polyline comes from `plannedSegments(plan)` — from the **plan** the card already holds — so the projection carries no positions. **Do not add codes back to the projection.** If a card needs a G-code string, it renders one from `preview` or builds its own with a `cmd.*` builder; it never re-sends a procedure's.
+
+- [ ] **Step 1: Failing tests** — table-driven: each `Refusal` variant from a crafted OM/config; a valid ring plan yields `2·repeats` capture steps per direction with `expectFile` names `${prefix}_X{p|m}{i}.csv` and codes in the exact order `[G90, G1 start, M400, G4, M956, G1 end, M400, G4]` (asserted by running the procedure against a fake board and reading what it received — the codes are not reachable any other way); `restore` equals `M593 P"none"` when prior is none and `M593 P"ei2" F52 S0.075` when prior is that; a verify plan prepends `M593 <spec>` as step 0 and its restore is the prior.
 - [ ] **Step 2–4:** implement. No `G92` anywhere. Use only `cmd.*`.
 - [ ] **Step 5: PASS.** **Step 6: Commit.**
 
 **Carried forward from B2 (2026-08-22):** `reference/dwc` (`plugins/InputShaping/RecordMotionProfileDialog.vue:555,557`) puts `M400`, `M956` and the move on a SINGLE line so the capture arms in the same buffer as the move. Our builders are one-command-each and `joinCommands` separates with `
-`. With trigger `A1`/`A2` the M956 is still queued before the move, so ordering should hold — but this is UNVERIFIED on the board. Confirm it against the real machine (or mock-duet's B3 emulation) before trusting the first capture; if the separate-line form loses the arm, the step must emit one joined command.
+`. With trigger `A1`/`A2` the M956 is still queued before the move, so ordering should hold — but this is UNVERIFIED on the board. MOCK HALF SETTLED 2026-08-22: driving mock-duet over HTTP with M956 and the move as SEPARATE rr_gcode requests still produced the capture file, so the arm survives separation there. The REAL BOARD is still unverified - confirm before trusting the first hardware capture; if the separate-line form loses the arm, the step must emit one joined command.
 
 
 ### Task C3: run loop with capture retrieval + structural restore (I2)
