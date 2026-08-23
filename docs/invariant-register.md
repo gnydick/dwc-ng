@@ -803,7 +803,7 @@ in the diff that drops it.
 
 **Debt — promotion.** two routes in means the gate is not a gate, and om/speeds.ts re-parses currentMove at the point of DISPLAY to cover the ungated one — a second mechanism for the same property, i.e. the drift hazard. CORRECTED 2026-08-01. This used to say "promote by routing both through one entry that brands what it produces". Following that literally would have introduced a bug, measured rather than reasoned about: this function FILLS IN defaults for absent arrays, so conforming a PARTIAL patch invents them. conformModelKey("heat", { heaters: [...] }) returns that patch plus bedHeaters: [] and chamberHeaters: [], and deep-merging those empties over the store wipes the real lists — on this machine the bed heater would vanish from the UI mid-print. Pinned by test/om-conform.test.ts. The two routes are not one operation with two callers. A wholesale subtree may be completed from defaults because it IS the whole truth; a live patch may never be, because absence there means "unchanged", not "empty". The real promotion is a conform that distinguishes the two — filling only on replacement — and only then can both share an entry. Until that exists, speeds.ts's second parse is load bearing and must not be deleted as redundant.
 
-`packages/ui/src/om/types.ts:458`
+`packages/ui/src/om/types.ts:473`
 
 ## shaping/engine
 
@@ -847,15 +847,15 @@ in the diff that drops it.
 
 **Why.** the checks and the move must not be separable. A card that could assemble its own guard object would be free to omit the homed test, and an unhomed axis under a 200 mm/s G1 is a crash into the frame at full current — the failure this whole feature is built around
 
-`packages/ui/src/shaping/preconditions.ts:48`
+`packages/ui/src/shaping/preconditions.ts:54`
 
 ### `shaping/restore-is-structural` — rung 7
 
-**Mechanism.** sole-constructor type — this is a `readonly` field of a class whose only constructor is private and whose only producer is `plan`, which always computes it from `pre.priorShaping`. There is no setter, no optional argument and no code path that yields a Procedure with an empty or absent restore, so "was a restore computed?" is not a question a run can be in the wrong answer to. What the field holds is fixed at plan time: recomputing it later is not a thing the type offers
+**Mechanism.** sole-constructor type — this is a `readonly` field of a class whose only constructor is private and whose only producer is `plan`, which always computes it from `pre.priorShaping`. There is no setter, no optional argument and no code path that yields a Procedure with an empty or absent restore, so "was a restore computed?" is not a question a run can be in the wrong answer to. What the field holds is fixed at plan time: recomputing it later is not a thing the type offers. `run` sends it from a `finally`, and sends it BEFORE yielding `restored`, so the three ways a run can end early — a thrown send, a refused position check, and a consumer that abandons the generator with `break` or `.return()` — all put the shaper back; the last of those works because the awaits complete before execution suspends at that yield, whether or not anyone is still reading
 
 **Why.** the machine's prior shaper is knowable only BEFORE the run changes it. A restore derived from live state after a verify pass would faithfully re-apply the candidate under test and leave the operator believing the machine was back to baseline — a wrong belief about a setting that changes every subsequent print
 
-`packages/ui/src/shaping/procedure.ts:126`
+`packages/ui/src/shaping/procedure.ts:194`
 
 ### `shaping/results-file-is-parsed-not-cast` — rung 6
 
@@ -879,11 +879,11 @@ in the diff that drops it.
 
 ### `shaping/shaping-motion-only-via-procedure` — rung 7
 
-**Mechanism.** sole-constructor type — the constructor is `private` and the class carries a `#`-private field, so neither `new Procedure(...)` nor `{steps, restore, pre} as Procedure` compiles outside this file; the `#` name is what makes the class nominal, since every other member is public and would match structurally. The only static is `plan`, and `planProcedure` is that same function object under the name the rest of the codebase calls it — one route, two names, not two routes. `plan` takes a `Preconditions`, which is itself obtainable only from a fresh object-model read, so a run cannot exist that was not gated on idle, homed, sensor-present and inside-the-box. The universal `x as unknown as T` escape is not counted against this rung
+**Mechanism.** sole-constructor type — the constructor is `private` and the class carries a `#`-private field, so neither `new Procedure(...)` nor `{steps, restore, pre} as Procedure` compiles outside this file; the `#` name is what makes the class nominal, since every other member is public and would match structurally. The only static is `plan`, and `planProcedure` is that same function object under the name the rest of the codebase calls it — one route, two names, not two routes. `plan` takes a `Preconditions`, which is itself obtainable only from a fresh object-model read, so a run cannot exist that was not gated on idle, homed, sensor-present and inside-the-box. `run` is the only method that sends anything, and the only two things it can send are `steps[].codes` and `restore`, both built by `plan` — there is no corrective move, no re-plan and no second command source inside the run loop, so what reaches the machine is exactly what the refusals were evaluated against. The universal `x as unknown as T` escape is not counted against this rung
 
 **Why.** this is the feature's whole safety story. The lab sends 200 mm/s moves with nobody watching the axis, and the difference between a capture and a crash into the frame is whether those four facts were true at the moment of planning. A second way to build a run is a second place to forget one of them
 
-`packages/ui/src/shaping/procedure.ts:97`
+`packages/ui/src/shaping/procedure.ts:150`
 
 ### `shaping/verified-is-a-type` — rung 7
 

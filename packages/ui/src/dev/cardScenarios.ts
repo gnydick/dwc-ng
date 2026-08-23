@@ -90,6 +90,7 @@ function base(): ObjectModel {
 		// No shaper configured in the lab's base model — the Shaping Lab is what
 		// puts one here, so its "before" state stays reachable without a machine.
 		shaping: { type: "none", frequency: 0, damping: 0, amplitudes: [], delays: [] },
+		travelAcceleration: 8000,
 	};
 	model.heat = {
 		bedHeaters: [0], chamberHeaters: [],

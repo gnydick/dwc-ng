@@ -16,7 +16,7 @@
 
 import type { AccelAddr } from "../control/commands.ts";
 import type { Envelope, ShapingConfig } from "../config/types.ts";
-import type { ObjectModel, Shaping } from "../om/types.ts";
+import type { Accelerometer, ObjectModel, Shaping } from "../om/types.ts";
 import { mm, mmPerS2, type Mm, type MmPerS2 } from "./engine/units.ts";
 
 /**
@@ -33,7 +33,13 @@ export type Refusal =
 	| { readonly kind: "no-accelerometer"; readonly addr: string }
 	| { readonly kind: "no-envelope" }
 	| { readonly kind: "outside-envelope"; readonly point: { readonly x: number; readonly y: number } }
-	| { readonly kind: "stale" };
+	| { readonly kind: "stale" }
+	/** The plan describes no measurable run: a zero-length excitation move, a
+	 *  zero feed, no repeats, or no samples. Measured against mock-duet on
+	 *  2026-08-22: a capture armed before a ZERO-LENGTH move produces no file
+	 *  at all, so a run built from one would sit out its whole capture budget
+	 *  and then fail. Refusing before anything moves is the cheaper answer. */
+	| { readonly kind: "not-measurable" };
 
 /** An XY point in the user coordinates G90 + G1 speak. */
 export type Point = { readonly x: Mm; readonly y: Mm };
@@ -74,10 +80,12 @@ export class Preconditions {
 	 * its move is spent at constant velocity, and an invented acceleration
 	 * would make that arithmetic confident and wrong.
 	 *
-	 * Read out of the open half of the model because the lean `Move` interface
-	 * (om/types.ts) does not declare the field. Adding it there — interface,
-	 * `emptyModel`, `conformModelKey` arm and an `om-conform` case — is the
-	 * tidier home for it and belongs to whoever next touches that file.
+	 * The lean `Move` interface declares it nullable for exactly this reason
+	 * (om/types.ts, citing reference/objectmodel/src/move/index.ts:55), so this
+	 * is a straight read — but it is still PARSED, because the live d99fn patch
+	 * route does not pass through `conformModelKey` and the declared type is
+	 * therefore a claim the store does not enforce. Same second parse, and the
+	 * same reason, as om/speeds.ts.
 	 */
 	readonly travelAccel: MmPerS2 | null;
 	/** `move.shaping` at read time — what `restore` must put back. */
@@ -125,7 +133,7 @@ export class Preconditions {
 			return { ok: false, refusal: { kind: "not-homed", axes } };
 		}
 
-		if (!hasAccelerometer(om, accel)) {
+		if (accelerometerOf(om, accel) === null) {
 			return { ok: false, refusal: { kind: "no-accelerometer", addr: String(accel) } };
 		}
 
@@ -143,12 +151,17 @@ export class Preconditions {
  * The user position of a planar axis, or null when there is no move to plan
  * from — the axis is missing, not homed, or reports no position.
  *
+ * Exported because `Procedure.run` re-checks the carriage against every step's
+ * expected position and MUST agree with what `read` accepted. Two spellings of
+ * "where is X" would let a run start from a position the plan would have
+ * refused.
+ *
  * All three collapse to one answer deliberately. "Homed but no position" is
  * not a state a G1 target can be computed against, and its remedy is the same
  * as an unhomed axis: home it. Splitting them would add a refusal an operator
  * could do nothing different about.
  */
-function planarPosition(om: ObjectModel, letter: "X" | "Y"): Mm | null {
+export function planarPosition(om: ObjectModel, letter: "X" | "Y"): Mm | null {
 	const axis = om.move.axes.find((a) => a.letter === letter);
 	if (axis === undefined || !axis.homed) return null;
 	const p = axis.userPosition;
@@ -156,7 +169,11 @@ function planarPosition(om: ObjectModel, letter: "X" | "Y"): Mm | null {
 }
 
 /**
- * Does the board named by this address actually carry an accelerometer?
+ * The accelerometer at this address, or null when that board has none.
+ *
+ * Exported for the same reason as `planarPosition`: the run loop watches
+ * `runs` on the SAME sensor `read` insisted was present, and a second board
+ * lookup could pick a different one.
  *
  * The address is `board.device` (or the bare `0` the mainboard answers to), so
  * the board half is what selects the entry in `boards`. Matching on
@@ -164,15 +181,18 @@ function planarPosition(om: ObjectModel, letter: "X" | "Y"): Mm | null {
  * order the firmware happens to report boards in, and addressing a capture at
  * the wrong board produces a real-looking file from the wrong sensor.
  */
-function hasAccelerometer(om: ObjectModel, accel: AccelAddr): boolean {
+export function accelerometerOf(om: ObjectModel, accel: AccelAddr): Accelerometer | null {
 	const boardAddress = Number(String(accel).split(".")[0]);
-	if (!Number.isInteger(boardAddress)) return false;
-	return om.boards.some((b) => b !== null && (b.canAddress ?? 0) === boardAddress && Boolean(b.accelerometer));
+	if (!Number.isInteger(boardAddress)) return null;
+	const board = om.boards.find((b) => b !== null && (b.canAddress ?? 0) === boardAddress);
+	return board?.accelerometer ?? null;
 }
 
-/** Parse, don't trust: the field is not in the lean `Move` interface, so it
- *  arrives as `unknown` and leaves as a unit or as null. */
+/** Parse, don't trust: the declared type says `number | null`, but the live
+ *  d99fn patch route never meets `conformModelKey`, so the declaration is a
+ *  claim the store does not enforce. Widened back to `unknown` and re-checked,
+ *  the same second parse om/speeds.ts makes for the same reason. */
 function travelAcceleration(om: ObjectModel): MmPerS2 | null {
-	const raw = (om.move as unknown as Record<string, unknown>).travelAcceleration;
+	const raw: unknown = om.move.travelAcceleration;
 	return typeof raw === "number" && Number.isFinite(raw) && raw > 0 ? mmPerS2(raw) : null;
 }

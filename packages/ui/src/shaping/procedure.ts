@@ -15,13 +15,13 @@
  * control/commands.ts; this file formats none of its own.
  */
 
-import type { GcodeCommand } from "@dwc-ng/connector";
+import type { ConnectorReads, ConnectorWrites, GcodeCommand } from "@dwc-ng/connector";
 import { cmd, type AccelAddr } from "../control/commands.ts";
 import type { Envelope, ShapingConfig } from "../config/types.ts";
-import type { Shaping } from "../om/types.ts";
+import type { ObjectModel, Shaping } from "../om/types.ts";
 import { SHAPER_TYPES, type ShaperSpec, type ShaperType } from "./engine/shapers.ts";
 import { hz, mm, seconds, type Mm, type MmPerS } from "./engine/units.ts";
-import { Preconditions, type Point, type Refusal } from "./preconditions.ts";
+import { accelerometerOf, planarPosition, Preconditions, type Point, type Refusal } from "./preconditions.ts";
 
 /** A `Preconditions` read longer ago than this is refused as `stale`. One
  *  status poll is 1 s at the connector's slowest cadence; two is the window in
@@ -43,6 +43,22 @@ const RINGDOWN_MS = 1500;
 /** M956's A parameter: arm at the start of the next move's DECELERATION, which
  *  is the instant the ring-down begins. */
 const TRIGGER_ON_DECELERATION = 2;
+
+/** Where RRF puts an M956 capture: the F parameter is a bare file name and the
+ *  firmware chooses the directory (reference/duet-gcode.md, M956). Exported so
+ *  the card that offers "import an existing capture" reads the same place the
+ *  run writes to, rather than spelling the path a second time. */
+export const CAPTURE_DIR = "0:/sys/accelerometer";
+
+/** How far the carriage may be from where a step expects it. Tight enough that
+ *  a skipped step or a nudge shows up, loose enough to survive the rounding
+ *  between what G1 asked for and what the model reports back. */
+const POSITION_TOLERANCE_MM = 0.05;
+
+/** Capture retrieval: how often to look, and for how long. The budget covers a
+ *  long move plus the board's own write; past it the capture is not coming. */
+const CAPTURE_POLL_MS = 250;
+const CAPTURE_BUDGET_MS = 10_000;
 
 export type RingPlan = {
 	readonly kind: "ring";
@@ -87,6 +103,43 @@ export type Step = {
 	readonly expectPosition: Point;
 };
 
+/**
+ * What a run tells its watcher.
+ *
+ * `restored` is the last thing a run that was followed to the end emits. A run
+ * the consumer abandons stops wherever it was and the restore still goes out —
+ * it just has nobody left to tell.
+ *
+ * `done` and `failed` are not exclusive: a run can finish every step and THEN
+ * fail to put the shaper back. Those are two separate facts about the machine
+ * and are reported as two events rather than collapsed into one verdict.
+ */
+export type ProcEvent =
+	| { readonly kind: "step"; readonly index: number; readonly label: string }
+	| { readonly kind: "capture"; readonly file: string; readonly csv: string }
+	| { readonly kind: "restored" }
+	| { readonly kind: "done" }
+	| { readonly kind: "failed"; readonly error: string };
+
+/**
+ * Everything a run needs from a connector and nothing else — a slice of the
+ * real interfaces rather than a shape of its own, so the app hands `run` its
+ * connector directly and there is no adapter in between to drift.
+ */
+export type RunConnector = Pick<ConnectorReads, "list" | "download"> & Pick<ConnectorWrites, "sendCode">;
+
+/**
+ * Seams, all optional. `sleep`/`now` exist so the capture budget can be
+ * exercised in a test without the suite sleeping for ten seconds; `signal` is
+ * for the operator's Cancel, which has to interrupt a poll rather than wait
+ * one out. None of them can skip the restore.
+ */
+export type RunOptions = {
+	readonly signal?: AbortSignal;
+	readonly sleep?: (ms: number) => Promise<void>;
+	readonly now?: () => number;
+};
+
 export type PlanResult =
 	| { readonly ok: true; readonly proc: Procedure }
 	| { readonly ok: false; readonly refusal: Refusal };
@@ -105,8 +158,13 @@ export type PlanResult =
  *          two routes. `plan` takes a `Preconditions`, which is itself
  *          obtainable only from a fresh object-model read, so a run cannot
  *          exist that was not gated on idle, homed, sensor-present and
- *          inside-the-box. The universal `x as unknown as T` escape is not
- *          counted against this rung
+ *          inside-the-box. `run` is the only method that sends anything, and
+ *          the only two things it can send are `steps[].codes` and `restore`,
+ *          both built by `plan` — there is no corrective move, no re-plan and
+ *          no second command source inside the run loop, so what reaches the
+ *          machine is exactly what the refusals were evaluated against. The
+ *          universal `x as unknown as T` escape is not counted against this
+ *          rung
  * @why this is the feature's whole safety story. The lab sends 200 mm/s moves
  *      with nobody watching the axis, and the difference between a capture and
  *      a crash into the frame is whether those four facts were true at the
@@ -120,6 +178,16 @@ export class Procedure {
 	readonly #plannedAt: number;
 
 	readonly steps: readonly Step[];
+
+	// Worth being precise about what the two invariants below do NOT cover:
+	// `steps` is public, and its `codes` are already-branded GcodeCommands, so
+	// code OUTSIDE this module could read them and send them itself, skipping
+	// the restore entirely. The motion fence (test/shaping-motion-fence.test.ts)
+	// pins `sendCode(` to this file, but it walks src/shaping only — a card
+	// under src/cards is not in its scope. Privatising `steps` would close it;
+	// the plan declares the field as part of the cross-work-item interface, so
+	// it stays public here and this note stays with it.
+
 	/**
 	 * The commands that put the shaper back as it was found.
 	 *
@@ -131,7 +199,13 @@ export class Procedure {
 	 *          a Procedure with an empty or absent restore, so "was a restore
 	 *          computed?" is not a question a run can be in the wrong answer
 	 *          to. What the field holds is fixed at plan time: recomputing it
-	 *          later is not a thing the type offers
+	 *          later is not a thing the type offers. `run` sends it from a
+	 *          `finally`, and sends it BEFORE yielding `restored`, so the
+	 *          three ways a run can end early — a thrown send, a refused
+	 *          position check, and a consumer that abandons the generator with
+	 *          `break` or `.return()` — all put the shaper back; the last of
+	 *          those works because the awaits complete before execution
+	 *          suspends at that yield, whether or not anyone is still reading
 	 * @why the machine's prior shaper is knowable only BEFORE the run changes
 	 *      it. A restore derived from live state after a verify pass would
 	 *      faithfully re-apply the candidate under test and leave the operator
@@ -155,12 +229,88 @@ export class Procedure {
 	}
 
 	/**
+	 * Send the steps, retrieve each capture, and put the shaper back.
+	 *
+	 * Three things this deliberately does NOT do. It does not correct a
+	 * position: a carriage that is not where the plan expects ends the run,
+	 * because moving it there would be this UI deciding where the machine
+	 * ought to be. It does not assume a capture happened: the file has to turn
+	 * up, and when it is overwriting a file of the same name the board's own
+	 * run counter has to tick as well, since a name alone cannot tell
+	 * yesterday's capture from today's. And it does not treat a rejected
+	 * request inside a capture step as a failure by itself — a long move can
+	 * outlive the HTTP timeout while the board carries on perfectly well, so
+	 * the evidence decides and the rejection is reported only if no capture
+	 * ever arrives.
+	 *
+	 * `om` is called fresh before every step rather than captured once: the
+	 * whole point of the check is to see what the machine is doing NOW.
+	 */
+	async *run(conn: RunConnector, om: () => ObjectModel, opts: RunOptions = {}): AsyncGenerator<ProcEvent, void, void> {
+		const clock: Clock = { sleep: opts.sleep ?? realSleep, now: opts.now ?? Date.now, signal: opts.signal };
+		try {
+			for (const [index, step] of this.steps.entries()) {
+				if (opts.signal?.aborted === true) return;
+
+				const where = `step ${index + 1} of ${this.steps.length} (${step.label})`;
+				const mismatch = positionMismatch(om(), step.expectPosition);
+				if (mismatch !== null) {
+					yield { kind: "failed", error: `${where}: ${mismatch}` };
+					return;
+				}
+
+				yield { kind: "step", index, label: step.label };
+
+				const watch = step.expectFile === undefined
+					? null
+					: await beginWatch(conn, om(), this.pre.accel, step.expectFile);
+				const rejected = await sendAll(conn, step.codes);
+
+				if (watch === null) {
+					if (rejected === null) continue;
+					yield { kind: "failed", error: `${where}: ${describe(rejected.failed)}` };
+					return;
+				}
+
+				const outcome = await awaitCapture(conn, om, watch, clock);
+				if (outcome.ok) {
+					yield { kind: "capture", file: watch.file, csv: outcome.csv };
+					continue;
+				}
+				if (outcome.cancelled) return;
+				const because = rejected === null ? outcome.reason : `${describe(rejected.failed)} — ${outcome.reason}`;
+				yield { kind: "failed", error: `${where}: ${because}` };
+				return;
+			}
+			yield { kind: "done" };
+		} catch (err) {
+			yield { kind: "failed", error: describe(err) };
+		} finally {
+			// The restore is SENT before the event is yielded, so a consumer that
+			// walked away — a `break`, a `.return()` — still gets the machine put
+			// back: these awaits have all completed by the time execution
+			// suspends at the yield, whether or not anyone is still listening.
+			// Nothing here consults `signal`, because a cancelled run is exactly
+			// the case that must still be undone.
+			const problem = await sendAll(conn, this.restore);
+			if (problem === null) yield { kind: "restored" };
+			else yield { kind: "failed", error: `restore failed: ${describe(problem.failed)}` };
+		}
+	}
+
+	/**
 	 * The sole producer. Exported below as `planProcedure`; it is a static
 	 * because TypeScript's `private` constructor is reachable only from inside
 	 * the class body, and a module-level function would have to be handed a
 	 * seam to bypass.
 	 */
 	static plan(plan: Plan, pre: Preconditions, cfg: ShapingConfig, now: number): PlanResult {
+		// First, because it is about the REQUEST and needs no machine to answer:
+		// a plan that measures nothing is refused before the reading is even
+		// consulted. This is also what keeps `plan` total — the G-code builders
+		// throw on a bad sample count, and nothing may throw out of here.
+		if (!measurable(plan)) return { ok: false, refusal: { kind: "not-measurable" } };
+
 		if (now - pre.readAt > STALE_MS) return { ok: false, refusal: { kind: "stale" } };
 
 		// The box the reading was taken against must still be the box in
@@ -188,6 +338,46 @@ export class Procedure {
  * that could drift from it.
  */
 export const planProcedure = Procedure.plan;
+
+// --- is there anything to measure? ------------------------------------------
+
+const positiveFinite = (v: number): boolean => Number.isFinite(v) && v > 0;
+const wholeAtLeastOne = (v: number): boolean => Number.isInteger(v) && v >= 1;
+
+/**
+ * Does this plan describe a run the machine could actually measure?
+ *
+ * A zero-length excitation move is the case that matters: measured against
+ * mock-duet on 2026-08-22, a capture armed before one produces NO FILE, so a
+ * run built from it would move, wait out its whole capture budget and fail —
+ * ten seconds after the point at which the answer was already knowable.
+ *
+ * The sample-count rule restates `cmd.accelCapture`'s own bound rather than
+ * replacing it. The builder still throws, which is right for a builder; this
+ * exists so the throw is not how a caller of `plan` finds out. If the two ever
+ * disagree the builder wins, because it is the one that decides what a legal
+ * M956 looks like.
+ */
+function measurable(plan: Plan): boolean {
+	switch (plan.kind) {
+		case "ring":
+			return Number.isFinite(plan.distMm) && plan.distMm !== 0
+				&& positiveFinite(plan.speed)
+				&& wholeAtLeastOne(plan.repeats)
+				&& wholeAtLeastOne(plan.samples);
+		case "sweep":
+			return Number.isFinite(plan.distMm) && plan.distMm !== 0
+				&& plan.speeds.length > 0
+				&& plan.speeds.every((s) => positiveFinite(s))
+				&& wholeAtLeastOne(plan.samples);
+		case "verify":
+			return measurable(plan.ring);
+		default: {
+			const unhandled: never = plan;
+			throw new Error(`unknown plan kind: ${String((unhandled as { kind: unknown }).kind)}`);
+		}
+	}
+}
 
 // --- geometry ---------------------------------------------------------------
 
@@ -395,5 +585,138 @@ function customFrom(prior: Shaping): GcodeCommand | null {
 		});
 	} catch {
 		return null;
+	}
+}
+
+// --- running ----------------------------------------------------------------
+
+type Clock = { readonly sleep: (ms: number) => Promise<void>; readonly now: () => number; readonly signal?: AbortSignal };
+
+const realSleep = (ms: number): Promise<void> => new Promise<void>((resolve) => { setTimeout(resolve, ms); });
+
+const describe = (err: unknown): string => (err instanceof Error ? err.message : String(err));
+
+const at = (p: { readonly x: number; readonly y: number }): string => `X${p.x.toFixed(2)} Y${p.y.toFixed(2)}`;
+
+/**
+ * Send commands in order, stopping at the first refusal.
+ *
+ * Returns the rejection rather than throwing it, because both callers have to
+ * keep going: the step loop turns it into a `failed` event, and the restore
+ * has to be able to report a broken link without the throw escaping the
+ * generator's `finally` and replacing whatever went wrong first.
+ */
+async function sendAll(conn: RunConnector, codes: readonly GcodeCommand[]): Promise<{ readonly failed: unknown } | null> {
+	for (const code of codes) {
+		try {
+			await conn.sendCode(code);
+		} catch (err) {
+			return { failed: err };
+		}
+	}
+	return null;
+}
+
+/**
+ * Is the carriage where this step needs it to be? Returns the sentence to put
+ * in the failure, or null when it is.
+ *
+ * Reads through the SAME `planarPosition` the preconditions did, so "where is
+ * X" has one answer. An axis that has stopped reporting a homed position is a
+ * mismatch too: an unknown position is not a matching one.
+ */
+function positionMismatch(om: ObjectModel, expect: Point): string | null {
+	const x = planarPosition(om, "X");
+	const y = planarPosition(om, "Y");
+	if (x === null || y === null) return "the machine is no longer reporting a homed X/Y position";
+	if (Math.abs(x - expect.x) > POSITION_TOLERANCE_MM || Math.abs(y - expect.y) > POSITION_TOLERANCE_MM) {
+		return `the carriage is at ${at({ x, y })} but this step starts at ${at(expect)}`;
+	}
+	return null;
+}
+
+type CaptureWatch = {
+	readonly file: string;
+	readonly path: string;
+	readonly existedBefore: boolean;
+	readonly runsBefore: number | null;
+	readonly accel: AccelAddr;
+};
+
+type CaptureOutcome =
+	| { readonly ok: true; readonly csv: string }
+	| { readonly ok: false; readonly cancelled: true }
+	| { readonly ok: false; readonly cancelled: false; readonly reason: string };
+
+/**
+ * What the accelerometer directory and the board's run counter looked like
+ * before the step went out.
+ *
+ * A listing we could not read counts as "the name was already there", which is
+ * the strict reading: it forces the run counter to tick before any file is
+ * accepted, so a failed pre-list can never turn a stale capture into a fresh
+ * one.
+ */
+async function beginWatch(conn: RunConnector, om: ObjectModel, accel: AccelAddr, file: string): Promise<CaptureWatch> {
+	const before = await listCaptures(conn);
+	return {
+		file,
+		path: `${CAPTURE_DIR}/${file}`,
+		existedBefore: before === null || before.has(file),
+		runsBefore: accelerometerOf(om, accel)?.runs ?? null,
+		accel,
+	};
+}
+
+/** The file names in the capture directory, or null when the listing failed —
+ *  a directory we could not read is not an empty directory. */
+async function listCaptures(conn: RunConnector): Promise<Set<string> | null> {
+	try {
+		const entries = await conn.list(CAPTURE_DIR);
+		return new Set(entries.filter((e) => e.type === "f").map((e) => e.name));
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * Wait for the board to produce the capture, then fetch it.
+ *
+ * Two pieces of evidence, because neither is sufficient alone. The FILE is
+ * what we need — it carries the samples — but M956 overwrites, so a file of
+ * the right name may be last week's. The board's RUN COUNTER says a capture
+ * completed but not which one, and it is the only signal available when the
+ * request that armed the capture timed out. So a pre-existing name has to be
+ * accompanied by a tick, and a name that was not there before speaks for
+ * itself.
+ */
+async function awaitCapture(conn: RunConnector, om: () => ObjectModel, watch: CaptureWatch, clock: Clock): Promise<CaptureOutcome> {
+	const deadline = clock.now() + CAPTURE_BUDGET_MS;
+	let sawRun = false;
+	for (;;) {
+		if (clock.signal?.aborted === true) return { ok: false, cancelled: true };
+
+		const names = await listCaptures(conn);
+		const runsNow = accelerometerOf(om(), watch.accel)?.runs ?? null;
+		const ticked = watch.runsBefore !== null && runsNow !== null && runsNow > watch.runsBefore;
+		sawRun ||= ticked;
+
+		if (names !== null && names.has(watch.file) && (!watch.existedBefore || ticked)) {
+			return { ok: true, csv: await conn.download(watch.path) };
+		}
+
+		if (clock.now() >= deadline) {
+			// The two diagnoses are genuinely different jobs for the operator:
+			// one is a board that captured and could not write, the other is a
+			// board that never captured at all.
+			return {
+				ok: false,
+				cancelled: false,
+				reason: sawRun
+					? `the board finished a capture but ${watch.file} never appeared in ${CAPTURE_DIR}`
+					: `no capture named ${watch.file} appeared in ${CAPTURE_DIR} within ${CAPTURE_BUDGET_MS / 1000} s`,
+			};
+		}
+		await clock.sleep(CAPTURE_POLL_MS);
 	}
 }

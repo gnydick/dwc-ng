@@ -102,6 +102,20 @@ export interface Move {
 	extruders: Extruder[];
 	compensation: Compensation;
 	readonly shaping: Shaping;
+	/**
+	 * M204 T, the acceleration a non-printing move is planned with, mm/s²
+	 * (reference/objectmodel/src/move/index.ts:55 — RRF declares it a plain
+	 * number defaulting to 10000; Gabe's board reports 8000 in
+	 * packages/mock-duet/captures/om-snapshot-2026-07-12.json).
+	 *
+	 * NULLABLE HERE, unlike the vendored shape, for the same reason
+	 * CurrentMove's numbers are: absent means "the board has not said", and a
+	 * card showing a defaulted 10000 would state a fact about this machine
+	 * that nothing measured. The Shaping Lab reasons about how much of an
+	 * excitation move is spent at constant velocity, which is worth showing
+	 * as "—" rather than as a confident wrong number.
+	 */
+	readonly travelAcceleration: number | null;
 }
 
 /** reference/objectmodel/src/heat/Heater.ts */
@@ -357,6 +371,7 @@ export function emptyModel(): ObjectModel {
 			extruders: [],
 			compensation: { type: "none", file: null, meshDeviation: null, fadeHeight: null },
 			shaping: { type: "none", frequency: 0, damping: 0, amplitudes: [], delays: [] },
+			travelAcceleration: null,
 		},
 		sensors: { gpIn: [], endstops: [], filamentMonitors: [], probes: [] },
 		state: { status: "disconnected", currentTool: -1, machineMode: "FFF", displayMessage: "", upTime: 0, messageBox: null, atxPower: null },
@@ -532,6 +547,9 @@ export function conformModelKey(key: string, value: unknown): { ok: true; value:
 				// cost the whole move subtree — fill, don't refuse.
 				compensation: isObject(value.compensation) ? value.compensation : d.compensation,
 				shaping: conformShaping(value.shaping, d.shaping),
+				// Parsed, not waved through, exactly like currentMove's numbers: a
+				// string here would reach a toFixed() in the shaping cards.
+				travelAcceleration: numberOrNull(value.travelAcceleration),
 			} };
 		}
 		case "sensors": {

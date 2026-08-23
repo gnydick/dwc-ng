@@ -125,6 +125,23 @@ test("a move subtree with no shaping conforms to the off shaper", () => {
 	}
 });
 
+test("travel acceleration is parsed, and its absence stays absent rather than defaulting", () => {
+	const served = conformModelKey("move", { axes: [], extruders: [], travelAcceleration: 8000 });
+	assert.ok(served.ok);
+	if (served.ok) assert.equal((served.value as Record<string, unknown>).travelAcceleration, 8000);
+
+	const silent = conformModelKey("move", { axes: [], extruders: [] });
+	assert.ok(silent.ok);
+	if (silent.ok) {
+		assert.equal((silent.value as Record<string, unknown>).travelAcceleration, null,
+			"a board that did not report it must not read as RRF's 10000 default");
+	}
+
+	const rubbish = conformModelKey("move", { axes: [], extruders: [], travelAcceleration: "fast" });
+	assert.ok(rubbish.ok);
+	if (rubbish.ok) assert.equal((rubbish.value as Record<string, unknown>).travelAcceleration, null);
+});
+
 test("a served shaper passes through intact", () => {
 	const move = conformModelKey("move", {
 		axes: [], extruders: [],
