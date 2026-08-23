@@ -1889,7 +1889,13 @@ input[type="checkbox"] {
 	font-family: var(--font-display); font-weight: 600; font-size: calc(3.25 * var(--u));
 	letter-spacing: 0.04em;
 	color: var(--gold);
-	flex: 0 0 calc(24 * var(--u));
+	/* Sized to the LONGEST message this slot can hold — "needs board.device"
+	   (18 chars) — not to the shortest. At 24u it fitted "not mapped" and
+	   ellipsed the one message that has to be read to be acted on, which is the
+	   fixed slot working correctly against a width chosen from the wrong string.
+	   The card's own floor is 88 cols against the 156 the screen grants it, so
+	   the extra width costs nothing. */
+	flex: 0 0 calc(36 * var(--u));
 	/* An EMPTY span has no line box, so its own height collapses to zero and
 	   the row's align-items: center re-centres what is left — measured as a
 	   10px move of this element the moment a mapping started working. Nothing
