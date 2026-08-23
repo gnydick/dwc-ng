@@ -4278,7 +4278,8 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; appe
 .shp-table tr.shp-on td { background: var(--mask-700); }
 
 /* Column tracks by role. Sums: tools 14+34+34+26 = 108u; captures
-   40+12+14+14+16 = 96u; candidates 20+12+12+12+12+14+11 = 93u;
+   7+40+22+12+14+14+14 = 123u (the Decay list gained a tick column and a date
+   when it grew a 276-file board source); candidates 20+12+12+12+12+14+11 = 93u;
    impulses 8+20+20 = 48u. */
 .shp-c-tool { width: calc(14 * var(--u)); }
 .shp-c-mode { width: calc(34 * var(--u)); }
@@ -4623,7 +4624,9 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; appe
 /* A <label> wrapping a file input is the only file picker a browser will let a
    page style; the input itself is taken out of flow rather than hidden, so it
    stays focusable from the keyboard. */
-.shp-import { position: relative; overflow: hidden; cursor: pointer; }
+/* Declared, like every other control on these rows: "Import CSV…" is a font
+   metric, and font metrics do not scale with --u. */
+.shp-import { position: relative; overflow: hidden; cursor: pointer; width: calc(26 * var(--u)); text-align: center; }
 .shp-import input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
 .shp-axis-pick { display: flex; gap: calc(1 * var(--u)); margin-left: auto; }
 .shp-axis-pick .shp-pick {
@@ -4638,6 +4641,139 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; appe
    only — the row's geometry is identical either way. */
 .shp-imported { color: var(--gold); }
 .shp-imported[aria-pressed="true"] { color: var(--accent); }
+
+/* ---------- Decay card: browsing the board's 276 captures ----------
+
+   Gabe's `0:/sys/accelerometer` holds 276 CSVs, 9.4 MB, going back to May.
+   Every row below is present whichever source is showing — a filter row that
+   appeared with the board would move the table under it, on the card whose one
+   gesture is clicking down a long list.
+
+   EVERY child of these two rows is a declared width and none of them shrinks.
+   That is not tidiness: a flex child's `min-width` defaults to its MIN-CONTENT,
+   so a button reading "Select 276" and a chip reading "ring1_v_ei2_52_" put
+   their own text metrics into the card's minimum width. Measured before this
+   rule: the card's column floor was 133 cells on the tool source and 182 on the
+   board — wider than the 156 the screen gives it — and moved 182 -> 179 between
+   the 0.75 and 1.5 scale steps, because glyph advances do not scale with --u.
+   Widths in u and `min-width: 0` put the floor back where it belongs: on the
+   table, whose tracks are declared. */
+.shp-decay-filter, .shp-batch {
+	flex: 0 0 auto;
+	display: flex;
+	flex-wrap: nowrap;
+	align-items: center;
+	gap: var(--ctl-gap);
+	margin-bottom: calc(2 * var(--u));
+	min-height: calc(8 * var(--u));
+}
+/* The rule the paragraph above is about. Applied to the ROWS rather than to
+   each control, so a control added later cannot reintroduce the defect. */
+.shp-decay-filter > *, .shp-batch > * { min-width: 0; flex: 0 0 auto; }
+/* `width`, not just a flex basis, and `min-width: 0` from the rule above. An
+   <input> with `width: auto` has a content-based minimum of its `size` (20
+   characters, ~42u here) and a flex item contributes THAT to an intrinsic
+   width, whatever basis it was given — measured: the filter row asked for 175u
+   against the 146u its declared parts add up to. */
+.shp-decay-filter .fb-input { flex: 1 1 auto; width: calc(22 * var(--u)); }
+/* Name families derived from the listing (shaping/captures.ts namePrefixes),
+   because nobody remembers what they called a run three months ago. One track
+   whatever the prefix: they range from `ring1_` to `baseline_X_`. */
+.shp-prefix {
+	/* 19u with 0.5u of side padding leaves 72px of text at the default unit,
+	   which holds `ring1_v_` and `baseline_`. At 18u with 1u padding the second
+	   chip rendered as `ring1_…`, indistinguishable from the first. */
+	width: calc(19 * var(--u));
+	/* Declared, so an EMPTY slot is the same box as a filled one. Without it an
+	   empty button is 0 tall and the whole chip run shifts 6px down the moment
+	   a source has fewer families than the row has places. */
+	height: calc(5 * var(--u));
+	line-height: calc(5 * var(--u));
+	font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+	font-size: calc(3.25 * var(--u));
+	padding: 0 calc(0.5 * var(--u));
+	box-shadow: inset 0 0 0 1px var(--hairline);
+	border-radius: var(--radius);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.shp-prefix[aria-pressed="true"] { box-shadow: inset 0 0 0 1px var(--accent); }
+.shp-count {
+	width: calc(16 * var(--u));
+	text-align: right;
+	font-variant-numeric: tabular-nums;
+	font-size: calc(3.25 * var(--u));
+	color: var(--silk-dim);
+	white-space: nowrap;
+	overflow: hidden;
+}
+.shp-rescan { width: calc(16 * var(--u)); text-align: center; }
+/* Three sources, three counts, one width each — a count going from 0 to 276
+   must not widen its own button and shuffle its neighbours. */
+.shp-src-pick { display: flex; gap: calc(1 * var(--u)); margin-left: auto; }
+.shp-src {
+	width: calc(22 * var(--u));
+	text-align: center;
+	font-variant-numeric: tabular-nums;
+	box-shadow: inset 0 0 0 1px var(--hairline);
+	border-radius: var(--radius);
+	overflow: hidden;
+	white-space: nowrap;
+}
+.shp-src[aria-pressed="true"] { box-shadow: inset 0 0 0 1px var(--accent); }
+/* Sized in u like everything else. A native checkbox is ~13 SCREEN pixels
+   whatever --u is, which would put a term that does not scale into this card's
+   minimum width — the same defect the scrollbar caused in .shp-scroll. */
+.shp-check {
+	display: block;
+	width: calc(3.5 * var(--u));
+	height: calc(3.5 * var(--u));
+	margin: 0;
+	accent-color: var(--accent);
+	cursor: pointer;
+}
+/* Every row is the same height whatever is in it. A checkbox is an inline
+   replaced element, so its line box carries a descender the text-only rows do
+   not — measured 33px against 32px, which meant switching source shifted every
+   row below the first by a pixel per row. Declared, so the geometry is the
+   table's rather than its content's. */
+.shp-captures td { height: calc(8 * var(--u)); }
+/* An empty slot where a source has fewer name families than the row has
+   places. It holds the geometry and nothing else — no label, no focus stop,
+   and hidden from assistive tech. */
+.shp-prefix:disabled { box-shadow: none; cursor: default; }
+.shp-c-sel { width: calc(7 * var(--u)); }
+.shp-c-when { width: calc(22 * var(--u)); }
+.shp-when { color: var(--silk-dim); font-size: calc(3.125 * var(--u)); }
+
+/* The attribution bar: which tool this measurement is about. */
+.shp-pick-n { width: calc(19 * var(--u)); text-align: center; font-variant-numeric: tabular-nums; }
+.shp-target { display: flex; align-items: center; gap: calc(1.5 * var(--u)); margin-left: auto; }
+.shp-target .shp-cap { width: calc(8 * var(--u)); flex: 0 0 auto; }
+/* A <select>'s min-content width is its LONGEST OPTION, so this needs the
+   explicit floor as well as the width — "— choose —" is wider than "T0". */
+/* 24u: "— choose —" plus the dropdown arrow is ~90px at the default unit,
+   and at 22u it rendered as "— choos". */
+.shp-target .filament-pick { width: calc(24 * var(--u)); min-width: calc(24 * var(--u)); }
+/* Fixed width, because the label switches between "Save to T2" and "Confirm"
+   and a button that resizes as it arms moves the row it is in at the exact
+   moment the operator is aiming at it. */
+.shp-save { width: calc(24 * var(--u)); text-align: center; }
+.shp-arming { color: var(--gold); box-shadow: inset 0 0 0 1px var(--gold); }
+/* Two lines, always. The batch report carries "Fitted 11 of 12 — X 18.1 Hz
+   ζ 0.126 · Y 51.7 Hz ζ 0.076…", the idle hint carries a sentence, and a box
+   that grew with the longer of them would change the card's floor with its
+   state — the same defect as a row that moves, one step removed. */
+.shp-batch-note {
+	flex: 0 0 auto;
+	margin: 0;
+	height: calc(10 * var(--u));
+	overflow: hidden;
+	color: var(--silk-dim);
+	font-size: calc(3.375 * var(--u));
+	line-height: calc(5 * var(--u));
+}
 
 /* No `@media (max-width: …)` block, and that is a decision rather than an
    omission. These cards were written with one — fact rows stacking to a single

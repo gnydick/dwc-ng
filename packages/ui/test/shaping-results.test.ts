@@ -11,7 +11,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { ConnectorReads, ConnectorWrites } from "@dwc-ng/connector";
 import { unwrap } from "solid-js/store";
-import { RESULTS_PATH, emptyResults, parseResults, serializeResults, type ToolResults } from "../src/shaping/results.ts";
+import { RESULTS_PATH, emptyResults, parentDirs, parseResults, serializeResults, type ToolResults } from "../src/shaping/results.ts";
 import { createShapingStore, verifyAnalysis } from "../src/shaping/store.ts";
 import { candidateFor } from "../src/shaping/engine/rank.ts";
 import { aggregate, type Fingerprint } from "../src/shaping/engine/fit.ts";
@@ -127,11 +127,25 @@ test("scores in the file are re-derived, never trusted", () => {
 	assert.ok(c.worstRobust > 0.1, `recomputed worstRobust ${c.worstRobust}`);
 });
 
-/** A connector whose file system is a Map — nothing else of ConnectorReads is reached. */
-function fakeConn(): ConnectorReads & Pick<ConnectorWrites, "upload"> & { files: Map<string, string> } {
+/**
+ * A connector whose file system is a Map — nothing else of ConnectorReads is
+ * reached.
+ *
+ * `mkdir` and `upload` model RRF rather than being permissive: mkdir rejects
+ * on an existing directory (that is the documented contract) and upload
+ * rejects into a directory nobody created, which is what a real board does and
+ * what made `save` fail on Gabe's machine before it created the chain.
+ */
+function fakeConn(): ConnectorReads & Pick<ConnectorWrites, "upload" | "mkdir"> & { files: Map<string, string>; dirs: Set<string> } {
 	const files = new Map<string, string>();
+	const dirs = new Set<string>(["0:/sys"]);
 	return {
 		files,
+		dirs,
+		mkdir: async (dir: string) => {
+			if (dirs.has(dir)) throw new Error(`${dir}: already exists`);
+			dirs.add(dir);
+		},
 		download: async (path: string) => {
 			const text = files.get(path);
 			if (text === undefined) throw new Error(`${path}: not found`);
@@ -145,6 +159,8 @@ function fakeConn(): ConnectorReads & Pick<ConnectorWrites, "upload"> & { files:
 			throw new Error("not used");
 		},
 		upload: async (path: string, content: Uint8Array | string) => {
+			const dir = path.slice(0, path.lastIndexOf("/"));
+			if (!dirs.has(dir)) throw new Error(`${dir}: no such directory`);
 			files.set(path, typeof content === "string" ? content : new TextDecoder().decode(content));
 		},
 	};
@@ -217,4 +233,49 @@ test("verifyAnalysis flags a mode the unshaped machine never had", () => {
 	assert.equal(v.artefacts.length, 1);
 	assert.equal(v.artefacts[0]!.axis, "X");
 	assert.ok(Math.abs(v.artefacts[0]!.hz - 38) < 1.5, `artefact at ${v.artefacts[0]!.hz} Hz`);
+});
+
+test("save creates the directory chain the results file needs", async () => {
+	// The first real save on Gabe's board went into 0:/sys/dwc-ng/shaping/,
+	// which did not exist. RRF's rr_upload does not create it and DWC only
+	// mkdirs from its New Directory dialog, so this is the store's job.
+	const conn = fakeConn();
+	assert.equal(conn.dirs.has("0:/sys/dwc-ng/shaping"), false, "the board starts without it");
+	const store = createShapingStore(conn);
+	store.setFingerprint(0, null);
+	await store.save(0);
+	assert.ok(conn.dirs.has("0:/sys/dwc-ng"), [...conn.dirs].join(", "));
+	assert.ok(conn.dirs.has("0:/sys/dwc-ng/shaping"), [...conn.dirs].join(", "));
+	assert.ok(conn.files.has(RESULTS_PATH(0)));
+});
+
+test("saving twice is not an error — the second mkdir rejects and is ignored", async () => {
+	const conn = fakeConn();
+	const store = createShapingStore(conn);
+	await store.save(2);
+	await store.save(2);
+	assert.ok(conn.files.has(RESULTS_PATH(2)));
+});
+
+test("parentDirs names every directory between the volume and the file", () => {
+	assert.deepEqual(parentDirs(RESULTS_PATH(3)), ["0:/sys", "0:/sys/dwc-ng", "0:/sys/dwc-ng/shaping"]);
+	assert.deepEqual(parentDirs("0:/config.g"), []);
+	assert.deepEqual(parentDirs("0:/macros/x/y.g"), ["0:/macros", "0:/macros/x"]);
+});
+
+test("setMeasurement replaces the captures and drops what was scored against the old fingerprint", () => {
+	const store = createShapingStore(fakeConn());
+	const before = fullResults(0);
+	store.setFingerprint(0, before.fingerprint);
+	for (const c of before.captures) store.addCapture(0, c);
+	store.setCandidates(0, before.candidates);
+	store.setApplied(0, before.applied);
+	assert.ok(store.results[0]!.candidates.length > 0);
+
+	const after = fullResults(0);
+	store.setMeasurement(0, after.fingerprint!, [after.captures[0]!]);
+	assert.equal(store.results[0]!.captures.length, 1, "captures replaced, not appended");
+	assert.deepEqual(store.results[0]!.candidates, [], "a ranking scored against the old baseline is gone");
+	assert.deepEqual(store.results[0]!.verified, []);
+	assert.deepEqual(store.results[0]!.applied, before.applied, "what is on the machine is unchanged by a re-measure");
 });

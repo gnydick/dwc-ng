@@ -905,7 +905,7 @@ in the diff that drops it.
 
 ### `shaping/results-persist-through-one-writer` — rung 6
 
-**Mechanism.** choke-point — RESULTS_PATH is imported by this module alone, so the card file has exactly one reader (load) and one writer (save), and both go through parseResults/serializeResults
+**Mechanism.** choke-point — RESULTS_PATH is imported by this module alone, so the card file has exactly one reader (load) and one writer (save), and both go through parseResults/serializeResults. `save` also creates the directory chain the path needs, so "wrote the file" and "the place it goes exists" are one act rather than a precondition on whoever calls it
 
 **Why.** per-tool results written from two places would interleave a half-built session over a finished one, and a reader that skipped parseResults would put hand-edited numbers straight into a ranking
 

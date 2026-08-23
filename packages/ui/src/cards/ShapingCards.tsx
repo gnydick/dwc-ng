@@ -27,6 +27,8 @@
 import { For, Match, Show, Switch, createEffect, createMemo, createSignal } from "solid-js";
 import { cmd } from "../control/commands.ts";
 import { copyText } from "../shell/copyText.ts";
+import { createArmed } from "../control/armed.ts";
+import { batchSummaryText } from "../shaping/copy.ts";
 import type { CardCtx } from "../compose/ctx.ts";
 import type { MacroRead } from "../compose/services.ts";
 import { SHAPING_STEPS, stepReadiness, type StepInputs, type StepSpec } from "../shaping/steps.ts";
@@ -38,11 +40,11 @@ import { FIT_DEFAULTS, isMode, type Axis, type Fingerprint, type Mode, type NoFi
 import { type Candidate, customCandidate } from "../shaping/engine/rank.ts";
 import { convolve, type Impulses, type ShaperSpec, zv } from "../shaping/engine/shapers.ts";
 import { seconds } from "../shaping/engine/units.ts";
-import type { ToolResults } from "../shaping/results.ts";
+import { RESULTS_PATH, type ToolResults } from "../shaping/results.ts";
 import type { VerifiedCandidate } from "../shaping/store.ts";
 import { DecayChart } from "../charts/DecayChart.tsx";
 import { decaySeries, type DecayView } from "../charts/decayData.ts";
-import { ACCEL_DIR, accelPath, boardRef, type CaptureRef, captureNameParts } from "../shaping/captures.ts";
+import { ACCEL_DIR, accelPath, boardRef, type CaptureRef, captureNameParts, inFamily, matchesQuery, MAX_BATCH, namePrefixes } from "../shaping/captures.ts";
 import { useEngine } from "../shaping/useEngine.ts";
 import type { FitResult } from "../shaping/worker.ts";
 
@@ -319,7 +321,7 @@ export function ShapingCaptureBody(props: { ctx: CardCtx }) {
 				<div class="shp-fact">
 					<dt>Envelope</dt>
 					<dd>
-						<Show when={cfg().envelope} fallback={<span class="shp-warn-inline">not set — Settings › Shaping</span>}>
+						<Show when={cfg().envelope} fallback={<span class="shp-warn-inline">not set — Settings › Input shaping</span>}>
 							{env => (
 								<span class="shp-mono">
 									X {env().x[0]}–{env().x[1]} · Y {env().y[0]}–{env().y[1]} mm
@@ -360,14 +362,15 @@ export function ShapingCaptureBody(props: { ctx: CardCtx }) {
 
 /* ------------------------------------------------------------------- 3. decay */
 
-/** One pickable row: a capture the results file records, or one imported this
- *  session. Both halves are the same shape, so the table has one body. */
+/** One pickable row, whichever of the three places it came from. The table has
+ *  one body, so the three sources cannot lay out differently. */
 type DecayRow = {
 	readonly key: string;
 	readonly ref: CaptureRef;
 	readonly file: string;
 	readonly tag: string;
-	readonly imported: boolean;
+	readonly origin: DecaySource;
+	readonly when: string;
 	readonly fit: Mode | NoFit | null;
 	readonly problem: string;
 };
@@ -380,6 +383,23 @@ type Analysis =
 	| { readonly kind: "ok"; readonly result: FitResult }
 	| { readonly kind: "failed"; readonly why: string };
 
+/**
+ * Which set of captures the list is showing.
+ *
+ * Three, and they are genuinely three different things rather than one list
+ * with tags: what this tool's results file records, what the board's SD card
+ * holds, and what the operator dragged in this session. Only the middle one
+ * can be fingerprinted against a tool, and that is a property of where the
+ * bytes came from — see the batch bar.
+ */
+type DecaySource = "tool" | "board" | "imported";
+
+const SOURCES: ReadonlyArray<{ id: DecaySource; label: string }> = [
+	{ id: "tool", label: "Tool" },
+	{ id: "board", label: "Board" },
+	{ id: "imported", label: "Imported" },
+];
+
 /** The chart's key, as fixed rows. Colours live in app.css beside the ones the
  *  chart reads through themeColors, so there is one place per line. */
 const DECAY_KEY = [
@@ -391,11 +411,33 @@ const DECAY_KEY = [
 
 const AXES: readonly Axis[] = ["X", "Y"];
 
-/** What a row with no Mode has to say for itself, in one short cell. An import
- *  the engine has not reached yet says so; one it refused says why. */
+/**
+ * At most this many name families are offered as one-click filters.
+ *
+ * Three, and the number is a MEASUREMENT rather than a taste: every control on
+ * the filter row is a declared width, so the row's contribution to the card's
+ * minimum width is arithmetic — 22u of input, 18u per chip, 18u of count, 16u
+ * of Rescan and 2u per gap. Three chips puts that at 120u, just inside the
+ * 123u the captures table already asks for, so the table stays the widest
+ * thing on the card and the chips cost nothing. A fourth would make the FILTER
+ * ROW the card's minimum width, which is absurd for a row of shortcuts.
+ */
+const PREFIX_CHIPS = 3;
+
+/** `2026-08-23T09:14:02` as the day and time a person reads. Total over a
+ *  transport that gives no date, which is the case for every row that did not
+ *  come off the board. */
+function shortWhen(date: string | undefined): string {
+	if (date === undefined || date === "") return NONE;
+	const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(date);
+	return m === null ? date.slice(0, 16) : `${m[2]}-${m[3]} ${m[4]}:${m[5]}`;
+}
+
+/** What a row with no Mode has to say for itself, in one short cell. A board
+ *  capture nobody has fitted yet says nothing rather than pretending. */
 function rowReason(row: DecayRow): string {
 	if (row.problem !== "") return row.problem;
-	if (row.fit === null) return "fitting…";
+	if (row.fit === null) return row.origin === "board" ? "not fitted" : "fitting…";
 	return fitReasonText(row.fit);
 }
 
@@ -404,46 +446,131 @@ function rowReason(row: DecayRow): string {
  * band-passed envelope and the exponential the fit implies — with the numbers
  * beside the curve they were taken from.
  *
- * The import is not a side door, it is the front one. Until the envelope
- * editor exists (#31) this UI cannot run a measurement, so a CSV the operator
- * picks off their own computer is the only way their own machine's ring-down
- * reaches this screen. It needs no envelope, no homing and no motion: a file
- * goes to the same worker every other capture goes to (`parseCapture` →
- * `detectStop` → `fitDecay`) and what appears on screen is what THIS UI
- * computed. Nothing here is copied from the prototype's output, and a file the
- * parser refuses keeps its row and says why, in the engine's own words.
+ * Three places a capture can come from, and the difference between them is not
+ * cosmetic.
+ *
+ *  - The TOOL's results file, which names captures a previous session fitted.
+ *  - The BOARD's own `0:/sys/accelerometer`, written by `M956`. Gabe's machine
+ *    holds 276 of these going back to May; until a results file exists nothing
+ *    names any of them, so the directory listing is the only way in. These are
+ *    that machine's captures, in the canonical place, which is why they and
+ *    only they can be attributed to a tool.
+ *  - IMPORTED CSVs off the operator's own computer. Those are drawn and never
+ *    attributed: a file from another machine or another day recorded as this
+ *    tool's data would make its next fingerprint a mixture of two machines.
+ *
+ * Everything reaches the engine by one route whatever its origin — the cached
+ * loader (shaping/captures.ts) then the worker's `parseCapture` → `detectStop`
+ * → `fitDecay`. Nothing on this card is copied from anywhere; every number is
+ * one this UI computed from those bytes.
  *
  * Positional stability governs the layout. The plot is built once and fed by
- * `setData`, the facts column reserves every row it can show and fills the
- * absent ones with an em dash, and the verdict sits in a box of fixed height —
- * so switching capture, switching axis, or picking one that does not fit moves
- * nothing. The alternative was a card that jumps every time the operator
- * clicks the next row of a twelve-row list, which is the one gesture this card
- * exists for.
+ * `setData`, the facts column reserves every row it can show, the verdict and
+ * the batch report sit in boxes of fixed height, and the filter and batch rows
+ * are present whichever source is showing rather than appearing with it — so
+ * switching source, switching capture, switching axis, or picking one that
+ * does not fit moves nothing. The alternative was a card that jumps every time
+ * the operator clicks the next row of a 276-row list, which is the one gesture
+ * this card exists for.
  */
 export function ShapingDecayBody(props: { ctx: CardCtx }) {
 	const svc = props.ctx.service("shaping");
+	const [source, setSourceNow] = createSignal<DecaySource>("tool");
+	const [query, setQuery] = createSignal("");
+	/** The lit name-family chip, separate from the text filter because the two
+	 *  ask different questions and are ANDed — see `inFamily`. */
+	const [family, setFamily] = createSignal<string | null>(null);
+	const [selected, setSelected] = createSignal<ReadonlySet<string>>(new Set<string>());
+	const [target, setTarget] = createSignal<number | null>(null);
+	const [armed, setArmed] = createArmed<number>();
 
-	const rows = createMemo((): readonly DecayRow[] => [
-		...svc.results().captures.map((c): DecayRow => ({
-			key: boardRef(c.file).key,
-			ref: boardRef(c.file),
-			file: c.file,
-			tag: `${c.axis}${c.dir}${c.rep}`,
-			imported: false,
-			fit: c.fit,
-			problem: "",
-		})),
-		...svc.imports().map((c): DecayRow => ({
-			key: c.ref.key,
-			ref: c.ref,
-			file: c.ref.file,
-			tag: `${c.axis}${c.dir}${c.rep}`,
-			imported: true,
-			fit: c.fit,
-			problem: c.problem,
-		})),
-	]);
+	/** Switching TO the board is the act that asks for the listing — never a
+	 *  render, and never on mount. 276 entries is several `rr_filelist` pages
+	 *  against a server that tolerates very few requests. */
+	const setSource = (next: DecaySource): void => {
+		setSourceNow(next);
+		if (next === "board") svc.wantBoard();
+	};
+
+	/** The fits this session's batch produced, by file name, so a board row
+	 *  fills in as soon as the engine has looked at it. Derived from the run
+	 *  rather than stored beside it — one place holds the fits. */
+	const batchFits = createMemo((): ReadonlyMap<string, Mode | NoFit> => {
+		const run = svc.runState();
+		const map = new Map<string, Mode | NoFit>();
+		if (run.kind === "fitted") for (const r of run.records) map.set(r.file, r.fit);
+		return map;
+	});
+
+	const allRows = createMemo((): readonly DecayRow[] => {
+		switch (source()) {
+			case "tool":
+				return svc.results().captures.map((c): DecayRow => ({
+					key: boardRef(c.file).key,
+					ref: boardRef(c.file),
+					file: c.file,
+					tag: `${c.axis}${c.dir}${c.rep}`,
+					origin: "tool",
+					when: NONE,
+					fit: c.fit,
+					problem: "",
+				}));
+			case "board":
+				return svc.board().map((entry): DecayRow => {
+					const parts = captureNameParts(entry.name);
+					return {
+						key: boardRef(entry.name).key,
+						ref: boardRef(entry.name),
+						file: entry.name,
+						tag: parts.matched ? `${parts.axis}${parts.dir}${parts.rep}` : NONE,
+						origin: "board",
+						when: shortWhen(entry.date),
+						fit: batchFits().get(entry.name) ?? null,
+						problem: "",
+					};
+				});
+			case "imported":
+				return svc.imports().map((c): DecayRow => ({
+					key: c.ref.key,
+					ref: c.ref,
+					file: c.ref.file,
+					tag: `${c.axis}${c.dir}${c.rep}`,
+					origin: "imported",
+					when: NONE,
+					fit: c.fit,
+					problem: c.problem,
+				}));
+		}
+	});
+
+	/** Name families, derived from the listing itself — nothing here knows what
+	 *  the operator called a run in May. */
+	const prefixes = createMemo(() => namePrefixes(allRows().map(r => r.file), PREFIX_CHIPS));
+
+	/**
+	 * The chip row, always the same length.
+	 *
+	 * Padded with empty slots because the number of families depends on the
+	 * source — the board has three, the tool's twelve captures have one — and a
+	 * row that gains and loses buttons moves the search box beside it every time
+	 * the operator changes source. Measured: the input went 192px to 352px and
+	 * two chips slid 160px sideways.
+	 */
+	const chipSlots = createMemo((): ReadonlyArray<{ prefix: string; count: number } | null> => {
+		const found = prefixes();
+		return Array.from({ length: PREFIX_CHIPS }, (_, i) => found[i] ?? null);
+	});
+
+	const rows = createMemo((): readonly DecayRow[] => {
+		const families = prefixes().map(p => p.prefix);
+		return allRows().filter(r => matchesQuery(r.file, query()) && inFamily(r.file, family(), families));
+	});
+
+	const counts = createMemo(() => ({
+		tool: svc.results().captures.length,
+		board: svc.board().length,
+		imported: svc.imports().length,
+	}));
 
 	const picked = createMemo((): DecayRow | null => rows().find(r => r.key === svc.capturePick()) ?? null);
 
@@ -452,10 +579,6 @@ export function ShapingDecayBody(props: { ctx: CardCtx }) {
 	 * the file name where the name says (`ring1_Yp2.csv` is Y), and switchable
 	 * either way afterwards — an operator looking at a capture is entitled to
 	 * ask what the OTHER axis did during the same move.
-	 *
-	 * A plain signal written at pick time rather than an override layered over
-	 * a default: the two-value form has a state where the override belongs to
-	 * the previously selected capture.
 	 */
 	const [axis, setAxis] = createSignal<Axis>("X");
 
@@ -534,6 +657,83 @@ export function ShapingDecayBody(props: { ctx: CardCtx }) {
 		}
 	});
 
+	/* --------------------------------------------------------- selection */
+
+	const selectable = (): boolean => source() === "board";
+	const chosen = createMemo((): readonly string[] => rows().filter(r => selected().has(r.file)).map(r => r.file));
+
+	const toggle = (file: string): void => {
+		setSelected(prev => {
+			const next = new Set(prev);
+			if (next.has(file)) next.delete(file);
+			else next.add(file);
+			return next;
+		});
+		svc.clearRun();
+	};
+	const selectShown = (): void => {
+		setSelected(new Set(rows().map(r => r.file)));
+		svc.clearRun();
+	};
+	const clearSelection = (): void => {
+		setSelected(new Set<string>());
+		svc.clearRun();
+	};
+
+	const tools = createMemo(() => props.ctx.om.om.tools.filter(t => t !== null));
+	const fitted = createMemo(() => {
+		const run = svc.runState();
+		return run.kind === "fitted" ? run : null;
+	});
+
+	/**
+	 * What the batch is doing, in one line that is always present.
+	 *
+	 * The "n of m contributed" is the load-bearing part. `aggregate` takes the
+	 * median of the fits that SUCCEEDED, so a capture the fitter declined —
+	 * `ring1_Xp1.csv` is one, and the reason is GitHub #33's to settle — is
+	 * absent from the numbers and present in the file. A fingerprint built from
+	 * 11 of 12 and one built from 12 of 12 look identical unless the card says
+	 * which it is.
+	 */
+	const batchReport = createMemo((): string => {
+		const run = svc.runState();
+		switch (run.kind) {
+			case "idle":
+				if (!selectable()) return "Only captures on the board can be attributed to a tool — they are that machine's own, written by M956.";
+				return rows().length > MAX_BATCH
+					? `${rows().length} captures shown. Filter to one measurement run — at most ${MAX_BATCH} — before selecting: a fingerprint is the median of one session, not of everything the card has ever held.`
+					: "Tick the board captures of one measurement run, fit them, and write the fingerprint to a tool.";
+			case "running":
+				return `Fitting ${run.done + 1} of ${run.total}: ${run.file}`;
+			case "fitted":
+				return batchSummaryText(run.contributed, run.total, run.fingerprint);
+			case "saving":
+				return `Writing ${RESULTS_PATH(run.tool)}…`;
+			case "saved":
+				return `Saved to ${RESULTS_PATH(run.tool)}: T${run.tool}'s fingerprint, from ${run.contributed} of ${run.total} captures.`;
+			case "failed":
+				return run.why;
+		}
+	});
+
+	const saveLabel = createMemo((): string => {
+		const tool = target();
+		if (armed() !== null) return "Confirm";
+		return tool === null ? "Save…" : `Save to T${tool}`;
+	});
+
+	const save = (): void => {
+		const tool = target();
+		if (tool === null) return;
+		if (armed() === tool) {
+			setArmed(null);
+			void svc.saveMeasurement(tool);
+			return;
+		}
+		setArmed(tool);
+	};
+
 	const onFiles = (event: Event & { currentTarget: HTMLInputElement }): void => {
 		const input = event.currentTarget;
 		const files = Array.from(input.files ?? []);
@@ -549,6 +749,7 @@ export function ShapingDecayBody(props: { ctx: CardCtx }) {
 			// Land on the first of a batch rather than the last: a dozen files
 			// dropped at once read top-down, and the list is in that order.
 			if (first !== null) {
+				setSource("imported");
 				svc.setCapturePick(first);
 				setAxis(captureNameParts(files[0]?.name ?? "").axis);
 			}
@@ -618,6 +819,19 @@ export function ShapingDecayBody(props: { ctx: CardCtx }) {
 					Import CSV…
 					<input type="file" accept=".csv,text/csv" multiple onChange={onFiles} />
 				</label>
+				<div class="shp-src-pick" role="group" aria-label="Capture source">
+					<For each={SOURCES}>
+						{s => (
+							<button
+								class="shp-pick shp-src"
+								aria-pressed={source() === s.id}
+								onClick={() => setSource(s.id)}
+							>
+								{s.label} {counts()[s.id]}
+							</button>
+						)}
+					</For>
+				</div>
 				<div class="shp-axis-pick" role="group" aria-label="Axis to fit">
 					<For each={AXES}>
 						{a => (
@@ -633,25 +847,86 @@ export function ShapingDecayBody(props: { ctx: CardCtx }) {
 					</For>
 				</div>
 			</div>
+			{/* Always present, whichever source is showing: 276 files need it, and a
+			    row that appears with the board would move the table under it. */}
+			<div class="shp-decay-filter">
+				<input
+					class="fb-input grow"
+					type="search"
+					placeholder="filter by name"
+					aria-label="Filter captures by name"
+					value={query()}
+					onInput={e => setQuery(e.currentTarget.value)}
+				/>
+				<For each={chipSlots()}>
+					{slot => (
+						<Show
+							when={slot}
+							fallback={<button class="shp-pick shp-prefix" disabled aria-hidden="true" tabindex="-1" />}
+						>
+							{p => (
+								<button
+									class="shp-pick shp-prefix"
+									aria-pressed={family() === p().prefix}
+									onClick={() => setFamily(family() === p().prefix ? null : p().prefix)}
+									title={`${p().count} files start with ${p().prefix}`}
+								>
+									{p().prefix}
+								</button>
+							)}
+						</Show>
+					)}
+				</For>
+				<span class="shp-count">{rows().length} of {allRows().length}</span>
+				<button
+					class="fb-tool shp-rescan"
+					disabled={source() !== "board"}
+					onClick={() => svc.refreshBoard()}
+				>
+					Rescan
+				</button>
+			</div>
 			<div class="shp-scroll">
 			<table class="shp-table shp-captures">
 				<colgroup>
+					<col class="shp-c-sel" />
 					<col class="shp-c-file" />
+					<col class="shp-c-when" />
 					<col class="shp-c-ax" />
 					<col class="shp-c-num" />
 					<col class="shp-c-num" />
 					<col class="shp-c-num" />
 				</colgroup>
 				<thead>
-					<tr><th>Capture</th><th>Axis</th><th class="shp-num">f</th><th class="shp-num">ζ</th><th class="shp-num">peak</th></tr>
+					<tr>
+						<th />
+						<th>Capture</th>
+						<th>When</th>
+						<th>Axis</th>
+						<th class="shp-num">f</th>
+						<th class="shp-num">ζ</th>
+						<th class="shp-num">peak</th>
+					</tr>
 				</thead>
 				<tbody>
 					<For
 						each={rows()}
 						fallback={
 							<tr>
-								<td colspan="5" class="shp-nil">
-									No captures for T{svc.tool()}. Import a CSV, or run a measurement to leave one in {ACCEL_DIR}.
+								<td colspan="7" class="shp-nil">
+									<Switch fallback="Nothing here matches the filter.">
+										<Match when={svc.boardState() === "reading" && source() === "board"}>Listing {ACCEL_DIR}…</Match>
+										<Match when={svc.boardState() === "failed" && source() === "board"}>{svc.boardError()}</Match>
+										<Match when={allRows().length === 0 && source() === "tool"}>
+											T{svc.tool()} has no measurement. Fingerprint one from the board captures.
+										</Match>
+										<Match when={allRows().length === 0 && source() === "imported"}>
+											Nothing imported this session.
+										</Match>
+										<Match when={allRows().length === 0 && source() === "board"}>
+											{ACCEL_DIR} holds no CSVs.
+										</Match>
+									</Switch>
 								</td>
 							</tr>
 						}
@@ -659,16 +934,28 @@ export function ShapingDecayBody(props: { ctx: CardCtx }) {
 						{row => (
 							<tr classList={{ "shp-on": svc.capturePick() === row.key }}>
 								<td>
+									<Show when={row.origin === "board"}>
+										<input
+											type="checkbox"
+											class="shp-check"
+											aria-label={`Include ${row.file} in the fingerprint`}
+											checked={selected().has(row.file)}
+											onChange={() => toggle(row.file)}
+										/>
+									</Show>
+								</td>
+								<td>
 									<button
 										class="shp-pick shp-pick-wide"
-										classList={{ "shp-imported": row.imported }}
+										classList={{ "shp-imported": row.origin === "imported" }}
 										aria-pressed={svc.capturePick() === row.key}
 										onClick={() => pick(row)}
-										title={row.imported ? `${row.file} — imported from this computer` : accelPath(row.file)}
+										title={row.origin === "imported" ? `${row.file} — imported from this computer` : accelPath(row.file)}
 									>
 										{row.file}
 									</button>
 								</td>
+								<td class="shp-mono shp-when">{row.when}</td>
 								<td class="shp-mono">{row.tag}</td>
 								<Show
 									when={row.fit !== null && isMode(row.fit) ? row.fit : null}
@@ -688,6 +975,54 @@ export function ShapingDecayBody(props: { ctx: CardCtx }) {
 				</tbody>
 			</table>
 			</div>
+			{/*
+			  The attribution bar. The tool is a deliberate choice with no default:
+			  `svc.tool()` is where the SCREEN is looking, which is not the same as
+			  what the operator meant to measure, and on a four-head machine those
+			  two being confused is unrecoverable from the file afterwards. Save
+			  arms first (control/armed.ts, so Escape backs out).
+			*/}
+			<div class="shp-batch">
+				<button class="fb-tool shp-pick-n" disabled={!selectable() || rows().length === 0 || rows().length > MAX_BATCH} onClick={selectShown}>
+					Select {rows().length}
+				</button>
+				<button class="fb-tool shp-pick-n" disabled={selected().size === 0} onClick={clearSelection}>Clear</button>
+				<button
+					class="fb-tool shp-pick-n"
+					disabled={chosen().length === 0 || chosen().length > MAX_BATCH || svc.runState().kind === "running"}
+					onClick={() => void svc.fitBoardCaptures(chosen())}
+				>
+					Fit {chosen().length}
+				</button>
+				<label class="shp-target">
+					<span class="shp-cap">Tool</span>
+					<select
+						class="filament-pick"
+						aria-label="Tool to attribute this fingerprint to"
+						value={target() === null ? "" : String(target())}
+						onChange={e => {
+							setArmed(null);
+							setTarget(e.currentTarget.value === "" ? null : Number(e.currentTarget.value));
+						}}
+					>
+						<option value="">— choose —</option>
+						<For each={tools()}>{t => <option value={String(t.number)}>T{t.number}</option>}</For>
+					</select>
+				</label>
+				<button
+					class="fb-tool shp-save"
+					classList={{ "shp-arming": armed() !== null }}
+					disabled={fitted() === null || target() === null}
+					onClick={save}
+				>
+					{saveLabel()}
+				</button>
+			</div>
+			<p class="shp-batch-note" classList={{ "shp-warn-inline": svc.runState().kind === "failed" }}>
+				<Show when={armed()} fallback={batchReport()}>
+					{tool => <>Confirm: write T{tool()}&apos;s fingerprint to {RESULTS_PATH(tool())}. Escape cancels.</>}
+				</Show>
+			</p>
 		</>
 	);
 }

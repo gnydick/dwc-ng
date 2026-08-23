@@ -58,14 +58,15 @@ import { forcedJobInfoErrorNow } from "../dev/forcedJobInfoError.ts";
 import { createHeightMapStore } from "../heightmap/store.ts";
 import { cellPosition } from "../heightmap/parse.ts";
 import { createShapingStore } from "../shaping/store.ts";
-import { emptyResults, type ToolResults } from "../shaping/results.ts";
+import { type CaptureRecord, emptyResults, RESULTS_PATH, type ToolResults } from "../shaping/results.ts";
 import { Preconditions, type Refusal } from "../shaping/preconditions.ts";
 import { findShapingLine, toolMacroPath } from "../shaping/toolMacro.ts";
 import type { ShapingStep } from "../shaping/steps.ts";
 import { useEngine } from "../shaping/useEngine.ts";
-import { captureNameParts, createCaptureLoader, type ImportedCapture, importRef } from "../shaping/captures.ts";
+import { ACCEL_DIR, boardRef, byNewest, captureNameParts, createCaptureLoader, type ImportedCapture, importRef, isCaptureFile, MAX_BATCH } from "../shaping/captures.ts";
 import { parseAccelAddr } from "../control/commands.ts";
-import { FileNotFoundError } from "@dwc-ng/connector";
+import { type FileListEntry, FileNotFoundError } from "@dwc-ng/connector";
+import { aggregate, type Fingerprint } from "../shaping/engine/fit.ts";
 import type { AppServices } from "../shell/context.ts";
 
 /** What a service factory gets: the app services plus the uniform gate. */
@@ -233,6 +234,31 @@ export type MacroRead =
 	| { kind: "unreadable" };
 
 /**
+ * A batch fingerprint run, as one value.
+ *
+ * A union rather than a bag of flags: "running and also saved", "fitted with no
+ * fingerprint", and "saved against no tool" are states this screen must not be
+ * able to reach, and the surest way to keep them unreachable is for them to
+ * have no spelling. `contributed` travels WITH the fingerprint for the same
+ * reason — "11 of 12" is not decoration, it is the difference between a
+ * complete measurement and a partial one, and a reader who has the numbers
+ * without the count cannot tell which they are holding.
+ */
+export type BatchState =
+	| { readonly kind: "idle" }
+	| { readonly kind: "running"; readonly done: number; readonly total: number; readonly file: string }
+	| {
+		readonly kind: "fitted";
+		readonly fingerprint: Fingerprint;
+		readonly records: readonly CaptureRecord[];
+		readonly contributed: number;
+		readonly total: number;
+	}
+	| { readonly kind: "saving"; readonly tool: number }
+	| { readonly kind: "saved"; readonly tool: number; readonly contributed: number; readonly total: number }
+	| { readonly kind: "failed"; readonly why: string };
+
+/**
  * How much of the ranking is kept.
  *
  * `rank` scores a grid — six shaper types over a frequency sweep at four
@@ -335,6 +361,149 @@ function shapingService(base: ServiceBaseCtx) {
 		return ref.key;
 	};
 	const loader = createCaptureLoader(base.connector);
+
+	/**
+	 * What the board's capture directory holds — listed ONCE per connection.
+	 *
+	 * Gabe's machine has 276 CSVs in `0:/sys/accelerometer`, 9.4 MB of them,
+	 * and until there is a results file naming some of them the card has no
+	 * other way to reach any of them. So the directory itself is the index.
+	 *
+	 * Listed lazily and cached: `rr_filelist` pages, so 276 entries is several
+	 * requests against a server that tolerates very few, and re-listing on
+	 * every render of a card the operator is scrolling would be the worst thing
+	 * this screen could do to the board. `refreshBoard` is the one way to ask
+	 * again, and a fresh connection clears it because the SD card may not be
+	 * the same one.
+	 */
+	const [board, setBoard] = createSignal<readonly FileListEntry[]>([]);
+	const [boardState, setBoardState] = createSignal<"unread" | "reading" | "read" | "failed">("unread");
+	const [boardError, setBoardError] = createSignal("");
+	let boardWanted = false;
+
+	const readBoard = (): void => {
+		if (boardState() === "reading") return;
+		setBoardState("reading");
+		setBoardError("");
+		void (async () => {
+			try {
+				const entries = await base.connector.list(ACCEL_DIR);
+				setBoard(byNewest(entries.filter(isCaptureFile)));
+				setBoardState("read");
+			} catch (err) {
+				// A directory that does not exist is the ordinary state of a
+				// machine that has never run a capture, and it is not the same
+				// news as a transfer that failed — but the connector cannot tell
+				// them apart here, so the message says what was attempted.
+				setBoardError(`could not list ${ACCEL_DIR}: ${err instanceof Error ? err.message : String(err)}`);
+				setBoardState("failed");
+			}
+		})();
+	};
+
+	/** Ask for the listing if nobody has yet. Idempotent: the card calls this
+	 *  when the operator switches to the board source, not on every render. */
+	const wantBoard = (): void => {
+		if (boardWanted) return;
+		boardWanted = true;
+		readBoard();
+	};
+
+	const refreshBoard = (): void => {
+		boardWanted = true;
+		readBoard();
+	};
+
+	// A new connection may be a different machine, or the same one with a
+	// different card in it. Neither can inherit the old listing.
+	createEffect(() => {
+		if (base.connected()) return;
+		boardWanted = false;
+		setBoard([]);
+		setBoardState("unread");
+		setBoardError("");
+	});
+
+	/**
+	 * Fit a set of the board's own captures and aggregate them into a
+	 * fingerprint, WITHOUT writing anything.
+	 *
+	 * Two phases on purpose. This one is the measurement: every file is
+	 * downloaded through the same cached loader the chart uses and fitted by
+	 * the same worker call (`parseCapture` → `detectStop` → `fitDecay`), so
+	 * every number in the result is one this UI computed from that machine's
+	 * own bytes. The second phase — writing it against a tool — is a separate,
+	 * armed act, because attributing a measurement to the wrong head is the
+	 * mistake a toolchanger makes easily and cannot see afterwards.
+	 *
+	 * A file that does not fit still gets a CaptureRecord, carrying its NoFit.
+	 * `aggregate` takes the median of the fits that succeeded, so a rejected
+	 * capture is excluded from the numbers and still present in the file — and
+	 * `contributed` says how many of how many, which is the figure that keeps a
+	 * partial aggregate from reading as a complete one.
+	 */
+	const [runState, setRunState] = createSignal<BatchState>({ kind: "idle" });
+
+	const fitBoardCaptures = async (files: readonly string[]): Promise<void> => {
+		if (files.length === 0 || runState().kind === "running") return;
+		// The cap lives HERE rather than on the button, so the one route that
+		// downloads a batch is the one that refuses an unreasonable one. A
+		// disabled button is a suggestion; this is the thing that would issue
+		// the requests.
+		if (files.length > MAX_BATCH) {
+			setRunState({ kind: "failed", why: `${files.length} captures is more than one measurement run — filter to at most ${MAX_BATCH} before fitting.` });
+			return;
+		}
+		const records: CaptureRecord[] = [];
+		for (const [index, file] of files.entries()) {
+			setRunState({ kind: "running", done: index, total: files.length, file });
+			const parts = captureNameParts(file);
+			try {
+				const result = await useEngine().fit(await loader.text(boardRef(file)), parts.axis);
+				records.push({ file, axis: parts.axis, dir: parts.dir, rep: parts.rep, fit: result.fit, tStop: result.tStop });
+			} catch (err) {
+				setRunState({ kind: "failed", why: `${file}: ${err instanceof Error ? err.message : String(err)}` });
+				return;
+			}
+		}
+		const fingerprint = aggregate(records.map(r => ({ axis: r.axis, fit: r.fit })));
+		setRunState({
+			kind: "fitted",
+			fingerprint,
+			records,
+			contributed: fingerprint.n.X + fingerprint.n.Y,
+			total: records.length,
+		});
+	};
+
+	/**
+	 * Write a fitted batch against a tool. The tool is an ARGUMENT and there is
+	 * no default: `svc.tool()` is where the screen is looking, which is not the
+	 * same as what the operator meant to attribute a measurement to, and on a
+	 * four-head machine those two being confused is unrecoverable from the
+	 * file afterwards.
+	 */
+	const saveMeasurement = async (tool: number): Promise<void> => {
+		const run = runState();
+		if (run.kind !== "fitted") return;
+		setRunState({ kind: "saving", tool });
+		try {
+			store.setMeasurement(tool, run.fingerprint, run.records);
+			await store.save(tool);
+			setRunState({ kind: "saved", tool, contributed: run.contributed, total: run.total });
+			// The screen follows the tool just measured: every other card on it
+			// is about `tool()`, and leaving them on a different head after a
+			// save would show the operator someone else's fingerprint.
+			setToolNow(tool);
+			setCapturePick(null);
+		} catch (err) {
+			setRunState({ kind: "failed", why: `could not write ${RESULTS_PATH(tool)}: ${err instanceof Error ? err.message : String(err)}` });
+		}
+	};
+
+	const clearRun = (): void => {
+		setRunState({ kind: "idle" });
+	};
 
 	/** Changing tool changes which captures exist, so the selections reset with
 	 *  it — a stale one would select a different capture, not no capture. */
@@ -531,6 +700,8 @@ function shapingService(base: ServiceBaseCtx) {
 		store, tool, setTool, resultsFor, reload,
 		results: (): ToolResults => resultsFor(tool()),
 		capturePick, setCapturePick, imports, addImport, loadCapture: loader.text,
+		board, boardState, boardError, wantBoard, refreshBoard,
+		runState, fitBoardCaptures, saveMeasurement, clearRun,
 		candidateIndex, setCandidateIndex,
 		accelFor, gate, macroFor, toggleMacro, rank, ranking, problem, offer, runStep,
 		offers: (step: ShapingStep): boolean => offered().includes(step),

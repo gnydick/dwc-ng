@@ -10,7 +10,8 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { refusalText } from "../src/shaping/copy.ts";
+import { batchSummaryText, refusalText } from "../src/shaping/copy.ts";
+import { prototypeFingerprint } from "./helpers/shaping.ts";
 import type { Refusal } from "../src/shaping/preconditions.ts";
 import { SHAPING_STEPS, stepReadiness, type StepInputs } from "../src/shaping/steps.ts";
 import { mm } from "../src/shaping/engine/units.ts";
@@ -63,18 +64,18 @@ test("not-homed names the axes, and reads naturally for one or two", () => {
 test("no-accelerometer names the address, and says something else when there is none", () => {
 	assert.equal(
 		refusalText({ kind: "no-accelerometer", addr: "20.0" }),
-		"no accelerometer at 20.0 — check Settings › Shaping",
+		"no accelerometer at 20.0 — check Settings › Input shaping",
 	);
 	// The empty address is a tool with no accelByTool entry: there is no sensor
 	// that failed to answer, so naming one would send the operator to the wrong
 	// place entirely.
 	const unset = refusalText({ kind: "no-accelerometer", addr: "" });
-	assert.match(unset, /Settings › Shaping/);
+	assert.match(unset, /Settings › Input shaping/);
 	assert.doesNotMatch(unset, /\bat\s+—/, "must not read as an address that is blank");
 });
 
 test("no-envelope points at the setting that is missing", () => {
-	assert.equal(refusalText({ kind: "no-envelope" }), "set the motion envelope in Settings › Shaping");
+	assert.equal(refusalText({ kind: "no-envelope" }), "set the motion envelope in Settings › Input shaping");
 });
 
 test("outside-envelope names the point, rounded so it does not print float noise", () => {
@@ -170,4 +171,38 @@ test("every step's note is one line of prose, whatever state it is in", () => {
 			assert.doesNotMatch(note, /\n/, `${s.step} note wraps a line: ${note}`);
 		}
 	}
+});
+
+/* ------------------------------------------------ the batch fingerprint line */
+
+test("a partial aggregate says so — 11 of 12, with the one that did not fit named as excluded", () => {
+	// The case Gabe's own board produces: `ring1_Xp1.csv` is declined as
+	// short-decay, so his first real fingerprint is built from 11 captures.
+	const fp = prototypeFingerprint();
+	const line = batchSummaryText(11, 12, fp);
+	assert.match(line, /^Fitted 11 of 12 captures/);
+	assert.match(line, /One capture did not fit and is excluded from the medians\.$/);
+	// Shape, not value: the helper's fingerprint is fitted from a synthetic
+	// ring, so the exact frequency belongs to the fitter's own tests.
+	assert.match(line, /X \d+\.\d Hz ζ 0\.\d{3}/);
+	assert.match(line, /Y \d+\.\d Hz ζ 0\.\d{3}/);
+});
+
+test("a complete aggregate does not mention captures it excluded", () => {
+	const line = batchSummaryText(12, 12, prototypeFingerprint());
+	assert.match(line, /^Fitted 12 of 12 captures/);
+	assert.ok(!line.includes("excluded"), line);
+	assert.ok(line.endsWith("."), line);
+});
+
+test("more than one rejection reads as plural", () => {
+	const line = batchSummaryText(9, 12, prototypeFingerprint());
+	assert.match(line, /3 captures did not fit and are excluded/);
+});
+
+test("an axis that never fitted is an em dash, not a zero", () => {
+	const fp = prototypeFingerprint();
+	const line = batchSummaryText(6, 12, { ...fp, X: null, n: { X: 0, Y: 6 } });
+	assert.match(line, /X — /);
+	assert.ok(!line.includes("X 0.0 Hz"), line);
 });

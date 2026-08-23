@@ -20,8 +20,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { decaySeries, fitNote, type DecayView } from "../src/charts/decayData.ts";
 import { handle, type FitResult } from "../src/shaping/worker.ts";
-import { boardRef, captureNameParts, createCaptureLoader, importRef } from "../src/shaping/captures.ts";
-import { FIT_DEFAULTS, isMode, type Axis, type Mode, type NoFit } from "../src/shaping/engine/fit.ts";
+import { boardRef, byNewest, captureNameParts, createCaptureLoader, importRef, inFamily, isCaptureFile, matchesQuery, namePrefixes } from "../src/shaping/captures.ts";
+import { aggregate, FIT_DEFAULTS, isMode, type Axis, type Mode, type NoFit } from "../src/shaping/engine/fit.ts";
 import { hz } from "../src/shaping/engine/units.ts";
 
 const fx = (n: string): string => readFileSync(new URL(`./fixtures/shaping/${n}`, import.meta.url), "utf8");
@@ -333,4 +333,128 @@ test("no stop and a short window are told apart, because they mean different thi
 	assert.notEqual(short, none);
 	assert.match(short, /Capture for longer/);
 	assert.match(none, /No stop was detected/);
+});
+
+/* ------------------------------------------- browsing 276 captures on a board */
+
+/** The shape of Gabe's `0:/sys/accelerometer` on 2026-08-23, as the Card Lab
+ *  scenario builds it: 276 CSVs, the newest from this morning's session. */
+const listing = (): Array<{ type: "d" | "f"; name: string; size: number; date?: string }> => {
+	const out: Array<{ type: "d" | "f"; name: string; size: number; date?: string }> = [];
+	for (const tag of ["Xp", "Xm", "Yp", "Ym"]) {
+		for (let r = 0; r < 3; r++) out.push({ type: "f", name: `ring1_${tag}${r}.csv`, size: 34900, date: `2026-08-22T09:1${r}:00` });
+	}
+	for (const shaper of ["zv", "zvd", "zvdd", "ei2"]) {
+		for (const tag of ["Xp", "Xm", "Yp", "Ym"]) {
+			for (let r = 0; r < 3; r++) out.push({ type: "f", name: `ring1_v_${shaper}_52_${tag}${r}.csv`, size: 34900, date: `2026-08-22T10:0${r}:00` });
+		}
+	}
+	for (let i = 0; i < 8; i++) out.push({ type: "f", name: `baseline_X_${i}.csv`, size: 34900, date: `2026-06-01T08:00:00` });
+	out.push({ type: "d", name: "old", size: 0, date: "2026-05-01T00:00:00" });
+	out.push({ type: "f", name: "notes.txt", size: 12, date: "2026-05-01T00:00:00" });
+	return out;
+};
+
+test("only the CSVs are captures — a directory and a stray text file are not", () => {
+	const entries = listing().filter(isCaptureFile);
+	assert.equal(entries.length, listing().length - 2);
+	assert.ok(entries.every(e => e.name.endsWith(".csv")));
+});
+
+test("newest first, and an undated entry sorts last rather than to the top", () => {
+	const sorted = byNewest([
+		{ name: "b.csv", date: "2026-08-22T09:00:00" },
+		{ name: "undated.csv" },
+		{ name: "a.csv", date: "2026-08-22T10:00:00" },
+	]);
+	assert.deepEqual(sorted.map(e => e.name), ["a.csv", "b.csv", "undated.csv"]);
+});
+
+test("the sort is stable for entries recorded in the same second", () => {
+	const same = [{ name: "z.csv", date: "x" }, { name: "a.csv", date: "x" }, { name: "m.csv", date: "x" }];
+	assert.deepEqual(byNewest(same).map(e => e.name), ["a.csv", "m.csv", "z.csv"]);
+	assert.deepEqual(byNewest(byNewest(same)).map(e => e.name), ["a.csv", "m.csv", "z.csv"]);
+});
+
+test("name families are derived from the listing, biggest first", () => {
+	const families = namePrefixes(listing().map(e => e.name), 4);
+	assert.deepEqual(families, [
+		{ prefix: "ring1_", count: 60 },
+		{ prefix: "ring1_v_", count: 48 },
+		{ prefix: "baseline_", count: 8 },
+	]);
+});
+
+test("two prefixes covering the same files are offered once, by the shorter name", () => {
+	const families = namePrefixes(["a_b_1.csv", "a_b_2.csv", "a_b_3.csv", "a_b_4.csv"]);
+	assert.deepEqual(families, [{ prefix: "a_", count: 4 }]);
+});
+
+test("families stop at two levels, so a chip never means \"the rest of\"", () => {
+	// Ranking purely by count offered `ring1_v_zv_52_` as its own chip, which
+	// made the `ring1_v_` chip beside it mean the OTHER shapers. Capping depth
+	// is what keeps a chip's name true.
+	const names = listing().filter(isCaptureFile).map(e => e.name);
+	assert.ok(namePrefixes(names, 8).every(f => (f.prefix.match(/_/g) ?? []).length <= 2), JSON.stringify(namePrefixes(names, 8)));
+});
+
+test("the ring1_ family means the twelve, not the sixty", () => {
+	// The case the chips exist for: 60 files start `ring1_`, and 48 of them are
+	// the verify run. No substring picks out the other twelve.
+	const names = listing().filter(isCaptureFile).map(e => e.name);
+	const families = namePrefixes(names, 4).map(f => f.prefix);
+	const ring = names.filter(n => inFamily(n, "ring1_", families));
+	assert.equal(ring.length, 12, ring.join(", "));
+	assert.ok(ring.every(n => !n.startsWith("ring1_v_")));
+	assert.equal(names.filter(n => inFamily(n, "ring1_v_", families)).length, 48);
+	assert.equal(names.filter(n => inFamily(n, null, families)).length, names.length);
+});
+
+test("the text filter is a case-insensitive substring, and empty matches everything", () => {
+	assert.ok(matchesQuery("ring1_Xp0.csv", "XP0"));
+	assert.ok(matchesQuery("ring1_Xp0.csv", ""));
+	assert.ok(matchesQuery("ring1_Xp0.csv", "  "));
+	assert.ok(!matchesQuery("ring1_Xp0.csv", "Yp0"));
+});
+
+/* ------------------------------------ aggregating a batch of board captures */
+
+test("a batch aggregate counts only the captures that fitted, and says how many", () => {
+	// Four real captures off Gabe's machine. `ring1_Xp1.csv` is refused as
+	// short-decay (GitHub #33 owns whether that rule should change), so the
+	// fingerprint is built from three of the four — and the count is what the
+	// card puts on screen, because 3-of-4 and 4-of-4 medians look identical.
+	const files = ["ring1_Xp0.csv", "ring1_Xp1.csv", "ring1_Yp0.csv", "ring1_Ym0.csv"] as const;
+	const records = files.map(file => {
+		const axis: Axis = captureNameParts(file).axis;
+		return { file, axis, fit: fitted(file, axis).fit };
+	});
+	const fingerprint = aggregate(records);
+	const contributed = fingerprint.n.X + fingerprint.n.Y;
+
+	assert.equal(records.length, 4);
+	assert.equal(contributed, 3, "ring1_Xp1 did not fit and must not be counted");
+	assert.equal(fingerprint.n.X, 1);
+	assert.equal(fingerprint.n.Y, 2);
+	// The record for the refused capture is still there — the file keeps it, the
+	// medians do not.
+	const refused = records.find(r => r.file === "ring1_Xp1.csv")!;
+	assert.ok(!isMode(refused.fit) && refused.fit.reason === "short-decay");
+
+	// And the numbers are the surviving X capture's own, not an average dragged
+	// toward the one that was thrown out.
+	const kept = fitted("ring1_Xp0.csv", "X").fit;
+	assert.ok(isMode(kept));
+	assert.equal(fingerprint.X?.f, kept.f);
+	assert.equal(fingerprint.X?.zeta, kept.zeta);
+});
+
+test("a batch where nothing fits produces a fingerprint of nulls, not zeros", () => {
+	const fingerprint = aggregate([
+		{ axis: "X" as Axis, fit: { reason: "below-floor" } },
+		{ axis: "Y" as Axis, fit: { reason: "short-decay" } },
+	]);
+	assert.equal(fingerprint.X, null);
+	assert.equal(fingerprint.Y, null);
+	assert.equal(fingerprint.n.X + fingerprint.n.Y, 0, "0 of 2 contributed");
 });

@@ -23,6 +23,7 @@
  * no gate of its own, because the firmware and the planner are the authorities
  * on whether the machine may move.
  */
+import type { Fingerprint } from "./engine/fit.ts";
 import type { Refusal } from "./preconditions.ts";
 
 /**
@@ -63,10 +64,10 @@ export function refusalText(r: Refusal): string {
 			// sensor to have failed to find. Naming an address that was never
 			// chosen would send the operator looking for hardware.
 			return r.addr === ""
-				? "no accelerometer chosen for this tool — pick one in Settings › Shaping"
-				: `no accelerometer at ${r.addr} — check Settings › Shaping`;
+				? "no accelerometer chosen for this tool — pick one in Settings › Input shaping"
+				: `no accelerometer at ${r.addr} — check Settings › Input shaping`;
 		case "no-envelope":
-			return "set the motion envelope in Settings › Shaping";
+			return "set the motion envelope in Settings › Input shaping";
 		case "outside-envelope":
 			return `test would leave the envelope at X${r.point.x.toFixed(1)} Y${r.point.y.toFixed(1)}`;
 		case "stale":
@@ -81,4 +82,33 @@ export function refusalText(r: Refusal): string {
 			throw new Error(`unknown refusal: ${String((unhandled as { kind: unknown }).kind)}`);
 		}
 	}
+}
+
+/**
+ * What a batch fingerprint run came to, in the sentence the Decay card shows.
+ *
+ * Here rather than in the card, and tested, because of the one clause that
+ * carries weight: **how many of how many contributed**. `aggregate` takes the
+ * median of the fits that SUCCEEDED, so a capture the fitter declined is
+ * absent from the numbers and present in the file — and a fingerprint from 11
+ * of 12 looks exactly like one from 12 of 12 unless this says which it is.
+ * That case is real: the shipped engine declines `ring1_Xp1.csv` as
+ * `short-decay` on Gabe's own baseline run (GitHub #33 owns whether the
+ * acceptance rule should change), so his first real fingerprint is a partial
+ * one and must read as one.
+ *
+ * The remainder clause appears only when there IS a remainder. A complete
+ * aggregate that mentions captures it excluded reads as a partial one — the
+ * same confusion inverted.
+ */
+export function batchSummaryText(contributed: number, total: number, fingerprint: Fingerprint): string {
+	const axis = (name: "X" | "Y"): string => {
+		const mode = fingerprint[name];
+		return mode === null ? `${name} —` : `${name} ${mode.f.toFixed(1)} Hz ζ ${mode.zeta.toFixed(3)}`;
+	};
+	const missed = total - contributed;
+	const rest = missed === 0
+		? ""
+		: ` ${missed === 1 ? "One capture" : `${missed} captures`} did not fit and ${missed === 1 ? "is" : "are"} excluded from the medians.`;
+	return `Fitted ${contributed} of ${total} captures — ${axis("X")} · ${axis("Y")}.${rest}`;
 }

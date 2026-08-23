@@ -15,6 +15,7 @@ import { emptyModel } from "../om/types.ts";
 import { RESULTS_PATH, RESULTS_VERSION } from "../shaping/results.ts";
 import { toolMacroPath } from "../shaping/toolMacro.ts";
 import { ACCEL_DIR, captureNameParts } from "../shaping/captures.ts";
+import type { FileListEntry } from "@dwc-ng/connector";
 
 export type ScenarioId = "idle" | "printing" | "paused" | "heater-fault" | "multi-tool" | "shaping-measured";
 
@@ -450,4 +451,70 @@ export function scenarioFile(id: ScenarioId, path: string): string | null {
 		}
 	}
 	return null;
+}
+
+/**
+ * What `0:/sys/accelerometer` looks like on a machine that has been tuned for a
+ * few months: 276 CSVs, 9.4 MB, going back to May.
+ *
+ * Those are Gabe's real numbers, taken off his board on 2026-08-23, and the
+ * lab needs them because the Decay card's board browser is entirely about
+ * scale — a listing of three files does not tell you whether the filter, the
+ * derived name families or the newest-first order actually help. The NAMES
+ * follow his run conventions (`ring1_`, `ring1_v_`, `baseline_`, older sweeps)
+ * so the prefix chips have the same shape of thing to find; nothing here
+ * claims to be his data, and every fit shown against these rows is computed by
+ * the engine from `syntheticCapture` above.
+ */
+const SHAPERS = ["zv", "zvd", "zvdd", "ei2"] as const;
+const AXIS_TAGS = ["Xp", "Xm", "Yp", "Ym"] as const;
+
+function accelListing(): FileListEntry[] {
+	const out: FileListEntry[] = [];
+	const add = (name: string, date: string): void => {
+		// ~35 KB each, which is what a 1500-sample capture weighs.
+		out.push({ type: "f", name, size: 34800 + ((out.length * 37) % 400), date });
+	};
+	const stamp = (day: string, minute: number): string =>
+		`${day}T${String(8 + Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}:00`;
+
+	// This morning's baseline ring: six stops per axis.
+	let minute = 70;
+	for (const tag of AXIS_TAGS) for (let rep = 0; rep < 3; rep++) add(`ring1_${tag}${rep}.csv`, stamp("2026-08-22", minute++));
+	// …and the verify runs that followed, four shapers over the same moves.
+	for (const shaper of SHAPERS) {
+		for (const tag of AXIS_TAGS) for (let rep = 0; rep < 3; rep++) {
+			add(`ring1_v_${shaper}_52_${tag}${rep}.csv`, stamp("2026-08-22", minute++));
+		}
+	}
+	// The speed baselines from earlier the same morning.
+	for (const axis of ["X", "Y"]) for (const speed of [20, 50, 100, 200]) for (let rep = 0; rep < 2; rep++) {
+		add(`baseline_${axis}_${speed}_${rep}.csv`, stamp("2026-08-22", 10 + out.length));
+	}
+	// Months of older work, in the families a machine accumulates.
+	const older: Array<[string, string]> = [
+		["motorA_i", "2026-08-05"], ["motorB_i", "2026-07-28"], ["phase_k", "2026-07-14"],
+		["ms64_I", "2026-06-30"], ["lowspeed_", "2026-06-11"], ["vec100_", "2026-05-19"],
+	];
+	let n = 0;
+	while (out.length < 276) {
+		const [family, day] = older[n % older.length]!;
+		const tag = AXIS_TAGS[n % AXIS_TAGS.length]!;
+		add(`${family}${1200 + (n % 9) * 100}_${tag}${n % 3}.csv`, stamp(day, 30 + (n % 300)));
+		n++;
+	}
+	return out;
+}
+
+let accelCache: FileListEntry[] | null = null;
+
+/**
+ * The directory a scenario would find at `dir`, or null where it has none.
+ * Built once: the lab re-renders constantly and 276 objects per render would
+ * make the bench measure garbage collection rather than layout.
+ */
+export function scenarioList(id: ScenarioId, dir: string): FileListEntry[] | null {
+	if (id !== "shaping-measured" || dir !== ACCEL_DIR) return null;
+	accelCache ??= accelListing();
+	return accelCache;
 }

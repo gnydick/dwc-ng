@@ -14,7 +14,7 @@ import { CardStudio } from "../compose/CardStudio.tsx";
 import { customCardIds, isCustomCardId, isOrphanSlot, type CustomCardId, type SlotId } from "../compose/composition.ts";
 import { createServicePool } from "../compose/services.ts";
 import type { CardCtx } from "../compose/ctx.ts";
-import { SCENARIOS, scenarioFile, scenarioModel, type ScenarioId } from "./cardScenarios.ts";
+import { SCENARIOS, scenarioFile, scenarioList, scenarioModel, type ScenarioId } from "./cardScenarios.ts";
 import { createStubConnector } from "@dwc-ng/connector";
 import { LayoutAuditAll, LayoutAuditPanel, ScaleSweepAll } from "./LayoutAuditPanel.tsx";
 
@@ -78,7 +78,13 @@ export default function CardLab() {
 	const services: AppServices = {
 		om: omStore,
 		config: outer.config, // real config so user axis-role/sensor labels render
-		connector: { ...stub, download: async (path: string) => scenarioFile(scenario(), path) ?? stub.download(path) },
+		connector: {
+			...stub,
+			download: async (path: string) => scenarioFile(scenario(), path) ?? stub.download(path),
+			// The Decay card browses a directory, and a bench that answers it
+			// with nothing cannot measure the card at the scale it is for.
+			list: async (dir: string) => scenarioList(scenario(), dir) ?? stub.list(dir),
+		},
 		temps: createTemperatureHistory(omStore),
 		backend: outer.backend,
 	};

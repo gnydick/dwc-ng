@@ -112,3 +112,138 @@ export function createCaptureLoader(conn: Pick<ConnectorReads, "download">): Cap
 		},
 	};
 }
+
+/* ------------------------------------------------ browsing what the board has */
+
+/**
+ * The board's capture directory, as rows a person can find something in.
+ *
+ * Gabe's machine holds 276 CSVs going back to May, 9.4 MB of them. That is not
+ * a list, it is an archive, and the three operations below are what turns it
+ * back into a list: newest first, filtered by a substring, and — because
+ * nobody remembers what they called a run in May — a handful of name families
+ * derived from the listing itself.
+ *
+ * All three are pure and live here rather than in the card, both so they can
+ * be tested against a realistic listing and because the card must not be the
+ * place that decides what "newest" means.
+ */
+
+/** Only the CSVs: `M956` writes those, and the directory has other things in it. */
+export const isCaptureFile = (entry: { type: "d" | "f"; name: string }): boolean =>
+	entry.type === "f" && entry.name.toLowerCase().endsWith(".csv");
+
+/**
+ * Newest first.
+ *
+ * `FileListEntry.date` is the transport's own `YYYY-MM-DDTHH:mm:ss`, which
+ * sorts lexicographically — that IS the contract the field carries
+ * (connector/types.ts). An entry with no date sorts last rather than first: a
+ * transport that omits the field must not be able to push unknown-age files to
+ * the top of a list whose whole promise is "most recent".
+ */
+export function byNewest<T extends { name: string; date?: string }>(entries: readonly T[]): T[] {
+	return [...entries].sort((a, b) => {
+		const da = a.date ?? "";
+		const db = b.date ?? "";
+		if (da !== db) return da === "" ? 1 : db === "" ? -1 : (da < db ? 1 : -1);
+		// Same second, or both undated: by name, so the order is at least stable
+		// and a re-listing does not reshuffle the rows under the operator.
+		return a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
+	});
+}
+
+/** Case-insensitive substring match on the file name. An empty query matches
+ *  everything, so "no filter" and "filter that matches all" are one path. */
+export function matchesQuery(name: string, query: string): boolean {
+	const q = query.trim().toLowerCase();
+	return q === "" || name.toLowerCase().includes(q);
+}
+
+/** How deep a name family may go: `ring1_` and `ring1_v_`, never
+ *  `ring1_v_zvdd_52_`. Two levels is what separates a run from its verify
+ *  pass; past that the chips stop being families and become individual runs,
+ *  which is what the text filter is for. */
+const MAX_FAMILY_DEPTH = 2;
+
+/**
+ * Name families present in a listing, biggest first — `ring1_`, `ring1_v_`,
+ * `baseline_`.
+ *
+ * DERIVED from the names rather than hard-coded, because the families are the
+ * operator's own naming from months ago and no list written here could know
+ * them. Every prefix ending at one of the first two underscores is a
+ * candidate; a candidate is kept if at least two files share it and no SHORTER
+ * candidate covers exactly the same files — the shorter name for the same set
+ * is the one worth a chip.
+ *
+ * Depth is capped rather than left to the counts, and the reason is Gabe's
+ * board. Ranking purely by count put `ring1_v_zv_52_` and `ring1_v_ei2_52_`
+ * (12 each) in the list, which pushed everything else out AND made the
+ * `ring1_v_` chip mean "the verify runs except those two" — see `inFamily`,
+ * which subtracts the sub-families shown beside a family. Two levels keeps the
+ * chips meaning what their names say.
+ */
+export function namePrefixes(names: readonly string[], max = 6): Array<{ prefix: string; count: number }> {
+	const counts = new Map<string, number>();
+	for (const name of names) {
+		let depth = 0;
+		for (let i = 0; i < name.length && depth < MAX_FAMILY_DEPTH; i++) {
+			if (name[i] !== "_") continue;
+			depth++;
+			const prefix = name.slice(0, i + 1);
+			counts.set(prefix, (counts.get(prefix) ?? 0) + 1);
+		}
+	}
+	const kept = [...counts].filter(([prefix, count]) => {
+		if (count < 2) return false;
+		for (const [other, otherCount] of counts) {
+			if (other.length < prefix.length && prefix.startsWith(other) && otherCount === count) return false;
+		}
+		return true;
+	});
+	kept.sort((a, b) => (b[1] - a[1]) || (a[0] < b[0] ? -1 : 1));
+	return kept.slice(0, max).map(([prefix, count]) => ({ prefix, count }));
+}
+
+/**
+ * Whether a name belongs to `family` and not to a longer family shown beside
+ * it.
+ *
+ * The distinction is the whole reason the chips are worth having. Gabe's board
+ * holds 60 files starting `ring1_`: twelve baseline ring captures and 48
+ * `ring1_v_` verify captures from the same morning. A plain prefix match on
+ * `ring1_` returns all 60, and NO substring expresses "the twelve" — they are
+ * `ring1_Xp0` … `ring1_Ym2`, sharing nothing the verify files lack. So a
+ * family means what a person means by it: this prefix, minus the sub-families
+ * offered as their own chips.
+ *
+ * `family` of null is "no family filter", so the caller has one code path
+ * whether or not a chip is lit.
+ */
+export function inFamily(name: string, family: string | null, families: readonly string[]): boolean {
+	if (family === null) return true;
+	if (!name.startsWith(family)) return false;
+	for (const other of families) {
+		if (other.length > family.length && other.startsWith(family) && name.startsWith(other)) return false;
+	}
+	return true;
+}
+
+/**
+ * The most captures one fingerprint run will download and fit.
+ *
+ * A guard on the BOARD, not a taste. `0:/sys/accelerometer` holds 276 files on
+ * Gabe's machine and the Select button offers whatever the list is showing, so
+ * one unfiltered click would be 276 downloads and 9.4 MB out of an embedded
+ * HTTP server this project exists to be gentle with — several minutes, with no
+ * way to call it back.
+ *
+ * 48 because that is the largest thing a single measurement legitimately is:
+ * this morning's verify pass was four shapers over twelve moves. Anything above
+ * it is more than one run, and a fingerprint aggregated across runs is a median
+ * of two different machines' worth of state — so the cap refuses the case that
+ * was never meaningful anyway, which is why it can be a cap rather than a
+ * warning.
+ */
+export const MAX_BATCH = 48;

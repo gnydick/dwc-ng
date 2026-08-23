@@ -506,16 +506,19 @@ export const CARD_DEFS = {
 		title: "Decay",
 		ariaLabel: "Shaping decay",
 		tip: "0:/sys/accelerometer",
-		// 75 -> 159 for the chart (task E1). MEASURED with auditCard against the
+		// 75 -> 159 for the chart (E1), 159 -> 189 for the board browser and the
+		// fingerprint bar. MEASURED with auditCard against the
 		// `shaping-measured` scenario, and it is a floor rather than a reading:
-		// the figure row declares 55u, the verdict box 15u, the controls 8u and
-		// the list scrolls at 60u, so twelve captures and two report the same
-		// number and nothing here grows with the session. The scale sweep puts
-		// it at 159 cells at BOTH 0.75 and 1.5 (rowDelta 0, colDelta 0), which
-		// is the claim that matters — the chart is a canvas, and a canvas sized
-		// in screen pixels is exactly what would have broken it. colStop is 104,
-		// well inside the 156 the screen gives every card on this composition.
-		size: { colSpan: 156, rowSpan: 159 },
+		// the figure row declares 55u, the verdict box 15u, the controls 8u,
+		// the filter 8u, the list 60u of scroll, the batch bar 8u and its report
+		// 10u. Every one of those is a declared length, so the number is the
+		// same with 276 captures listed, with 12, and with none — checked at all
+		// three. The scale sweep puts it at 189 x 133 cells at BOTH 0.75 and 1.5
+		// (rowDelta 0, colDelta 0), which is the claim that matters: the chart
+		// is a canvas and the filter row is full of text, and either sized in
+		// screen pixels would have broken it. colStop 133 is set by the captures
+		// table's declared tracks and sits inside the 156 this screen gives.
+		size: { colSpan: 156, rowSpan: 189 },
 	}),
 	/** Frequency × speed: which peaks shaping can touch and which it cannot. */
 	"shaping-sweep": defineCard({
