@@ -28,7 +28,7 @@ import type { ObjectModel } from "../src/om/types.ts";
 import { hz } from "../src/shaping/engine/units.ts";
 import type { ShaperSpec } from "../src/shaping/engine/shapers.ts";
 import {
-	EI2_PRIOR, FAKE_CSV, NOW, RATE, config, drain, errorOf, fakeBoard, freshPre, kinds,
+	EI2_PRIOR, FAKE_CSV, NOW, RATE, board, config, drain, errorOf, fakeBoard, freshPre, kinds,
 	modelWith, ringPlan, testClock, type Fake, type FakeOptions,
 } from "./helpers/shapingMachine.ts";
 
@@ -120,6 +120,73 @@ test("a capture overwriting a file of the same name waits for the board's run co
 	const r = ready({ preexisting: ["ring_Xp0.csv", "ring_Xm0.csv"], fileAfterPolls: 2 });
 	const events = await drain(r.proc.run(r.conn, () => r.model, testClock()));
 	assert.deepEqual(kinds(events), ["step", "capture", "step", "capture", "done", "restored"]);
+});
+
+// --- the file exists before its samples do ----------------------------------
+//
+// The failure this section exists for, from Gabe's machine on 2026-08-23: a
+// sweep took the file NAME as proof, moved on while the board was still
+// writing 184 KB of samples into it, and pass 2's M956 queued behind that
+// write until the run died one capture in.
+
+test("a board still writing the capture is waited for, not read", async () => {
+	const r = ready({ dumpPolls: 6 });
+	const events = await drain(r.proc.run(r.conn, () => r.model, testClock()));
+	assert.deepEqual(kinds(events), ["step", "capture", "step", "capture", "done", "restored"]);
+	// The entry existed from the FIRST listing of each step. Reading it then is
+	// precisely the bug, so the proof is the ordering: nothing was downloaded
+	// until the dump had run its six polls and the counter had ticked.
+	assert.equal(r.downloadedAfterListings.length, 2);
+	assert.ok(r.downloadedAfterListings[0]! >= 7, `first read after ${r.downloadedAfterListings[0]} listings, expected the file to have settled first`);
+});
+
+test("a file that appears and is never finished fails, and is never read", async () => {
+	const r = ready({ dumpPolls: 1000 });
+	const events = await drain(r.proc.run(r.conn, () => r.model, testClock()));
+	assert.deepEqual(kinds(events), ["step", "failed", "restored"]);
+	assert.match(errorOf(events), /ring_Xp0\.csv appeared in .* but was still being written/);
+	assert.deepEqual(r.downloaded, [], "a half-written capture must never reach the fitter");
+});
+
+test("a stale file of the right name is refused: the run counter never ticked", async () => {
+	// The name is there from the start and never changes size — last week's
+	// capture — and the board never runs, so nothing dates the file to now.
+	const r = ready({ preexisting: ["ring_Xp0.csv"], fileAfterPolls: 1000 });
+	const events = await drain(r.proc.run(r.conn, () => r.model, testClock()));
+	assert.deepEqual(kinds(events), ["step", "failed", "restored"]);
+	assert.match(errorOf(events), /ring_Xp0\.csv is in .* but the board never reported a finished capture/);
+	assert.deepEqual(r.downloaded, [], "a file the board never claimed is not this run's capture");
+});
+
+test("a download without the board's trailer is not a finished capture", async () => {
+	// The samples are there but the `Rate n, overflows n` line RRF writes LAST
+	// is not, so the transfer had not finished when the bytes were fetched.
+	const r = ready({ download: () => "Sample,X,Y,Z\n0,0.01,0.02,0.03\n" });
+	const events = await drain(r.proc.run(r.conn, () => r.model, testClock()));
+	assert.deepEqual(kinds(events), ["step", "failed", "restored"]);
+	assert.match(errorOf(events), /without the "Rate n, overflows n" line/);
+	assert.ok(r.downloaded.length > 1, "it kept trying within the budget rather than accepting the first partial read");
+});
+
+test("a board reporting no accelerometer run counter refuses BEFORE it is moved", async () => {
+	const boards = [board(0, false), board(20, true, null)];
+	const model = modelWith({ boards });
+	const planned = planProcedure(ringPlan({ repeats: 1 }), freshPre({ boards }), config(), NOW, RATE);
+	assert.equal(planned.ok, true);
+	if (!planned.ok) return;
+	const fake = fakeBoard(model);
+	const events = await drain(planned.proc.run(fake.conn, () => model, testClock()));
+	assert.deepEqual(kinds(events), ["step", "failed", "restored"]);
+	assert.match(errorOf(events), /not reporting an accelerometer run counter for P20\.0/);
+	assert.deepEqual(fake.sent, [OFF], "the carriage never moved: only the restore went out");
+});
+
+test("a rejected request AND no capture names both pieces of evidence", async () => {
+	const r = ready({ fileAfterPolls: 1000, onSend: (code) => { if (code.startsWith("M956")) throw new Error("signal timed out"); } });
+	const events = await drain(r.proc.run(r.conn, () => r.model, testClock()));
+	assert.deepEqual(kinds(events), ["step", "failed", "restored"]);
+	assert.match(errorOf(events), /signal timed out/, "the rejected request is still named");
+	assert.match(errorOf(events), /no capture named ring_Xp0\.csv appeared/, "and so is the absent file");
 });
 
 // --- refusing rather than correcting ----------------------------------------

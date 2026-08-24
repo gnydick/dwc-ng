@@ -1,7 +1,7 @@
 import { createBaseModel, POLLED_KEYS, AMBIENT, type Om } from "./snapshot.ts";
 import { VirtualSD } from "./files.ts";
 import { executeGCode } from "./gcode.ts";
-import { AccelBank } from "./accelerometer.ts";
+import { AccelBank, advanceCaptures } from "./accelerometer.ts";
 import type { Scenario, ScenarioEvent } from "./scenarios/types.ts";
 
 /**
@@ -161,6 +161,9 @@ export class Machine {
 		this.advanceHeaters(ms);
 		this.advanceFans();
 		this.advanceJob(ms);
+		// An accelerometer capture is not over when the move is: the samples come
+		// back off the toolboard afterwards, and only then do runs/points move.
+		advanceCaptures(this);
 
 		// Fire due scenario events (once each)
 		while (this.pendingEvents.length > 0 && this.pendingEvents[0]!.at <= this.now) {

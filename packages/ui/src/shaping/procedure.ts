@@ -19,6 +19,7 @@ import type { ConnectorReads, ConnectorWrites, GcodeCommand } from "@dwc-ng/conn
 import { cmd, type AccelAddr } from "../control/commands.ts";
 import type { Envelope, ShapingConfig } from "../config/types.ts";
 import type { ObjectModel, Shaping } from "../om/types.ts";
+import { parseCapture } from "./engine/capture.ts";
 import { SHAPER_TYPES, type ShaperSpec, type ShaperType } from "./engine/shapers.ts";
 import { DECAY_FLOOR, FIT_DEFAULTS } from "./engine/fit.ts";
 import { hz, mm, seconds, type Hz, type Mm, type MmPerS, type MmPerS2, type Seconds } from "./engine/units.ts";
@@ -326,14 +327,14 @@ export class Procedure {
 	 * Three things this deliberately does NOT do. It does not correct a
 	 * position: a carriage that is not where the plan expects ends the run,
 	 * because moving it there would be this UI deciding where the machine
-	 * ought to be. It does not assume a capture happened: the file has to turn
-	 * up, and when it is overwriting a file of the same name the board's own
-	 * run counter has to tick as well, since a name alone cannot tell
-	 * yesterday's capture from today's. And it does not treat a rejected
-	 * request inside a capture step as a failure by itself — a long move can
-	 * outlive the HTTP timeout while the board carries on perfectly well, so
-	 * the evidence decides and the rejection is reported only if no capture
-	 * ever arrives.
+	 * ought to be. It does not assume a capture happened: a NAME IS NOT A
+	 * CAPTURE — the board creates the file and then streams the samples into
+	 * it, so the entry exists long before its contents do, and every one of
+	 * `awaitCapture`'s three proofs has to line up before the file is read.
+	 * And it does not treat a rejected request inside a capture step as a
+	 * failure by itself — a long move can outlive the HTTP timeout while the
+	 * board carries on perfectly well, so the evidence decides and the
+	 * rejection is reported only if no capture ever arrives.
 	 *
 	 * `om` is called fresh before every step rather than captured once: the
 	 * whole point of the check is to see what the machine is doing NOW.
@@ -353,17 +354,22 @@ export class Procedure {
 
 				yield { kind: "step", index, label: step.label };
 
-				const watch = step.capture === undefined
-					? null
-					: await beginWatch(conn, om(), this.pre.accel, step.capture);
+				// Before the codes go out, so a board that cannot prove a capture
+				// is refused while the carriage is still standing still.
+				const watching = beginWatch(om(), this.pre.accel, step.capture);
+				if (watching.kind === "no-counter") {
+					yield { kind: "failed", error: `${where}: ${noCounter(this.pre.accel)}` };
+					return;
+				}
 				const rejected = await sendAll(conn, step.codes);
 
-				if (watch === null) {
+				if (watching.kind === "none") {
 					if (rejected === null) continue;
 					yield { kind: "failed", error: `${where}: ${describe(rejected.failed)}` };
 					return;
 				}
 
+				const watch = watching.watch;
 				const outcome = await awaitCapture(conn, om, watch, clock);
 				if (outcome.ok) {
 					yield { kind: "capture", file: watch.file, csv: outcome.csv };
@@ -1255,62 +1261,186 @@ function positionMismatch(om: ObjectModel, expect: Point): string | null {
 type CaptureWatch = {
 	readonly file: string;
 	readonly path: string;
-	readonly existedBefore: boolean;
-	readonly runsBefore: number | null;
+	/**
+	 * The board's completed-run count when this watch opened.
+	 *
+	 * A `number`, never `number | null`. A watch that could not state what the
+	 * counter read has nothing to compare against, and the only honest thing to
+	 * do with one is refuse — so `beginWatch` answers `no-counter` instead of
+	 * building it, and no code below has to ask whether the baseline is
+	 * knowable.
+	 */
+	readonly runsBefore: number;
 	readonly accel: AccelAddr;
-	/** How long this capture may take to appear — carried on the watch rather
-	 *  than passed alongside it, so `awaitCapture` cannot be called with a
-	 *  budget belonging to a different capture, or with none. */
+	/** How long this capture has to appear AND finish — carried on the watch
+	 *  rather than passed alongside it, so `awaitCapture` cannot be called with
+	 *  a budget belonging to a different capture, or with none. */
 	readonly budgetMs: number;
 };
+
+/**
+ * What `beginWatch` found: a step that records nothing, a board that cannot
+ * prove a capture, or the watch itself.
+ *
+ * Three cases rather than a nullable watch, because "this step has no capture"
+ * and "this board has no run counter" are opposite answers, and collapsing
+ * them would send a recording step's codes to a board that could never prove
+ * it recorded.
+ */
+type WatchResult =
+	| { readonly kind: "none" }
+	| { readonly kind: "no-counter" }
+	| { readonly kind: "watch"; readonly watch: CaptureWatch };
 
 type CaptureOutcome =
 	| { readonly ok: true; readonly csv: string }
 	| { readonly ok: false; readonly cancelled: true }
 	| { readonly ok: false; readonly cancelled: false; readonly reason: string };
 
+/** The sentence for a board that is not reporting
+ *  `boards[].accelerometer.runs`. Stated once, here, because it is the same
+ *  fact whichever step first notices it. */
+function noCounter(accel: AccelAddr): string {
+	return `the board is not reporting an accelerometer run counter for P${String(accel)}, `
+		+ "so a finished capture cannot be told from a file that is still being written";
+}
+
 /**
- * What the accelerometer directory and the board's run counter looked like
- * before the step went out.
+ * The board's completed-run count at this address, or null when it is not
+ * reporting one.
  *
- * A listing we could not read counts as "the name was already there", which is
- * the strict reading: it forces the run counter to tick before any file is
- * accepted, so a failed pre-list can never turn a stale capture into a fresh
- * one.
+ * Parse, don't trust, for the same reason `travelAcceleration` does it: the
+ * declared type says `number`, but the live d99fn patch route never meets
+ * `conformModelKey`, so the declaration is a claim the store does not enforce.
  */
-async function beginWatch(conn: RunConnector, om: ObjectModel, accel: AccelAddr, expect: CaptureExpectation): Promise<CaptureWatch> {
-	const before = await listCaptures(conn);
+function runsOf(om: ObjectModel, accel: AccelAddr): number | null {
+	const raw: unknown = accelerometerOf(om, accel)?.runs;
+	return typeof raw === "number" && Number.isFinite(raw) ? raw : null;
+}
+
+/**
+ * Open the watch for a step, reading the baseline its run counter will be
+ * measured against.
+ *
+ * There is deliberately no pre-listing of the capture directory here any more.
+ * It existed so that a name ABSENT beforehand could stand in for proof, and
+ * that shortcut is what let a run proceed off a file the board had only just
+ * created; every capture now waits for the counter, which subsumes it — a name
+ * decides nothing at all now, new or not. Dropping it also removes one request
+ * per capture from a server that has very few to give.
+ */
+function beginWatch(om: ObjectModel, accel: AccelAddr, expect: CaptureExpectation | undefined): WatchResult {
+	if (expect === undefined) return { kind: "none" };
+	const runsBefore = runsOf(om, accel);
+	if (runsBefore === null) return { kind: "no-counter" };
 	return {
-		file: expect.file,
-		path: `${CAPTURE_DIR}/${expect.file}`,
-		existedBefore: before === null || before.has(expect.file),
-		runsBefore: accelerometerOf(om, accel)?.runs ?? null,
-		accel,
-		budgetMs: expect.budgetMs,
+		kind: "watch",
+		watch: { file: expect.file, path: `${CAPTURE_DIR}/${expect.file}`, runsBefore, accel, budgetMs: expect.budgetMs },
 	};
 }
 
-/** The file names in the capture directory, or null when the listing failed —
- *  a directory we could not read is not an empty directory. */
-async function listCaptures(conn: RunConnector): Promise<Set<string> | null> {
+/**
+ * The size of one file in the capture directory, or null when it is not usably
+ * there.
+ *
+ * A listing that failed reads as null, which is the strict answer: a directory
+ * we could not read is not an empty directory, and it is never evidence of
+ * anything. An entry without a usable size reads as null for the same reason —
+ * "the board did not say how big it is" must not be allowed to look like "the
+ * board says it has stopped growing".
+ */
+async function captureSize(conn: RunConnector, file: string): Promise<number | null> {
 	try {
-		const entries = await conn.list(CAPTURE_DIR);
-		return new Set(entries.filter((e) => e.type === "f").map((e) => e.name));
+		const entry = (await conn.list(CAPTURE_DIR)).find((e) => e.type === "f" && e.name === file);
+		if (entry === undefined) return null;
+		return typeof entry.size === "number" && Number.isFinite(entry.size) ? entry.size : null;
 	} catch {
 		return null;
 	}
 }
 
 /**
- * Wait for the board to produce the capture, then fetch it.
+ * Why a capture is not readable yet. Each value is a different job for the
+ * operator and carries its own sentence in `reasonFor`.
+ */
+type Waiting = "absent" | "ran-without-file" | "growing" | "stale" | "truncated";
+
+/** `read` is the one value that unlocks the download; everything else is a
+ *  reason to keep waiting. `truncated` is not in `Gate` because it is only
+ *  knowable once the bytes are in hand. */
+type Gate = "read" | Exclude<Waiting, "truncated">;
+
+/**
+ * The decision, as a total function of the three things a poll can establish.
  *
- * Two pieces of evidence, because neither is sufficient alone. The FILE is
- * what we need — it carries the samples — but M956 overwrites, so a file of
- * the right name may be last week's. The board's RUN COUNTER says a capture
- * completed but not which one, and it is the only signal available when the
- * request that armed the capture timed out. So a pre-existing name has to be
- * accompanied by a tick, and a name that was not there before speaks for
- * itself.
+ * A size of zero is a file that was created, not one that was written. A size
+ * that moved since the previous poll is a dump still in flight. Two equal,
+ * non-zero readings is the directory itself saying the writing has stopped —
+ * the question "has the dump finished?" asked rather than inferred.
+ *
+ * The run counter answers a different question, IDENTITY: M956 overwrites, so
+ * a settled file of the right name may be last week's, and only a counter that
+ * has moved since this watch opened says the board ran for us.
+ */
+function gateFor(size: number | null, previousSize: number | null, completed: boolean): Gate {
+	if (size === null) return completed ? "ran-without-file" : "absent";
+	if (size <= 0 || size !== previousSize) return "growing";
+	return completed ? "read" : "stale";
+}
+
+/** One sentence per reason, exhaustively. A state added without one is a
+ *  compile error rather than a capture misreported as "never appeared". */
+function reasonFor(waiting: Waiting, watch: CaptureWatch): string {
+	const within = `${(watch.budgetMs / 1000).toFixed(1)} s`;
+	switch (waiting) {
+		case "absent":
+			return `no capture named ${watch.file} appeared in ${CAPTURE_DIR} within ${within}`;
+		case "ran-without-file":
+			return `the board finished a capture but ${watch.file} never appeared in ${CAPTURE_DIR} within ${within}`;
+		case "growing":
+			return `${watch.file} appeared in ${CAPTURE_DIR} but was still being written ${within} later — its size was still changing`;
+		case "stale":
+			return `${watch.file} is in ${CAPTURE_DIR} but the board never reported a finished capture within ${within}, so that file is not this one`;
+		case "truncated":
+			return `${watch.file} was downloaded without the "Rate n, overflows n" line the board writes last, so it was still incomplete after ${within}`;
+		default: {
+			const unhandled: never = waiting;
+			throw new Error(`unhandled capture state: ${String(unhandled)}`);
+		}
+	}
+}
+
+/**
+ * Wait until the board has PROVED it wrote this capture, then hand back its
+ * text.
+ *
+ * @invariant a-capture-is-proved-not-named
+ * @rung 6  choke-point over a total decision — this is the only route from a
+ *          step to a capture's text: the download call lives inside this
+ *          function, the `capture` event carries what it returns and nothing
+ *          else, and the only value that reaches that call is the `read` arm
+ *          of `gateFor`, a total function of (size, previous size, counter
+ *          moved). Three proofs have to line up and none of them is a name.
+ *          The DIRECTORY says the file has stopped growing (two equal,
+ *          non-zero sizes). The OBJECT MODEL says the board finished a run
+ *          since this watch opened, which is what dates the file to this pass
+ *          rather than to last week's. The BYTES carry the
+ *          `Rate n, overflows n` line RRF writes last, checked through
+ *          `parseCapture` — the same parser the fitter is gated on, so there is
+ *          no second idea in this codebase of what a complete capture looks
+ *          like. Every other state is a `Waiting`, and `reasonFor` is an
+ *          exhaustive switch with a `never` arm, so a state added without its
+ *          own sentence stops compilation. Not rung 7: `Gate` is a string
+ *          union, so a wrong edit inside `gateFor`'s three lines still
+ *          compiles — what the types hold is that there is exactly one such
+ *          place and that no caller can reach a capture around it
+ * @why RRF creates the file and then streams the samples into it off the CAN
+ *      toolboard, so the directory entry exists long before its contents do.
+ *      On 2026-08-23 a sweep took the name as proof, accepted pass 1 while the
+ *      board was still writing it, and pass 2's M956 queued behind that write
+ *      until the run died one capture in. A name proves a file was CREATED and
+ *      says nothing about whether a capture FINISHED — and a half-written file
+ *      fits to a confident, wrong frequency
  *
  * The budget comes off the WATCH, which got it from the same `CaptureTiming`
  * that sized the M956. A flat budget was a false failure waiting for a longer
@@ -1319,31 +1449,35 @@ async function listCaptures(conn: RunConnector): Promise<Set<string> | null> {
  */
 async function awaitCapture(conn: RunConnector, om: () => ObjectModel, watch: CaptureWatch, clock: Clock): Promise<CaptureOutcome> {
 	const deadline = clock.now() + watch.budgetMs;
-	let sawRun = false;
+	// Sticky: `runs` only ever climbs, so a tick seen at any poll stays true
+	// even if the boards subtree is momentarily unreadable afterwards.
+	let completed = false;
+	let previousSize: number | null = null;
+	let waiting: Waiting = "absent";
 	for (;;) {
 		if (clock.signal?.aborted === true) return { ok: false, cancelled: true };
 
-		const names = await listCaptures(conn);
-		const runsNow = accelerometerOf(om(), watch.accel)?.runs ?? null;
-		const ticked = watch.runsBefore !== null && runsNow !== null && runsNow > watch.runsBefore;
-		sawRun ||= ticked;
+		const size = await captureSize(conn, watch.file);
+		const runsNow = runsOf(om(), watch.accel);
+		completed ||= runsNow !== null && runsNow > watch.runsBefore;
 
-		if (names !== null && names.has(watch.file) && (!watch.existedBefore || ticked)) {
-			return { ok: true, csv: await conn.download(watch.path) };
+		const gate = gateFor(size, previousSize, completed);
+		previousSize = size;
+		if (gate === "read") {
+			const csv = await conn.download(watch.path);
+			// ONLY a missing trailer means "not finished yet". A capture with
+			// overflows, or one with no samples at all, is a COMPLETE file with
+			// a different problem: waiting for those to improve would burn the
+			// budget and then report the wrong thing, so they go on to the
+			// fitter, which has a sentence for each.
+			const parsed = parseCapture(csv);
+			if (parsed.ok || parsed.error.kind !== "no-trailer") return { ok: true, csv };
+			waiting = "truncated";
+		} else {
+			waiting = gate;
 		}
 
-		if (clock.now() >= deadline) {
-			// The two diagnoses are genuinely different jobs for the operator:
-			// one is a board that captured and could not write, the other is a
-			// board that never captured at all.
-			return {
-				ok: false,
-				cancelled: false,
-				reason: sawRun
-					? `the board finished a capture but ${watch.file} never appeared in ${CAPTURE_DIR}`
-					: `no capture named ${watch.file} appeared in ${CAPTURE_DIR} within ${(watch.budgetMs / 1000).toFixed(1)} s`,
-			};
-		}
+		if (clock.now() >= deadline) return { ok: false, cancelled: false, reason: reasonFor(waiting, watch) };
 		await clock.sleep(CAPTURE_POLL_MS);
 	}
 }

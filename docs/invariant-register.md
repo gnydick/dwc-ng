@@ -21,7 +21,7 @@ and invariant claim mentions 13 -> 23, so no mechanism was deleted and no
 claim was lost in the gap. From here the ratchets make a dropped rung visible
 in the diff that drops it.
 
-**Totals:** 124 invariants · 101 at rung 6 or above · 23 below rung 6 (ceiling 23).
+**Totals:** 125 invariants · 102 at rung 6 or above · 23 below rung 6 (ceiling 23).
 
 ## bed
 
@@ -745,13 +745,13 @@ in the diff that drops it.
 
 ### `mock-duet/capture-files-come-only-from-the-synth` — rung 6
 
-**Mechanism.** choke-point — this is the sole route from a MOVE to a file under `0:/sys/accelerometer`, and it consumes the armed record before it writes, so one M956 can produce at most one file. It does not own the directory: `rr_upload` (server.ts) and the DSF `PUT /machine/file` route (dsf.ts) write arbitrary bytes to any path, exactly as a real board lets you upload a CSV there
+**Mechanism.** choke-point — this is the sole route from a MOVE to a file under `0:/sys/accelerometer`, and it consumes the armed record before it writes, so one M956 can produce at most one file. The synth runs here, once, and its text is carried on the queued `Dump` until `advanceCaptures` lands it: `writeCapture` is the only call either half makes to the SD card, so the two moments are one route, not two. It does not own the directory: `rr_upload` (server.ts) and the DSF `PUT /machine/file` route (dsf.ts) write arbitrary bytes to any path, exactly as a real board lets you upload a CSV there
 
 **Why.** a second route from a move would be a capture whose contents were not produced by the model the tests fit against, and the Shaping Lab's whole claim is that the numbers it shows came from the motion it commanded. An uploaded file is a different thing: the operator put it there deliberately, and the real board allows it too
 
 **Debt — promotion.** promotion to 7 is a `CaptureFile` type whose sole constructor takes the synth's output, with `VirtualSD.write` refusing plain bytes under that directory. That needs the SD store to know about capture paths, which is a bigger change to a shared type than this earns today.
 
-`packages/mock-duet/src/accelerometer.ts:572`
+`packages/mock-duet/src/accelerometer.ts:639`
 
 ### `mock-duet/captures-are-reproducible` — rung 6
 
@@ -761,7 +761,7 @@ in the diff that drops it.
 
 **Debt — promotion.** promotion to 7 is a branded `CaptureCsv` string type minted only here, so a hand-built CSV cannot reach the SD write in `onMove`. It is worth doing at the same time as the `CaptureFile` promotion filed under capture-files-come-only-from-the-synth, not before.
 
-`packages/mock-duet/src/accelerometer.ts:280`
+`packages/mock-duet/src/accelerometer.ts:287`
 
 ### `mock-duet/every-shaper-is-modelled` — rung 8
 
@@ -769,7 +769,7 @@ in the diff that drops it.
 
 **Why.** a shaper the mock silently failed to model would leave the ring at full height, and the Verify step would report a real shaper as having done nothing — a wrong verdict about the machine, produced by the test rig rather than measured
 
-`packages/mock-duet/src/accelerometer.ts:111`
+`packages/mock-duet/src/accelerometer.ts:118`
 
 ### `mock-duet/one-parameter-reader` — rung 6
 
@@ -789,7 +789,7 @@ in the diff that drops it.
 
 **Debt — promotion.** promotion to 7 needs the object model to be typed rather than `Record<string, any>`, which snapshot.ts holds open on purpose so the mock can replay captured responses verbatim.
 
-`packages/mock-duet/src/accelerometer.ts:629`
+`packages/mock-duet/src/accelerometer.ts:732`
 
 ### `mock-duet/sole-frame-parser` — rung 7
 
@@ -840,6 +840,14 @@ in the diff that drops it.
 `packages/ui/src/om/types.ts:488`
 
 ## shaping
+
+### `shaping/a-capture-is-proved-not-named` — rung 6
+
+**Mechanism.** choke-point over a total decision — this is the only route from a step to a capture's text: the download call lives inside this function, the `capture` event carries what it returns and nothing else, and the only value that reaches that call is the `read` arm of `gateFor`, a total function of (size, previous size, counter moved). Three proofs have to line up and none of them is a name. The DIRECTORY says the file has stopped growing (two equal, non-zero sizes). The OBJECT MODEL says the board finished a run since this watch opened, which is what dates the file to this pass rather than to last week's. The BYTES carry the `Rate n, overflows n` line RRF writes last, checked through `parseCapture` — the same parser the fitter is gated on, so there is no second idea in this codebase of what a complete capture looks like. Every other state is a `Waiting`, and `reasonFor` is an exhaustive switch with a `never` arm, so a state added without its own sentence stops compilation. Not rung 7: `Gate` is a string union, so a wrong edit inside `gateFor`'s three lines still compiles — what the types hold is that there is exactly one such place and that no caller can reach a capture around it
+
+**Why.** RRF creates the file and then streams the samples into it off the CAN toolboard, so the directory entry exists long before its contents do. On 2026-08-23 a sweep took the name as proof, accepted pass 1 while the board was still writing it, and pass 2's M956 queued behind that write until the run died one capture in. A name proves a file was CREATED and says nothing about whether a capture FINISHED — and a half-written file fits to a confident, wrong frequency The budget comes off the WATCH, which got it from the same `CaptureTiming` that sized the M956. A flat budget was a false failure waiting for a longer recording: at 5,700 samples the file legitimately cannot exist for 4.2 s, and "no capture appeared" would have been reported for a run that was working.
+
+`packages/ui/src/shaping/procedure.ts:1417`
 
 ### `shaping/a-filter-finds-rows-it-does-not-choose-them` — rung 6
 
@@ -985,7 +993,7 @@ in the diff that drops it.
 
 **Debt — promotion.** the NUMBER is a reading of the wire format, not a measurement: RRF's source is not vendored here and its M956 docs state no bound. Promote by walking a real toolboard up until it refuses and pinning the value that came back, or by citing the firmware's own field width. Until then the claim is only that the UI refuses before the board does, which holds for any true bound at or below this one
 
-`packages/ui/src/shaping/procedure.ts:735`
+`packages/ui/src/shaping/procedure.ts:741`
 
 ### `shaping/one-capture-timing` — rung 8
 
@@ -993,7 +1001,7 @@ in the diff that drops it.
 
 **Why.** the constant this replaced was 1500 ms of dwell beside a free-floating `samples` setting, and on 2026-08-23 a sweep recorded 7.5 s against it — every following pass landed inside the previous pass's file. The two numbers had no way to know about each other, and neither knew about the move
 
-`packages/ui/src/shaping/procedure.ts:779`
+`packages/ui/src/shaping/procedure.ts:785`
 
 ### `shaping/one-motion-field-table` — rung 6
 
@@ -1017,7 +1025,7 @@ in the diff that drops it.
 
 **Why.** the machine's prior shaper is knowable only BEFORE the run changes it. A restore derived from live state after a verify pass would faithfully re-apply the candidate under test and leave the operator believing the machine was back to baseline — a wrong belief about a setting that changes every subsequent print
 
-`packages/ui/src/shaping/procedure.ts:248`
+`packages/ui/src/shaping/procedure.ts:249`
 
 ### `shaping/results-file-is-parsed-not-cast` — rung 6
 
@@ -1045,7 +1053,7 @@ in the diff that drops it.
 
 **Why.** `samples / rate` is the whole recording. M955's S parameter PERSISTS on the board (reference/duet-gcode.md, M955 notes: "These configuration settings persist until they are changed"), so the rate in force is whatever somebody last set — 1375 Hz on Gabe's toolboard, but nothing in this UI put it there. A constant here would silently mis-size every capture on any machine configured differently, and the error is proportional: at half the assumed rate every recording is twice as long as planned and the dwell derived from it covers half of it
 
-`packages/ui/src/shaping/procedure.ts:601`
+`packages/ui/src/shaping/procedure.ts:607`
 
 ### `shaping/shaping-motion-only-via-procedure` — rung 7
 
@@ -1053,7 +1061,7 @@ in the diff that drops it.
 
 **Why.** this is the feature's whole safety story. The lab sends 200 mm/s moves with nobody watching the axis, and the difference between a capture and a crash into the frame is whether those four facts were true at the moment of planning. A second way to build a run is a second place to forget one of them
 
-`packages/ui/src/shaping/procedure.ts:201`
+`packages/ui/src/shaping/procedure.ts:202`
 
 ### `shaping/step-readiness-has-one-answer` — rung 6
 

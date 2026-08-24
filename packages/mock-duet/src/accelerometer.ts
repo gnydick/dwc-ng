@@ -38,6 +38,13 @@ const RESOLUTIONS = [8, 10, 12] as const;
 const DEFAULT_RESOLUTION = 10;
 const DEFAULT_ORIENTATION = 20;
 const CAPTURE_DIR = "0:/sys/accelerometer";
+/**
+ * The first line of every capture — and, for the window between the move and
+ * the end of the transfer, the ONLY line. A real board creates the file and
+ * then streams the samples into it off the CAN toolboard, so an entry exists
+ * with almost nothing in it for as long as the dump takes.
+ */
+const CAPTURE_HEADER = "Sample,X,Y,Z";
 /** 1 g in mm/s², so a pulse of a mm/s² reads a/G g on the moving axis. */
 const G_MM_S2 = 9806.65;
 /** Sensor noise, 1 sigma, on every axis of every sample. */
@@ -316,7 +323,7 @@ export function synthCapture(o: SynthOptions): string {
 	const forcedG = forced === undefined ? 0 : forced.gAt100 * (speed / 100);
 
 	const noise = gaussian(seedOf(o));
-	const rows: string[] = ["Sample,X,Y,Z"];
+	const rows: string[] = [CAPTURE_HEADER];
 	for (let i = 0; i < o.samples; i++) {
 		const t = i / o.rate;
 		let moving: number;
@@ -396,6 +403,27 @@ type UnitConfig = { rate: number; resolution: number };
 type Armed = { readonly board: number; readonly samples: number; readonly path: string };
 
 /**
+ * A capture whose file exists and whose samples are still on their way off the
+ * toolboard.
+ *
+ * This state is the whole reason the type exists. Modelling the write as
+ * instantaneous — the file and the run counter appearing together, the moment
+ * the move ended — made the mock unable to produce the one situation a client
+ * most needs to survive: a directory entry that is not yet a capture. A UI
+ * that treated the NAME as proof passed every test here and then stopped a
+ * real sweep after one pass on 2026-08-23, because the board was still writing
+ * 184 KB into the file it had just created.
+ */
+type Dump = {
+	readonly board: number;
+	readonly path: string;
+	readonly samples: number;
+	readonly csv: string;
+	/** Simulated ms (Machine.now) at which the transfer finishes. */
+	readonly dueAt: number;
+};
+
+/**
  * Per-board accelerometer configuration and the pending M956.
  *
  * Presence and orientation are NOT stored here — they live in
@@ -406,8 +434,20 @@ type Armed = { readonly board: number; readonly samples: number; readonly path: 
 export class AccelBank {
 	/** The mechanical fingerprint the synth rings at. Scenarios set it. */
 	modes: MockModes = DEFAULT_MODES;
+	/**
+	 * How long the board spends getting a finished capture into its file, as a
+	 * multiple of the recording's own length.
+	 *
+	 * 1 is a deliberately unhurried board: the samples come back off CAN about
+	 * as fast as they were taken. A scenario or a test that wants the write to
+	 * be free sets 0, which is the OLD behaviour and is available on purpose —
+	 * "the file lands complete" is a legitimate machine to model, it is just
+	 * not the only one.
+	 */
+	writeFactor = 1;
 	private readonly units = new Map<number, UnitConfig>();
 	private armed: Armed | null = null;
+	private dumps: Dump[] = [];
 
 	config(board: number): UnitConfig {
 		let unit = this.units.get(board);
@@ -429,10 +469,25 @@ export class AccelBank {
 		return pending;
 	}
 
-	/** M999: firmware config goes, the machine's resonances do not. */
+	/** A capture whose file now exists and whose samples are still coming. */
+	begin(dump: Dump): void {
+		this.dumps.push(dump);
+	}
+
+	/** The transfers finished by `now`, consumed. */
+	finished(now: number): Dump[] {
+		const done = this.dumps.filter(d => d.dueAt <= now);
+		this.dumps = this.dumps.filter(d => d.dueAt > now);
+		return done;
+	}
+
+	/** M999: firmware config goes, the machine's resonances do not. An
+	 *  in-flight transfer does not survive a reset either — a reset board is
+	 *  not still writing a file for a move it no longer remembers. */
 	reset(): void {
 		this.units.clear();
 		this.armed = null;
+		this.dumps = [];
 	}
 }
 
@@ -566,16 +621,31 @@ function defaultCaptureName(machine: Machine): string {
 	return `${stamp === "" ? "capture" : stamp}.csv`;
 }
 
+/** The one place this module puts bytes on the SD card. Both halves of a
+ *  capture — the entry the move creates and the samples the transfer finishes
+ *  — go through here, so "what can appear under the capture directory" has a
+ *  single answer even though it now happens in two moments. */
+function writeCapture(machine: Machine, path: string, text: string): void {
+	const stamp = String(machine.om.state.time ?? "");
+	machine.sd.ensureDir(parentOf(path), stamp);
+	machine.sd.write(path, new TextEncoder().encode(text), stamp);
+	machine.bumpVolume(0);
+}
+
 /**
- * The armed capture fires on the next move that has X or Y in it.
+ * The armed capture fires on the next move that has X or Y in it — creating
+ * the file, and starting the transfer that will eventually fill it.
  *
  * @invariant capture-files-come-only-from-the-synth
  * @rung 6  choke-point — this is the sole route from a MOVE to a file under
  *          `0:/sys/accelerometer`, and it consumes the armed record before it
- *          writes, so one M956 can produce at most one file. It does not own
- *          the directory: `rr_upload` (server.ts) and the DSF `PUT
- *          /machine/file` route (dsf.ts) write arbitrary bytes to any path,
- *          exactly as a real board lets you upload a CSV there
+ *          writes, so one M956 can produce at most one file. The synth runs
+ *          here, once, and its text is carried on the queued `Dump` until
+ *          `advanceCaptures` lands it: `writeCapture` is the only call either
+ *          half makes to the SD card, so the two moments are one route, not
+ *          two. It does not own the directory: `rr_upload` (server.ts) and the
+ *          DSF `PUT /machine/file` route (dsf.ts) write arbitrary bytes to any
+ *          path, exactly as a real board lets you upload a CSV there
  * @why a second route from a move would be a capture whose contents were not
  *      produced by the model the tests fit against, and the Shaping Lab's
  *      whole claim is that the numbers it shows came from the motion it
@@ -608,12 +678,45 @@ export function onMove(machine: Machine, dx: number, dy: number, speedMmS: numbe
 		modes: machine.accel.modes,
 		shaper: activeShaper(om),
 	});
-	machine.sd.ensureDir(parentOf(armed.path), String(om.state.time ?? ""));
-	machine.sd.write(armed.path, new TextEncoder().encode(csv), String(om.state.time ?? ""));
-	machine.bumpVolume(0);
-	accel.runs = (accel.runs ?? 0) + 1;
-	accel.points = (accel.points ?? 0) + armed.samples;
-	machine.bump("boards");
+	// The ENTRY, now — carrying the header and nothing else. The samples are
+	// still on the toolboard at this instant, and a client that reads the file
+	// here gets a CSV with no rows and no trailer, which is exactly what a real
+	// board hands back mid-transfer.
+	writeCapture(machine, armed.path, `${CAPTURE_HEADER}\n`);
+	machine.accel.begin({
+		board: armed.board,
+		path: armed.path,
+		samples: armed.samples,
+		csv,
+		// The samples come back off CAN at about the rate they were taken.
+		dueAt: machine.now + (armed.samples / unit.rate) * 1000 * machine.accel.writeFactor,
+	});
+}
+
+/**
+ * Land the transfers that have finished, in simulated time.
+ *
+ * The two counters move HERE and not in `onMove`, which is the whole point:
+ * `runs` and `points` describe a capture that is over, so a board that
+ * announced them while it was still writing would be lying about the one thing
+ * a client uses to tell a file from a capture.
+ *
+ * `points` is SET, not accumulated. Read off Gabe's live board 2026-08-23:
+ * toolboard CAN 20 reported `{"orientation": 41, "points": 7713, "runs": 344}`
+ * — 344 runs of a few thousand samples each would be millions if it were a
+ * total, and 7713 is a single pass's sample count, so it is the size of the
+ * last run. Whether RRF also moves it DURING a run is not knowable from one
+ * reading and nothing here depends on it.
+ */
+export function advanceCaptures(machine: Machine): void {
+	for (const dump of machine.accel.finished(machine.now)) {
+		writeCapture(machine, dump.path, dump.csv);
+		const accel = accelAt(machine.om, { board: dump.board, device: 0 });
+		if (accel === null) continue;
+		accel.runs = (accel.runs ?? 0) + 1;
+		accel.points = dump.samples;
+		machine.bump("boards");
+	}
 }
 
 function parentOf(path: string): string {
