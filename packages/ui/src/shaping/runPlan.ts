@@ -29,6 +29,7 @@
  *      second arithmetic for "where does this run start" — one for the drawing,
  *      one for the moving — is a promise that can be broken silently
  */
+import type { ShaperSpec } from "./engine/shapers.ts";
 import type { Envelope, ShapingDefaults } from "../config/types.ts";
 import { mm, mmPerS } from "./engine/units.ts";
 import type { Point } from "./preconditions.ts";
@@ -36,9 +37,35 @@ import type { Plan, RingPlan, SweepPlan } from "./procedure.ts";
 import { PLANAR_AXES } from "./procedure.ts";
 
 /** The two runs this card owns. Verify is work item G's, on its own card. */
-export type RunKind = "measure" | "sweep";
+export type RunKind = "measure" | "sweep" | "verify";
 
+/**
+ * The runs an operator picks between on the Capture card.
+ *
+ * `verify` is deliberately NOT here. It is not a run you choose and then
+ * configure — it is "re-measure with THAT shaper on", and which shaper is the
+ * whole content of the request. It is offered from the Candidates and status
+ * cards, where a candidate is selected, and reaches this module as a
+ * `RunRequest` that cannot be built without one.
+ */
 export const RUN_KINDS: readonly RunKind[] = ["measure", "sweep"];
+
+/**
+ * A run, with whatever that run needs to be planned.
+ *
+ * A union rather than `(kind, spec?)`, because a verify with no shaper is not a
+ * run that fails — it is a run that would silently re-measure the baseline and
+ * file the result as a verification of something. There is no spelling for it
+ * here: the spec lives in the verify arm and nowhere else.
+ *
+ * @invariant a-verify-run-names-the-shaper-it-installs
+ * @rung 8  illegal state unrepresentable — `runPlans` takes this union, so a
+ *          caller cannot ask for a verify without saying of what
+ */
+export type RunRequest =
+	| { readonly kind: "measure" }
+	| { readonly kind: "sweep" }
+	| { readonly kind: "verify"; readonly spec: ShaperSpec };
 
 /**
  * How many speeds a sweep ladder holds.
@@ -164,15 +191,27 @@ export function sweepPlans(defaults: ShapingDefaults, env: Envelope, prefix: str
  * to "what does it plan" is a compile error, not a button that arms and does
  * nothing.
  */
-export function runPlans(kind: RunKind, defaults: ShapingDefaults, env: Envelope, prefix: string): readonly Plan[] {
-	switch (kind) {
+export function runPlans(req: RunRequest, defaults: ShapingDefaults, env: Envelope, prefix: string): readonly Plan[] {
+	switch (req.kind) {
 		case "measure":
 			return measurePlans(defaults, env, prefix);
 		case "sweep":
 			return sweepPlans(defaults, env, prefix);
+		case "verify": {
+			// The SAME ring the baseline was measured with, wrapped so the
+			// procedure installs the shaper first. Same distance, same speed,
+			// same repeats: a verify measured differently from its baseline is
+			// a comparison of two things, and the ratio it produces would be
+			// meaningless.
+			const rings = measurePlans(defaults, env, prefix);
+			return rings.map((ring) => {
+				if (ring.kind !== "ring") throw new Error("a measure plan must be a ring");
+				return { kind: "verify", spec: req.spec, ring } as const;
+			});
+		}
 		default: {
-			const unhandled: never = kind;
-			throw new Error(`unknown run kind: ${String(unhandled)}`);
+			const unhandled: never = req;
+			throw new Error(`unknown run kind: ${String((unhandled as { kind: unknown }).kind)}`);
 		}
 	}
 }

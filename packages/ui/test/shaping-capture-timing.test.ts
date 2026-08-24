@@ -266,7 +266,7 @@ test("a run whose board will not report a rate refuses before it moves", async (
 	const model = modelWith();
 	const fake = fakeBoard(model, { accelReply: "Error: Accelerometer 20:0 not found" });
 	const states: MotionState[] = [];
-	const result = await runMotion("measure", {
+	const result = await runMotion({ kind: "measure" }, {
 		conn: fake.conn,
 		om: () => model,
 		cfg: () => config(),

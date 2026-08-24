@@ -40,7 +40,7 @@ import type { MotionOutcome, MotionState } from "./motionRun.ts";
 import { Preconditions } from "./preconditions.ts";
 import { planProcedure, readSampleRate, type Plan, type ProcEvent, type SampleRate } from "./procedure.ts";
 import type { CaptureRecord } from "./results.ts";
-import { plannedCaptureCount, runPlans, type RunKind } from "./runPlan.ts";
+import { plannedCaptureCount, runPlans, type RunKind, type RunRequest } from "./runPlan.ts";
 
 /** Everything a run needs from the outside world. A slice of the real
  *  interfaces, so the app hands over its connector directly. */
@@ -88,7 +88,8 @@ export type RunResult = {
  * captures are eight good captures, and discarding them because the ninth
  * failed would throw away a minute of machine time for tidiness.
  */
-export async function runMotion(kind: RunKind, deps: RunDeps): Promise<RunResult> {
+export async function runMotion(req: RunRequest, deps: RunDeps): Promise<RunResult> {
+	const kind: RunKind = req.kind;
 	const captures: RawCapture[] = [];
 	/** Has ANYTHING been sent to the machine? A refusal sends nothing, and the
 	 *  report must not discuss the machine's shaper after one. */
@@ -109,7 +110,7 @@ export async function runMotion(kind: RunKind, deps: RunDeps): Promise<RunResult
 		return finish({ kind: "refused", refusal: { kind: "no-envelope" } });
 	}
 
-	const plans = runPlans(kind, deps.cfg().defaults, envelope, deps.prefix);
+	const plans = runPlans(req, deps.cfg().defaults, envelope, deps.prefix);
 	expected = plannedCaptureCount(plans);
 	totalSteps = totalStepsOf(plans, kind);
 

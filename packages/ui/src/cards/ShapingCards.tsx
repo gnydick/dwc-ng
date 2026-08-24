@@ -48,7 +48,7 @@ import { type Candidate, customCandidate } from "../shaping/engine/rank.ts";
 import { convolve, type Impulses, SHAPER_TYPES, type ShaperSpec, zv } from "../shaping/engine/shapers.ts";
 import { seconds } from "../shaping/engine/units.ts";
 import { longestCapture, plannedSegments, type CaptureWindow, type Plan, type PlannedSegment } from "../shaping/procedure.ts";
-import { captureNameRange, defaultPrefix, envelopeText, plannedCaptureCount, RUN_KINDS, runOrigin, runPlans, safePrefix, type RunKind } from "../shaping/runPlan.ts";
+import { captureNameRange, defaultPrefix, envelopeText, plannedCaptureCount, RUN_KINDS, runOrigin, runPlans, safePrefix, type RunKind, type RunRequest } from "../shaping/runPlan.ts";
 import { commitMotionField, MOTION_FIELDS } from "../shaping/motionFields.ts";
 import { motionBad, motionBusy, motionProgress } from "../shaping/motionRun.ts";
 import { fitCapturesOf, runMotion } from "../shaping/runner.ts";
@@ -329,19 +329,19 @@ export function ShapingStatusBody(props: { ctx: CardCtx }) {
 	 * number this screen made up — which is also the state in which the step is
 	 * refused, so the button carries the reason instead.
 	 */
-	const runScope = (kind: RunKind): StepScope => {
+	const runScope = (req: RunRequest): StepScope => {
 		const env = cfg().envelope;
 		if (env === null) return { kind: "unknown" };
-		const n = plannedCaptureCount(runPlans(kind, cfg().defaults, env, defaultPrefix(kind, svc.tool())));
+		const n = plannedCaptureCount(runPlans(req, cfg().defaults, env, defaultPrefix(req.kind, svc.tool())));
 		return n > 0 ? { kind: "captures", n } : { kind: "unknown" };
 	};
 
 	const scopeFor = (step: ShapingStep): StepScope => {
 		switch (step) {
 			case "measure":
-				return runScope("measure");
+				return runScope({ kind: "measure" });
 			case "sweep":
-				return runScope("sweep");
+				return runScope({ kind: "sweep" });
 			case "rank":
 				return { kind: "shapers", n: SHAPER_TYPES.length };
 			case "verify": {
@@ -618,9 +618,25 @@ export function ShapingCaptureBody(props: { ctx: CardCtx }) {
 	 * carriage actually is is drawn as its own marker, which is the honest
 	 * separation — here is the plan, here is you.
 	 */
+	/**
+	 * The run this card would start, as the thing that can actually be planned.
+	 *
+	 * `kind()` is what the operator picked; a request is that plus whatever the
+	 * run needs. Only `verify` needs anything — the shaper to install — and it
+	 * takes the Candidates card's selection, which is the same one the Verify
+	 * step is about. With nothing ranked there is no verify to request, so this
+	 * falls back to the measure the card was already showing rather than
+	 * inventing a spec.
+	 */
+	const request = createMemo((): RunRequest => {
+		if (kind() !== "verify") return { kind: kind() === "sweep" ? "sweep" : "measure" };
+		const pick = svc.results().candidates[svc.candidateIndex()];
+		return pick === undefined ? { kind: "measure" } : { kind: "verify", spec: pick.spec };
+	});
+
 	const plans = createMemo((): readonly Plan[] => {
 		const env = envelope();
-		return env === null ? [] : runPlans(kind(), defaults(), env, safeName());
+		return env === null ? [] : runPlans(request(), defaults(), env, safeName());
 	});
 
 	const segments = createMemo((): readonly PlannedSegment[] => {
@@ -719,8 +735,14 @@ export function ShapingCaptureBody(props: { ctx: CardCtx }) {
 		if (accel === null) return;
 		const slot = svc.beginMotion();
 		if (slot === null) return;
+		// Read ONCE, here. The completion path below decides what the captures
+		// ARE from this value, and a memo re-read after a minute of machine
+		// time could have moved on to a different candidate — which would file
+		// a verify of one shaper as a verify of another.
+		const req = request();
+		const baseline = svc.results().fingerprint;
 		void (async () => {
-			const result = await runMotion(want, {
+			const result = await runMotion(req, {
 				conn: props.ctx.connector,
 				om: () => props.ctx.om.om,
 				cfg,
@@ -755,7 +777,17 @@ export function ShapingCaptureBody(props: { ctx: CardCtx }) {
 				touched: result.touched,
 				restored: result.restored,
 			});
-			svc.setFitted(records);
+			// What these captures ARE, decided from the request that produced
+			// them rather than from anything read afterwards. A verify run
+			// measured the machine WITH a shaper on, so its fingerprint must
+			// never reach `setMeasurement` — `BatchPurpose` is what makes that
+			// unrepresentable rather than merely avoided here.
+			svc.setFitted(
+				records,
+				req.kind === "verify" && baseline !== null
+					? { kind: "verify", spec: req.spec, baseline }
+					: { kind: "baseline" },
+			);
 			svc.refreshBoard();
 		})();
 	};
@@ -777,7 +809,13 @@ export function ShapingCaptureBody(props: { ctx: CardCtx }) {
 			return;
 		}
 		setArmed(null);
-		void svc.saveMeasurement(tool);
+		// Two writers, and which one is not a choice made here: the batch says
+		// what it is. A verify batch has no route to `saveMeasurement` and a
+		// baseline has none to `saveVerified` (compose/services.ts,
+		// `a-shaped-fingerprint-cannot-become-a-baseline`).
+		const run = svc.runState();
+		if (run.kind === "fitted" && run.purpose.kind === "verify") void svc.saveVerified(tool);
+		else void svc.saveMeasurement(tool);
 	};
 
 	// The status card's step list does not run anything itself: it calls the
@@ -791,6 +829,14 @@ export function ShapingCaptureBody(props: { ctx: CardCtx }) {
 	svc.offer("sweep", () => {
 		setKind("sweep");
 		setArmed({ kind: "run", run: "sweep" });
+	});
+	// Verify is not a run the operator configures — it is "re-measure with THAT
+	// shaper on", and which shaper comes from the Candidates selection. Same
+	// two-press arming as the others, and the second press is still on this
+	// card, which is the one showing the map the carriage will follow.
+	svc.offer("verify", () => {
+		setKind("verify");
+		setArmed({ kind: "run", run: "verify" });
 	});
 
 	/**

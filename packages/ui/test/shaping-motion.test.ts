@@ -181,7 +181,7 @@ const ONE_REP: ShapingConfig = {
 
 test("a measure run drives both axes and comes back with every capture", async () => {
 	const h = harness({ cfg: ONE_REP });
-	const result = await runMotion("measure", h.deps);
+	const result = await runMotion({ kind: "measure" }, h.deps);
 	assert.equal(result.outcome.kind, "done", JSON.stringify(result.outcome));
 	assert.equal(result.captures.length, 4);
 	assert.deepEqual(result.captures.map(c => c.file), [
@@ -193,13 +193,13 @@ test("a measure run drives both axes and comes back with every capture", async (
 
 test("the shaper is put back once per leg — a measure run is two legs", async () => {
 	const h = harness({ cfg: ONE_REP });
-	await runMotion("measure", h.deps);
+	await runMotion({ kind: "measure" }, h.deps);
 	assert.equal(h.sent.filter(c => c === 'M593 P"none"').length, 2);
 });
 
 test("the last thing reported is always an ended state carrying the tally", async () => {
 	const h = harness({ cfg: ONE_REP });
-	await runMotion("measure", h.deps);
+	await runMotion({ kind: "measure" }, h.deps);
 	const last = h.states[h.states.length - 1]!;
 	assert.equal(last.kind, "ended");
 	if (last.kind !== "ended") return;
@@ -208,7 +208,7 @@ test("the last thing reported is always an ended state carrying the tally", asyn
 
 test("the step counter runs across the WHOLE run, not per leg", async () => {
 	const h = harness({ cfg: ONE_REP });
-	await runMotion("measure", h.deps);
+	await runMotion({ kind: "measure" }, h.deps);
 	const steps = h.states.filter(s => s.kind === "running").map(s => (s.kind === "running" ? s.step : 0));
 	// Four capture steps over two legs, counted 1..4 rather than 1,2,1,2.
 	assert.equal(Math.max(...steps), 4);
@@ -217,7 +217,7 @@ test("the step counter runs across the WHOLE run, not per leg", async () => {
 
 test("a run refused before anything is sent keeps its hands off the machine", async () => {
 	const h = harness({ cfg: { ...ONE_REP, envelope: null } });
-	const result = await runMotion("measure", h.deps);
+	const result = await runMotion({ kind: "measure" }, h.deps);
 	assert.equal(result.outcome.kind, "refused");
 	if (result.outcome.kind !== "refused") return;
 	assert.equal(result.outcome.refusal.kind, "no-envelope");
@@ -227,7 +227,7 @@ test("a run refused before anything is sent keeps its hands off the machine", as
 
 test("a machine that is not idle refuses, and the sentence is the planner's own", async () => {
 	const h = harness({ cfg: ONE_REP, model: modelWith({ status: "processing" }) });
-	const result = await runMotion("measure", h.deps);
+	const result = await runMotion({ kind: "measure" }, h.deps);
 	assert.equal(result.outcome.kind, "refused");
 	if (result.outcome.kind !== "refused") return;
 	const refusal: Refusal = result.outcome.refusal;
@@ -240,7 +240,7 @@ test("a carriage that is not where the step expects ENDS the run — and the sha
 	// Never corrected: moving it there would be this UI deciding where the
 	// machine ought to be.
 	const h = harness({ cfg: ONE_REP, driftOnMove: 1 });
-	const result = await runMotion("measure", h.deps);
+	const result = await runMotion({ kind: "measure" }, h.deps);
 	assert.equal(result.outcome.kind, "failed");
 	if (result.outcome.kind !== "failed") return;
 	assert.match(result.outcome.why, /the carriage is at/);
@@ -254,7 +254,7 @@ test("a send that is rejected mid-run stops it and still restores", async () => 
 		// The M956 of the second capture step.
 		onSend: (_code, nth) => { if (nth === 12) throw new Error("503 firmware busy"); },
 	});
-	const result = await runMotion("measure", h.deps);
+	const result = await runMotion({ kind: "measure" }, h.deps);
 	assert.equal(result.outcome.kind, "failed");
 	assert.equal(result.restored, true);
 	// The first capture is kept: eight good captures are eight good captures.
@@ -263,7 +263,7 @@ test("a send that is rejected mid-run stops it and still restores", async () => 
 
 test("cancelling stops the run and the shaper still goes back", async () => {
 	const h = harness({ cfg: ONE_REP, onSend: (_code, nth) => { if (nth === 6) h.abort.abort(); } });
-	const result = await runMotion("measure", h.deps);
+	const result = await runMotion({ kind: "measure" }, h.deps);
 	assert.equal(result.outcome.kind, "cancelled");
 	assert.equal(result.restored, true);
 	assert.ok(h.sent.includes('M593 P"none"'));
@@ -272,7 +272,7 @@ test("cancelling stops the run and the shaper still goes back", async () => {
 test("a run cancelled before it starts sends nothing at all", async () => {
 	const h = harness({ cfg: ONE_REP });
 	h.abort.abort();
-	const result = await runMotion("measure", h.deps);
+	const result = await runMotion({ kind: "measure" }, h.deps);
 	assert.equal(result.outcome.kind, "cancelled");
 	assert.equal(result.touched, false);
 	assert.deepEqual(h.sent, []);
@@ -282,7 +282,7 @@ test("a sweep run writes speed-named captures the Sweep card can collect", async
 	const h = harness({
 		cfg: { ...ONE_REP, defaults: { ...ONE_REP.defaults, speedMmS: 16 } },
 	});
-	const result = await runMotion("sweep", { ...h.deps, prefix: "t0_sweep" });
+	const result = await runMotion({ kind: "sweep" }, { ...h.deps, prefix: "t0_sweep" });
 	assert.equal(result.outcome.kind, "done", JSON.stringify(result.outcome));
 	// `<prefix>_<axis>_<speed>.csv` is exactly what speedFamilies groups.
 	assert.ok(result.captures.every(c => /^t0_sweep_[XY]_\d+\.csv$/.test(c.file)), result.captures.map(c => c.file).join());
@@ -293,7 +293,7 @@ test("a capture that never appears is reported with the evidence that DID arrive
 	// capture completed but not which one, and it is the only signal available
 	// when the request that armed the capture timed out.
 	const h = harness({ cfg: ONE_REP, fileAfterPolls: 1000 });
-	const result = await runMotion("measure", h.deps);
+	const result = await runMotion({ kind: "measure" }, h.deps);
 	assert.equal(result.outcome.kind, "failed");
 	if (result.outcome.kind !== "failed") return;
 	assert.match(result.outcome.why, /no capture named t0_ring_Xp0\.csv appeared/);

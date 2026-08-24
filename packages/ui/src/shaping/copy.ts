@@ -426,6 +426,11 @@ export function captureSourceLabel(source: CaptureSource, tool: number): string 
 /** What a run is called, in the operator's words rather than the union's. */
 export function runKindText(kind: RunKind): string {
 	switch (kind) {
+		case "verify":
+			// Named for what it PROVES, not for what it does. The motion is
+			// the same ring a baseline uses; what makes it a verify is the
+			// shaper installed in front of it.
+			return "Verify";
 		case "measure":
 			return "Measure";
 		case "sweep":

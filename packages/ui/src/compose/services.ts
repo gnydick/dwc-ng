@@ -64,7 +64,8 @@ import { findShapingLine, replaceShapingLine, toolMacroPath } from "../shaping/t
 import type { ShapingStep, WorkflowProducts } from "../shaping/steps.ts";
 import { type Evidence, held, type Provenance, type Supersede } from "../shaping/evidence/evidence.ts";
 import { candidateCaveats, fingerprintCaveats, sweepCaveats } from "../shaping/evidence/findings.ts";
-import { shortlist } from "../shaping/engine/rank.ts";
+import { candidateFor, shortlist } from "../shaping/engine/rank.ts";
+import { verifyAnalysis } from "../shaping/store.ts";
 import type { Caveat } from "../shaping/evidence/caveat.ts";
 import type { CardId } from "./defs.ts";
 import { useEngine } from "../shaping/useEngine.ts";
@@ -289,12 +290,50 @@ export type BatchAttribution =
  * complete measurement and a partial one, and a reader who has the numbers
  * without the count cannot tell which they are holding.
  */
+/**
+ * What a fitted batch IS, and therefore what it may become.
+ *
+ * The most dangerous conflation this screen could make, made unrepresentable.
+ * A verify run measures the machine WITH a shaper installed, so its fingerprint
+ * is the SUPPRESSED machine — the very thing #53 shows is silent and
+ * self-reinforcing when it is mistaken for a baseline. Before this existed,
+ * `BatchState.fitted` carried a fingerprint and no record of which run produced
+ * it, so `saveMeasurement` would have written a shaped fingerprint over the
+ * tool's baseline without a word.
+ *
+ * The verify arm carries the baseline it is to be compared against and the spec
+ * that was installed, because `verifyAnalysis` needs exactly those two and a
+ * caller that had to go and find them could find the wrong ones.
+ *
+ * @invariant a-shaped-fingerprint-cannot-become-a-baseline
+ * @rung 8  illegal state unrepresentable — `saveMeasurement` narrows on
+ *          `purpose.kind === "baseline"` and `saveVerified` on `"verify"`.
+ *          Neither writer can be reached with the other's fingerprint, because
+ *          the payload each needs exists only in its own arm: the verify arm is
+ *          the only place a baseline-to-compare-against is spelled, and the
+ *          baseline arm is the only thing `setMeasurement` will take
+ * @why a baseline measured through a shaper ranks against modes that are not
+ *      there, applies, and re-measures — nothing downstream can detect it and
+ *      the output looks clean
+ */
+export type BatchPurpose =
+	| { readonly kind: "baseline" }
+	| {
+		readonly kind: "verify";
+		/** The shaper that was installed while these captures were taken. */
+		readonly spec: ShaperSpec;
+		/** The unshaped fingerprint this run is to be measured against. */
+		readonly baseline: Fingerprint;
+	};
+
 export type BatchState =
 	| { readonly kind: "idle" }
 	| { readonly kind: "running"; readonly done: number; readonly total: number; readonly file: string }
 	| {
 		readonly kind: "fitted";
 		readonly fingerprint: Fingerprint;
+		/** What this batch is, and therefore which writer can take it. */
+		readonly purpose: BatchPurpose;
 		readonly attribution: BatchAttribution;
 		readonly contributed: number;
 		readonly total: number;
@@ -523,7 +562,7 @@ function shapingService(base: ServiceBaseCtx) {
 	 * `contributed` says how many of how many, which is the figure that keeps a
 	 * partial aggregate from reading as a complete one.
 	 */
-	const fitCaptures = async (refs: readonly CaptureRef[]): Promise<void> => {
+	const fitCaptures = async (refs: readonly CaptureRef[], purpose: BatchPurpose = { kind: "baseline" }): Promise<void> => {
 		if (refs.length === 0 || runState().kind === "running") return;
 		// The cap lives HERE rather than on the button, so the one route that
 		// downloads a batch is the one that refuses an unreasonable one. A
@@ -558,6 +597,7 @@ function shapingService(base: ServiceBaseCtx) {
 		setRunState({
 			kind: "fitted",
 			fingerprint,
+			purpose,
 			// The records travel only when the batch is this machine's own. An
 			// imported CSV is a file the operator brought, not a capture of this
 			// tool, so there is nothing here for `saveMeasurement` to write.
@@ -584,7 +624,11 @@ function shapingService(base: ServiceBaseCtx) {
 		// Both halves are the type's, not a policy written here: there are no
 		// records to write unless the run is `fitted` AND its captures were this
 		// machine's own, so the narrowing is what makes the call below compile.
-		if (run.kind !== "fitted" || run.attribution.kind !== "machine") return;
+		// Three narrowings, and the middle one is the load-bearing addition:
+		// a verify run's fingerprint describes the machine WITH a shaper on it
+		// and must never be written as this tool's baseline. It has its own
+		// writer below.
+		if (run.kind !== "fitted" || run.purpose.kind !== "baseline" || run.attribution.kind !== "machine") return;
 		setRunState({ kind: "saving", tool });
 		try {
 			store.setMeasurement(tool, run.fingerprint, run.attribution.records);
@@ -884,6 +928,34 @@ function shapingService(base: ServiceBaseCtx) {
 		}
 	};
 
+/**
+	 * Write what a verify run measured, as a comparison rather than as a
+	 * measurement.
+	 *
+	 * The mirror of `saveMeasurement`, and it can only be reached with a verify
+	 * batch: the baseline and the spec it needs exist ONLY in that arm of
+	 * `BatchPurpose`, so there is no way to call this with a plain measurement
+	 * and no way to call `saveMeasurement` with this one.
+	 *
+	 * `verifyAnalysis` is the sole producer of the verified brand
+	 * (shaping/store.ts) — the numbers on the card are derived from the two
+	 * fingerprints here and are never asserted, so a file cannot claim a shaper
+	 * was verified.
+	 */
+	const saveVerified = async (n: number): Promise<void> => {
+		const run = runState();
+		if (run.kind !== "fitted" || run.purpose.kind !== "verify" || run.attribution.kind !== "machine") return;
+		setRunState({ kind: "saving", tool: n });
+		try {
+			store.addVerified(n, verifyAnalysis(run.purpose.baseline, candidateFor(run.purpose.spec, run.purpose.baseline), run.fingerprint));
+			await store.save(n);
+			setRunState({ kind: "saved", tool: n, contributed: run.contributed, total: run.total });
+			setToolNow(n);
+		} catch (err) {
+			setRunState({ kind: "failed", why: `could not write ${RESULTS_PATH(n)}: ${err instanceof Error ? err.message : String(err)}` });
+		}
+	};
+
 	const toggleMacro = (n: number): void => {
 		if (macroFor(n).kind !== "closed") {
 			setMacros(n, { kind: "closed" });
@@ -1012,11 +1084,12 @@ function shapingService(base: ServiceBaseCtx) {
 	 * run that lands twelve captures has not measured anything until they are
 	 * fitted, and fitting them is not a motion.
 	 */
-	const setFitted = (records: readonly CaptureRecord[]): void => {
+	const setFitted = (records: readonly CaptureRecord[], purpose: BatchPurpose = { kind: "baseline" }): void => {
 		const fingerprint = aggregate(records.map(r => ({ axis: r.axis, fit: r.fit })));
 		setRunState({
 			kind: "fitted",
 			fingerprint,
+			purpose,
 			// This machine's own captures, by construction: they came off it a
 			// moment ago through `Procedure.run`.
 			attribution: { kind: "machine", records: [...records] },
@@ -1133,7 +1206,7 @@ function shapingService(base: ServiceBaseCtx) {
 		fits, families, fullStepFor, sweepState, buildSweep, saveSweep,
 		candidateIndex, setCandidateIndex,
 		accelFor, gate, macroFor, toggleMacro, rank, ranking, problem, offer, runStep,
-		applyShaper, applyState,
+		applyShaper, applyState, saveVerified,
 		offers: (step: ShapingStep): boolean => offered().includes(step),
 		// Whether a step's OWNING card is on the screen at all, which is a
 		// different fact from whether it has offered to run the step: the first
