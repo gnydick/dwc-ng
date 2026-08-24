@@ -124,6 +124,24 @@ export type Caveat =
 			readonly leanResidual: number;
 			readonly leanMs: number;
 	  }
+	/**
+	 * A verify run measured a mode the unshaped machine did not have.
+	 *
+	 * The failure this whole capability exists to catch: a shaper whose impulse
+	 * spacing excites a mode of its own. The impulse-residual model cannot see
+	 * it — only comparing two measured fingerprints can.
+	 */
+	| { readonly kind: "verify-artefact"; readonly axis: Axis; readonly hz: Hz; readonly peakG: number; readonly spec: string }
+	/**
+	 * A verify run could not be checked for artefacts on an axis.
+	 *
+	 * Because the BASELINE has no mode there, so there is nothing for a new
+	 * peak to be new against. Not the same as "no artefacts", and the reason it
+	 * is a finding rather than silence: a card that showed an unchecked result
+	 * as a clean one would be recommending a shaper on the strength of a test
+	 * that did not run.
+	 */
+	| { readonly kind: "verify-unjudged"; readonly axes: readonly Axis[]; readonly spec: string }
 	/** The ranked list is arithmetic over a fingerprint, not a measurement. */
 	| { readonly kind: "predicted-not-measured"; readonly n: number }
 	/**
@@ -166,8 +184,15 @@ export function severityOf(c: Caveat): Severity {
 		case "few-fits":
 		case "axes-agree":
 		case "ranking-trade-off":
+		case "verify-unjudged":
 		case "predicted-not-measured":
 			return "advisory";
+		case "verify-artefact":
+			// Measured, on this machine, and no M593 makes it go away: the
+			// shaper itself is the source. Applying it anyway is the confident
+			// wrong action the campaign is named for.
+			return "disqualifying";
+
 		default: {
 			const unhandled: never = c;
 			throw new Error(`unknown caveat: ${String((unhandled as { kind: unknown }).kind)}`);

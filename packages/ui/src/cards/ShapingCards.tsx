@@ -173,12 +173,9 @@ function ModeCell(props: { mode: Mode | null }) {
 }
 
 /** The artefacts of a verified candidate, as the con they are. */
-function Artefacts(props: { artefacts: readonly Artefact[] }) {
+function Artefacts(props: { artefacts: readonly Artefact[]; unjudged: readonly ("X" | "Y")[] }) {
 	return (
-		<Show
-			when={props.artefacts.length > 0}
-			fallback={<li class="shp-note shp-pro">no new peaks — the machine gained nothing it did not have</li>}
-		>
+		<>
 			<For each={props.artefacts}>
 				{a => (
 					<li class="shp-note shp-con">
@@ -186,7 +183,19 @@ function Artefacts(props: { artefacts: readonly Artefact[] }) {
 					</li>
 				)}
 			</For>
-		</Show>
+			{/* An axis with no baseline mode was NOT checked, and saying "no new
+			    peaks" there would claim a result nobody established. This is the
+			    same mistake `measured` already refuses to make by leaving an
+			    unmeasured axis out rather than reporting it as zero. */}
+			<Show when={props.unjudged.length > 0}>
+				<li class="shp-note shp-con">
+					not checked on {props.unjudged.join(" and ")} — the baseline has no mode there to compare against
+				</li>
+			</Show>
+			<Show when={props.artefacts.length === 0 && props.unjudged.length === 0}>
+				<li class="shp-note shp-pro">no new peaks — the machine gained nothing it did not have</li>
+			</Show>
+		</>
 	);
 }
 
@@ -2283,7 +2292,7 @@ export function ShapingVerifyBody(props: { ctx: CardCtx }) {
 								</span>
 							</p>
 							<ul class="shp-notes">
-								<Artefacts artefacts={v.artefacts} />
+								<Artefacts artefacts={v.artefacts} unjudged={v.unjudged} />
 							</ul>
 						</li>
 					)}
@@ -2310,7 +2319,11 @@ const worstMeasured = (v: VerifiedCandidate): number => Math.max(0, ...Object.va
  * ranking's own top row stand in, labelled as the guess it is.
  */
 function recommendation(r: ToolResults): { spec: ShaperSpec; basis: "verified" | "predicted" } | null {
-	const clean = r.verified.filter(v => v.artefacts.length === 0);
+	// Clean means CHECKED and clean. A candidate whose artefact test could not
+	// run on an axis (no baseline mode to compare against) has not earned
+	// "measured on the machine, no new peaks" — that sentence would be claiming
+	// a result nobody established.
+	const clean = r.verified.filter(v => v.artefacts.length === 0 && v.unjudged.length === 0);
 	if (clean.length > 0) {
 		const best = clean.reduce((a, b) => (worstMeasured(b) < worstMeasured(a) ? b : a));
 		return { spec: best.spec, basis: "verified" };

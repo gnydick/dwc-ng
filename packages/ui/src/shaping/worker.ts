@@ -4,7 +4,7 @@
  * cast (the app's lib has no "WebWorker"), results posted with transferable
  * buffers where there are any. Requests carry an id; responses echo it.
  */
-import { type Artefact, newPeaks } from "./engine/artefact.ts";
+import { newPeaks, type PeakReport } from "./engine/artefact.ts";
 import { type Capture, detectStop, parseCapture, type ParseError } from "./engine/capture.ts";
 import { type Axis, type Fingerprint, fitDecay, isMode, type Mode, type NoFit } from "./engine/fit.ts";
 import { type Candidate, rank, type RankOptions } from "./engine/rank.ts";
@@ -60,7 +60,7 @@ export type EngineResult =
 	| { readonly kind: "fit"; readonly result: FitResult }
 	| { readonly kind: "rank"; readonly result: Candidate[] }
 	| { readonly kind: "sweep"; readonly result: SweepMatrix }
-	| { readonly kind: "artefact"; readonly result: Artefact[] };
+	| { readonly kind: "artefact"; readonly result: PeakReport };
 
 export type EngineResponse = { readonly id: number } & (EngineResult | { readonly kind: "error"; readonly error: string });
 

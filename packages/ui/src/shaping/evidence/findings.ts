@@ -322,3 +322,32 @@ export function screenThread(p: WorkflowProducts): Caveat | null {
 	const all = inOrder.flatMap((e) => (e.state === "held" ? [...e.caveats] : []));
 	return all.find((c) => severityOf(c) === "disqualifying") ?? all[0] ?? null;
 }
+
+/**
+ * What a verify run measured about itself.
+ *
+ * The artefact is the point of verifying at all — the impulse model cannot see
+ * a shaper that excites a mode of its own, and only two measured fingerprints
+ * compared can. `unjudged` is the other half and is NOT silence: an axis whose
+ * baseline never fitted has nothing for a new peak to be new against, so the
+ * check did not run, and reporting that as a clean result would recommend a
+ * shaper on the strength of a test nobody performed.
+ */
+export function verifiedCaveats(
+	verified: ReadonlyArray<{
+		readonly spec: unknown;
+		readonly artefacts: ReadonlyArray<{ axis: Axis; hz: Hz; peakG: number }>;
+		readonly unjudged: readonly Axis[];
+	}>,
+	name: (spec: unknown) => string,
+): readonly Caveat[] {
+	const out: Caveat[] = [];
+	for (const v of verified) {
+		const spec = name(v.spec);
+		for (const a of v.artefacts) {
+			out.push({ kind: "verify-artefact", axis: a.axis, hz: a.hz, peakG: Number(a.peakG), spec });
+		}
+		if (v.unjudged.length > 0) out.push({ kind: "verify-unjudged", axes: v.unjudged, spec });
+	}
+	return out;
+}

@@ -623,6 +623,12 @@ export function caveatText(c: Caveat): string {
 			// left" is a fact about the machine. Milliseconds stay milliseconds:
 			// that is what the operator feels as rounded corners.
 			return `this list is ordered by ringing left, not by what it costs — ${c.bestType.toUpperCase()} leaves ${(c.bestResidual * 100).toFixed(1)} % and adds ${c.bestMs.toFixed(0)} ms of smoothing to every direction change, while ${c.leanType.toUpperCase()} leaves ${(c.leanResidual * 100).toFixed(1)} % for ${c.leanMs.toFixed(0)} ms; nothing here weighs one against the other`;
+		case "verify-artefact":
+			return `${c.spec} excites ${hzText(c.hz)} Hz on ${c.axis} at ${c.peakG.toFixed(3)} g, which the unshaped machine does not — the shaper is the source, so no tuning of it will help; try another candidate`;
+		case "verify-unjudged":
+			// Says why it could not be checked AND what would let it be, rather
+			// than reporting a clean result nobody established.
+			return `${c.spec} could not be checked for new peaks on ${c.axes.join(" and ")}: the baseline has no mode there to compare against, so a ring on that axis cannot be told from one the machine always had — measure again until ${c.axes.length === 1 ? "that axis fits" : "those axes fit"}`;
 		case "predicted-not-measured":
 			return `these ${c.n} are arithmetic over the fingerprint, not measurements — verify one on the machine before trusting the order`;
 		case "inherited":

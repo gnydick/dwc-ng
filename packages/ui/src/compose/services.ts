@@ -63,7 +63,7 @@ import { Preconditions, type Refusal } from "../shaping/preconditions.ts";
 import { findShapingLine, replaceShapingLine, toolMacroPath } from "../shaping/toolMacro.ts";
 import type { ShapingStep, WorkflowProducts } from "../shaping/steps.ts";
 import { type Evidence, held, type Provenance, type Supersede } from "../shaping/evidence/evidence.ts";
-import { candidateCaveats, fingerprintCaveats, sweepCaveats } from "../shaping/evidence/findings.ts";
+import { candidateCaveats, fingerprintCaveats, sweepCaveats, verifiedCaveats } from "../shaping/evidence/findings.ts";
 import { candidateFor, shortlist } from "../shaping/engine/rank.ts";
 import { verifyAnalysis } from "../shaping/store.ts";
 import type { Caveat } from "../shaping/evidence/caveat.ts";
@@ -1191,7 +1191,7 @@ function shapingService(base: ServiceBaseCtx) {
 			sweep: put(r.sweep, () => sweepCaveats(r.sweep!, r.fingerprint)),
 			candidates: put(r.candidates.length === 0 ? null : r.candidates, () =>
 				candidateCaveats(r.candidates, fingerprint, r.verified.length)),
-			verified: put(r.verified.length === 0 ? null : r.verified, () => []),
+			verified: put(r.verified.length === 0 ? null : r.verified, () => verifiedCaveats(r.verified, spec => cmd.inputShaping(spec as never))),
 			applied: put(r.applied, () => []),
 		};
 	});

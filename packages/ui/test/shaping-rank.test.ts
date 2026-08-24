@@ -36,7 +36,8 @@ test("customCandidate evaluates a user impulse train against the fingerprint", (
 test("newPeaks flags a 38 Hz ring that the unshaped machine did not have, and ignores the known 52 Hz one", () => {
 	const base = prototypeFingerprint();
 	const verified = { ...base, X: modeForTest(38.0, 0.13, 0.25), Y: modeForTest(52.0, 0.08, 0.1) };
-	const art = newPeaks(base, verified);
+	const { artefacts: art, unjudged } = newPeaks(base, verified);
+	assert.deepEqual(unjudged, [], "both axes have a baseline mode here");
 	assert.equal(art.length, 1);
 	assert.equal(art[0]!.axis, "X");
 	assert.ok(Math.abs(art[0]!.hz - 38) < 1 && art[0]!.peakG > 0.05);
@@ -48,7 +49,7 @@ test("newPeaks ignores new peaks below the floor", () => {
 	// scaled up by exp(zeta*wn*0.01) to land the reported peak near 0.03 g.
 	const verified = { ...base, X: modeForTest(38.0, 0.13, 0.041) };
 	assert.ok(verified.X.peakG < 0.05);
-	assert.equal(newPeaks(base, verified).length, 0);
+	assert.equal(newPeaks(base, verified).artefacts.length, 0);
 });
 
 test("rank uses the F step and S grid it was given", () => {
