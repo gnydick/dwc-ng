@@ -90,6 +90,15 @@ export function inquiryFor(c: Caveat): Inquiry {
 					adjust: `set the sweep ladder to reach about ${c.needMmPerS.toFixed(1)} mm/s, because the current one starts too fast to excite it`,
 				},
 			};
+		case "locus-above-nyquist":
+			return {
+				question: `What are the motors doing above ${c.nyquistHz.toFixed(0)} Hz?`,
+				answer: {
+					kind: "step",
+					step: "sweep",
+					adjust: `nothing can answer it at this sample rate — either drop the fastest passes, or raise the accelerometer's rate with M955 if the board supports it`,
+				},
+			};
 		case "rows-not-analysed":
 			return {
 				question: `What happened at the ${c.rows - c.analysed} speed${c.rows - c.analysed === 1 ? "" : "s"} that produced nothing?`,

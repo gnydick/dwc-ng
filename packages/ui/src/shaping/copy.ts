@@ -595,6 +595,8 @@ export function caveatText(c: Caveat): string {
 			// Both ends of the band AND the speed that would fix it. The band
 			// alone reads as a complaint; the speed makes it an instruction.
 			return `nothing in this sweep drove ${c.axis} at ${hzText(c.modeHz)} Hz — the ladder forces ${hzText(c.bandHz[0])}–${hzText(c.bandHz[1])} Hz, so this band is black whether or not the mode is real; a pass near ${c.needMmPerS.toFixed(1)} mm/s would bracket it`;
+		case "locus-above-nyquist":
+			return `the ${c.speeds.length} fastest ${c.speeds.length === 1 ? "pass" : "passes"} (${c.speeds.join(", ")} mm/s) force up to ${hzText(c.forcedHz)} Hz, above the ${hzText(c.nyquistHz)} Hz this accelerometer can sample — those rows cannot show their own forced ridge, so the black there is the instrument, not the machine`;
 		case "rows-not-analysed":
 			return `${c.rows - c.analysed} of ${c.rows} speeds held too little constant-velocity motion to transform — those rows are missing, not quiet`;
 		case "mode-on-forcing-locus":
