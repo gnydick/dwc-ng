@@ -71,3 +71,65 @@ export function candidateFor(spec: ShaperSpec, fp: Fingerprint): Candidate {
 export function customCandidate(spec: Extract<ShaperSpec, { type: "custom" }>, fp: Fingerprint): Candidate {
 	return evaluate(spec, fp);
 }
+
+/**
+ * The candidates worth putting in front of somebody: the Pareto front over
+ * (worst residual, duration).
+ *
+ * WHY THIS EXISTS. `rank` sorts on `worstRobust` alone, with `durationS` only a
+ * tie-break at 0.001 granularity — and that tie never fires between shaper
+ * types, because the widest shaper always wins the residual contest outright.
+ * Taking the top 40 of that order therefore produced 40 rows of ONE shaper.
+ * Measured on Gabe's machine 2026-08-24 (X 38.66, Y 50.05): every one of the
+ * top 50 was `zvddd` at ~44.7 ms, while `zvdd` reached 0.0270 in 33.5 ms and
+ * never appeared. The 11 ms it costs to go from 0.0270 to 0.0081 is a real
+ * trade — 11 ms of extra smoothing on every direction change — and the list
+ * hid the fact that a trade existed at all.
+ *
+ * A front rather than a re-weighting, deliberately. Weighting residual against
+ * milliseconds would mean inventing an exchange rate between "ringing left" and
+ * "corners rounded", which is a judgement about the operator's prints and not
+ * one this tool has any basis to make. The front states the options and leaves
+ * the choice where it belongs.
+ *
+ * @invariant shortlist-is-dominated-free
+ * @rung 6  choke-point — the sole route from a full grid to what a card shows.
+ *          A candidate survives only if nothing else is at least as good on
+ *          BOTH axes, so no row on the list is beaten outright by another row
+ *          on the same list
+ */
+export function shortlist(all: readonly Candidate[], n: number, perType = 3): Candidate[] {
+	// Residual to 4 decimals and duration to a tenth of a millisecond, so
+	// float noise cannot make two indistinguishable candidates each "dominate"
+	// the other and bloat the front with duplicates.
+	const res = (c: Candidate): number => Math.round(c.worstRobust * 1e4);
+	const dur = (c: Candidate): number => Math.round(Number(c.durationS) * 1e4);
+
+	// Ascending residual: any later candidate is worse-or-equal there, so it
+	// earns its place only by being strictly shorter than everything before it.
+	const byResidual = [...all].sort((a, b) => res(a) - res(b) || dur(a) - dur(b));
+	const front: Candidate[] = [];
+	const seen = new Map<string, number>();
+	let shortest = Number.POSITIVE_INFINITY;
+	for (const c of byResidual) {
+		const d = dur(c);
+		if (d >= shortest) continue;
+		// Dominance is what makes a row honest; the per-type cap is what makes
+		// the list readable. On Gabe's fingerprint the raw front held
+		// twenty-one `zvddd` rows separated by 0.3 ms and 0.001 residual —
+		// each genuinely undominated, none of them a decision anybody could
+		// make. Capping is a PRESENTATION choice and is kept separate from the
+		// dominance test on purpose: it never lets a dominated row in, it only
+		// stops showing more of an option already on the list.
+		const type = c.spec.type;
+		const used = seen.get(type) ?? 0;
+		// `shortest` advances whether or not the row is shown, so a capped type
+		// cannot go on blocking shorter rows of another type behind it.
+		shortest = d;
+		if (used >= perType) continue;
+		seen.set(type, used + 1);
+		front.push(c);
+		if (front.length >= n) break;
+	}
+	return front;
+}

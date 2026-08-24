@@ -245,6 +245,31 @@ export function fingerprintCaveats(
  * ranked from it, automatically, because a step that had to remember to check
  * is a step that will one day forget.
  */
+/**
+ * The shape this module needs off a candidate, without importing the branded
+ * `Candidate` type.
+ *
+ * `candidateCaveats` takes `readonly unknown[]` so that the workflow can hold
+ * products as `Evidence<unknown>` — see steps.ts `WorkflowProducts`. Narrowing
+ * here rather than widening the signature keeps that boundary intact, and a
+ * value that does not carry these fields simply contributes no trade-off
+ * finding instead of throwing.
+ */
+type RankedLike = { readonly spec: { readonly type: string }; readonly worstRobust: number; readonly durationS: number };
+
+const isRanked = (c: unknown): c is RankedLike => {
+	if (typeof c !== "object" || c === null) return false;
+	const v = c as Record<string, unknown>;
+	const spec = v.spec;
+	return (
+		typeof v.worstRobust === "number" &&
+		typeof v.durationS === "number" &&
+		typeof spec === "object" &&
+		spec !== null &&
+		typeof (spec as Record<string, unknown>).type === "string"
+	);
+};
+
 export function candidateCaveats(
 	candidates: readonly unknown[],
 	fingerprint: Evidence<unknown>,
@@ -252,6 +277,27 @@ export function candidateCaveats(
 ): readonly Caveat[] {
 	const out: Caveat[] = [];
 	if (candidates.length === 0) return out;
+
+	// The trade the ordering hides. Both ends of the list the operator is
+	// looking at, so the sentence states the choice rather than describing it;
+	// only worth saying when the list actually holds more than one option.
+	const shaped = candidates.filter((c): c is RankedLike => isRanked(c));
+	if (shaped.length >= 2) {
+		const best = shaped[0]!;
+		const lean = shaped.reduce((a, b) => (Number(b.durationS) < Number(a.durationS) ? b : a));
+		if (lean !== best) {
+			out.push({
+				kind: "ranking-trade-off",
+				bestType: best.spec.type,
+				bestResidual: best.worstRobust,
+				bestMs: Number(best.durationS) * 1000,
+				leanType: lean.spec.type,
+				leanResidual: lean.worstRobust,
+				leanMs: Number(lean.durationS) * 1000,
+			});
+		}
+	}
+
 	if (verifiedCount === 0) out.push({ kind: "predicted-not-measured", n: candidates.length });
 	if (fingerprint.state === "held") {
 		for (const c of fingerprint.caveats) out.push({ kind: "inherited", from: "fingerprint", caveat: c });

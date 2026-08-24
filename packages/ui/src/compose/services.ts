@@ -64,6 +64,7 @@ import { findShapingLine, toolMacroPath } from "../shaping/toolMacro.ts";
 import type { ShapingStep, WorkflowProducts } from "../shaping/steps.ts";
 import { type Evidence, held, type Provenance, type Supersede } from "../shaping/evidence/evidence.ts";
 import { candidateCaveats, fingerprintCaveats, sweepCaveats } from "../shaping/evidence/findings.ts";
+import { shortlist } from "../shaping/engine/rank.ts";
 import type { Caveat } from "../shaping/evidence/caveat.ts";
 import type { CardId } from "./defs.ts";
 import { useEngine } from "../shaping/useEngine.ts";
@@ -852,7 +853,11 @@ function shapingService(base: ServiceBaseCtx) {
 		setRanking(true);
 		setProblem("");
 		try {
-			store.setCandidates(n, (await useEngine().rank(fingerprint)).slice(0, RANKED_KEPT));
+			// The Pareto front, not the top N by residual. A plain slice of the
+			// residual order returned forty rows of ONE shaper on Gabe's
+			// machine (engine/rank.ts `shortlist`), which hid that a trade
+			// between ringing and smoothing existed at all.
+			store.setCandidates(n, shortlist(await useEngine().rank(fingerprint), RANKED_KEPT));
 		} catch (err) {
 			// A worker that failed is not a machine that refused, and the
 			// operator has to be able to tell them apart: a silent failure here

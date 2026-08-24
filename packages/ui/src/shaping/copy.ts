@@ -587,6 +587,11 @@ export function caveatText(c: Caveat): string {
 			return `X and Y came back ${(c.apartFraction * 100).toFixed(1)} % apart (${c.xHz.toFixed(1)} and ${c.yHz.toFixed(1)} Hz) — two axes of one machine normally ring at clearly different frequencies, so this is either a shared frame mode or a shaper that was active and suppressed both; nothing recorded here says which`;
 		case "few-fits":
 			return `${c.axis} rests on ${c.n} of ${c.of} captures — a median over that few moves with any one of them`;
+		case "ranking-trade-off":
+			// Percentages, because "0.0081" is a number and "0.8 % of the ring
+			// left" is a fact about the machine. Milliseconds stay milliseconds:
+			// that is what the operator feels as rounded corners.
+			return `this list is ordered by ringing left, not by what it costs — ${c.bestType.toUpperCase()} leaves ${(c.bestResidual * 100).toFixed(1)} % and adds ${c.bestMs.toFixed(0)} ms of smoothing to every direction change, while ${c.leanType.toUpperCase()} leaves ${(c.leanResidual * 100).toFixed(1)} % for ${c.leanMs.toFixed(0)} ms; nothing here weighs one against the other`;
 		case "predicted-not-measured":
 			return `these ${c.n} are arithmetic over the fingerprint, not measurements — verify one on the machine before trusting the order`;
 		case "inherited":

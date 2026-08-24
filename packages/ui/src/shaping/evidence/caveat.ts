@@ -101,6 +101,29 @@ export type Caveat =
 	 * and every capture fitted cleanly, so no other quality finding fires.
 	 */
 	| { readonly kind: "axes-agree"; readonly xHz: Hz; readonly yHz: Hz; readonly apartFraction: number }
+	/**
+	 * The list is ordered by ringing-left alone, and the cost is not in it.
+	 *
+	 * `rank` sorts on `worstRobust` with `durationS` only a tie-break at 0.001
+	 * granularity, so the tie never fires between shaper types and the widest
+	 * shaper wins outright every time. That is a defensible ORDER and a
+	 * misleading READING: the top row is not "best", it is "least ringing left,
+	 * whatever it costs", and shaper duration is smoothing added to every
+	 * direction change.
+	 *
+	 * Carries both ends of the shortlist so the sentence can state the trade
+	 * rather than describe it. Advisory always — there is no right answer here,
+	 * only the operator's prints.
+	 */
+	| {
+			readonly kind: "ranking-trade-off";
+			readonly bestType: string;
+			readonly bestResidual: number;
+			readonly bestMs: number;
+			readonly leanType: string;
+			readonly leanResidual: number;
+			readonly leanMs: number;
+	  }
 	/** The ranked list is arithmetic over a fingerprint, not a measurement. */
 	| { readonly kind: "predicted-not-measured"; readonly n: number }
 	/**
@@ -142,6 +165,7 @@ export function severityOf(c: Caveat): Severity {
 		case "one-direction-only":
 		case "few-fits":
 		case "axes-agree":
+		case "ranking-trade-off":
 		case "predicted-not-measured":
 			return "advisory";
 		default: {
