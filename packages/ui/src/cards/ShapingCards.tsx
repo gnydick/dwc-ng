@@ -34,6 +34,7 @@ import type { MacroRead } from "../compose/services.ts";
 import { nextStep, SHAPING_STEPS, type ShapingStep, type StepInputs, type StepSpec } from "../shaping/steps.ts";
 import { walkThrough } from "../shaping/evidence/walk.ts";
 import { productsFor } from "../shaping/evidence/products.ts";
+import { reportText } from "../shaping/accelReport.ts";
 import type { ApplyHow, ApplyIntent } from "../shaping/applyRun.ts";
 import { applyStateText, armedApplyText } from "../shaping/copy.ts";
 import { inquiryText } from "../shaping/copy.ts";
@@ -726,6 +727,21 @@ export function ShapingCaptureBody(props: { ctx: CardCtx }) {
 		return "";
 	});
 
+/**
+	 * Ask the accelerometer its rate the first time a tool is looked at.
+	 *
+	 * On the tool CHANGING, not on every render: `M955 P` is a request against a
+	 * server this project exists to be gentle with, and the answer does not move
+	 * unless somebody sets it. `accelReportFor` returning null is what makes
+	 * this once-per-tool rather than once-per-poll.
+	 */
+	createEffect(() => {
+		const n = svc.tool();
+		if (cfg().accelByTool[n] === undefined) return;
+		if (svc.accelReportFor(n) !== null) return;
+		void svc.readAccel(n);
+	});
+
 	const saveable = createMemo((): boolean => {
 		const run = svc.runState();
 		return run.kind === "fitted" && run.attribution.kind === "machine" && !motionBusy(svc.motion());
@@ -914,6 +930,24 @@ export function ShapingCaptureBody(props: { ctx: CardCtx }) {
 						>
 							{addr => <span class="shp-mono">board.device {addr()}</span>}
 						</Show>
+					</dd>
+				</div>
+				{/* What the sensor is sampling at, and therefore the highest
+				    frequency anything measured here can show. It belongs beside
+				    the address because the two failure modes read alike from a
+				    card that shows only one: no accelerometer, and an
+				    accelerometer too slow to see what is being asked about.
+
+				    Read-only here on purpose. Setting it is a persistent change
+				    to the machine and lives in Settings › Input shaping with its
+				    own armed confirm; this is the number an operator needs while
+				    planning a run, which is a different job from changing it. */}
+				<div class="shp-fact">
+					<dt>Sampling</dt>
+					<dd>
+						<span class="shp-mono" title={reportText(svc.accelReportFor(svc.tool()))}>
+							{reportText(svc.accelReportFor(svc.tool()))}
+						</span>
 					</dd>
 				</div>
 			</dl>
