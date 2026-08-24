@@ -52,6 +52,28 @@ function names(m: Machine): string[] {
 	return listing.map(e => e.name);
 }
 
+/** The accelerometer object on tool board 20, as a client reads it. */
+function boardAccel(m: Machine): { orientation: number; points: number; runs: number } {
+	const board = (m.om.boards as Array<{ canAddress?: number; accelerometer?: unknown } | null>)
+		.find(b => b !== null && b.canAddress === 20);
+	assert.ok(board?.accelerometer, "tool board 20 has no accelerometer");
+	return board.accelerometer as { orientation: number; points: number; runs: number };
+}
+
+/**
+ * Let any in-flight capture transfer land.
+ *
+ * A move ARMS and creates the file; the samples come back off the toolboard
+ * afterwards, in simulated time, and only then do `runs` and `points` move. So
+ * every test that wants a finished capture has to let the board finish writing
+ * one — which is precisely what a client has to do, and what the UI failed to
+ * do on 2026-08-23. The span is generous: the longest capture the board will
+ * accept (65535 samples at 1344 Hz) takes under 49 s to transfer.
+ */
+function settle(m: Machine): void {
+	m.advance(60_000);
+}
+
 function capture(m: Machine, path: string): Capture {
 	const parsed = parseCapture(text(m, path));
 	assert.ok(parsed.ok, `parseCapture rejected ${path}: ${JSON.stringify(parsed)}`);
@@ -83,6 +105,7 @@ function ringY(m: Machine, name: string): Capture {
 	m.execute("G1 Y0 F12000");
 	m.execute(`M956 P20.0 S1500 A1 F"${name}"`);
 	m.execute("G1 Y60 F12000");
+	settle(m);
 	return capture(m, `0:/sys/accelerometer/${name}`);
 }
 
@@ -120,6 +143,11 @@ test("M956 arms; the NEXT move writes the file RRF would have written", () => {
 
 	m.execute("G90");
 	m.execute("G1 X250 F6000");
+	// Created, but not yet a capture: the entry is there with only its header,
+	// and the board has not claimed a run.
+	assert.equal(text(m, "0:/sys/accelerometer/t.csv").trim(), "Sample,X,Y,Z");
+	assert.equal(boardAccel(m).runs, 0, "a board still writing has not finished a run");
+	settle(m);
 
 	const lines = text(m, "0:/sys/accelerometer/t.csv").split("\n").filter(l => l !== "");
 	assert.equal(lines[0], "Sample,X,Y,Z");
@@ -128,9 +156,68 @@ test("M956 arms; the NEXT move writes the file RRF would have written", () => {
 	assert.ok(/^0,/.test(lines[1]!), "rows are numbered from 0");
 	assert.ok(/^1499,/.test(lines[1500]!), "the last sample row is 1499");
 
-	const board = m.om.boards.find((b: any) => b?.canAddress === 20);
-	assert.equal(board.accelerometer.runs, 1);
-	assert.equal(board.accelerometer.points, 1500);
+	assert.equal(boardAccel(m).runs, 1);
+	assert.equal(boardAccel(m).points, 1500);
+});
+
+test("the file exists long before the capture does", () => {
+	const m = machine();
+	m.execute("G90");
+	m.execute('M956 P20.0 S1500 A1 F"slow.csv"');
+	m.execute("G1 X250 F6000");
+
+	// A real board creates the entry and then streams the samples into it off
+	// CAN. Everything a client can see at this instant says "there is a file";
+	// nothing says "there is a capture".
+	assert.deepEqual(names(m), ["slow.csv"], "the name is there");
+	const partial = m.sd.list("0:/sys/accelerometer");
+	assert.ok(Array.isArray(partial));
+	const entry = partial.find(e => e.name === "slow.csv");
+	assert.ok(entry !== undefined);
+	const createdSize = entry.size;
+	assert.equal(boardAccel(m).runs, 0);
+	assert.equal(parseCapture(text(m, "0:/sys/accelerometer/slow.csv")).ok, false, "no trailer yet");
+
+	// 1500 samples at 1344 Hz is 1.116 s of recording, and the mock's board
+	// takes about that long to hand them over.
+	m.advance(500);
+	assert.equal(boardAccel(m).runs, 0, "half way through, still nothing to read");
+
+	settle(m);
+	assert.equal(boardAccel(m).runs, 1);
+	assert.equal(boardAccel(m).points, 1500);
+	const finished = m.sd.list("0:/sys/accelerometer");
+	assert.ok(Array.isArray(finished));
+	assert.ok(finished.find(e => e.name === "slow.csv")!.size > createdSize, "the file grew");
+	assert.equal(parseCapture(text(m, "0:/sys/accelerometer/slow.csv")).ok, true);
+});
+
+test("points is the LAST run's sample count, not a running total", () => {
+	// Gabe's board, read live 2026-08-23: tool board 20 answered
+	// {"orientation": 41, "points": 7713, "runs": 344}. 344 runs of a few
+	// thousand samples each cannot sum to 7713, so points sizes one run.
+	const m = machine();
+	m.execute("G90");
+	m.execute('M956 P20.0 S1500 A1 F"p1.csv"');
+	m.execute("G1 X250 F6000");
+	settle(m);
+	m.execute('M956 P20.0 S900 A1 F"p2.csv"');
+	m.execute("G1 X100 F6000");
+	settle(m);
+	assert.equal(boardAccel(m).runs, 2);
+	assert.equal(boardAccel(m).points, 900);
+});
+
+test("a board that is reset forgets the transfer it was in the middle of", () => {
+	const m = machine();
+	m.execute("G90");
+	m.execute('M956 P20.0 S1500 A1 F"lost.csv"');
+	m.execute("G1 X250 F6000");
+	m.reset();
+	settle(m);
+	// The entry the move created survives — it is on the SD card — but no run
+	// is ever claimed for it, because the board it was coming from restarted.
+	assert.equal(boardAccel(m).runs, 0);
 });
 
 test("a move with nothing armed writes no capture", () => {
@@ -195,6 +282,7 @@ test("both directions aggregate to the configured fingerprint", () => {
 		const name = `agg_${axis}${from}.csv`;
 		m.execute(`M956 P20.0 S1500 A1 F"${name}"`);
 		m.execute(`G1 ${axis}${to} F12000`);
+		settle(m);
 		const cap = capture(m, `0:/sys/accelerometer/${name}`);
 		const trace = axis === "X" ? cap.x : cap.y;
 		const stop = detectStop(trace, cap.rate);

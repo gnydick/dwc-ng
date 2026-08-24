@@ -40,14 +40,23 @@ export function axis(letter: string, homed: boolean, position: number | null): A
 	return { letter, homed, machinePosition: position, userPosition: position, min: 0, max: 300, babystep: 0, visible: true };
 }
 
-export function board(canAddress: number, accelerometer: boolean, runs = 0): Board {
+/**
+ * `runs: null` is a board that reports an accelerometer with NO run counter.
+ * That is not a hypothetical shape: the live d99fn patch route never meets
+ * `conformModelKey`, so the declared `runs: number` is a claim the store does
+ * not enforce, and the procedure re-parses it for exactly this reason.
+ */
+export function board(canAddress: number, accelerometer: boolean, runs: number | null = 0): Board {
+	const accel = runs === null
+		? ({ orientation: 20, points: 0 } as unknown as Board["accelerometer"])
+		: { orientation: 20, points: 0, runs };
 	return {
 		name: `board-${canAddress}`,
 		shortName: String(canAddress),
 		canAddress,
 		mcuTemp: null,
 		vIn: null,
-		accelerometer: accelerometer ? { orientation: 20, points: 0, runs } : null,
+		accelerometer: accelerometer ? accel : null,
 	};
 }
 
@@ -103,8 +112,22 @@ export const ringPlan = (over: Partial<RingPlan> = {}): RingPlan => ({
 // It is a small simulator, not a stub: it moves when told to move, writes a
 // capture file when armed, and counts its runs. A stub that always said yes
 // could not fail a position check or a capture wait.
+//
+// It models the DUMP, not just the file. A real board creates the entry and
+// then streams the samples into it off the CAN toolboard, so the name exists
+// long before the contents do: here the entry appears after `fileAfterPolls`
+// listings at a partial size that grows, and only `dumpPolls` listings later
+// does it reach its final size and the run counter tick. A fake that wrote the
+// file atomically at completion could not fail a run that took the name as
+// proof — which is exactly the bug that reached Gabe's machine on 2026-08-23.
 
 export const FAKE_CSV = "0,0.01,0.02,0.03\nRate 1344, overflows 0\n";
+
+/** The size the fake's captures settle at, and the chunk a poll sees arrive
+ *  while one is still being written. Both arbitrary: what matters is that the
+ *  size MOVES while the dump is in flight and stops when it is not. */
+const FINAL_SIZE = 4096;
+const CHUNK_SIZE = 512;
 
 export type FakeOptions = {
 	/** Throw from here to reject the nth send ATTEMPT (0-based over the whole
@@ -112,22 +135,38 @@ export type FakeOptions = {
 	onSend?: (code: string, nth: number) => void;
 	/** How many directory listings pass before an armed capture's file lands. */
 	fileAfterPolls?: number;
-	/** Files already in the accelerometer directory when the run starts. */
+	/** How many further listings the board spends WRITING that file before the
+	 *  dump finishes and its run counter ticks. 0 = the file lands finished. */
+	dumpPolls?: number;
+	/** Files already in the accelerometer directory when the run starts. They
+	 *  are there at their final size, exactly like a capture from last week. */
 	preexisting?: readonly string[];
 	/** Millimetres of error the simulated carriage introduces on every move. */
 	driftOnMove?: number;
 	/** What `M955 P<addr>` answers with. Default: the real sentence. */
 	accelReply?: string;
+	/** What a download of a capture answers with. Default: a complete CSV. */
+	download?: (path: string) => string;
 };
 
-export type Fake = { conn: RunConnector; sent: string[]; listed: string[]; downloaded: string[] };
+export type Fake = {
+	conn: RunConnector;
+	sent: string[];
+	listed: string[];
+	downloaded: string[];
+	/** How many listings had happened when each download was issued. This is
+	 *  what proves a capture was NOT read while the board was still writing
+	 *  it: a count is a fact about ordering, an event kind is not. */
+	downloadedAfterListings: number[];
+};
 
 export function fakeBoard(model: ObjectModel, opts: FakeOptions = {}): Fake {
 	const sent: string[] = [];
 	const listed: string[] = [];
 	const downloaded: string[] = [];
-	const present = new Set<string>(opts.preexisting ?? []);
-	let pending: { file: string; ticks: number }[] = [];
+	const downloadedAfterListings: number[] = [];
+	const sizes = new Map<string, number>((opts.preexisting ?? []).map((name) => [name, FINAL_SIZE]));
+	let pending: { file: string; appearIn: number; finishIn: number }[] = [];
 	let attempts = 0;
 
 	const setAt = (x: number, y: number): void => {
@@ -147,7 +186,10 @@ export function fakeBoard(model: ObjectModel, opts: FakeOptions = {}): Fake {
 			opts.onSend?.(String(code), attempts++);
 			sent.push(String(code));
 			const armed = /^M956 .* F"(.+)"$/.exec(String(code));
-			if (armed !== null) pending.push({ file: armed[1] ?? "", ticks: opts.fileAfterPolls ?? 0 });
+			if (armed !== null) {
+				const appearIn = opts.fileAfterPolls ?? 0;
+				pending.push({ file: armed[1] ?? "", appearIn, finishIn: appearIn + (opts.dumpPolls ?? 0) });
+			}
 			const move = /^G1 X(-?[\d.]+) Y(-?[\d.]+) F/.exec(String(code));
 			if (move !== null) setAt(Number(move[1]) + (opts.driftOnMove ?? 0), Number(move[2]));
 			// M955 with P alone REPORTS; the board answers with a sentence and
@@ -158,17 +200,32 @@ export function fakeBoard(model: ObjectModel, opts: FakeOptions = {}): Fake {
 		},
 		async list(dir: string): Promise<FileListEntry[]> {
 			listed.push(dir);
-			const ready = pending.filter((p) => p.ticks <= 0);
-			pending = pending.filter((p) => p.ticks > 0).map((p) => ({ file: p.file, ticks: p.ticks - 1 }));
-			for (const p of ready) { present.add(p.file); bumpRuns(); }
-			return [...present].map((name) => ({ type: "f" as const, name, size: 1 }));
+			const still: typeof pending = [];
+			for (const p of pending) {
+				if (p.appearIn > 0) {
+					// Not created yet: nothing to see, and the dump's own clock
+					// runs from the arm, not from the moment the entry lands.
+					still.push({ file: p.file, appearIn: p.appearIn - 1, finishIn: p.finishIn - 1 });
+				} else if (p.finishIn > 0) {
+					// Created, and filling. This is the state a name alone
+					// cannot tell from a finished capture.
+					sizes.set(p.file, (sizes.get(p.file) ?? 0) + CHUNK_SIZE);
+					still.push({ file: p.file, appearIn: 0, finishIn: p.finishIn - 1 });
+				} else {
+					sizes.set(p.file, FINAL_SIZE);
+					bumpRuns();
+				}
+			}
+			pending = still;
+			return [...sizes].map(([name, size]) => ({ type: "f" as const, name, size }));
 		},
 		async download(path: string): Promise<string> {
 			downloaded.push(path);
-			return FAKE_CSV;
+			downloadedAfterListings.push(listed.length);
+			return opts.download === undefined ? FAKE_CSV : opts.download(path);
 		},
 	};
-	return { conn, sent, listed, downloaded };
+	return { conn, sent, listed, downloaded, downloadedAfterListings };
 }
 
 /** Instant, deterministic time. Every poll advances the clock by its own wait,
