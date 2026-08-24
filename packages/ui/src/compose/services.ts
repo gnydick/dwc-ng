@@ -60,7 +60,7 @@ import { cellPosition } from "../heightmap/parse.ts";
 import { createShapingStore } from "../shaping/store.ts";
 import { type CaptureRecord, emptyResults, RESULTS_PATH, type ToolResults } from "../shaping/results.ts";
 import { Preconditions, type Refusal } from "../shaping/preconditions.ts";
-import { findShapingLine, toolMacroPath } from "../shaping/toolMacro.ts";
+import { findShapingLine, replaceShapingLine, toolMacroPath } from "../shaping/toolMacro.ts";
 import type { ShapingStep, WorkflowProducts } from "../shaping/steps.ts";
 import { type Evidence, held, type Provenance, type Supersede } from "../shaping/evidence/evidence.ts";
 import { candidateCaveats, fingerprintCaveats, sweepCaveats } from "../shaping/evidence/findings.ts";
@@ -75,6 +75,9 @@ import { aggregate, type Axis, type Fingerprint, type Mode, type NoFit } from ".
 import { type FullStep, fullStepPerMm } from "../shaping/fullStep.ts";
 import { mmPerS, seconds } from "../shaping/engine/units.ts";
 import { analysedRows } from "../shaping/engine/sweep.ts";
+import type { ApplyState } from "../shaping/applyRun.ts";
+import type { ShaperSpec } from "../shaping/engine/shapers.ts";
+import { cmd } from "../control/commands.ts";
 import type { SweepState } from "../shaping/sweepRun.ts";
 import { motionBusy, type MotionState } from "../shaping/motionRun.ts";
 import { createFitCache } from "../shaping/fitCache.ts";
@@ -816,6 +819,71 @@ function shapingService(base: ServiceBaseCtx) {
 	const [macros, setMacros] = createStore<Record<number, MacroRead>>({});
 	const macroFor = (n: number): MacroRead => macros[n] ?? { kind: "closed" };
 
+/**
+	 * What installing a shaper is doing right now.
+	 *
+	 * Its own signal rather than an arm of `BatchState`, for the reason the
+	 * sweep has one: the two answer different questions and can be looked at
+	 * together. A measurement's progress overwriting "the macro was written"
+	 * would take away the only confirmation the operator gets that the machine
+	 * will still be shaped after the next toolchange.
+	 */
+	const [applyState, setApplyState] = createSignal<ApplyState>({ kind: "idle" });
+
+	/**
+	 * Install a shaper, one of the two ways there are.
+	 *
+	 * They are separate ACTS and not a preference, which is why `how` is a
+	 * closed union rather than a boolean and why each has its own confirm:
+	 *
+	 *  - `send` puts `M593` on the machine NOW. It lasts until the firmware is
+	 *    reset or the next toolchange runs `tpost<N>.g` over the top of it, so
+	 *    it is the one to use while deciding.
+	 *  - `macro` rewrites the `M593` line in `tpost<N>.g`, which is what makes
+	 *    the shaper the tool's own — RRF runs that file every time the carriage
+	 *    is picked up. It survives a reset, and it is the one that changes what
+	 *    the machine does tomorrow.
+	 *
+	 * An operator who meant one and got the other has either lost their setting
+	 * at the next toolchange or changed their machine permanently by accident,
+	 * and neither is recoverable by looking at the screen afterwards.
+	 */
+	const applyShaper = async (n: number, spec: ShaperSpec, how: "send" | "macro"): Promise<void> => {
+		if (applyState().kind === "working") return;
+		const line = cmd.inputShaping(spec);
+		setApplyState({ kind: "working", how });
+		try {
+			if (how === "send") {
+				await base.connector.sendCode(line);
+			} else {
+				const path = toolMacroPath(n);
+				// Read-modify-write against the file that is there NOW. Never a
+				// cached copy: `macroFor` may hold a line read minutes ago, and
+				// writing a whole file back from a stale read would silently
+				// discard anything edited in between.
+				let text = "";
+				try {
+					text = await base.connector.download(path);
+				} catch (err) {
+					// A tool with no post-select macro is an ordinary machine, so
+					// this creates one. Any other failure is a transfer to retry
+					// and must not be turned into an overwrite of a file we could
+					// not read.
+					if (!(err instanceof FileNotFoundError)) throw err;
+					text = `; created by dwc-ng for T${n}\n`;
+				}
+				await base.connector.upload(path, replaceShapingLine(text, line));
+				// The card's own reading of the file is now stale by definition.
+				if (macroFor(n).kind !== "closed") setMacros(n, { kind: "line", line });
+			}
+			store.setApplied(n, spec);
+			await store.save(n);
+			setApplyState({ kind: "done", how, line });
+		} catch (err) {
+			setApplyState({ kind: "failed", why: `${how === "send" ? "sending" : "writing"} ${line}: ${err instanceof Error ? err.message : String(err)}` });
+		}
+	};
+
 	const toggleMacro = (n: number): void => {
 		if (macroFor(n).kind !== "closed") {
 			setMacros(n, { kind: "closed" });
@@ -1065,6 +1133,7 @@ function shapingService(base: ServiceBaseCtx) {
 		fits, families, fullStepFor, sweepState, buildSweep, saveSweep,
 		candidateIndex, setCandidateIndex,
 		accelFor, gate, macroFor, toggleMacro, rank, ranking, problem, offer, runStep,
+		applyShaper, applyState,
 		offers: (step: ShapingStep): boolean => offered().includes(step),
 		// Whether a step's OWNING card is on the screen at all, which is a
 		// different fact from whether it has offered to run the step: the first

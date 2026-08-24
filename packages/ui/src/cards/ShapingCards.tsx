@@ -33,6 +33,8 @@ import type { CardCtx } from "../compose/ctx.ts";
 import type { MacroRead } from "../compose/services.ts";
 import { nextStep, SHAPING_STEPS, type ShapingStep, type StepInputs, type StepSpec } from "../shaping/steps.ts";
 import { walkThrough } from "../shaping/evidence/walk.ts";
+import type { ApplyHow, ApplyIntent } from "../shaping/applyRun.ts";
+import { applyStateText, armedApplyText } from "../shaping/copy.ts";
 import { inquiryText } from "../shaping/copy.ts";
 import type { Evidence } from "../shaping/evidence/evidence.ts";
 import type { Caveat } from "../shaping/evidence/caveat.ts";
@@ -2267,18 +2269,53 @@ function recommendation(r: ToolResults): { spec: ShaperSpec; basis: "verified" |
 export function ShapingApplyBody(props: { ctx: CardCtx }) {
 	const svc = props.ctx.service("shaping");
 	const [copied, setCopied] = createSignal(false);
+	const [armed, setArmed] = createArmed<ApplyHow>();
 	const pick = createMemo(() => recommendation(svc.results()));
 
 	const copy = async (line: string): Promise<void> => {
 		setCopied(await copyText(line));
 	};
 
+	/**
+	 * Both acts through ONE route: first press arms, second press does it.
+	 *
+	 * The two are never armed at once — `createArmed` holds a single value, so
+	 * arming Write disarms Send. An operator who armed one, changed their mind
+	 * and pressed the other would otherwise be one keystroke from installing a
+	 * shaper they had decided against.
+	 */
+	const act = (how: ApplyHow): void => {
+		const made = pick();
+		if (made === null) return;
+		if (armed() !== how) {
+			setArmed(how);
+			return;
+		}
+		setArmed(null);
+		void svc.applyShaper(svc.tool(), made.spec, how);
+	};
+
+	// The status card's step list does not install anything itself: it calls
+	// this handler, which ARMS the persistent act. Two presses either way, and
+	// the second is on the card showing the line about to be written.
+	svc.offer("apply", () => {
+		if (pick() !== null) setArmed("macro");
+	});
+
+	const intent = createMemo((): ApplyIntent | null => {
+		const how = armed();
+		const made = pick();
+		return how === null || made === null ? null : { how, tool: svc.tool(), spec: made.spec };
+	});
+
+	const busy = (): boolean => svc.applyState().kind === "working";
+
 	return (
 		<>
 			<dl class="shp-facts">
 				<div class="shp-fact">
 					<dt>Tool</dt>
-					<dd class="shp-mono">T{svc.tool()} · 0:/sys/tpost{svc.tool()}.g</dd>
+					<dd class="shp-mono">T{svc.tool()} · {toolMacroPath(svc.tool())}</dd>
 				</div>
 				<div class="shp-fact">
 					<dt>Basis</dt>
@@ -2303,13 +2340,40 @@ export function ShapingApplyBody(props: { ctx: CardCtx }) {
 				{made => (
 					<>
 						<p class="shp-line">{shaperLine(made().spec)}</p>
+						{/* Three acts, in increasing consequence left to right:
+						    copy it somewhere else, put it on the machine until
+						    the next reset, or make it this tool's own. The order
+						    is the sentence the operator reads. */}
 						<div class="shp-actions">
-							<button class="fb-tool" onClick={() => void copy(shaperLine(made().spec))}>Copy</button>
+							<button class="fb-tool" disabled={busy()} onClick={() => void copy(shaperLine(made().spec))}>Copy</button>
+							<button
+								class="fb-tool"
+								classList={{ "shp-arming": armed() === "send" }}
+								disabled={busy()}
+								onClick={() => act("send")}
+							>
+								{armed() === "send" ? "Confirm" : "Send now"}
+							</button>
+							<button
+								class="fb-tool"
+								classList={{ "shp-arming": armed() === "macro" }}
+								disabled={busy()}
+								onClick={() => act("macro")}
+							>
+								{armed() === "macro" ? "Confirm" : `Write tpost${svc.tool()}.g`}
+							</button>
 							<span class="shp-copied" aria-live="polite">{copied() ? "copied" : ""}</span>
 						</div>
 					</>
 				)}
 			</Show>
+			{/* One fixed slot for what is about to happen, what happened, or
+			    why it did not. Present in every state so arming moves nothing. */}
+			<p class="shp-apply-note" classList={{ "shp-warn-inline": svc.applyState().kind === "failed" }}>
+				<Show when={intent()} fallback={applyStateText(svc.applyState()) || NONE}>
+					{i => armedApplyText(i())}
+				</Show>
+			</p>
 		</>
 	);
 }
