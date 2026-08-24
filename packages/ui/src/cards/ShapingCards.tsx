@@ -33,6 +33,8 @@ import type { CardCtx } from "../compose/ctx.ts";
 import type { MacroRead } from "../compose/services.ts";
 import { nextStep, SHAPING_STEPS, type ShapingStep, type StepInputs, type StepSpec } from "../shaping/steps.ts";
 import { screenThread } from "../shaping/evidence/findings.ts";
+import type { Evidence } from "../shaping/evidence/evidence.ts";
+import type { Caveat } from "../shaping/evidence/caveat.ts";
 import { caveatText } from "../shaping/copy.ts";
 import { toolMacroPath } from "../shaping/toolMacro.ts";
 import type { Envelope, ShapingConfig, ShapingDefaults } from "../config/types.ts";
@@ -119,6 +121,34 @@ const specS = (spec: ShaperSpec): string => (spec.type === "custom" ? NONE : `${
  *  there, and the Apply card shows it in full a few centimetres away. */
 const shaperShort = (spec: ShaperSpec): string =>
 	spec.type === "custom" ? "custom shaper" : `${specName(spec)} ${specF(spec)} Hz`;
+
+/**
+ * What limits this card's own reading, in one reserved slot.
+ *
+ * ONE component for all three cards rather than three copies of the same JSX:
+ * duplicating it is the tripwire that says the design is wrong, and the failure
+ * mode of three copies is three cards that come to describe the same
+ * measurement differently.
+ *
+ * The slot is present in every state and holds the em dash when there is
+ * nothing to say, so a finding arriving never moves the rows under it. Only the
+ * FIRST caveat is shown: the full list is the status card's job, and a card
+ * that grew by a line per finding would be a card whose height depends on how
+ * bad the news is.
+ */
+function CardCaveat(props: { evidence: Evidence<unknown> }) {
+	const first = createMemo((): Caveat | null => {
+		const e = props.evidence;
+		return e.state === "held" && e.caveats.length > 0 ? e.caveats[0]! : null;
+	});
+	return (
+		<p class="shp-caveat">
+			<Show when={first()} fallback={NONE}>
+				{c => <span title={caveatText(c())}>{caveatText(c())}</span>}
+			</Show>
+		</p>
+	);
+}
 
 /** One axis of a fingerprint as a single cell: frequency over damping and
  *  peak. Two lines either way — an axis that did not fit reserves the second
@@ -1948,6 +1978,10 @@ export function ShapingSweepBody(props: { ctx: CardCtx }) {
 				<span>{readout()[1]}</span>
 				<span>{readout()[2]}</span>
 			</p>
+			{/* What this sweep cannot say, beside the numbers it can. The
+			    coverage finding belongs HERE and not only on the status card:
+			    the operator reading a black band is looking at this chart. */}
+			<CardCaveat evidence={svc.products().sweep} />
 			<p class="shp-sweep-note" classList={{ "shp-warn-inline": svc.sweepState().kind === "failed" }}>
 				<Show when={arming()} fallback={sweepStateText(svc.sweepState())}>
 					{a => <>Confirm: write T{a().tool}&apos;s results, this sweep included, to {RESULTS_PATH(a().tool)}. Escape cancels.</>}

@@ -4679,6 +4679,22 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; appe
 	-webkit-line-clamp: 3;
 }
 
+/* What limits one card's own reading. Two declared lines whether it holds a
+   sentence or the em dash, for the same reason .shp-thread has three: these
+   cards are watched while the machine works and a finding arriving must not
+   move the rows under it. Clamped rather than ellipsed, because a finding
+   carries its remedy at the end of the sentence. */
+.shp-caveat {
+	margin: calc(1 * var(--u)) 0 0;
+	font: 400 calc(3 * var(--u))/calc(4 * var(--u)) var(--font-body);
+	color: var(--silk-dim);
+	height: calc(8 * var(--u));
+	overflow: hidden;
+	display: -webkit-box;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 2;
+}
+
 /* The workflow, one row per step. A LIST rather than a button bar: each step
    carries a sentence saying what it is waiting for, and five captions under
    five side-by-side buttons is unreadable at any card width this screen uses.

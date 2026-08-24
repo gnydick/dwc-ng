@@ -31,6 +31,20 @@
 import { type Caveat, severityOf } from "./caveat.ts";
 
 /**
+ * The two sentences this module needs, passed IN rather than imported.
+ *
+ * copy.ts already imports this module's types, and having the machine reach
+ * back for its prose would make the pair a cycle whose direction depends on
+ * which file a reader opens first. Injecting keeps the arrow one-way — the
+ * machine decides, the copy table speaks — and it is what lets a test assert
+ * the LIFECYCLE without asserting the wording.
+ */
+export type CaveatCopy = {
+	readonly caveat: (c: Caveat) => string;
+	readonly supersede: (s: Supersede) => string;
+};
+
+/**
  * Where a product came from.
  *
  * A union with an `unknown` arm rather than an optional field, so a product
@@ -123,6 +137,69 @@ export function valueFor<T>(e: Evidence<T>): T | null {
 		case "running":
 		case "failed":
 			return null;
+		default: {
+			const unhandled: never = e;
+			throw new Error(`unknown evidence state: ${String((unhandled as { state: unknown }).state)}`);
+		}
+	}
+}
+
+/**
+ * What a control over this product may do, as one value.
+ *
+ * `armed` is not a new invention: `createArmed` is already how this screen asks
+ * for confirmation before writing to the card. Routing a caveat into it rather
+ * than into `disabled` is deliberate — a caveat must never take away a control
+ * that sends G-code, because the firmware and the planner are the authorities
+ * on what the machine may do. What a caveat buys is one sentence the operator
+ * has to read first.
+ *
+ * `disabled` is reserved for the two cases where there is nothing to confirm:
+ * no product at all, and a product shaping demonstrably cannot act on.
+ *
+ * A note on where this IS and IS NOT used, because the difference is a
+ * decision rather than an oversight. The five workflow steps take the
+ * `stepReadiness` treatment instead — enabled, with the caveat as the sentence
+ * beside the button — because Rank is arithmetic and Measure is the remedy for
+ * most caveats, and arming a control whose whole purpose is to fix the problem
+ * it is warning about is friction with no safety in it. This is for the
+ * controls that CHANGE THE MACHINE from a product: Apply, which writes `M593`
+ * or `tpost<N>.g`.
+ */
+export type Lifecycle =
+	| { readonly kind: "enabled" }
+	| { readonly kind: "armed"; readonly confirm: string }
+	| { readonly kind: "disabled"; readonly note: string };
+
+export function lifecycleOf<T>(e: Evidence<T>, text: CaveatCopy): Lifecycle {
+	switch (e.state) {
+		case "absent":
+			return { kind: "disabled", note: "nothing measured yet" };
+		case "running":
+			return { kind: "disabled", note: `${e.what}…` };
+		case "failed":
+			return { kind: "disabled", note: e.why };
+		case "superseded":
+			return { kind: "armed", confirm: text.supersede(e.cause) };
+		case "held":
+			switch (verdictOf(e)) {
+				case "sound":
+					return { kind: "enabled" };
+				case "unusable": {
+					// Non-null by construction: `unusable` is returned only when
+					// verdictOf found a disqualifying caveat in this very list.
+					const bad = e.caveats.find((c) => severityOf(c) === "disqualifying")!;
+					return { kind: "disabled", note: text.caveat(bad) };
+				}
+				case "unattributable":
+					return {
+						kind: "armed",
+						confirm: `${e.provenance.kind === "unknown" ? e.provenance.why : ""} — so this cannot be checked against the machine in front of you`,
+					};
+				case "caveated":
+					return { kind: "armed", confirm: text.caveat(e.caveats[0]!) };
+			}
+		// falls through only if verdictOf gained an arm without one here
 		default: {
 			const unhandled: never = e;
 			throw new Error(`unknown evidence state: ${String((unhandled as { state: unknown }).state)}`);
