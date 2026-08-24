@@ -26,6 +26,7 @@
  */
 import { ACCEL_DIR } from "./captures.ts";
 import type { Fingerprint } from "./engine/fit.ts";
+import type { Caveat } from "./evidence/caveat.ts";
 import type { Refusal } from "./preconditions.ts";
 import type { StepBlock, StepNeed, StepSpec, StepStatus } from "./steps.ts";
 import type { MotionOutcome, MotionState } from "./motionRun.ts";
@@ -468,4 +469,66 @@ export function motionStateText(state: MotionState): string {
  */
 export function armedRunText(kind: RunKind, captures: number, distMm: number, speedMmS: number, first: string, last: string): string {
 	return `Confirm ${runKindText(kind).toLowerCase()}: ${captures} ${captures === 1 ? "capture" : "captures"}, ${distMm} mm at ${speedMmS} mm/s, writing ${first} … ${last} to ${ACCEL_DIR}. Escape cancels.`;
+}
+
+/* ------------------------------------------- what the readings actually mean */
+
+/** One decimal, the resolution the fitter and the 1 Hz sweep bins can justify. */
+const hzText = (v: number): string => v.toFixed(1);
+
+/**
+ * Two decimals, for a SPREAD rather than a frequency.
+ *
+ * A spread is a small difference and one decimal destroys it in the direction
+ * that matters: 0.23 Hz becomes "0.2", and a 0.04 Hz spread becomes "0.0",
+ * which reads as exactly zero. The whole finding is the contrast between one
+ * end that moves and one that does not, so the end that does not has to be
+ * legible as small-but-measured rather than as nothing.
+ */
+const spreadText = (v: number): string => v.toFixed(2);
+
+/**
+ * One sentence per caveat, in the operator's vocabulary, citing the numbers it
+ * was derived from.
+ *
+ * Here rather than in a module of its own for the reason the file header
+ * already gives: ONE table, so the sweep card's inline note and the status
+ * card's thread cannot say different things about the same measurement.
+ *
+ * Every sentence states the FACT and, where there is one, the remedy. Where
+ * there is no remedy the sentence says what the number is good for instead,
+ * because "we cannot tell you, and here is what would" is a legitimate finding
+ * and often the most useful one.
+ */
+export function caveatText(c: Caveat): string {
+	switch (c.kind) {
+		case "forcing-band-excludes-mode":
+			// Both ends of the band AND the speed that would fix it. The band
+			// alone reads as a complaint; the speed makes it an instruction.
+			return `nothing in this sweep drove ${c.axis} at ${hzText(c.modeHz)} Hz — the ladder forces ${hzText(c.bandHz[0])}–${hzText(c.bandHz[1])} Hz, so this band is black whether or not the mode is real; a pass near ${c.needMmPerS.toFixed(1)} mm/s would bracket it`;
+		case "rows-not-analysed":
+			return `${c.rows - c.analysed} of ${c.rows} speeds held too little constant-velocity motion to transform — those rows are missing, not quiet`;
+		case "mode-on-forcing-locus":
+			return `${c.axis} at ${hzText(c.modeHz)} Hz is exactly what the motors force at ${c.speedMmPerS.toFixed(0)} mm/s, so this is likely torque ripple rather than a resonance — shaping cannot move it; current, microstepping and the mechanics can`;
+		case "mode-locus-unknown":
+			// Silence here would read as "checked, and fine".
+			return "no sweep on this tool, so whether these modes are resonances or motor ripple has not been checked — build one to find out";
+		case "direction-spread":
+			return `${c.axis} reads differently at the two ends of the move: ${spreadText(c.plusHz)} Hz of spread in the plus direction against ${spreadText(c.minusHz)} Hz in the minus, on a ${hzText(c.modeHz)} Hz mode — one end alone consumes the ±10 % the ranking is scored over`;
+		case "fits-at-damping-cap":
+			// The cycle count is the measurement and the cap is the rule, so
+			// the sentence carries both: that is what turns "noise" into
+			// arithmetic the operator can check for themselves.
+			return `${c.refused} of ${c.of} ${c.axis} captures were refused because the ring died in ${c.cyclesFit.toFixed(1)} cycles, short of the two a fit needs — that is the ζ ${c.cap.toFixed(4)} ceiling, arithmetic rather than noise`;
+		case "few-fits":
+			return `${c.axis} rests on ${c.n} of ${c.of} captures — a median over that few moves with any one of them`;
+		case "predicted-not-measured":
+			return `these ${c.n} are arithmetic over the fingerprint, not measurements — verify one on the machine before trusting the order`;
+		case "inherited":
+			return `from the ${c.from} these were ranked from: ${caveatText(c.caveat)}`;
+		default: {
+			const unhandled: never = c;
+			throw new Error(`unknown caveat: ${String((unhandled as { kind: unknown }).kind)}`);
+		}
+	}
 }
