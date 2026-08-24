@@ -24,10 +24,12 @@ import { runMotion, fitCapturesOf, type RawCapture } from "../src/shaping/runner
 import type { RunKind } from "../src/shaping/runPlan.ts";
 import type { Refusal } from "../src/shaping/preconditions.ts";
 import type { Mode, NoFit } from "../src/shaping/engine/fit.ts";
-import { seconds } from "../src/shaping/engine/units.ts";
+import { hz, seconds } from "../src/shaping/engine/units.ts";
+import type { ShaperSpec } from "../src/shaping/engine/shapers.ts";
+import type { Shaping } from "../src/om/types.ts";
 import type { ShapingConfig } from "../src/config/types.ts";
 import { accelAddr } from "../src/control/commands.ts";
-import { config, fakeBoard, modelWith, TOOLBOARD, testClock } from "./helpers/shapingMachine.ts";
+import { config, EI2_PRIOR, fakeBoard, modelWith, TOOLBOARD, testClock } from "./helpers/shapingMachine.ts";
 
 /* ------------------------------------------------------------ the state union */
 
@@ -130,11 +132,22 @@ test("both runs are named in the operator's words", () => {
 
 const ADDR = accelAddr(20, 0);
 
+/** The two M593s a leg on a shaped machine sends, spelled once. `EI2_PRIOR` is
+ *  the fixture machine's own shaper, so `EI2_LINE` is what putting it back
+ *  looks like on the wire and `OFF` is what measuring past it looks like. */
+const OFF = 'M593 P"none"';
+const EI2_LINE = 'M593 P"ei2" F52 S0.075';
+
 type Harness = {
 	readonly deps: Parameters<typeof runMotion>[1];
 	readonly states: MotionState[];
 	readonly sent: string[];
 	readonly abort: AbortController;
+	/** What the BOARD is holding, which is not what `model.move.shaping` says:
+	 *  the fake's mirror lags its board exactly as a polled object model lags a
+	 *  machine (helpers/shapingMachine.ts). "Was the shaper put back?" is a
+	 *  question about the board. */
+	readonly shaping: () => Shaping;
 };
 
 function harness(over: {
@@ -158,6 +171,7 @@ function harness(over: {
 		states,
 		sent: board.sent,
 		abort,
+		shaping: board.shaping,
 		deps: {
 			conn: board.conn,
 			om: () => model,
@@ -191,10 +205,120 @@ test("a measure run drives both axes and comes back with every capture", async (
 	assert.equal(result.touched, true);
 });
 
-test("the shaper is put back once per leg — a measure run is two legs", async () => {
-	const h = harness({ cfg: ONE_REP });
+test("each leg states the shaper it measures through and puts the operator's own back — a measure run is two legs", async () => {
+	// The machine's own shaper is a NAMED one, which is what makes the two
+	// M593s of a leg tell each other apart: since #53 a baseline leg opens with
+	// `M593 P"none"` and closes by restoring what was found. Measured on an
+	// unshaped machine the two are spelled identically, and dropping either
+	// would still count.
+	const h = harness({ cfg: ONE_REP, model: modelWith({ shaping: EI2_PRIOR }) });
 	await runMotion({ kind: "measure" }, h.deps);
-	assert.equal(h.sent.filter(c => c === 'M593 P"none"').length, 2);
+	assert.deepEqual(h.sent.filter(c => c.startsWith("M593")), [OFF, EI2_LINE, OFF, EI2_LINE]);
+});
+
+/* ---------------------------------------- the shaper across a multi-leg run */
+//
+// The bug these four are here to keep dead (#53 follow-on): every leg of a run
+// re-reads the machine to be authorised, and `Preconditions.read` takes the
+// prior shaper off the POLLED object model — which the run's own G-code has
+// been changing. Leg 1 states `M593 P"none"`, the poll catches up, and leg 2's
+// fresh reading hands back `none` as "the shaper this machine had". Restoring
+// to that leaves a measure run with the operator's shaper silently switched
+// off, and a verify run with the unproven candidate still installed, under a
+// screen that reports the run as successful and the shaper as put back.
+//
+// None of it was visible until the fake board started holding the shaper its
+// M593s set AND letting the object model lag behind it, the way a polled mirror
+// of a machine does (helpers/shapingMachine.ts). Both halves are load-bearing:
+// with the frozen fixture leg 2 re-read the value the test was BUILT with, and
+// with a mirror that moved on the send it re-read a perfectly current one. In
+// either case `pre.priorShaping` happened to be right and the bug was invisible
+// — reverting the fix left all of these green. That is why the first test below
+// asserts the FIXTURE, before any of the three that lean on it.
+
+/** A candidate deliberately unlike the machine's own shaper, so "the candidate"
+ *  and "the operator's" can never be spelled the same way on the wire. */
+const MZV_SPEC: ShaperSpec = { type: "mzv", F: hz(40), S: 0.1 };
+const MZV_LINE = 'M593 P"mzv" F40 S0.1';
+
+test("the object model LAGS the board it mirrors — the fixture the three tests below rest on", async () => {
+	// Not the wire: what `move.shaping` reads as at the moment each M593 goes
+	// out, which is the value `Preconditions.read` would take a prior shaper
+	// from. Row three is the whole bug in one cell — leg 2 opens on a model that
+	// still reports leg 1's `none`, because a leg's restore is the last thing it
+	// sends and nothing polls the machine after it.
+	const model = modelWith({ shaping: EI2_PRIOR });
+	const mirror: Array<[string, string]> = [];
+	const h = harness({
+		cfg: ONE_REP,
+		model,
+		onSend: (code) => { if (code.startsWith("M593")) mirror.push([code, model.move.shaping.type]); },
+	});
+	await runMotion({ kind: "measure" }, h.deps);
+	assert.deepEqual(mirror, [
+		[OFF, "ei2"],       // leg 1 opens on the machine as the operator left it
+		[EI2_LINE, "none"], // and restores from a model the captures polled to `none`
+		[OFF, "none"],      // leg 2 opens on a model that has NOT seen leg 1's restore
+		[EI2_LINE, "none"], // and its restore is issued off that same stale reading
+	]);
+	// And the board itself was never confused: it has the operator's shaper.
+	assert.deepEqual(h.shaping(), EI2_PRIOR);
+});
+
+test("leg 2 of a measure run restores the OPERATOR's shaper, not the one leg 1 left on the board", async () => {
+	const h = harness({ cfg: ONE_REP, model: modelWith({ shaping: EI2_PRIOR }) });
+	const result = await runMotion({ kind: "measure" }, h.deps);
+	assert.equal(result.outcome.kind, "done", JSON.stringify(result.outcome));
+
+	const m593 = h.sent.filter(c => c.startsWith("M593"));
+	assert.deepEqual(m593, [OFF, EI2_LINE, OFF, EI2_LINE]);
+	// Named on its own, because it is the ONE line the bug got wrong: with the
+	// restore taken from each leg's own reading this was `M593 P"none"` and the
+	// run still reported "the shaper is back as it was found".
+	assert.equal(m593[3], EI2_LINE, "leg 2's restore is the operator's shaper");
+	assert.notEqual(m593[3], OFF, "and emphatically not the `none` leg 1 stated");
+
+	// The end state, not just the traffic: the machine is left holding it.
+	assert.deepEqual(h.shaping(), EI2_PRIOR);
+	assert.equal(result.restored, true);
+});
+
+test("leg 2 of a VERIFY run restores the operator's shaper, never the candidate under test", async () => {
+	// Worse than losing the shaper: a run that ends with an UNPROVEN shaper
+	// installed, on a machine whose operator has been told it was put back.
+	const h = harness({ cfg: ONE_REP, model: modelWith({ shaping: EI2_PRIOR }) });
+	const result = await runMotion({ kind: "verify", spec: MZV_SPEC }, { ...h.deps, prefix: "t0_ver" });
+	assert.equal(result.outcome.kind, "done", JSON.stringify(result.outcome));
+
+	const m593 = h.sent.filter(c => c.startsWith("M593"));
+	assert.deepEqual(m593, [MZV_LINE, EI2_LINE, MZV_LINE, EI2_LINE]);
+	assert.equal(m593[3], EI2_LINE, "leg 2's restore is the operator's shaper");
+	assert.notEqual(m593[3], MZV_LINE, "and not the candidate leg 2 was measuring through");
+	assert.deepEqual(h.shaping(), EI2_PRIOR);
+	assert.equal(result.restored, true);
+});
+
+test("a run that fails in leg 2 still hands back the shaper the RUN began with", async () => {
+	// The restore is what the `finally` sends, so the failure path is a separate
+	// route to the same line — and it reads the same stale `move.shaping`.
+	const h = harness({
+		cfg: ONE_REP,
+		model: modelWith({ shaping: EI2_PRIOR }),
+		// Leg 2's first capture, named rather than counted: the Y ring is the
+		// second leg by construction, so this cannot drift onto leg 1 the way an
+		// index into the wire would.
+		onSend: (code) => { if (code.includes("t0_ring_Yp0.csv")) throw new Error("503 firmware busy"); },
+	});
+	const result = await runMotion({ kind: "measure" }, h.deps);
+	assert.equal(result.outcome.kind, "failed", JSON.stringify(result.outcome));
+	assert.equal(result.restored, true);
+	// It really did get past leg 1: both of leg 1's captures are in hand, so the
+	// reading the failed leg restored from is one taken AFTER leg 1 ran.
+	assert.equal(result.captures.length, 2, result.captures.map(c => c.file).join());
+	const m593 = h.sent.filter(c => c.startsWith("M593"));
+	assert.deepEqual(m593, [OFF, EI2_LINE, OFF, EI2_LINE]);
+	assert.equal(m593[m593.length - 1], EI2_LINE, "the last thing the board hears is the operator's shaper");
+	assert.deepEqual(h.shaping(), EI2_PRIOR);
 });
 
 test("the last thing reported is always an ended state carrying the tally", async () => {
@@ -210,9 +334,35 @@ test("the step counter runs across the WHOLE run, not per leg", async () => {
 	const h = harness({ cfg: ONE_REP });
 	await runMotion({ kind: "measure" }, h.deps);
 	const steps = h.states.filter(s => s.kind === "running").map(s => (s.kind === "running" ? s.step : 0));
-	// Four capture steps over two legs, counted 1..4 rather than 1,2,1,2.
-	assert.equal(Math.max(...steps), 4);
-	assert.ok(steps.every(n => n <= 4));
+	// Six steps over two legs — each leg states the shaper it measures through
+	// (#53) and then makes its two captures — counted 1..6 rather than 1,2,3
+	// twice. The counter counts STEPS, so the shaper statement is one of them.
+	assert.equal(Math.max(...steps), 6);
+	assert.ok(steps.every(n => n <= 6));
+});
+
+test("the progress DENOMINATOR is the whole run's steps, so the bar cannot run past its own end", async () => {
+	// The other half of the counter above, and the half that was wrong: the
+	// numerator counted every step and the denominator counted only captures,
+	// so a one-repeat measure run reported "6 of 4". `motionProgress` clamps
+	// the FILL and not the COUNT on purpose (motionRun.ts), which means a bar
+	// that looks right is not evidence — the numbers have to be checked.
+	const h = harness({ cfg: ONE_REP });
+	await runMotion({ kind: "measure" }, h.deps);
+	const running = h.states.filter(s => s.kind === "running");
+	assert.ok(running.length > 0, "the run reported no progress at all");
+
+	// Two legs, each stating the shaper it measures through (#53) and then
+	// making its two captures: 2 + 4. Written out rather than derived, so this
+	// cannot agree with a `totalStepsOf` that is wrong in the same way.
+	for (const s of running) assert.equal(motionProgress(s).steps, 6, JSON.stringify(s));
+	for (const s of running) {
+		const p = motionProgress(s);
+		assert.ok(p.step <= p.steps, `${p.step} of ${p.steps} — the count ran past the total`);
+		assert.ok(p.fraction <= 1, `${p.fraction}`);
+	}
+	const last = motionProgress(running[running.length - 1]!);
+	assert.deepEqual({ step: last.step, steps: last.steps, fraction: last.fraction }, { step: 6, steps: 6, fraction: 1 });
 });
 
 test("a run refused before anything is sent keeps its hands off the machine", async () => {

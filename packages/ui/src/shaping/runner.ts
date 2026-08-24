@@ -28,10 +28,24 @@
  *      reading at the top would authorise the second ring on the machine's
  *      state a minute ago — the exact window `Preconditions` exists to close,
  *      reopened by the loop that uses it
+ *
+ * @invariant the-shaper-to-restore-is-read-once-per-run
+ * @rung 5  required argument — `Procedure.plan` takes `runPrior` and will not
+ *          compile without it, and this file holds exactly one, captured from
+ *          the FIRST leg's reading and never reassigned. The two invariants
+ *          above and here pull in opposite directions on purpose and both are
+ *          right: what AUTHORISES a leg must be as fresh as possible, and what
+ *          the run PUTS BACK must be as old as the run.
+ * @why every leg's reading takes the shaper from the polled object model, and
+ *      the run's own codes change it. Leg 1 states its shaper; the poll catches
+ *      up during leg 1's captures; leg 2's fresh reading returns that statement
+ *      as the machine's "prior". Restoring to it leaves a baseline run with
+ *      shaping switched off and a verify run with the unproven candidate still
+ *      installed — under a screen that says the shaper is back as it was found
  */
 import type { ConnectorReads, ConnectorWrites } from "@dwc-ng/connector";
 import type { ShapingConfig } from "../config/types.ts";
-import type { ObjectModel } from "../om/types.ts";
+import type { ObjectModel, Shaping } from "../om/types.ts";
 import type { AccelAddr } from "../control/commands.ts";
 import { captureNameParts } from "./captures.ts";
 import type { Axis, Mode, NoFit } from "./engine/fit.ts";
@@ -135,6 +149,17 @@ export async function runMotion(req: RunRequest, deps: RunDeps): Promise<RunResu
 	 */
 	let rate: SampleRate | null = null;
 
+	/**
+	 * The shaper the machine had when this run began, and the only one it will
+	 * ever be restored to.
+	 *
+	 * Set from the first leg's reading, which is the last moment at which the
+	 * object model still describes a machine this run has not written to. Every
+	 * later leg re-reads the machine to be AUTHORISED — position, idle, homed —
+	 * and none of them gets to re-answer "what was here before?".
+	 */
+	let runPrior: Shaping | null = null;
+
 	for (const plan of plans) {
 		if (deps.signal.aborted) return finish({ kind: "cancelled" });
 
@@ -142,12 +167,14 @@ export async function runMotion(req: RunRequest, deps: RunDeps): Promise<RunResu
 		const read = Preconditions.read(deps.om(), deps.cfg(), deps.accel, Date.now());
 		if (!read.ok) return finish({ kind: "refused", refusal: read.refusal });
 
+		runPrior ??= read.pre.priorShaping;
+
 		if (rate === null) {
 			rate = await readSampleRate(deps.conn, deps.accel);
 			if (rate === null) return finish({ kind: "refused", refusal: { kind: "no-sample-rate" } });
 		}
 
-		const planned = planProcedure(plan, read.pre, deps.cfg(), Date.now(), rate);
+		const planned = planProcedure(plan, read.pre, deps.cfg(), Date.now(), rate, runPrior);
 		if (!planned.ok) return finish({ kind: "refused", refusal: planned.refusal });
 
 		let failed: string | null = null;
@@ -238,12 +265,19 @@ export async function runMotion(req: RunRequest, deps: RunDeps): Promise<RunResu
  * denominator and the button's promise are the same arithmetic.
  */
 function totalStepsOf(plans: readonly Plan[], kind: RunKind): number {
-	// Neither run this card owns prepends a step; the arm is inside every
-	// capture step. Named rather than assumed, so a verify run driven through
-	// here later shows up as a compile-time question instead of a bar that
-	// stops one short.
+	// EVERY plan prepends exactly one step, whatever the run: `stepsFor` states
+	// the shaper before it records anything (#53), and a verify plan states its
+	// candidate where a ring and a sweep state `none`. So the total is one per
+	// leg on top of the captures — `plans.length`, not a constant, because a
+	// measure run is two legs and a sweep is one.
+	//
+	// It used to read `plannedCaptureCount(plans)` alone, under a comment
+	// saying neither run prepends a step. That stopped being true the moment a
+	// baseline had to disable shaping, and the bar went to "6 of 4": nothing
+	// clamps `state.step / state.steps` (motionRun.ts), so the fraction ran
+	// past 1.
 	void kind;
-	return plannedCaptureCount(plans);
+	return plans.length + plannedCaptureCount(plans);
 }
 
 /**

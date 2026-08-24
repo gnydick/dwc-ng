@@ -127,7 +127,16 @@ export function motionBusy(state: MotionState): boolean {
 export function motionProgress(state: MotionState): { readonly fraction: number; readonly step: number; readonly steps: number } {
 	switch (state.kind) {
 		case "running":
-			return { fraction: state.steps === 0 ? 0 : state.step / state.steps, step: state.step, steps: state.steps };
+			// The FILL is clamped and the COUNT is not, deliberately. A fraction
+			// above 1 has no meaning — it is a bar drawn past the end of its own
+			// track, on a card the operator watches while the machine moves, and
+			// positional stability there outranks everything. But clamping the
+			// numbers too would hide the disagreement that produced it: when
+			// `totalStepsOf` fell out of step with what `stepsFor` actually
+			// sends, this read "6 of 4", and that sentence is what made the bug
+			// findable. So the bar stays inside its track and the text still
+			// says 6 of 4.
+			return { fraction: state.steps === 0 ? 0 : Math.min(1, state.step / state.steps), step: state.step, steps: state.steps };
 		case "restoring":
 			return { fraction: 1, step: state.expected, steps: state.expected };
 		case "fitting":

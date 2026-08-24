@@ -123,6 +123,95 @@ export const ringPlan = (over: Partial<RingPlan> = {}): RingPlan => ({
 
 export const FAKE_CSV = "0,0.01,0.02,0.03\nRate 1344, overflows 0\n";
 
+// --- the shaper the fake board is holding ------------------------------------
+//
+// The fake used to leave `move.shaping` frozen for the whole test, which made
+// every shaper assertion in this suite unfalsifiable: a run could send
+// `M593 P"none"` and the object model would still report the operator's ei2, so
+// no test could tell a run that put the shaper back from one that did not. That
+// is exactly how the multi-leg restore bug (#53 follow-on) survived — leg 2 of a
+// measure run re-reads `move.shaping` for its "prior", and on a real board that
+// field is whatever leg 1's own G-code last set it to.
+//
+// So the fake keeps TWO shapers, because a real machine does:
+//
+//   the BOARD's, which M593 changes the instant the firmware accepts it, and
+//   the MIRROR — `model.move.shaping` — which is this UI's polled copy and only
+//   catches up on a poll.
+//
+// Modelling the lag is not decoration. A fake whose mirror moved with the send
+// would hand leg 2 a perfectly current reading, `pre.priorShaping` and the
+// run's own `runPrior` would agree, and the bug would once again be invisible:
+// with the fix reverted the whole suite still passed until the mirror learned
+// to lag. What lags it is the capture wait's directory polling, which is
+// literally where the real one catches up — "the poll catches up during leg 1's
+// captures". A leg's restore is the last thing it sends and nothing polls after
+// it, so leg 2 opens on a model that still reports leg 1's `none`.
+
+/**
+ * The shapers this fake can report an impulse train for.
+ *
+ * M593 states a shaper's IDENTITY — type, F, S — and the board derives the
+ * impulse train from it. Deriving ei2's train here would mean reimplementing
+ * the firmware's shaper maths inside a test helper, so instead the fake knows
+ * the trains of the fixtures this suite already states, and reports an empty
+ * train for any other named shaper. That is honest about what it models:
+ * identity exactly, impulses only where something already states them.
+ *
+ * Nothing depends on the gap: `restoreFor` (procedure.ts) rebuilds a NAMED
+ * shaper from its identity alone and only consults the train for `custom`,
+ * which M593 spells out in full and this fake therefore reconstructs exactly.
+ */
+const KNOWN_TRAINS: readonly Shaping[] = [EI2_PRIOR];
+
+/** RRF's number syntax, as it appears after an M593 parameter letter. */
+const NUM = String.raw`-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?`;
+
+/**
+ * What an `M593` leaves `move.shaping` as, or null when the code changes it.
+ *
+ * Null covers two cases that are not a write: a code that is not an M593 at
+ * all, and a BARE `M593`, which the firmware documents as asking rather than
+ * setting (reference/duet-gcode.md, M593). An omitted F or S keeps the value
+ * the machine is already holding, which is what makes `M593 P"none"` a change
+ * of TYPE and not a reset of the whole shaper.
+ *
+ * Written here rather than imported from packages/mock-duet: that parser is
+ * wired into a Machine and a Params object that only exist inside the mock's
+ * HTTP server, and a test helper that had to stand one up to answer "what is
+ * the shaper now" would be a far bigger dependency than eight lines of regex.
+ */
+export function shapingAfterM593(code: string, current: Shaping): Shaping | null {
+	if (!/^M593(?:\s|$)/.test(code)) return null;
+	const rest = code.slice("M593".length);
+	if (rest.trim() === "") return null;
+	const p = /\bP"([^"]*)"/.exec(rest);
+	const f = new RegExp(String.raw`\bF(${NUM})`).exec(rest);
+	const s = new RegExp(String.raw`\bS(${NUM})`).exec(rest);
+	const type = (p === null ? current.type : p[1]!).toLowerCase();
+	const frequency = f === null ? current.frequency : Number(f[1]);
+	const damping = s === null ? current.damping : Number(s[1]);
+	if (type === "none") return { type, frequency, damping, amplitudes: [], delays: [] };
+	if (type === "custom") {
+		const h = /\bH([\d.:]+)/.exec(rest);
+		const t = /\bT([\d.:]+)/.exec(rest);
+		if (h === null || t === null) return null;
+		// H omits the last amplitude (the firmware derives it as 1 - sum) and T
+		// omits the first delay (it is zero) — the exact complements procedure.ts
+		// drops when it builds the command, put back here.
+		const head = h[1]!.split(":").map(Number);
+		return {
+			type,
+			frequency,
+			damping,
+			amplitudes: [...head, 1 - head.reduce((a, b) => a + b, 0)],
+			delays: [0, ...t[1]!.split(":").map(Number)],
+		};
+	}
+	const known = KNOWN_TRAINS.find((k) => k.type === type && k.frequency === frequency && k.damping === damping);
+	return { type, frequency, damping, amplitudes: known?.amplitudes ?? [], delays: known?.delays ?? [] };
+}
+
 /** The size the fake's captures settle at, and the chunk a poll sees arrive
  *  while one is still being written. Both arbitrary: what matters is that the
  *  size MOVES while the dump is in flight and stops when it is not. */
@@ -163,6 +252,11 @@ export type Fake = {
 	 *  what proves a capture was NOT read while the board was still writing
 	 *  it: a count is a fact about ordering, an event kind is not. */
 	downloadedAfterListings: number[];
+	/** The shaper the BOARD is holding right now — what the firmware would be
+	 *  applying to the next move. `model.move.shaping` is the UI's polled MIRROR
+	 *  of this and is allowed to be behind it; a test asking "what was the
+	 *  machine left with?" has to ask here. */
+	shaping: () => Shaping;
 };
 
 export function fakeBoard(model: ObjectModel, opts: FakeOptions = {}): Fake {
@@ -186,6 +280,32 @@ export function fakeBoard(model: ObjectModel, opts: FakeOptions = {}): Fake {
 		const accel = b?.accelerometer;
 		if (accel) (accel as { runs: number }).runs += 1;
 	};
+	/** The firmware's own copy, which M593 changes at once. Starts agreeing with
+	 *  the mirror: a machine nobody has sent anything to is not out of date. */
+	let boardShaping: Shaping = model.move.shaping;
+	const applyShaping = (code: string): void => {
+		const next = shapingAfterM593(code, boardShaping);
+		if (next !== null) boardShaping = next;
+	};
+	/**
+	 * A poll: the mirror takes the board's CURRENT shaper, whole.
+	 *
+	 * Through the same `model` the caller passes to `sentBy` and `runMotion`,
+	 * because that is the object `Preconditions.read` reads — a fake that
+	 * recorded the shaper anywhere else would answer a question nothing asks.
+	 * Wholesale rather than a queue of pending changes, because that is what a
+	 * poll is: one look at the machine as it is, not a replay of what it was
+	 * told.
+	 *
+	 * Assigned as a whole new object and never mutated in place — `modelWith`
+	 * hands out the module-level `NO_SHAPER` / `EI2_PRIOR` by reference, and a
+	 * fake that edited one of those would rewrite the fixtures for every test
+	 * that ran after it.
+	 */
+	const pollShaping = (): void => {
+		if (model.move.shaping === boardShaping) return;
+		(model.move as unknown as Record<string, unknown>).shaping = boardShaping;
+	};
 
 	const conn: RunConnector = {
 		async sendCode(code: GcodeCommand, sendOpts?: SendCodeOptions): Promise<string> {
@@ -199,6 +319,7 @@ export function fakeBoard(model: ObjectModel, opts: FakeOptions = {}): Fake {
 			}
 			const move = /^G1 X(-?[\d.]+) Y(-?[\d.]+) F/.exec(String(code));
 			if (move !== null) setAt(Number(move[1]) + (opts.driftOnMove ?? 0), Number(move[2]));
+			applyShaping(String(code));
 			// M955 with P alone REPORTS; the board answers with a sentence and
 			// changes nothing. `opts.accelReply` is how a test says the board
 			// answered with something unusable.
@@ -207,6 +328,9 @@ export function fakeBoard(model: ObjectModel, opts: FakeOptions = {}): Fake {
 		},
 		async list(dir: string): Promise<FileListEntry[]> {
 			listed.push(dir);
+			// A listing is the run's own polling loop, and it is where the UI's
+			// copy of the machine catches up. See the note above the parser.
+			pollShaping();
 			const still: typeof pending = [];
 			for (const p of pending) {
 				if (p.appearIn > 0) {
@@ -232,7 +356,7 @@ export function fakeBoard(model: ObjectModel, opts: FakeOptions = {}): Fake {
 			return opts.download === undefined ? FAKE_CSV : opts.download(path);
 		},
 	};
-	return { conn, sent, deadlines, listed, downloaded, downloadedAfterListings };
+	return { conn, sent, deadlines, listed, downloaded, downloadedAfterListings, shaping: () => boardShaping };
 }
 
 /** Instant, deterministic time. Every poll advances the clock by its own wait,
@@ -266,4 +390,47 @@ export async function sentBy(proc: Procedure, model: ObjectModel, opts: FakeOpti
 	const fake = fakeBoard(model, opts);
 	await drain(proc.run(fake.conn, () => model, testClock()));
 	return fake.sent;
+}
+
+/** One step's label and the codes that step alone put on the wire. */
+export type StepWire = { readonly label: string; readonly codes: readonly string[] };
+
+/**
+ * The same wire as `sentBy`, cut into the steps that produced it.
+ *
+ * `sentBy` answers "what did the board hear"; this answers "which step said
+ * it", which is what an assertion about ONE step's codes actually needs. The
+ * cuts come from the run's OWN `step` events — `Procedure.run` yields one
+ * before that step's codes go out — so they cannot drift from the steps the
+ * procedure really ran, and a step added at the front of every plan (the
+ * shaper statement, #53) moves no expectation that names its step.
+ *
+ * The restore belongs to no step and is left out: `done` and `failed` are both
+ * yielded before the `finally` sends it.
+ */
+export async function sentByStep(proc: Procedure, model: ObjectModel, opts: FakeOptions = {}): Promise<readonly StepWire[]> {
+	const fake = fakeBoard(model, opts);
+	const marks: Array<{ label: string; from: number }> = [];
+	let endOfSteps = -1;
+	for await (const ev of proc.run(fake.conn, () => model, testClock())) {
+		if (ev.kind === "step") marks.push({ label: ev.label, from: fake.sent.length });
+		if (endOfSteps < 0 && (ev.kind === "done" || ev.kind === "failed")) endOfSteps = fake.sent.length;
+	}
+	const end = endOfSteps < 0 ? fake.sent.length : endOfSteps;
+	return marks.map((m, i) => ({ label: m.label, codes: fake.sent.slice(m.from, marks[i + 1]?.from ?? end) }));
+}
+
+/**
+ * The codes of the ONE step with this label.
+ *
+ * By name and never by index: a test that says "this capture step sends
+ * exactly these eight codes" is making a claim about that step, and reaching
+ * it through `[0]` makes the claim break the next time anything is inserted in
+ * front of it. Two steps of the same name — or none — is a broken fixture and
+ * throws rather than quietly measuring the wrong one.
+ */
+export function codesOf(steps: readonly StepWire[], label: string): readonly string[] {
+	const found = steps.filter((s) => s.label === label);
+	if (found.length !== 1) throw new Error(`expected exactly one step labelled ${JSON.stringify(label)}, found ${found.length}`);
+	return found[0]!.codes;
 }

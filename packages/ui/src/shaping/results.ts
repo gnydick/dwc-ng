@@ -44,8 +44,32 @@ import type { SweepMatrix } from "./engine/sweep.ts";
 import { g, type G, hz, type Hz, mmPerS, type Seconds, seconds } from "./engine/units.ts";
 import { type VerifiedCandidate, verifyAnalysis } from "./store.ts";
 
-/** Bumped when the wire shape changes; a file from another build is refused, not guessed at. */
-export const RESULTS_VERSION = 1;
+/**
+ * Bumped when the wire shape changes; a file from another build is refused,
+ * not guessed at.
+ *
+ * **2 (#53)** — the shape did not change. What changed is whether the numbers
+ * inside can be believed. Every version-1 file was written by a build whose
+ * ring and sweep plans sent no `M593` at all, so its fingerprint was recorded
+ * through whatever shaper `tpost<N>.g` had installed. On the one machine we
+ * have evidence from that was `M593 P"ei2" F52 S0.034`, and the fingerprint it
+ * produced was of the suppressed machine — both axes converging on ~15 Hz,
+ * indistinguishable from a real reading.
+ *
+ * There is deliberately no `measuredThrough` field recording the shaper
+ * instead. A field is a CLAIM, and a version-1 file has no claim to make; the
+ * guarantee this version asserts comes from the code path that wrote it
+ * (`stepsFor` now states a shaper for every plan kind, armed with `never`),
+ * which cannot be forged by a file. Giving a fingerprint an identity it can
+ * carry across builds is #57's job, and it needs more than one field.
+ *
+ * The cost is understood and accepted: a board holding version-1 results loses
+ * its cached fingerprint, sweep and capture list, and the operator re-measures.
+ * The CSVs on the card are untouched. Silently loading a fingerprint of a
+ * shaped machine is the failure this whole ticket exists to end — the numbers
+ * looked fine, which is exactly why refusing them has to be automatic.
+ */
+export const RESULTS_VERSION = 2;
 
 export type CaptureRecord = {
 	file: string;

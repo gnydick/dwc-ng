@@ -136,13 +136,21 @@ test("loading filament bumps seqs.move so the change is fetchable", () => {
 	const tool = machine.om.tools.find((t: { filamentExtruder: number } | null) => t !== null && t.filamentExtruder >= 0);
 	if (!tool) return;
 
+	// seqs is a Record keyed by subtree name, so nothing in the type says
+	// `move` is there. Assert it instead of defaulting: a missing counter would
+	// make every comparison below trivially true against 0.
 	const before = machine.seqs.move;
-	machine.execute('M701 S"PLA"');
-	assert.ok(machine.seqs.move > before, `seqs.move must advance; stayed at ${before}`);
+	assert.ok(typeof before === "number", "seqs.move must exist on a fresh machine");
 
+	machine.execute('M701 S"PLA"');
 	const afterLoad = machine.seqs.move;
+	assert.ok(typeof afterLoad === "number", "seqs.move must exist after loading");
+	assert.ok(afterLoad > before, `seqs.move must advance; stayed at ${before}`);
+
 	machine.execute("M702");
-	assert.ok(machine.seqs.move > afterLoad, "unloading is just as invisible without a bump");
+	const afterUnload = machine.seqs.move;
+	assert.ok(typeof afterUnload === "number", "seqs.move must exist after unloading");
+	assert.ok(afterUnload > afterLoad, "unloading is just as invisible without a bump");
 });
 
 test("the T-code ahead of M701 decides which extruder gets it", () => {
