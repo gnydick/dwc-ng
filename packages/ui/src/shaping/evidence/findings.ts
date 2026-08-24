@@ -18,6 +18,7 @@
 import type { Caveat } from "./caveat.ts";
 import { type Axis, type Fingerprint, isMode, MAX_FIT_ZETA, type Mode } from "../engine/fit.ts";
 import { analysedRows, type SweepMatrix } from "../engine/sweep.ts";
+import type { Evidence } from "./evidence.ts";
 import type { CaptureRecord } from "../results.ts";
 import { hz, type Hz } from "../engine/units.ts";
 
@@ -198,5 +199,30 @@ export function fingerprintCaveats(
 	if (sweep === null) out.push({ kind: "mode-locus-unknown" });
 	else out.push(...sweepCaveats(sweep, fp).filter((c) => c.kind === "mode-on-forcing-locus"));
 
+	return out;
+}
+
+/**
+ * What a ranked list has to say about itself.
+ *
+ * Two things, and the second is the important one. It is a PREDICTION until
+ * something has been measured on the machine — the ranking is arithmetic over
+ * an impulse model, and on this machine the top-ranked candidate once
+ * introduced a 38 Hz mode that no amount of better arithmetic would have
+ * caught. And it INHERITS: whatever limits the fingerprint limits everything
+ * ranked from it, automatically, because a step that had to remember to check
+ * is a step that will one day forget.
+ */
+export function candidateCaveats(
+	candidates: readonly unknown[],
+	fingerprint: Evidence<unknown>,
+	verifiedCount: number,
+): readonly Caveat[] {
+	const out: Caveat[] = [];
+	if (candidates.length === 0) return out;
+	if (verifiedCount === 0) out.push({ kind: "predicted-not-measured", n: candidates.length });
+	if (fingerprint.state === "held") {
+		for (const c of fingerprint.caveats) out.push({ kind: "inherited", from: "fingerprint", caveat: c });
+	}
 	return out;
 }
