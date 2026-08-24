@@ -19,7 +19,8 @@ const EVERY: readonly Caveat[] = [
 	{ kind: "mode-on-forcing-locus", axis: "X", modeHz: hz(125), speedMmPerS: 25 },
 	{ kind: "mode-locus-unknown" },
 	{ kind: "direction-spread", axis: "X", plusHz: hz(4.48), minusHz: hz(0.23), modeHz: hz(18.14) },
-	{ kind: "fits-at-damping-cap", axis: "Y", refused: 7, of: 10, cyclesFit: 1.9, cap: 0.1510 },
+	{ kind: "fits-refused", axis: "Y", refused: 7, of: 10, reason: "damping-out-of-range", cyclesFit: 1.9, cap: 0.1510 },
+	{ kind: "one-direction-only", axis: "Y", dir: "-", n: 10, refused: 10 },
 	{ kind: "few-fits", axis: "Y", n: 3, of: 10 },
 	{ kind: "axes-agree", xHz: hz(14.78), yHz: hz(14.99), apartFraction: 0.014 },
 	{ kind: "predicted-not-measured", n: 12 },
@@ -58,14 +59,14 @@ test("the sentences carry their own numbers", () => {
 	assert.match(caveatText(of("direction-spread")), /4\.48/);
 	assert.match(caveatText(of("direction-spread")), /0\.23/);
 	// Arithmetic, not noise — the cap has to appear beside the measurement.
-	assert.match(caveatText(of("fits-at-damping-cap")), /1\.9/);
+	assert.match(caveatText(of("fits-refused")), /1\.9/);
 	assert.match(caveatText(EVERY[5]!), /0\.151/);
 });
 
 test("only the ones shaping cannot act on are disqualifying", () => {
 	assert.equal(severityOf(of("mode-on-forcing-locus")), "disqualifying", "a mode on the forcing locus is motor ripple");
 	assert.equal(severityOf(of("forcing-band-excludes-mode")), "advisory");
-	assert.equal(severityOf(of("fits-at-damping-cap")), "advisory");
+	assert.equal(severityOf(of("fits-refused")), "advisory");
 	// Both readings are legitimate, so this must never take a step away.
 	assert.equal(severityOf(of("axes-agree")), "advisory");
 });

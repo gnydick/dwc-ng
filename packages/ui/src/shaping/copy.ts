@@ -180,6 +180,31 @@ export function supersedeText(s: Supersede): string {
 	}
 }
 
+/**
+ * Why the fitter turned a capture away, in the operator's terms.
+ *
+ * Total over `NoFit["reason"]` with a `never` arm: a fitter that learns a new
+ * way to refuse cannot ship without a sentence explaining it, which is the
+ * exact hole that let ten `short-decay` refusals pass unmentioned.
+ */
+function refusalReasonText(c: Extract<Caveat, { kind: "fits-refused" }>): string {
+	switch (c.reason) {
+		case "damping-out-of-range":
+			// The one with a checkable number behind it.
+			return `the ring died in ${c.cyclesFit === null ? "under two" : c.cyclesFit.toFixed(1)} cycles, short of the two a fit needs; that is the ζ ${c.cap.toFixed(4)} ceiling, arithmetic rather than noise`;
+		case "short-decay":
+			return `the ring did not last long enough to fit${c.cyclesFit === null ? "" : ` (${c.cyclesFit.toFixed(1)} cycles)`}, so a faster or longer move would excite it harder`;
+		case "short-window":
+			return "the recording ended before the ring did, so raise the sample count or shorten the move";
+		case "below-floor":
+			return "nothing rang above the noise floor, so the stop was too gentle to excite this axis";
+		default: {
+			const unhandled: never = c.reason;
+			throw new Error(`unknown no-fit reason: ${String(unhandled)}`);
+		}
+	}
+}
+
 const NEED_NOTE: Record<StepNeed, string> = {
 	fingerprint: "nothing measured yet",
 	candidates: "nothing ranked yet",
@@ -548,16 +573,17 @@ export function caveatText(c: Caveat): string {
 			return "no sweep on this tool, so whether these modes are resonances or motor ripple has not been checked — build one to find out";
 		case "direction-spread":
 			return `${c.axis} reads differently at the two ends of the move: ${spreadText(c.plusHz)} Hz of spread in the plus direction against ${spreadText(c.minusHz)} Hz in the minus, on a ${hzText(c.modeHz)} Hz mode — one end alone consumes the ±10 % the ranking is scored over`;
-		case "fits-at-damping-cap":
-			// The cycle count is the measurement and the cap is the rule, so
-			// the sentence carries both: that is what turns "noise" into
-			// arithmetic the operator can check for themselves.
-			return `${c.refused} of ${c.of} ${c.axis} captures were refused because the ring died in ${c.cyclesFit.toFixed(1)} cycles, short of the two a fit needs — that is the ζ ${c.cap.toFixed(4)} ceiling, arithmetic rather than noise`;
+		case "fits-refused":
+			return `${c.refused} of ${c.of} ${c.axis} captures were refused — ${refusalReasonText(c)}`;
+		case "one-direction-only":
+			// Names the direction that WORKED, not the one that failed: the
+			// operator's question is "what have I actually measured?".
+			return `${c.axis} rests entirely on ${c.dir === "+" ? "plus" : "minus"}-direction moves — the other ${c.refused} were refused, and the ring-down happens at the opposite end of the axis each way, so this describes one end of the travel`;
 		case "axes-agree":
 			// Names BOTH readings, because the tool genuinely cannot tell them
-			// apart yet and picking one would be the invented verdict this
-			// layer exists to prevent. The remedy is the measurement that
-			// would settle it, not a guess.
+			// apart yet and picking one would be the invented verdict this layer
+			// exists to prevent. The remedy is the measurement that would settle
+			// it, not a guess.
 			return `X and Y came back ${(c.apartFraction * 100).toFixed(1)} % apart (${c.xHz.toFixed(1)} and ${c.yHz.toFixed(1)} Hz) — two axes of one machine normally ring at clearly different frequencies, so this is either a shared frame mode or a shaper that was active and suppressed both; nothing recorded here says which`;
 		case "few-fits":
 			return `${c.axis} rests on ${c.n} of ${c.of} captures — a median over that few moves with any one of them`;
