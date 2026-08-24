@@ -52,6 +52,14 @@ const STEP_QUESTION: Record<ShapingStep, string> = {
 	apply: "Is it installed for this tool?",
 };
 
+/**
+ * Every stage question, for the deduplication in `stage` below.
+ *
+ * Derived from the same record the lines are built from, so a question cannot
+ * be de-duplicated against a stale copy of itself.
+ */
+const STAGE_QUESTIONS: ReadonlySet<string> = new Set(Object.values(STEP_QUESTION));
+
 /** The act that answers a stage's own question is that stage. */
 const stageInquiry = (step: ShapingStep): Inquiry => ({
 	question: STEP_QUESTION[step],
@@ -108,7 +116,17 @@ export function walkThrough(r: ToolResults, p: WorkflowProducts): Walk {
 		const worst = [...e.caveats].sort(
 			(a, b) => Number(severityOf(b) === "disqualifying") - Number(severityOf(a) === "disqualifying"),
 		);
-		for (const c of worst) lines.push({ kind: "open", step, inquiry: inquiryFor(c), caveat: c });
+		for (const c of worst) {
+			const inquiry = inquiryFor(c);
+			// A finding whose question a LATER STAGE already asks is dropped
+			// here, not reworded. `mode-locus-unknown` exists so the
+			// fingerprint card does not stay silent about a check nobody ran;
+			// in the walk, the sweep stage line is that same question, and
+			// asking it twice in two phrasings is worse than asking it once —
+			// the operator cannot tell whether they are two problems.
+			if (STAGE_QUESTIONS.has(inquiry.question)) continue;
+			lines.push({ kind: "open", step, inquiry, caveat: c });
+		}
 	};
 
 	stage("measure", p.fingerprint, () => {

@@ -87,7 +87,7 @@ export function inquiryFor(c: Caveat): Inquiry {
 					// produced this finding would come back just as black, and
 					// the operator would read the second black band as
 					// confirmation rather than as the same non-answer twice.
-					adjust: `set the sweep ladder to reach about ${c.needMmPerS.toFixed(1)} mm/s — the current one starts too fast to excite it`,
+					adjust: `set the sweep ladder to reach about ${c.needMmPerS.toFixed(1)} mm/s, because the current one starts too fast to excite it`,
 				},
 			};
 		case "rows-not-analysed":
@@ -112,7 +112,12 @@ export function inquiryFor(c: Caveat): Inquiry {
 			};
 		case "mode-locus-unknown":
 			return {
-				question: "Are these modes resonances, or the motors' own ripple?",
+				// WORD-FOR-WORD the sweep stage's question (walk.ts
+				// `STEP_QUESTION`), because the walk drops a finding whose
+				// question a later stage already asks — and it can only do that
+				// by string equality. On the cards, where there is no stage line
+				// to defer to, this is the sentence that gets shown.
+				question: "Are those frequencies resonances, or the motors' own ripple?",
 				answer: {
 					kind: "step",
 					step: "sweep",
@@ -127,13 +132,65 @@ export function inquiryFor(c: Caveat): Inquiry {
 					how: "the ring-down happens at the opposite end each way, so this is usually the machine, not the measurement — check belt tension and rail support across the axis",
 				},
 			};
-		case "fits-at-damping-cap":
+		case "fits-refused":
+			// The question follows the REASON, because the four refusals have
+			// four different remedies and a single "measure again" would send
+			// the operator to repeat the run that already failed.
+			switch (c.reason) {
+				case "damping-out-of-range":
+				case "short-decay":
+					return {
+						question: `Is ${c.axis} really this damped, or was the stop too gentle to ring it?`,
+						answer: {
+							kind: "step",
+							step: "measure",
+							adjust: "raise the speed or the distance so the stop excites a longer ring",
+						},
+					};
+				case "short-window":
+					return {
+						question: `Did ${c.axis} stop ringing, or did the recording?`,
+						answer: {
+							kind: "step",
+							step: "measure",
+							adjust: "shorten the move or raise the sample rate so the record outlasts the ring",
+						},
+					};
+				case "below-floor":
+					return {
+						question: `Does ${c.axis} ring at all, or is it below the noise?`,
+						answer: {
+							kind: "step",
+							step: "measure",
+							adjust: "raise the speed so the stop excites something above the accelerometer's floor",
+						},
+					};
+				default: {
+					const unhandled: never = c.reason;
+					throw new Error(`unknown no-fit reason: ${String(unhandled)}`);
+				}
+			}
+		case "one-direction-only":
 			return {
-				question: `Is ${c.axis} really this damped, or is the excitation too weak to see it?`,
+				question: `What does ${c.axis} do at the other end of its travel?`,
 				answer: {
 					kind: "step",
 					step: "measure",
-					adjust: "raise the speed or the distance so the stop excites a longer ring",
+					// The refused direction is the one to fix, and it failed for
+					// a reason the run can change.
+					adjust: `the ${c.dir === "+" ? "minus" : "plus"}-direction passes all failed to fit, and a faster or longer move would excite them`,
+				},
+			};
+		case "ranking-trade-off":
+			return {
+				question: `Is ${c.bestMs.toFixed(0)} ms of smoothing worth ${((c.leanResidual - c.bestResidual) * 100).toFixed(1)} points less ringing than ${c.leanType.toUpperCase()}?`,
+				answer: {
+					kind: "step",
+					step: "verify",
+					// Nothing but the machine settles this one. The model
+					// predicts both numbers and cannot tell you which matters
+					// more to the parts coming off the bed.
+					adjust: `run both ends of the list and compare, because the model predicts the ringing and not what your prints look like`,
 				},
 			};
 		case "few-fits":
