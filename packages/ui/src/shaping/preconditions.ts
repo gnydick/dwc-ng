@@ -35,11 +35,24 @@ export type Refusal =
 	| { readonly kind: "outside-envelope"; readonly point: { readonly x: number; readonly y: number } }
 	| { readonly kind: "stale" }
 	/** The plan describes no measurable run: a zero-length excitation move, a
-	 *  zero feed, no repeats, or no samples. Measured against mock-duet on
-	 *  2026-08-22: a capture armed before a ZERO-LENGTH move produces no file
-	 *  at all, so a run built from one would sit out its whole capture budget
-	 *  and then fail. Refusing before anything moves is the cheaper answer. */
-	| { readonly kind: "not-measurable" };
+	 *  zero feed, or no repeats. Measured against mock-duet on 2026-08-22: a
+	 *  capture armed before a ZERO-LENGTH move produces no file at all, so a run
+	 *  built from one would sit out its whole capture budget and then fail.
+	 *  Refusing before anything moves is the cheaper answer. */
+	| { readonly kind: "not-measurable" }
+	/** `move.travelAcceleration` is absent from the object model, so how long
+	 *  the excitation move takes cannot be computed — and how long the capture
+	 *  must record is a function of exactly that. Refused rather than assumed:
+	 *  an invented acceleration makes the recording confidently the wrong
+	 *  length, which is the failure GIT_63 exists to remove. */
+	| { readonly kind: "no-acceleration" }
+	/** The board never answered `M955 P<addr>` with a sampling rate, so
+	 *  `samples / rate` — the whole length of the recording — is unknown. */
+	| { readonly kind: "no-sample-rate" }
+	/** A pass needs more accelerometer samples than one M956 can ask for. The
+	 *  cause is always a slow move over a long distance: recording time is
+	 *  distance ÷ speed, so halving the speed doubles the file. */
+	| { readonly kind: "capture-too-long"; readonly samples: number; readonly max: number };
 
 /** An XY point in the user coordinates G90 + G1 speak. */
 export type Point = { readonly x: Mm; readonly y: Mm };
@@ -214,11 +227,19 @@ export function accelerometerOf(om: ObjectModel, accel: AccelAddr): Acceleromete
 	return board?.accelerometer ?? null;
 }
 
-/** Parse, don't trust: the declared type says `number | null`, but the live
- *  d99fn patch route never meets `conformModelKey`, so the declaration is a
- *  claim the store does not enforce. Widened back to `unknown` and re-checked,
- *  the same second parse om/speeds.ts makes for the same reason. */
-function travelAcceleration(om: ObjectModel): MmPerS2 | null {
+/**
+ * Parse, don't trust: the declared type says `number | null`, but the live
+ * d99fn patch route never meets `conformModelKey`, so the declaration is a
+ * claim the store does not enforce. Widened back to `unknown` and re-checked,
+ * the same second parse om/speeds.ts makes for the same reason.
+ *
+ * Exported because the Capture card states how long each pass will record
+ * before anything is armed, and that arithmetic needs the same acceleration the
+ * run will be planned against. One reading of `move.travelAcceleration`, so the
+ * figure on the screen and the figure in the M956 cannot come from two
+ * different ideas of what the board reported.
+ */
+export function travelAcceleration(om: ObjectModel): MmPerS2 | null {
 	const raw: unknown = om.move.travelAcceleration;
 	return typeof raw === "number" && Number.isFinite(raw) && raw > 0 ? mmPerS2(raw) : null;
 }

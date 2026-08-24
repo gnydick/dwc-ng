@@ -17,7 +17,7 @@ import { commitMotionField, MOTION_FIELDS } from "../src/shaping/motionFields.ts
 import { parseShapingDefaults } from "../src/config/parse.ts";
 import type { ShapingDefaults } from "../src/config/types.ts";
 
-const SHIPPED: ShapingDefaults = { distMm: 60, speedMmS: 200, repeats: 3, samples: 1500 };
+const SHIPPED: ShapingDefaults = { distMm: 60, speedMmS: 200, repeats: 3 };
 
 /** A config store in miniature: the same gate the real one runs, and nothing
  *  else, so what these tests measure is the gate's verdict and not a mock's. */

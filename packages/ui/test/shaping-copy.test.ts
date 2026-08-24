@@ -93,9 +93,12 @@ test("stale is said in a human's words, not the union's", () => {
 
 test("not-measurable names the settings that have to change", () => {
 	const text = refusalText({ kind: "not-measurable" });
-	for (const field of ["distance", "speed", "repeats", "samples"]) {
+	for (const field of ["distance", "speed", "repeats"]) {
 		assert.match(text, new RegExp(field), `does not mention ${field}`);
 	}
+	// Samples are NOT among them any more: the recording is derived from the
+	// motion, so there is no sample setting for an operator to go and change.
+	assert.doesNotMatch(text, /samples/i);
 });
 
 // ---- step readiness -------------------------------------------------------

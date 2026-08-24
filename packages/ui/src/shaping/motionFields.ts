@@ -1,13 +1,12 @@
 /**
- * The four numbers a capture run is made of, and what happens when one is
- * committed.
+ * The numbers a capture run is made of, and what happens when one is committed.
  *
  * TWO cards edit them — Settings › Input shaping, where they are set up, and
  * the Capture card, where they are adjusted with the map of the run in front of
- * you — and they are the SAME four numbers in the same config section. A second
- * table of labels, steps and patch functions beside the first is the duplicated
+ * you — and they are the SAME numbers in the same config section. A second table
+ * of labels, steps and patch functions beside the first is the duplicated
  * processing step this repo treats as a design fault: the two would agree until
- * somebody added a fifth field to one of them, and the failure mode is a
+ * somebody added a field to one of them, and the failure mode is a
  * setting the operator can see on one card and cannot reach on the other.
  *
  * NOTHING HERE VALIDATES ANYTHING. `parseShapingDefaults` (config/parse.ts) is
@@ -18,7 +17,7 @@
  * would appear to have accepted it.
  *
  * @invariant one-motion-field-table
- * @rung 6  choke-point — `MOTION_FIELDS` is the only description of these four
+ * @rung 6  choke-point — `MOTION_FIELDS` is the only description of these
  *          settings and `commitMotionField` the only writer of one from an
  *          editor. Both cards iterate the table rather than naming fields, so a
  *          field added here appears on both and a field added to neither cannot
@@ -71,15 +70,6 @@ export const MOTION_FIELDS: readonly MotionField[] = [
 		step: "1",
 		read: (d) => d.repeats,
 		patch: (repeats) => ({ repeats }),
-	},
-	{
-		key: "samples",
-		label: "Samples",
-		unit: "M956 S",
-		short: "samples",
-		step: "100",
-		read: (d) => d.samples,
-		patch: (samples) => ({ samples }),
 	},
 ];
 

@@ -5091,6 +5091,18 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; appe
 	text-align: right;
 }
 .shp-run-num:focus { outline: none; box-shadow: inset 0 0 0 1px var(--accent); }
+/* A DERIVED number in the row of typed ones — how long the longest pass of this
+   run records. It borrows .shp-run-num's box so the row's geometry is identical
+   whether the slot holds an input or a readout (it replaced the Samples input,
+   which the tool now works out for itself), and drops the affordances that would
+   invite an edit: no fill, no hairline, dimmed. `display: block` because a
+   <span> is inline by default and would not take the declared width. */
+.shp-run-fact {
+	display: block;
+	background: none;
+	box-shadow: none;
+	color: var(--silk-dim);
+}
 .shp-run-unit { font-size: calc(3.125 * var(--u)); color: var(--silk-dim); }
 
 /* Which run this card is set up for. The same chip as the tool picker, because

@@ -5,7 +5,7 @@
 // against the SAME machine — a fixture that drifted between them would let a
 // plan pass here and a run fail there for reasons neither test could see.
 import { Preconditions } from "../../src/shaping/preconditions.ts";
-import type { ProcEvent, Procedure, RingPlan, RunConnector } from "../../src/shaping/procedure.ts";
+import { sampleRateFrom, type ProcEvent, type Procedure, type RingPlan, type RunConnector, type SampleRate } from "../../src/shaping/procedure.ts";
 import type { FileListEntry, GcodeCommand } from "@dwc-ng/connector";
 import { accelAddr } from "../../src/control/commands.ts";
 import { emptyModel, type Axis, type Board, type ObjectModel, type Shaping } from "../../src/om/types.ts";
@@ -16,7 +16,22 @@ export const TOOLBOARD = accelAddr(20, 0);
 export const MAINBOARD = accelAddr(0, 0);
 export const NOW = 1_000_000;
 
+/** What `M955 P20.0` answers with, in RRF's own shape. */
+export const M955_REPLY = "Accelerometer 20:0 type LIS3DH with orientation 41 samples at 1375Hz with 10-bit resolution";
+
+/** The board's reported accelerometer rate, minted the ONLY way one can be:
+ *  through the parser, off the sentence M955 P answers with. The number is the
+ *  one Gabe's toolboard reports (tools/accel/runs/ui-first-run-2026-08-23:
+ *  "Rate 1375"), so the sample counts these tests assert are the counts that
+ *  machine would be asked for. */
+export const RATE: SampleRate = (() => {
+	const parsed = sampleRateFrom(M955_REPLY);
+	if (parsed === null) throw new Error("fixture: the M955 reply did not parse");
+	return parsed;
+})();
+
 export const BOX: Envelope = { x: [50, 250], y: [50, 250] };
+
 
 export const NO_SHAPER: Shaping = { type: "none", frequency: 0, damping: 0, amplitudes: [], delays: [] };
 export const EI2_PRIOR: Shaping = { type: "ei2", frequency: 52, damping: 0.075, amplitudes: [0.34, 0.44, 0.22], delays: [0, 0.0096, 0.0192] };
@@ -57,7 +72,7 @@ export function modelWith(over: ModelOverrides = {}): ObjectModel {
 }
 
 export function config(envelope: Envelope | null = BOX): ShapingConfig {
-	return { envelope, defaults: { distMm: 60, speedMmS: 200, repeats: 3, samples: 1500 }, accelByTool: {} };
+	return { envelope, defaults: { distMm: 60, speedMmS: 200, repeats: 3 }, accelByTool: {} };
 }
 
 /** A Preconditions or an explosion — callers of this are not measuring `read`. */
@@ -74,7 +89,6 @@ export const ringPlan = (over: Partial<RingPlan> = {}): RingPlan => ({
 	distMm: mm(60),
 	speed: mmPerS(200),
 	repeats: 3,
-	samples: 1500,
 	namePrefix: "ring",
 	...over,
 });
@@ -102,6 +116,8 @@ export type FakeOptions = {
 	preexisting?: readonly string[];
 	/** Millimetres of error the simulated carriage introduces on every move. */
 	driftOnMove?: number;
+	/** What `M955 P<addr>` answers with. Default: the real sentence. */
+	accelReply?: string;
 };
 
 export type Fake = { conn: RunConnector; sent: string[]; listed: string[]; downloaded: string[] };
@@ -134,6 +150,10 @@ export function fakeBoard(model: ObjectModel, opts: FakeOptions = {}): Fake {
 			if (armed !== null) pending.push({ file: armed[1] ?? "", ticks: opts.fileAfterPolls ?? 0 });
 			const move = /^G1 X(-?[\d.]+) Y(-?[\d.]+) F/.exec(String(code));
 			if (move !== null) setAt(Number(move[1]) + (opts.driftOnMove ?? 0), Number(move[2]));
+			// M955 with P alone REPORTS; the board answers with a sentence and
+			// changes nothing. `opts.accelReply` is how a test says the board
+			// answered with something unusable.
+			if (/^M955 P[\d.]+$/.test(String(code))) return opts.accelReply ?? M955_REPLY;
 			return "";
 		},
 		async list(dir: string): Promise<FileListEntry[]> {

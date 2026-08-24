@@ -40,12 +40,12 @@ import { isMode, MIN_CYCLES, type Axis, type Fingerprint, type Mode, type NoFit 
 import { type Candidate, customCandidate } from "../shaping/engine/rank.ts";
 import { convolve, type Impulses, SHAPER_TYPES, type ShaperSpec, zv } from "../shaping/engine/shapers.ts";
 import { seconds } from "../shaping/engine/units.ts";
-import { plannedSegments, type Plan, type PlannedSegment } from "../shaping/procedure.ts";
+import { longestCapture, plannedSegments, type CaptureWindow, type Plan, type PlannedSegment } from "../shaping/procedure.ts";
 import { captureNameRange, defaultPrefix, envelopeText, plannedCaptureCount, RUN_KINDS, runOrigin, runPlans, safePrefix, type RunKind } from "../shaping/runPlan.ts";
 import { commitMotionField, MOTION_FIELDS } from "../shaping/motionFields.ts";
 import { motionBad, motionBusy, motionProgress } from "../shaping/motionRun.ts";
 import { fitCapturesOf, runMotion } from "../shaping/runner.ts";
-import { planarPosition } from "../shaping/preconditions.ts";
+import { planarPosition, travelAcceleration } from "../shaping/preconditions.ts";
 import { mapPoint, mapSummary, mapView, type MapView } from "../charts/mapData.ts";
 import { RESULTS_PATH, type ToolResults } from "../shaping/results.ts";
 import type { VerifiedCandidate } from "../shaping/store.ts";
@@ -553,6 +553,29 @@ export function ShapingCaptureBody(props: { ctx: CardCtx }) {
 
 	const captureCount = createMemo((): number => plannedCaptureCount(plans()));
 
+	/**
+	 * How long the LONGEST pass of this run will record, in seconds.
+	 *
+	 * The operator used to type a sample count here; the tool derives it now, so
+	 * this is what replaces that input — same slot, same row, so the editor does
+	 * not change shape. Seconds and not samples, because turning seconds into
+	 * M956's S needs the board's M955-reported rate and this card has not asked
+	 * for one: the run does, once, before it plans (shaping/runner.ts). Showing a
+	 * count derived from an assumed rate would be exactly the silent assumption
+	 * the derivation exists to remove.
+	 *
+	 * The longest rather than each, because a sweep's passes differ by the whole
+	 * speed ratio — at 25 mm/s a pass records 8x what it does at 200 — and the
+	 * number worth stating before arming is the worst case. Null when the machine
+	 * has not reported a travel acceleration, which is also the `no-acceleration`
+	 * refusal the confirm would give.
+	 */
+	const recording = createMemo((): CaptureWindow | null => {
+		const list = plans();
+		const origin = runOrigin(list);
+		return origin === null ? null : longestCapture(list, origin, travelAcceleration(props.ctx.om.om));
+	});
+
 	/** The first and last file the run will write — the convention AND the
 	 *  extent. Read off the SEGMENTS, which carry the name the M956 will use,
 	 *  so this card states file names it did not spell itself. */
@@ -764,6 +787,26 @@ export function ShapingCaptureBody(props: { ctx: CardCtx }) {
 						</label>
 					)}
 				</For>
+				{/* Reads, never edits, and takes the slot the Samples input used to
+				    — so the row keeps its geometry: one fixed-width tabular number
+				    and the word for what it is, at every value including "—". A
+				    <div> and not a <label>, because there is no control here to
+				    label, and not an <output>, whose implicit live region would
+				    announce this on every keystroke in the fields beside it. */}
+				<div class="shp-run-field" title="How long the longest pass of this run records">
+					<span class="shp-run-num shp-run-fact">
+						{/* The fragment is load-bearing. `<Show>` runs its callback once
+						    per truthiness change, so a callback that RETURNED a string
+						    would compute it once and never again — the figure froze at
+						    whatever the first plan said, which is worse than no figure.
+						    Inside JSX the expression is compiled into a reactive one and
+						    tracks `w()`. Caught in Edge, 2026-08-23: switching Measure to
+						    Sweep left 1.05 s on screen for a run whose slowest pass
+						    records 3.13 s. */}
+						<Show when={recording()} fallback="—">{w => <>{w().captureS.toFixed(2)}</>}</Show>
+					</span>
+					<span class="shp-run-unit">s/pass</span>
+				</div>
 			</div>
 
 			<div class="shp-run-fields">

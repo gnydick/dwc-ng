@@ -21,7 +21,7 @@ and invariant claim mentions 13 -> 23, so no mechanism was deleted and no
 claim was lost in the gap. From here the ratchets make a dropped rung visible
 in the diff that drops it.
 
-**Totals:** 121 invariants · 98 at rung 6 or above · 23 below rung 6 (ceiling 23).
+**Totals:** 124 invariants · 101 at rung 6 or above · 23 below rung 6 (ceiling 23).
 
 ## bed
 
@@ -243,7 +243,7 @@ in the diff that drops it.
 
 **Debt — promotion.** promote to rung 7 by branding `Envelope` so a hand-written object literal is not assignable and a future writer physically cannot skip `asEnvelope`. Blocked on the brand having to survive JSON round-trips to the SD card; today the guarantee is "one gate, two callers".
 
-`packages/ui/src/config/types.ts:203`
+`packages/ui/src/config/types.ts:212`
 
 ### `config/id-namespace` — rung 7
 
@@ -751,7 +751,7 @@ in the diff that drops it.
 
 **Debt — promotion.** promotion to 7 is a `CaptureFile` type whose sole constructor takes the synth's output, with `VirtualSD.write` refusing plain bytes under that directory. That needs the SD store to know about capture paths, which is a bigger change to a shared type than this earns today.
 
-`packages/mock-duet/src/accelerometer.ts:563`
+`packages/mock-duet/src/accelerometer.ts:572`
 
 ### `mock-duet/captures-are-reproducible` — rung 6
 
@@ -761,7 +761,7 @@ in the diff that drops it.
 
 **Debt — promotion.** promotion to 7 is a branded `CaptureCsv` string type minted only here, so a hand-built CSV cannot reach the SD write in `onMove`. It is worth doing at the same time as the `CaptureFile` promotion filed under capture-files-come-only-from-the-synth, not before.
 
-`packages/mock-duet/src/accelerometer.ts:271`
+`packages/mock-duet/src/accelerometer.ts:280`
 
 ### `mock-duet/every-shaper-is-modelled` — rung 8
 
@@ -769,7 +769,7 @@ in the diff that drops it.
 
 **Why.** a shaper the mock silently failed to model would leave the ring at full height, and the Verify step would report a real shaper as having done nothing — a wrong verdict about the machine, produced by the test rig rather than measured
 
-`packages/mock-duet/src/accelerometer.ts:102`
+`packages/mock-duet/src/accelerometer.ts:111`
 
 ### `mock-duet/one-parameter-reader` — rung 6
 
@@ -789,7 +789,7 @@ in the diff that drops it.
 
 **Debt — promotion.** promotion to 7 needs the object model to be typed rather than `Record<string, any>`, which snapshot.ts holds open on purpose so the mock can replay captured responses verbatim.
 
-`packages/mock-duet/src/accelerometer.ts:620`
+`packages/mock-duet/src/accelerometer.ts:629`
 
 ### `mock-duet/sole-frame-parser` — rung 7
 
@@ -977,13 +977,31 @@ in the diff that drops it.
 
 `packages/ui/src/shaping/steps.ts:23`
 
+### `shaping/no-m956-over-the-boards-limit` — rung 6
+
+**Mechanism.** choke-point — every M956 this app can send is built by `captureStep`, which is reached only from `stepsFor`, which is reached only from the private constructor `Procedure.plan` calls; `plan` runs `timedPasses` first and returns `capture-too-long` for any pass over this bound, so a `Procedure` carrying an oversized capture is not one that can be built. Nothing outside this file can reach a `GcodeCommand` of a procedure to send one itself: the codes are `#`-private and `preview` hands out plain strings `sendCode` refuses
+
+**Why.** the alternative is finding out mid-run. The board rejects the M956, the G1 that follows it still executes, and the run ends with the carriage somewhere unplanned and the lab's shaper still applied — a refusal that arrives after the machine has moved is not a refusal
+
+**Debt — promotion.** the NUMBER is a reading of the wire format, not a measurement: RRF's source is not vendored here and its M956 docs state no bound. Promote by walking a real toolboard up until it refuses and pinning the value that came back, or by citing the firmware's own field width. Until then the claim is only that the UI refuses before the board does, which holds for any true bound at or below this one
+
+`packages/ui/src/shaping/procedure.ts:735`
+
+### `shaping/one-capture-timing` — rung 8
+
+**Mechanism.** illegal state unrepresentable — the sample count, the dwell and the wait budget are three consequences of one recording and are produced by one function from one argument, so "the dwell disagrees with the capture length" is not a state this type can hold. `dwellMs` is derived from `samples`, not recomputed from `captureS`, so the rounding that turns seconds into a whole M956 S cannot leave the dwell a sample short. There is no other producer and no field to set by hand: `Pass` carries no sample count, `RingPlan`/`SweepPlan` carry none, and `ShapingDefaults` no longer has one
+
+**Why.** the constant this replaced was 1500 ms of dwell beside a free-floating `samples` setting, and on 2026-08-23 a sweep recorded 7.5 s against it — every following pass landed inside the previous pass's file. The two numbers had no way to know about each other, and neither knew about the move
+
+`packages/ui/src/shaping/procedure.ts:779`
+
 ### `shaping/one-motion-field-table` — rung 6
 
-**Mechanism.** choke-point — `MOTION_FIELDS` is the only description of these four settings and `commitMotionField` the only writer of one from an editor. Both cards iterate the table rather than naming fields, so a field added here appears on both and a field added to neither cannot be edited at all
+**Mechanism.** choke-point — `MOTION_FIELDS` is the only description of these settings and `commitMotionField` the only writer of one from an editor. Both cards iterate the table rather than naming fields, so a field added here appears on both and a field added to neither cannot be edited at all
 
 **Why.** the Capture card states the run an armed confirm is about to perform. If its editor and the Settings editor could describe different sets of numbers, the run the operator approved and the run the plan was built from would be describable apart
 
-`packages/ui/src/shaping/motionFields.ts:20`
+`packages/ui/src/shaping/motionFields.ts:19`
 
 ### `shaping/preconditions-are-a-fresh-read` — rung 7
 
@@ -991,7 +1009,7 @@ in the diff that drops it.
 
 **Why.** the checks and the move must not be separable. A card that could assemble its own guard object would be free to omit the homed test, and an unhomed axis under a 200 mm/s G1 is a crash into the frame at full current — the failure this whole feature is built around
 
-`packages/ui/src/shaping/preconditions.ts:54`
+`packages/ui/src/shaping/preconditions.ts:67`
 
 ### `shaping/restore-is-structural` — rung 7
 
@@ -999,7 +1017,7 @@ in the diff that drops it.
 
 **Why.** the machine's prior shaper is knowable only BEFORE the run changes it. A restore derived from live state after a verify pass would faithfully re-apply the candidate under test and leave the operator believing the machine was back to baseline — a wrong belief about a setting that changes every subsequent print
 
-`packages/ui/src/shaping/procedure.ts:227`
+`packages/ui/src/shaping/procedure.ts:248`
 
 ### `shaping/results-file-is-parsed-not-cast` — rung 6
 
@@ -1021,13 +1039,21 @@ in the diff that drops it.
 
 `packages/ui/src/shaping/store.ts:26`
 
+### `shaping/sample-rate-came-from-the-board` — rung 7
+
+**Mechanism.** branded type — the brand is `unique symbol`-keyed and unexported, so a plain number is not assignable to `SampleRate` and the only two producers are in this file: `sampleRateFrom`, which parses an M955 report, and `readSampleRate`, which asks the board for one. There is no default and no fallback constant to reach for, so a procedure cannot be planned against an assumed rate — `Procedure.plan` takes one as an argument and will not compile without it. The universal `x as unknown as T` escape is not counted against this rung
+
+**Why.** `samples / rate` is the whole recording. M955's S parameter PERSISTS on the board (reference/duet-gcode.md, M955 notes: "These configuration settings persist until they are changed"), so the rate in force is whatever somebody last set — 1375 Hz on Gabe's toolboard, but nothing in this UI put it there. A constant here would silently mis-size every capture on any machine configured differently, and the error is proportional: at half the assumed rate every recording is twice as long as planned and the dwell derived from it covers half of it
+
+`packages/ui/src/shaping/procedure.ts:601`
+
 ### `shaping/shaping-motion-only-via-procedure` — rung 7
 
 **Mechanism.** sole-constructor type — the constructor is `private` and the class carries a `#`-private field, so neither `new Procedure(...)` nor `{steps, restore, pre} as Procedure` compiles outside this file; the `#` name is what makes the class nominal, since every other member is public and would match structurally. The only static is `plan`, and `planProcedure` is that same function object under the name the rest of the codebase calls it — one route, two names, not two routes. `plan` takes a `Preconditions`, which is itself obtainable only from a fresh object-model read, so a run cannot exist that was not gated on idle, homed, sensor-present and inside-the-box. The commands themselves live in `#steps` and `#restore`, whose names are unwritable outside this file, so no caller anywhere can obtain a `GcodeCommand` belonging to a procedure — the cards get `steps`, a projection carrying labels and capture names, and `preview`, plain `string`s that `sendCode` does not accept. `run` is therefore the only route from a plan to the machine, and the only two things it sends are those two private fields, both built by `plan`: no corrective move, no re-plan, no second command source, so what reaches the machine is exactly what the refusals were evaluated against. The universal `x as unknown as T` escape is not counted against this rung
 
 **Why.** this is the feature's whole safety story. The lab sends 200 mm/s moves with nobody watching the axis, and the difference between a capture and a crash into the frame is whether those four facts were true at the moment of planning. A second way to build a run is a second place to forget one of them
 
-`packages/ui/src/shaping/procedure.ts:180`
+`packages/ui/src/shaping/procedure.ts:201`
 
 ### `shaping/step-readiness-has-one-answer` — rung 6
 
