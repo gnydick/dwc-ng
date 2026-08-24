@@ -135,6 +135,12 @@ test("the shaping bodies really are behind a dynamic import in the registry", ()
 		assert.match(registry, new RegExp(`lazyShaping\\("${body}"\\)`), body);
 	}
 	// And the Settings card is deliberately NOT lazy: it is small and lives on
-	// a screen the operator uses constantly.
-	assert.match(registry, /"settings-shaping": \{ body: \(\) => <ShapingBody \/>/);
+	// a screen the operator uses constantly. Asserted as the PROPERTY rather
+	// than as one spelling of the line — it used to pin `body: () =>`, which
+	// broke the day the card started taking a ctx to reach the shaping service,
+	// without anything about its eagerness having changed.
+	const settingsLine = registry.split(/\r?\n/).find(l => l.includes('"settings-shaping":'));
+	assert.ok(settingsLine !== undefined, "the Settings card must still be registered");
+	assert.match(settingsLine, /<ShapingBody[\s/]/, "and must render ShapingBody");
+	assert.doesNotMatch(settingsLine, /lazyShaping|lazy\(|import\(/, "it is deliberately eager");
 });

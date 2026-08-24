@@ -52,7 +52,11 @@ test('the card is reachable exactly where the refusal copy says: "Settings › I
 	// stripping, which is exactly why the registry is split in two — the
 	// compiler already welds the halves (Record<CardId, CardRender>), so
 	// reading the file is enough to see the body is wired.
-	assert.match(src("compose/cards.tsx"), /"settings-shaping":\s*\{ body: \(\) => <ShapingBody \/>/);
+	// Matched on the BODY rather than on the arrow's argument list: this used to
+	// pin `body: () =>`, and broke the day the card started taking a ctx to
+	// reach the shaping service — which changed nothing about the thing this
+	// test is checking, namely that the id renders ShapingBody.
+	assert.match(src("compose/cards.tsx"), /"settings-shaping":\s*\{ body: [^,]*<ShapingBody\b/);
 	const location = `${BUILTIN_SCREENS.settings.name} › ${cardTitleOf("settings-shaping")}`;
 	assert.equal(location, "Settings › Input shaping");
 });

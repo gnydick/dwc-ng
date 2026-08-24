@@ -33,6 +33,7 @@ import type { CardCtx } from "../compose/ctx.ts";
 import type { MacroRead } from "../compose/services.ts";
 import { nextStep, SHAPING_STEPS, type ShapingStep, type StepInputs, type StepSpec } from "../shaping/steps.ts";
 import { walkThrough } from "../shaping/evidence/walk.ts";
+import { productsFor } from "../shaping/evidence/products.ts";
 import type { ApplyHow, ApplyIntent } from "../shaping/applyRun.ts";
 import { applyStateText, armedApplyText } from "../shaping/copy.ts";
 import { inquiryText } from "../shaping/copy.ts";
@@ -275,7 +276,7 @@ export function ShapingStatusBody(props: { ctx: CardCtx }) {
 		// The five products, each in whatever state its own machine says. This
 		// used to be six booleans, and a boolean made "a fingerprint exists" and
 		// "a fingerprint valid for ranking" the same value.
-		products: svc.products(),
+		products: products(),
 	});
 
 	// ONE readiness pass per render, for the whole card. The prominent button
@@ -283,12 +284,18 @@ export function ShapingStatusBody(props: { ctx: CardCtx }) {
 	// is reference-identical to its row — so a primary action cannot point at a
 	// step the list beside it shows as blocked (shaping/steps.ts,
 	// `next-step-comes-from-the-readiness-it-shows`).
+	/** The five products, from the one pure derivation (evidence/products.ts).
+	 *  A memo per body rather than a field on the service: the service is eager
+	 *  and every screen pays for what it drags, while this is only ever read
+	 *  behind the Shaping screen's dynamic import (#72). */
+	const products = createMemo(() => productsFor(selected(), svc.tool(), spec => cmd.inputShaping(spec as never)));
+
 	const workflow = createMemo(() => nextStep(inputsFor));
 
 	/** One walk per render, for the same reason there is one readiness pass:
 	 *  the list and the highlighted question come out of the same call, so the
 	 *  question shown as live cannot be one the list does not contain. */
-	const walk = createMemo(() => walkThrough(selected(), svc.products()));
+	const walk = createMemo(() => walkThrough(selected(), products()));
 
 	/**
 	 * The walk as a FIXED number of rows.
@@ -2087,7 +2094,7 @@ export function ShapingSweepBody(props: { ctx: CardCtx }) {
 			{/* What this sweep cannot say, beside the numbers it can. The
 			    coverage finding belongs HERE and not only on the status card:
 			    the operator reading a black band is looking at this chart. */}
-			<CardCaveat evidence={svc.products().sweep} />
+			<CardCaveat evidence={productsFor(svc.results(), svc.tool(), sp => cmd.inputShaping(sp as never)).sweep} />
 			<p class="shp-sweep-note" classList={{ "shp-warn-inline": svc.sweepState().kind === "failed" }}>
 				<Show when={arming()} fallback={sweepStateText(svc.sweepState())}>
 					{a => <>Confirm: write T{a().tool}&apos;s results, this sweep included, to {RESULTS_PATH(a().tool)}. Escape cancels.</>}

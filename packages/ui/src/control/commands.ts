@@ -527,6 +527,32 @@ const rawCmd = {
 	accelConfig: (addr: AccelAddr): string => gc`M955 P${accelParam(addr)}`,
 
 	/**
+	 * SET an accelerometer's sampling rate and resolution (M955 with S and R).
+	 *
+	 * Separate from `accelConfig` above, which reports and must never set. The
+	 * split is the point: reading the rate is something the app does routinely,
+	 * and a single builder that took optional S/R would make "ask" one forgotten
+	 * argument away from "change the machine permanently" — these settings
+	 * persist on the board until changed (reference/duet-gcode.md, M955 notes).
+	 *
+	 * R is REQUIRED here even though M955 treats it as optional, because on real
+	 * hardware the two are not independent: the firmware "will be adjusted to be
+	 * no greater than the value of the R parameter, then the sensor sampling rate
+	 * will be adjusted to a value supported AT THAT RESOLUTION". An LIS3DH does
+	 * 1344 Hz at 10-bit and 5376 Hz only at 8-bit, so asking for a rate without
+	 * saying what resolution you will accept is asking a question the board will
+	 * answer by silently picking for you.
+	 *
+	 * Nothing here predicts what the board will choose. `accelConfig` is how you
+	 * find out, and the caller is expected to ask.
+	 */
+	accelRate: (addr: AccelAddr, sampleRateHz: number, bits: number): string => {
+		if (!Number.isFinite(sampleRateHz) || sampleRateHz <= 0) throw new Error(`not a sample rate: ${String(sampleRateHz)}`);
+		if (!Number.isInteger(bits) || bits <= 0) throw new Error(`not a resolution: ${String(bits)}`);
+		return gc`M955 P${accelParam(addr)} S${n(Math.round(sampleRateHz))} R${n(bits)}`;
+	},
+
+	/**
 	 * Collect `samples` accelerometer readings into a .csv (M956).
 	 *
 	 * Parameter order P, S, A, F follows reference/dwc

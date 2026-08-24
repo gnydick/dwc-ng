@@ -61,12 +61,9 @@ import { createShapingStore } from "../shaping/store.ts";
 import { type CaptureRecord, emptyResults, RESULTS_PATH, type ToolResults } from "../shaping/results.ts";
 import { Preconditions, type Refusal } from "../shaping/preconditions.ts";
 import { findShapingLine, replaceShapingLine, toolMacroPath } from "../shaping/toolMacro.ts";
-import type { ShapingStep, WorkflowProducts } from "../shaping/steps.ts";
-import { type Evidence, held, type Provenance, type Supersede } from "../shaping/evidence/evidence.ts";
-import { candidateCaveats, fingerprintCaveats, sweepCaveats, verifiedCaveats } from "../shaping/evidence/findings.ts";
+import type { ShapingStep } from "../shaping/steps.ts";
 import { candidateFor, shortlist } from "../shaping/engine/rank.ts";
 import { verifyAnalysis } from "../shaping/store.ts";
-import type { Caveat } from "../shaping/evidence/caveat.ts";
 import type { CardId } from "./defs.ts";
 import { useEngine } from "../shaping/useEngine.ts";
 import { ACCEL_DIR, boardRef, byNewest, captureNameParts, type CaptureRef, createCaptureLoader, type ImportedCapture, importedCount, importRef, isCaptureFile, MAX_BATCH, MAX_SWEEP, speedFamilies, type SweepFamily } from "../shaping/captures.ts";
@@ -77,6 +74,7 @@ import { type FullStep, fullStepPerMm } from "../shaping/fullStep.ts";
 import { mmPerS, seconds } from "../shaping/engine/units.ts";
 import { analysedRows } from "../shaping/engine/sweep.ts";
 import type { ApplyState } from "../shaping/applyRun.ts";
+import { type AccelReport, parseAccelReport } from "../shaping/accelReport.ts";
 import type { ShaperSpec } from "../shaping/engine/shapers.ts";
 import { cmd } from "../control/commands.ts";
 import type { SweepState } from "../shaping/sweepRun.ts";
@@ -956,6 +954,51 @@ function shapingService(base: ServiceBaseCtx) {
 		}
 	};
 
+/** What the accelerometer reported last time it was asked, per tool. */
+	const [accelReports, setAccelReports] = createStore<Record<number, AccelReport>>({});
+	const accelReportFor = (n: number): AccelReport | null => accelReports[n] ?? null;
+
+	/**
+	 * Ask an accelerometer what rate and resolution it is running.
+	 *
+	 * `M955` with P alone REPORTS; it is the only way to find out, because the
+	 * object model does not carry the rate — `boards[n].accelerometer` is
+	 * orientation, points and runs and nothing else.
+	 */
+	const readAccel = async (n: number): Promise<void> => {
+		const addr = accelFor(n);
+		if (addr === null) return;
+		try {
+			setAccelReports(n, parseAccelReport(await base.connector.sendCode(cmd.accelConfig(addr))));
+		} catch (err) {
+			setAccelReports(n, { known: false, raw: err instanceof Error ? err.message : String(err) });
+		}
+	};
+
+	/**
+	 * Set the rate and resolution, then ASK what was actually selected.
+	 *
+	 * The read-back is not a nicety, it is the only truthful answer. RRF
+	 * adjusts the resolution to be no greater than R and then picks "a value
+	 * supported at that resolution that is close to" S — so what the operator
+	 * typed and what the sensor is doing are routinely different numbers. An
+	 * LIS3DH asked for 5376 at 10-bit does not get it.
+	 *
+	 * Which is also why nothing here predicts or validates the pair against a
+	 * table of sensors. The board knows; this asks it.
+	 */
+	const setAccelRate = async (n: number, sampleRateHz: number, bits: number): Promise<void> => {
+		const addr = accelFor(n);
+		if (addr === null) return;
+		try {
+			await base.connector.sendCode(cmd.accelRate(addr, sampleRateHz, bits));
+		} catch (err) {
+			setAccelReports(n, { known: false, raw: err instanceof Error ? err.message : String(err) });
+			return;
+		}
+		await readAccel(n);
+	};
+
 	const toggleMacro = (n: number): void => {
 		if (macroFor(n).kind !== "closed") {
 			setMacros(n, { kind: "closed" });
@@ -1154,50 +1197,8 @@ function shapingService(base: ServiceBaseCtx) {
 		setRevision(r => r + 1);
 	};
 
-	/**
-	 * The five products of the selected tool, each with what limits it.
-	 *
-	 * DERIVED from `results()` on every read rather than stored beside it: a
-	 * cached copy is a second answer to "is this fingerprint any good", and the
-	 * two would part company the first time a capture was added.
-	 *
-	 * Provenance is `unknown` for everything at this phase, and that is not a
-	 * placeholder. It is the honest answer until #57 records what a run was
-	 * taken under, and it is exactly what makes the screen say "this cannot be
-	 * checked" rather than implying it was.
-	 */
-	const products = createMemo((): WorkflowProducts => {
-		const r = resultsFor(tool());
-		const prov: Provenance = {
-			kind: "unknown",
-			why: "measurements do not yet record the conditions they were taken under",
-		};
-
-		// `ToolResults.tool` is the head this file was written for. Selecting a
-		// different one does not make the numbers wrong — it makes them about a
-		// different carriage, and carriage mass is what moves the frequency.
-		const moved: Supersede | null =
-			r.fingerprint !== null && r.tool !== tool() ? { kind: "tool-changed", was: r.tool, now: tool() } : null;
-
-		const put = <T>(value: T | null, caveats: () => readonly Caveat[]): Evidence<unknown> => {
-			if (value === null) return { state: "absent" };
-			if (moved !== null) return { state: "superseded", value, cause: moved };
-			return held(value, prov, caveats());
-		};
-
-		const fingerprint = put(r.fingerprint, () => fingerprintCaveats(r.fingerprint!, r.captures, r.sweep));
-		return {
-			fingerprint,
-			sweep: put(r.sweep, () => sweepCaveats(r.sweep!, r.fingerprint)),
-			candidates: put(r.candidates.length === 0 ? null : r.candidates, () =>
-				candidateCaveats(r.candidates, fingerprint, r.verified.length)),
-			verified: put(r.verified.length === 0 ? null : r.verified, () => verifiedCaveats(r.verified, spec => cmd.inputShaping(spec as never))),
-			applied: put(r.applied, () => []),
-		};
-	});
-
 	return {
-		store, tool, setTool, resultsFor, reload, products,
+		store, tool, setTool, resultsFor, reload,
 		motion, beginMotion, cancelMotion, setFitted, rememberCapture,
 		results: (): ToolResults => resultsFor(tool()),
 		capturePick, setCapturePick, imports, addImport, loadCapture: loader.text,
@@ -1205,7 +1206,7 @@ function shapingService(base: ServiceBaseCtx) {
 		runState, fitCaptures, saveMeasurement, clearRun,
 		fits, families, fullStepFor, sweepState, buildSweep, saveSweep,
 		candidateIndex, setCandidateIndex,
-		accelFor, gate, macroFor, toggleMacro, rank, ranking, problem, offer, runStep,
+		accelFor, accelReportFor, readAccel, setAccelRate, gate, macroFor, toggleMacro, rank, ranking, problem, offer, runStep,
 		applyShaper, applyState, saveVerified,
 		offers: (step: ShapingStep): boolean => offered().includes(step),
 		// Whether a step's OWNING card is on the screen at all, which is a
