@@ -10,6 +10,8 @@
  */
 import { For, Index, Show, createMemo, createSignal } from "solid-js";
 import { createArmed } from "../control/armed.ts";
+import { reportText } from "../shaping/accelReport.ts";
+import type { CardCtx } from "../compose/ctx.ts";
 import { useApp } from "../shell/context.ts";
 import { MAX_LABEL_LEN, DEFAULT_THERMAL_COLORS, type Envelope, type ThermalColors } from "../config/types.ts";
 import { commitMotionField, MOTION_FIELDS, type MotionField } from "../shaping/motionFields.ts";
@@ -336,8 +338,13 @@ const AXIS_ROWS = [
  * to make their verdicts legible; shaping/settingsDraft.ts carries the words
  * and the per-axis probe, and both go through `asEnvelope` itself.
  */
-export function ShapingBody() {
+export function ShapingBody(props: { ctx: CardCtx }) {
 	const app = useApp();
+	// The sampling controls talk to the accelerometer, which is the shaping
+	// service's business: it owns the address lookup the rest of this card
+	// already reads, and one owner is what keeps a rate shown here and a rate
+	// used by a run from being two different answers.
+	const shaping = props.ctx.service("shaping");
 	const stored = (): Envelope | null => app.config.config.shaping.envelope;
 
 	// `edit` is null while the four fields MIRROR the store, and holds the
@@ -433,6 +440,34 @@ export function ShapingBody() {
 		delete next[tool];
 		return next;
 	};
+/**
+	 * The rate and resolution fields, per tool.
+	 *
+	 * Held as text and never seeded from the board's report. What the sensor is
+	 * DOING and what the operator is ASKING FOR are different things, and a
+	 * field that mirrored the report would make "5376" look like a setting that
+	 * had been accepted when the board had quietly given 1344 — which is
+	 * precisely what RRF does when the resolution does not allow the rate.
+	 */
+	const [rateEdit, setRateEdit] = createSignal<Record<number, string>>({});
+	const [bitsEdit, setBitsEdit] = createSignal<Record<number, string>>({});
+	const [rateArmed, setRateArmed] = createSignal<number | null>(null);
+
+	/** What the board last said, in its own words. */
+	const accelReport = (tool: number) => shaping.accelReportFor(tool);
+
+	const applyRate = (tool: number): void => {
+		const rate = Number(rateEdit()[tool]);
+		const bits = Number(bitsEdit()[tool] ?? "10");
+		if (!Number.isFinite(rate) || rate <= 0 || !Number.isInteger(bits) || bits <= 0) return;
+		if (rateArmed() !== tool) {
+			setRateArmed(tool);
+			return;
+		}
+		setRateArmed(null);
+		void shaping.setAccelRate(tool, rate, bits);
+	};
+
 	const commitAccel = (tool: number): void => {
 		const text = accelField(tool).trim();
 		setAccelCommitted(prev => ({ ...prev, [tool]: text }));
@@ -535,6 +570,68 @@ export function ShapingBody() {
 									    edit. */}
 									<span class="accel-status" role="status" title={accelStatus(t().number)}>
 										{accelStatus(t().number)}
+									</span>
+								</div>
+							)}
+						</Show>
+					)}
+				</For>
+			</Show>
+
+			{/* Sampling rate, beside the address because it is a property of the
+			    same sensor — and because the two failure modes look identical on
+			    a card that shows only one of them: no accelerometer, and an
+			    accelerometer sampling too slowly to see what you are asking it
+			    about.
+
+			    RRF adjusts the resolution to be no greater than R and then picks
+			    a rate supported AT that resolution, so what is typed here and
+			    what the sensor does are routinely different numbers. That is why
+			    the line under each row is the board's own reply and not an echo
+			    of the fields. */}
+			<span class="set-cap">Sampling</span>
+			<Show when={app.om.om.tools.length} fallback={<p class="job-empty">Waiting…</p>}>
+				<For each={app.om.om.tools}>
+					{tool => (
+						<Show when={tool}>
+							{t => (
+								<div class="field">
+									<span class="field-label">T{t().number}</span>
+									<input
+										type="number"
+										class="accel-rate"
+										placeholder="Hz"
+										min="1"
+										step="1"
+										aria-label={`T${String(t().number)} sample rate`}
+										value={rateEdit()[t().number] ?? ""}
+										onInput={e => { setRateArmed(null); setRateEdit(prev => ({ ...prev, [t().number]: e.currentTarget.value })); }}
+									/>
+									<input
+										type="number"
+										class="accel-bits"
+										placeholder="bits"
+										min="1"
+										step="1"
+										aria-label={`T${String(t().number)} resolution in bits`}
+										value={bitsEdit()[t().number] ?? ""}
+										onInput={e => { setRateArmed(null); setBitsEdit(prev => ({ ...prev, [t().number]: e.currentTarget.value })); }}
+									/>
+									<button
+										class="fb-tool"
+										classList={{ "shp-arming": rateArmed() === t().number }}
+										disabled={!accelPresent(t().number)}
+										onClick={() => applyRate(t().number)}
+									>
+										{rateArmed() === t().number ? "Confirm" : "Set"}
+									</button>
+									<button class="fb-tool" disabled={!accelPresent(t().number)} onClick={() => void shaping.readAccel(t().number)}>
+										Read
+									</button>
+									{/* The board's own words, reserved so four tools do not
+									    reflow the card as replies arrive. */}
+									<span class="accel-status" role="status" title={reportText(accelReport(t().number))}>
+										{reportText(accelReport(t().number))}
 									</span>
 								</div>
 							)}

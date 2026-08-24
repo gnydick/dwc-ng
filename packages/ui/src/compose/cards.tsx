@@ -173,7 +173,7 @@ export const CARD_RENDER: Record<CardId, CardRender> = {
 	"bed-probe": { body: () => <BedProbeBody />, actions: resetAction("bed") },
 	"camera-config": { body: () => <CameraConfigBody />, actions: resetAction("camera") },
 	"sensor-names": { body: () => <SensorNamesBody />, actions: resetAction("sensorNames") },
-	"settings-shaping": { body: () => <ShapingBody />, actions: resetAction("shaping") },
+	"settings-shaping": { body: ctx => <ShapingBody ctx={ctx} />, actions: resetAction("shaping") },
 	// The Shaping Lab. Every body is a view of ONE service (the per-tool results
 	// store and the screen's selections), so the eight cards cannot disagree
 	// about which tool is being tuned — see compose/services.ts `shaping`.
