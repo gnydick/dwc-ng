@@ -17,6 +17,7 @@ import assert from "node:assert/strict";
 
 import { Preconditions, type Refusal } from "../src/shaping/preconditions.ts";
 import { planProcedure, Procedure, type SweepPlan, type VerifyPlan } from "../src/shaping/procedure.ts";
+import { refusalText } from "../src/shaping/copy.ts";
 import { accelAddr } from "../src/control/commands.ts";
 import type { ShapingConfig } from "../src/config/types.ts";
 import { hz, mm, mmPerS } from "../src/shaping/engine/units.ts";
@@ -108,14 +109,14 @@ test("planProcedure names the point that leaves the envelope — the far end of 
 	const r = planProcedure(ringPlan({ start: { x: mm(220), y: mm(100) } }), freshPre(), config(), NOW, RATE, NO_SHAPER);
 	assert.equal(r.ok, false);
 	if (r.ok) return;
-	assert.deepEqual(r.refusal, { kind: "outside-envelope", point: { x: 280, y: 100 } });
+	assert.deepEqual(r.refusal, { kind: "plan-leaves-envelope", point: { x: 280, y: 100 } });
 });
 
 test("planProcedure names the ring's own start when that is what is outside", () => {
 	const r = planProcedure(ringPlan({ start: { x: mm(10), y: mm(100) } }), freshPre(), config(), NOW, RATE, NO_SHAPER);
 	assert.equal(r.ok, false);
 	if (r.ok) return;
-	assert.deepEqual(r.refusal, { kind: "outside-envelope", point: { x: 10, y: 100 } });
+	assert.deepEqual(r.refusal, { kind: "plan-leaves-envelope", point: { x: 10, y: 100 } });
 });
 
 /**
@@ -134,7 +135,7 @@ test("a carriage parked outside the box is refused by the READING, before any pl
 	const r = Preconditions.read(modelWith({ axes: [axis("X", true, 20), axis("Y", true, 100)] }), config(), TOOLBOARD, NOW);
 	assert.equal(r.ok, false);
 	if (r.ok) return;
-	assert.deepEqual(r.refusal, { kind: "outside-envelope", point: { x: 20, y: 100 } });
+	assert.deepEqual(r.refusal, { kind: "head-outside-envelope", point: { x: 20, y: 100 } });
 });
 
 test("a Preconditions therefore always carries a position inside its own envelope", () => {
@@ -146,11 +147,48 @@ test("a Preconditions therefore always carries a position inside its own envelop
 	assert.ok(Number(pre.position.y) >= box.y[0] && Number(pre.position.y) <= box.y[1]);
 });
 
+/**
+ * The two envelope refusals are two different facts, and neither producer may
+ * raise the other's (#49).
+ *
+ * They used to be one kind, `outside-envelope`, and one kind can only have one
+ * sentence — so the parked head was told "test would leave the envelope",
+ * which named a run that did not exist and a remedy (shorten the move) that
+ * would not have moved the carriage. Gabe hit exactly that on a deployed
+ * build, parked by hand at X-26.7 Y207.1.
+ *
+ * This asserts BOTH halves from the same box, because the halves are only
+ * distinguishable by which producer raised them: the geometry test is the same
+ * rectangle either way.
+ */
+test("a parked head and a departing plan refuse with different kinds and different words", () => {
+	// Parked outside the box, before any plan exists. The point is the READING.
+	const parked = Preconditions.read(modelWith({ axes: [axis("X", true, 20), axis("Y", true, 100)] }), config(), TOOLBOARD, NOW);
+	assert.equal(parked.ok, false);
+	if (parked.ok) return;
+	assert.deepEqual(parked.refusal, { kind: "head-outside-envelope", point: { x: 20, y: 100 } });
+
+	// Inside the box — the reading passes — and handed a ring whose far end is
+	// not. The point is a coordinate the machine has never been to.
+	const departing = planProcedure(ringPlan({ start: { x: mm(220), y: mm(100) } }), freshPre(), config(), NOW, RATE, NO_SHAPER);
+	assert.equal(departing.ok, false);
+	if (departing.ok) return;
+	assert.deepEqual(departing.refusal, { kind: "plan-leaves-envelope", point: { x: 280, y: 100 } });
+
+	// And the operator is told two different things, with two different remedies.
+	const parkedText = refusalText(parked.refusal);
+	const departingText = refusalText(departing.refusal);
+	assert.notEqual(parkedText, departingText);
+	assert.match(parkedText, /parked at X20\.0 Y100\.0/);
+	assert.doesNotMatch(parkedText, /would leave/);
+	assert.match(departingText, /would leave the envelope at X280\.0 Y100\.0/);
+});
+
 test("a negative-going ring is checked at both ends", () => {
 	const r = planProcedure(ringPlan({ distMm: mm(-60), start: { x: mm(60), y: mm(100) } }), freshPre(), config(), NOW, RATE, NO_SHAPER);
 	assert.equal(r.ok, false);
 	if (r.ok) return;
-	assert.deepEqual(r.refusal, { kind: "outside-envelope", point: { x: 0, y: 100 } });
+	assert.deepEqual(r.refusal, { kind: "plan-leaves-envelope", point: { x: 0, y: 100 } });
 });
 
 // --- a plan that measures nothing is refused, never thrown over ----------
@@ -367,7 +405,7 @@ test("a verify plan is refused for the same reasons its ring would be", () => {
 	const r = planProcedure(verify, freshPre(), config(), NOW, RATE, NO_SHAPER);
 	assert.equal(r.ok, false);
 	if (r.ok) return;
-	assert.deepEqual(r.refusal, { kind: "outside-envelope", point: { x: 280, y: 100 } });
+	assert.deepEqual(r.refusal, { kind: "plan-leaves-envelope", point: { x: 280, y: 100 } });
 });
 
 // --- sweep plan -------------------------------------------------------------
@@ -446,7 +484,7 @@ test("a sweep is refused when its Y corner leaves the box, naming that corner", 
 	const r = planProcedure(sweepPlan({ start: { x: mm(100), y: mm(220) } }), freshPre({ axes: [axis("X", true, 100), axis("Y", true, 220)] }), config(), NOW, RATE, NO_SHAPER);
 	assert.equal(r.ok, false);
 	if (r.ok) return;
-	assert.deepEqual(r.refusal, { kind: "outside-envelope", point: { x: 100, y: 280 } });
+	assert.deepEqual(r.refusal, { kind: "plan-leaves-envelope", point: { x: 100, y: 280 } });
 });
 
 // --- I1: there is no other way to get either type ---------------------------

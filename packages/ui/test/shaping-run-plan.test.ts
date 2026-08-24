@@ -97,7 +97,7 @@ test("a move longer than the box is planned anyway — and refused, naming the c
 	const planned = planProcedure(plans[0]!, freshPre(), config(), NOW, RATE, NO_SHAPER);
 	assert.equal(planned.ok, false);
 	if (planned.ok) return;
-	assert.equal(planned.refusal.kind, "outside-envelope");
+	assert.equal(planned.refusal.kind, "plan-leaves-envelope");
 });
 
 /* ------------------------------------------------------------ the polyline */

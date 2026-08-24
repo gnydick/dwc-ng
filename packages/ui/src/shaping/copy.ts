@@ -81,8 +81,19 @@ export function refusalText(r: Refusal): string {
 				: `no accelerometer at ${r.addr} — check Settings › Input shaping`;
 		case "no-envelope":
 			return "set the motion envelope in Settings › Input shaping";
-		case "outside-envelope":
-			return `test would leave the envelope at X${r.point.x.toFixed(1)} Y${r.point.y.toFixed(1)}`;
+		case "head-outside-envelope":
+			// Where the head IS, and the only thing that fixes it. These coordinates
+			// are a fact about the machine right now rather than about a run, so the
+			// sentence says "parked" and states them in the present tense — the
+			// operator can walk over and read the same two numbers off the DRO. The
+			// remedy is a MOVE, and no setting on this screen is one.
+			return `the head is parked at X${r.point.x.toFixed(1)} Y${r.point.y.toFixed(1)}, outside the envelope — move it into the box and try again`;
+		case "plan-leaves-envelope":
+			// Where the RUN would go, which is a corner the machine has not been to.
+			// Both remedies, because either is legitimate and nothing here can tell
+			// which the operator meant: the move is too long for the box, or the box
+			// is drawn too small for the move.
+			return `test would leave the envelope at X${r.point.x.toFixed(1)} Y${r.point.y.toFixed(1)} — shorten the move or redraw the envelope in Settings › Input shaping`;
 		case "stale":
 			return "the machine moved while this was being set up — try again";
 		case "not-measurable":
