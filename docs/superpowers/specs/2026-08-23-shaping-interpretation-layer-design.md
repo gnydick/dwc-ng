@@ -182,6 +182,13 @@ lacks a number, the finding is *"we cannot tell you, and here is what would"*.
   `ln(1/0.15) / 4π`). Seven of ten Y captures refused at ζ ≈ 0.149 is arithmetic,
   not noise, and the sentence says so.
 - **`few-fits`** *(advisory)* — `n` small against the captures attempted.
+- **`axes-agree`** *(advisory)* — X and Y came back within 10 % of each other.
+  Two axes of one machine carry different effective masses and normally ring
+  clearly apart (18.14 vs 51.68 Hz on this machine with shaping off). Agreement
+  means either a shared frame mode or a shaper active during the measurement
+  suppressing both; the sentence names both and picks neither. Added
+  2026-08-24 because the stress test showed the known-bad run produces no other
+  finding at all.
 - **`measured-through-shaper`** *(disqualifying)* — provenance records an active
   shaper. Phase 2; before #53 lands, `provenance.unknown` speaks instead.
 - **`condition-mismatch`** *(advisory)* — recorded accel/tool/shaper differ from
@@ -246,11 +253,38 @@ hardware run through the UI:
   `forcing-band-excludes-mode` must fire, and must name 7.7–8.3 mm/s as the speeds
   that would bracket them.
 - `t0_ring_{X,Y}{p,m}{0..4}.csv` — 20 decays, five reps per axis per direction.
-  `direction-spread` must reproduce X plus 4.48 Hz against minus 0.23 Hz;
-  `fits-at-damping-cap` must reproduce seven of ten Y refusals at ζ ≈ 0.149
-  against the 0.1510 cap.
-- `t0_ring_Yp0.csv` — flagged in #53 as the known-bad capture taken through an
-  active shaper (fits ≈ 15 Hz). It is the phase-2 fixture.
+
+**Corrected 2026-08-24, by measurement.** An earlier draft of this section
+claimed these 20 captures would reproduce #68's "X plus-direction 4.48 Hz
+against minus 0.23 Hz" and "seven of ten Y captures refused at ζ ≈ 0.149".
+**They do not.** Fitted here, all 20 succeed:
+
+| set | shaping | X | Y |
+|---|---|---|---|
+| `ring1_*` (prototype baseline) | **off** | 18.14 Hz | 51.68 Hz |
+| `t0_ring_*` (2026-08-23 UI run) | **on** | 14.78 Hz | 14.99 Hz |
+
+which reproduces #53's numbers exactly. #68's spread and refusal figures came
+from a different capture set — most likely among the 259 on the board — and
+attributing them to this run was an unverified assumption. The `direction-spread`
+and `fits-at-damping-cap` detectors therefore ship with constructed-input tests
+carrying those exact numbers, and gain a real-data test when the originating
+capture set is identified.
+
+**What the correction bought.** The 2026-08-23 run is the known-bad one (#53:
+`M593 P"ei2" F52 S0.034` active throughout), and *every one of its captures fits
+cleanly* — so no refusal, no `few-fits` and no `direction-spread` finding fires.
+The worst bug currently open produced a spotless card. The signature that IS
+available without provenance is **the two axes agreeing**: 1.4 % apart here,
+against 2.85× apart on the same machine with shaping off. Hence the
+`axes-agree` finding, which fires on the contaminated run and is silent on the
+prototype — both asserted, because a detector that fires on everything says
+nothing. It is advisory and names both explanations, since a shared frame mode
+is legitimate and the tool cannot yet tell which it is looking at; #57 settles
+that.
+
+- `ring1_*` under `packages/ui/test/fixtures/shaping/ring1/` is the clean
+  negative case, and is required: it is what proves the detector discriminates.
 
 Every finding gets a node test asserting **the sentence**, not merely the
 predicate, against the real capture that produced the wrong conclusion. A finding
