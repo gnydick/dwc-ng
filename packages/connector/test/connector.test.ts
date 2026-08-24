@@ -1,10 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import http from "node:http";
 import { createMockServer, type MockServer, type MockServerOptions } from "../../mock-duet/src/server.ts";
 import { loadCaptureFile } from "../../mock-duet/src/capture.ts";
 import { PollConnector } from "../src/PollConnector.ts";
 import { probeTransport } from "../src/createConnector.ts";
-import type { ConnectionStatus } from "../src/types.ts";
+import { OperationFailedError, type ConnectionStatus } from "../src/types.ts";
 
 const CAPTURE = new URL("../../mock-duet/captures/om-snapshot-2026-07-12.json", import.meta.url);
 
@@ -509,5 +510,113 @@ test("an unreachable or slow board falls back to rr_ rather than hanging the boo
 		assert.equal(await probeTransport(""), "rr");
 	} finally {
 		globalThis.fetch = original;
+	}
+});
+
+// ---- per-call deadlines (SendCodeOptions.timeoutMs), standalone side ----
+
+/**
+ * A pass-through in front of mock-duet that answers the next `busy` rr_gcode
+ * requests with 503 before letting anything else reach the board.
+ *
+ * This is the STANDALONE shape of the same fault the DSF tests reproduce as a
+ * stalled POST. rr_gcode buffers the code and rr_reply drains the reply
+ * separately, so a board busy for seconds is not a slow request here — it is
+ * RRF answering 503 while its output buffers are full (the case the recovery
+ * ladder exists for). A ladder bounded by a retry count runs out at a fixed
+ * fraction of a second whatever the code was going to take; a ladder sized by
+ * the caller's deadline does not.
+ *
+ * A proxy rather than a mock option: the mock models the BOARD, and "stay busy
+ * for exactly N more sends" is a fault injector, not board behaviour.
+ */
+function createBusyGate(targetPort: number): {
+	listen(): Promise<number>;
+	setBusy(n: number): void;
+	served(): number;
+	close(): Promise<void>;
+} {
+	let busy = 0;
+	let served = 0;
+	const server = http.createServer((req, res) => {
+		if ((req.url ?? "").startsWith("/rr_gcode") && busy > 0) {
+			busy--;
+			served++;
+			req.resume();
+			res.writeHead(503).end("busy");
+			return;
+		}
+		const up = http.request(
+			{ host: "127.0.0.1", port: targetPort, path: req.url, method: req.method, headers: req.headers },
+			r => {
+				res.writeHead(r.statusCode ?? 500, r.headers);
+				r.pipe(res);
+			},
+		);
+		up.on("error", () => { res.writeHead(502).end(); });
+		req.pipe(up);
+	});
+	return {
+		listen: () => new Promise<number>(resolve => server.listen(0, () => {
+			resolve((server.address() as { port: number }).port);
+		})),
+		setBusy(n: number) { busy = n; served = 0; },
+		served: () => served,
+		close: () => new Promise<void>(resolve => {
+			server.closeAllConnections();
+			server.close(() => resolve());
+		}),
+	};
+}
+
+test("standalone: a busy board outlasts the default ladder, and the deadline is what carries the send", async () => {
+	const mock = createMockServer({ tickMs: 0 });
+	const boardPort = await mock.listen(0);
+	const gate = createBusyGate(boardPort);
+	const gatePort = await gate.listen();
+	const replies: string[] = [];
+	// retryDelayMs 5 / maxRetries 3 is the harness ladder: four attempts and
+	// roughly 45 ms of backoff. SIX 503s outlast it, which is the point — the
+	// count is chosen to sit just past the fixed bound, not to be dramatic.
+	const connector = new PollConnector({
+		baseUrl: `http://127.0.0.1:${gatePort}`,
+		autoPoll: false,
+		retryDelayMs: 5,
+		maxRetries: 3,
+		requestTimeoutMs: 2000,
+		events: { onReply: text => replies.push(text) },
+	});
+	try {
+		await connector.connect();
+
+		// A: no deadline — today's behaviour, unchanged. The fixed ladder ends.
+		gate.setBusy(6);
+		await assert.rejects(
+			connector.sendCode("M115"),
+			(err: unknown) => err instanceof OperationFailedError && /503/.test((err as Error).message),
+			"an un-budgeted send still gives up where it always did",
+		);
+		assert.ok(gate.served() < 6, `the default ladder stopped early (${gate.served()} of 6 rungs)`);
+
+		// B: the same busy board, with a deadline. It must ride the 503s out
+		// AND still come back with the board's reply — the drain is part of the
+		// same window as the send.
+		gate.setBusy(6);
+		const reply = await connector.sendCode("M115", { timeoutMs: 3000 });
+		assert.equal(gate.served(), 6, "every 503 was ridden out");
+		assert.match(reply, /FIRMWARE/i, "the reply survived the busy window");
+		assert.deepEqual(replies.at(-1), reply, "and reached the event stream, as any reply does");
+
+		// C: an ordinary send after it is back on the ordinary ladder.
+		gate.setBusy(6);
+		await assert.rejects(
+			connector.sendCode("M115"),
+			(err: unknown) => err instanceof OperationFailedError,
+			"the widened ladder did not leak into the following call",
+		);
+	} finally {
+		await connector.disconnect().catch(() => undefined);
+		await gate.close();
+		await mock.close();
 	}
 });

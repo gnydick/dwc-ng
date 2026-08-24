@@ -1,6 +1,6 @@
 import {
 	type Connector, type ConnectorEvents, type ConnectionStatus, type FileListEntry,
-	type GcodeFileInfo, type ThumbnailInfo,
+	type GcodeFileInfo, type SendCodeOptions, type ThumbnailInfo,
 	InvalidPasswordError, FileNotFoundError, OperationFailedError, DisconnectedError,
 } from "./types.ts";
 import { createDsfModel, type DsfModel, type DsfDigest } from "./dsfModel.ts";
@@ -351,7 +351,7 @@ export class DsfConnector implements Connector {
 
 	// ---------- Connector surface: codes ----------
 
-	async sendCode(code: string): Promise<string> {
+	async sendCode(code: string, opts?: SendCodeOptions): Promise<string> {
 		// The unblockable path (D6/C9): recognized at the transport, before
 		// any status gate, so EVERY caller sending the e-stop payload gets it
 		// — a "reconnecting" session must still be able to halt the machine.
@@ -368,7 +368,15 @@ export class DsfConnector implements Connector {
 		// discards it). Without this, typing M115 shows nothing. Empty replies
 		// (most silent codes) are not console traffic — matching the mock,
 		// which does not queue "" either.
-		const res = await this.request("POST", this.machineUrl("code"), { body: code });
+		// `opts.timeoutMs` becomes THIS request's budget and nothing else's.
+		// DSF answers /machine/code only once the code has EXECUTED, so on this
+		// transport a long code is literally a long request — a caller that
+		// already knows the duration (the shaping lab derives its own `G4 P`)
+		// is the only party that can size it, and the flat default is what a
+		// caller who does not know still gets. Undefined falls through to that
+		// default inside `request`, so this is the same call it always was when
+		// nobody passes anything.
+		const res = await this.request("POST", this.machineUrl("code"), { body: code, timeoutMs: opts?.timeoutMs });
 		const reply = (await res.text()).trim();
 		if (reply !== "") this.events.onReply?.(reply);
 		return reply;

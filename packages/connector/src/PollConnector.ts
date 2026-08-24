@@ -1,6 +1,6 @@
 import {
 	type Connector, type ConnectorEvents, type ConnectionStatus, type FileListEntry,
-	type GcodeFileInfo, type ThumbnailInfo,
+	type GcodeFileInfo, type SendCodeOptions, type ThumbnailInfo,
 	InvalidPasswordError, NoFreeSessionError, FileNotFoundError,
 	OperationFailedError, DisconnectedError,
 } from "./types.ts";
@@ -277,7 +277,7 @@ export class PollConnector implements Connector {
 
 	// ---------- Connector surface ----------
 
-	async sendCode(code: string): Promise<string> {
+	async sendCode(code: string, opts?: SendCodeOptions): Promise<string> {
 		// The unblockable path: an e-stop never waits for a queue slot (an
 		// in-flight upload can hold the only one for minutes) and is never
 		// status-gated (a "reconnecting" session must still be able to halt
@@ -294,9 +294,17 @@ export class PollConnector implements Connector {
 			settle = resolve;
 			this.replyWaiters.push(resolve);
 		});
-		await this.getJson(`rr_gcode?gcode=${encodeURIComponent(code)}`, "high");
+		// `opts.timeoutMs` is honoured in THIS transport's terms, which are not
+		// DSF's. rr_gcode BUFFERS the code and rr_reply drains the reply
+		// separately, so a long code is not a long request here — what a board
+		// busy for seconds actually does is answer rr_gcode with 503 until an
+		// output buffer frees, and the recovery ladder below is what runs out.
+		// So the budget sizes the ladder — and this request and the drain
+		// behind it, because DSF's rr_ EMULATION does block for the code's
+		// execution and a session can be talking to one.
+		await this.getJson(`rr_gcode?gcode=${encodeURIComponent(code)}`, "high", opts?.timeoutMs);
 		// Nudge the reply drain rather than waiting a full poll cycle
-		await this.drainReply();
+		await this.drainReply(opts?.timeoutMs);
 		// The drain above has ALREADY asked the board for whatever reply exists,
 		// so a reply that was coming has arrived. Give it only a short grace for
 		// one that lands just after, then resolve empty.
@@ -306,6 +314,18 @@ export class PollConnector implements Connector {
 		// command (M140, M106, M220 - most of them) left its caller hanging for
 		// five seconds. Nothing awaited sendCode, so it stayed invisible until a
 		// button tried to report when its command had actually landed.
+		//
+		// The grace stays 250 ms even when a budget was passed, and that is a
+		// decision rather than an omission. On this transport a finished
+		// request never meant the code had RUN, so stretching the silence
+		// window out to the budget would not learn anything a 250 ms window
+		// does not: it would make every silent long code — G4 is silent, and
+		// the lab sends one per pass — sit out its whole budget before
+		// resolving "", turning a per-call ceiling into a per-call floor. A
+		// reply that does arrive late still reaches the console through the
+		// poll loop's own drain (seqs.reply), which is where the console reads
+		// it from; what it does not do is come back as this call's return
+		// value, and nothing that passes a budget reads that.
 		this.clock.setTimeout(() => {
 			this.replyWaiters = this.replyWaiters.filter(w => w !== settle);
 			settle("");
@@ -521,8 +541,10 @@ export class PollConnector implements Connector {
 
 	// ---------- plumbing ----------
 
-	private async drainReply(): Promise<void> {
-		const res = await this.rawRequest("rr_reply", undefined, "high");
+	/** `budgetMs` is the sending call's, when it had one — the drain is part of
+	 *  the same "the board is busy for seconds" window as the send itself. */
+	private async drainReply(budgetMs?: number): Promise<void> {
+		const res = await this.rawRequest("rr_reply", undefined, "high", budgetMs);
 		const text = (await res.text()).trim();
 		if (text === "") return;
 		const waiters = this.replyWaiters;
@@ -615,8 +637,8 @@ export class PollConnector implements Connector {
 		return result;
 	}
 
-	private async getJson(path: string, priority: RequestPriority = "normal"): Promise<any> {
-		const res = await this.rawRequest(path, undefined, priority);
+	private async getJson(path: string, priority: RequestPriority = "normal", budgetMs?: number): Promise<any> {
+		const res = await this.rawRequest(path, undefined, priority, budgetMs);
 		return res.json();
 	}
 
@@ -624,14 +646,41 @@ export class PollConnector implements Connector {
 	 * Serialized fetch with the vendored connector's recovery ladder:
 	 * 503 → drain a possibly-blocking reply once, then delayed retries;
 	 * 401/403 → transparent re-auth and replay; 404 → FileNotFound;
-	 * network error → delayed retries until maxRetries.
+	 * network error → delayed retries until the ladder's bound.
+	 *
+	 * `budgetMs` is a caller's per-call deadline — `sendCode`'s
+	 * {@link SendCodeOptions} and nothing else today. It widens the request
+	 * budget AND the ladder, through `rungsFor`. Omitted, every number here is
+	 * what it always was.
 	 */
 	private rawRequest(
 		path: string,
 		init?: { method?: string; body?: Uint8Array },
 		priority: RequestPriority = "normal",
+		budgetMs?: number,
 	): Promise<Response> {
-		return this.attemptRequest(path, init, 0, priority);
+		return this.attemptRequest(path, init, 0, priority, budgetMs, this.rungsFor(budgetMs));
+	}
+
+	/**
+	 * How many rungs the recovery ladder gets for a call carrying `budgetMs`.
+	 *
+	 * DERIVED from the backoff, not read off a clock, and that is what makes
+	 * the loop terminate by construction: the ladder's nth sleep is
+	 * `retryDelayMs * (n + 1)`, so n retries span `retryDelayMs*n*(n+1)/2` of
+	 * backoff, and the smallest n whose span covers the budget is the closed
+	 * form below. A ladder bounded by `now() < deadline` instead would spin
+	 * forever the moment a clock did not advance — a test's virtual one, say —
+	 * and a bound that is a COUNT is one a reader can check.
+	 *
+	 * Never fewer rungs than a call without a budget gets: a deadline is
+	 * permission to wait longer, never an instruction to give up sooner.
+	 */
+	private rungsFor(budgetMs?: number): number {
+		if (budgetMs === undefined || !(budgetMs > 0)) return this.maxRetries;
+		const step = Math.max(1, this.retryDelayMs);
+		const n = Math.ceil((Math.sqrt(1 + (8 * budgetMs) / step) - 1) / 2);
+		return Math.max(this.maxRetries, n);
 	}
 
 	private async attemptRequest(
@@ -639,6 +688,8 @@ export class PollConnector implements Connector {
 		init: { method?: string; body?: Uint8Array } | undefined,
 		retry: number,
 		priority: RequestPriority,
+		budgetMs: number | undefined,
+		rungs: number,
 	): Promise<Response> {
 		let res: Response;
 		try {
@@ -648,19 +699,19 @@ export class PollConnector implements Connector {
 				method: init?.method ?? "GET",
 				body: init?.body as BodyInit | undefined,
 				headers: this.sessionKey !== null ? { "X-Session-Key": String(this.sessionKey) } : {},
-				signal: this.clock.timeoutSignal(this.requestTimeoutMs),
+				signal: this.clock.timeoutSignal(budgetMs ?? this.requestTimeoutMs),
 			}), priority);
 		} catch (err) {
-			if (retry < this.maxRetries) {
+			if (retry < rungs) {
 				await this.clock.sleep(this.retryDelayMs * (retry + 1));
-				return this.attemptRequest(path, init, retry + 1, priority);
+				return this.attemptRequest(path, init, retry + 1, priority, budgetMs, rungs);
 			}
 			throw new OperationFailedError(`${path}: ${(err as Error).message}`);
 		}
 
 		if (res.ok) return res;
 
-		if (res.status === 503 && retry < this.maxRetries) {
+		if (res.status === 503 && retry < rungs) {
 			if (retry === 0 && !path.startsWith("rr_reply")) {
 				// RRF may be out of output buffers because an unread reply is
 				// blocking (original :180-190): drain it, then retry
@@ -668,13 +719,13 @@ export class PollConnector implements Connector {
 			} else {
 				await this.clock.sleep(this.retryDelayMs * (retry + 1));
 			}
-			return this.attemptRequest(path, init, retry + 1, priority);
+			return this.attemptRequest(path, init, retry + 1, priority, budgetMs, rungs);
 		}
 		if ((res.status === 401 || res.status === 403) && !path.startsWith("rr_connect")) {
 			// Session was culled (idle timeout, reboot, another client):
 			// re-auth with the stored password and replay (original :202-224)
 			await this.openSessionDirect();
-			return this.attemptRequest(path, init, retry + 1, priority);
+			return this.attemptRequest(path, init, retry + 1, priority, budgetMs, rungs);
 		}
 		if (res.status === 404) throw new FileNotFoundError(path);
 		throw new OperationFailedError(`${path}: HTTP ${res.status}`);
