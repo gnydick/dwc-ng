@@ -15,10 +15,11 @@
  *          therefore CANNOT emit a claim it has no evidence for: there is no
  *          shape in the union to put one in
  */
-import type { Caveat } from "./caveat.ts";
+import { type Caveat, severityOf } from "./caveat.ts";
 import { type Axis, type Fingerprint, isMode, MAX_FIT_ZETA, type Mode } from "../engine/fit.ts";
 import { analysedRows, type SweepMatrix } from "../engine/sweep.ts";
 import type { Evidence } from "./evidence.ts";
+import type { WorkflowProducts } from "../steps.ts";
 import type { CaptureRecord } from "../results.ts";
 import { hz, type Hz } from "../engine/units.ts";
 
@@ -225,4 +226,22 @@ export function candidateCaveats(
 		for (const c of fingerprint.caveats) out.push({ kind: "inherited", from: "fingerprint", caveat: c });
 	}
 	return out;
+}
+
+/**
+ * The one sentence for the top of the screen, folded out of the five products.
+ *
+ * A FOLD and not a stored value: a thread anything could set independently is a
+ * thread that can contradict the card it summarises, which is the drift
+ * `nextStep` was already built to prevent one level down.
+ *
+ * The pick, in the operator's order: anything shaping cannot act on first,
+ * because it is the only kind with an action attached; then the earliest
+ * product in the workflow, because a note about the ranking while the
+ * fingerprint under it is questionable points at the wrong thing.
+ */
+export function screenThread(p: WorkflowProducts): Caveat | null {
+	const inOrder: ReadonlyArray<Evidence<unknown>> = [p.fingerprint, p.sweep, p.candidates, p.verified, p.applied];
+	const all = inOrder.flatMap((e) => (e.state === "held" ? [...e.caveats] : []));
+	return all.find((c) => severityOf(c) === "disqualifying") ?? all[0] ?? null;
 }

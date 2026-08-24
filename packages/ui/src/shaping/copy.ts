@@ -28,6 +28,7 @@ import { ACCEL_DIR } from "./captures.ts";
 import type { Fingerprint } from "./engine/fit.ts";
 import type { Caveat } from "./evidence/caveat.ts";
 import type { Refusal } from "./preconditions.ts";
+import type { Supersede } from "./evidence/evidence.ts";
 import type { StepBlock, StepNeed, StepSpec, StepStatus } from "./steps.ts";
 import type { MotionOutcome, MotionState } from "./motionRun.ts";
 import type { RunKind } from "./runPlan.ts";
@@ -119,10 +120,20 @@ export function refusalText(r: Refusal): string {
  * height whichever state it is in — this card is watched while the machine
  * works, and a note appearing must not move the rows under it.
  */
-export function stepNoteText(b: StepBlock): string {
+export function stepNoteText(b: StepBlock, caveats: readonly Caveat[] = []): string {
 	switch (b.kind) {
 		case "none":
-			return "ready";
+			// An available step whose evidence has STATED LIMITS does not read as
+			// clean. Saying "ready" over a caveated fingerprint is precisely the
+			// confident wrong action this layer exists to prevent, and it is why
+			// this arm takes the caveats rather than being a constant.
+			return caveats.length === 0 ? "ready" : caveatText(caveats[0]!);
+		case "unusable":
+			return caveatText(b.caveat);
+		case "superseded":
+			return supersedeText(b.cause);
+		case "run-failed":
+			return b.why;
 		case "machine":
 			return refusalText(b.refusal);
 		case "input":
@@ -143,6 +154,28 @@ export function stepNoteText(b: StepBlock): string {
 		default: {
 			const unhandled: never = b;
 			throw new Error(`unknown step block: ${String((unhandled as { kind: unknown }).kind)}`);
+		}
+	}
+}
+
+/**
+ * What changed under a measurement, and therefore what to do about it.
+ *
+ * Each sentence says WHY the change matters rather than only that it happened:
+ * "the tool changed" is a fact the operator already knows, and "carriage mass
+ * is what moves the frequency" is the reason it invalidates the reading.
+ */
+export function supersedeText(s: Supersede): string {
+	switch (s.kind) {
+		case "tool-changed":
+			return `this was measured on T${s.was} and T${s.now} is selected now — carriage mass is what moves the frequency, so measure again`;
+		case "shaper-changed":
+			return `the shaper changed from ${s.was} to ${s.now} since this was measured — a baseline taken through a shaper describes the suppressed machine, not this one`;
+		case "accel-changed":
+			return `this was measured at ${s.was.toFixed(0)} mm/s² and the machine is set to ${s.now.toFixed(0)} now — acceleration decides which mode dominates`;
+		default: {
+			const unhandled: never = s;
+			throw new Error(`unknown supersede cause: ${String((unhandled as { kind: unknown }).kind)}`);
 		}
 	}
 }

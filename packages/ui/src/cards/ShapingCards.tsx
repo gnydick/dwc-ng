@@ -32,6 +32,8 @@ import { allDoneAction, armedRunText, batchSummaryText, type CaptureSource, capt
 import type { CardCtx } from "../compose/ctx.ts";
 import type { MacroRead } from "../compose/services.ts";
 import { nextStep, SHAPING_STEPS, type ShapingStep, type StepInputs, type StepSpec } from "../shaping/steps.ts";
+import { screenThread } from "../shaping/evidence/findings.ts";
+import { caveatText } from "../shaping/copy.ts";
 import { toolMacroPath } from "../shaping/toolMacro.ts";
 import type { Envelope, ShapingConfig, ShapingDefaults } from "../config/types.ts";
 import type { Shaping } from "../om/types.ts";
@@ -217,27 +219,22 @@ export function ShapingStatusBody(props: { ctx: CardCtx }) {
 
 	const cfg = (): ShapingConfig => props.ctx.config.config.shaping;
 
-	const inputsFor = (spec: StepSpec): StepInputs => {
-		const r = selected();
-		return {
-			refusal: svc.gate(),
-			// Two different facts, and telling them apart is what this card
-			// gained: `present` is the operator's composition, `offered` is
-			// whether that card has a run control yet.
-			present: svc.onScreen(spec.ownerCard),
-			offered: svc.offers(spec.step),
-			hasFingerprint: r.fingerprint !== null,
-			hasSweep: r.sweep !== null,
-			hasCandidates: r.candidates.length > 0,
-			hasVerified: r.verified.length > 0,
-			hasRecommendation: recommendation(r) !== null,
-			hasApplied: r.applied !== null,
-			// Anything that MOVES is busy while the machine is moving, whichever
-			// card asked it to. One machine, one carriage: a Verify offered while
-			// a measure run is mid-pass is not a step that could be taken.
-			busy: (spec.step === "rank" && svc.ranking()) || (spec.moves && motionBusy(svc.motion())),
-		};
-	};
+	const inputsFor = (spec: StepSpec): StepInputs => ({
+		refusal: svc.gate(),
+		// Two different facts, and telling them apart is what this card gained:
+		// `present` is the operator's composition, `offered` is whether that
+		// card has a run control yet.
+		present: svc.onScreen(spec.ownerCard),
+		offered: svc.offers(spec.step),
+		// Anything that MOVES is busy while the machine is moving, whichever
+		// card asked it to. One machine, one carriage: a Verify offered while a
+		// measure run is mid-pass is not a step that could be taken.
+		busy: (spec.step === "rank" && svc.ranking()) || (spec.moves && motionBusy(svc.motion())),
+		// The five products, each in whatever state its own machine says. This
+		// used to be six booleans, and a boolean made "a fingerprint exists" and
+		// "a fingerprint valid for ranking" the same value.
+		products: svc.products(),
+	});
 
 	// ONE readiness pass per render, for the whole card. The prominent button
 	// and the five rows read the same objects out of this — `workflow().next`
@@ -330,6 +327,29 @@ export function ShapingStatusBody(props: { ctx: CardCtx }) {
 				    construction as .shp-step-note; see app.css for the mechanism. */}
 				<div class="shp-next-note">
 					<p class="shp-next-why" classList={{ "shp-next-ready": primary().enabled }}>{primary().note}</p>
+				</div>
+			</div>
+			{/* The screen-level thread: what the readings MEAN, as one sentence
+			    folded out of the five products (evidence/findings.ts
+			    `screenThread`). A FOLD and not a stored value, so it cannot come
+			    to contradict the card it is summarising — the same guarantee
+			    `nextStep` gives one level down.
+
+			    It sits BELOW the next action rather than above it on purpose.
+			    The next action is what to DO and stays the card's first answer;
+			    this says what the numbers mean, which is the question the
+			    operator asks second. Its slot is three declared lines in every
+			    state, filled with the em dash when there is nothing to say, so a
+			    finding arriving moves nothing under it. */}
+			<div class="shp-thread">
+				<span class="shp-cap">Means</span>
+				<div class="shp-thread-note">
+					<Show
+						when={screenThread(svc.products())}
+						fallback={<p class="shp-thread-why">{NONE}</p>}
+					>
+						{c => <p class="shp-thread-why" title={caveatText(c())}>{caveatText(c())}</p>}
+					</Show>
 				</div>
 			</div>
 			<p class="shp-active">

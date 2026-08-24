@@ -61,7 +61,10 @@ import { createShapingStore } from "../shaping/store.ts";
 import { type CaptureRecord, emptyResults, RESULTS_PATH, type ToolResults } from "../shaping/results.ts";
 import { Preconditions, type Refusal } from "../shaping/preconditions.ts";
 import { findShapingLine, toolMacroPath } from "../shaping/toolMacro.ts";
-import type { ShapingStep } from "../shaping/steps.ts";
+import type { ShapingStep, WorkflowProducts } from "../shaping/steps.ts";
+import { type Evidence, held, type Provenance, type Supersede } from "../shaping/evidence/evidence.ts";
+import { candidateCaveats, fingerprintCaveats, sweepCaveats } from "../shaping/evidence/findings.ts";
+import type { Caveat } from "../shaping/evidence/caveat.ts";
 import type { CardId } from "./defs.ts";
 import { useEngine } from "../shaping/useEngine.ts";
 import { ACCEL_DIR, boardRef, byNewest, captureNameParts, type CaptureRef, createCaptureLoader, type ImportedCapture, importedCount, importRef, isCaptureFile, MAX_BATCH, MAX_SWEEP, speedFamilies, type SweepFamily } from "../shaping/captures.ts";
@@ -1005,8 +1008,50 @@ function shapingService(base: ServiceBaseCtx) {
 		setRevision(r => r + 1);
 	};
 
+	/**
+	 * The five products of the selected tool, each with what limits it.
+	 *
+	 * DERIVED from `results()` on every read rather than stored beside it: a
+	 * cached copy is a second answer to "is this fingerprint any good", and the
+	 * two would part company the first time a capture was added.
+	 *
+	 * Provenance is `unknown` for everything at this phase, and that is not a
+	 * placeholder. It is the honest answer until #57 records what a run was
+	 * taken under, and it is exactly what makes the screen say "this cannot be
+	 * checked" rather than implying it was.
+	 */
+	const products = createMemo((): WorkflowProducts => {
+		const r = resultsFor(tool());
+		const prov: Provenance = {
+			kind: "unknown",
+			why: "measurements do not yet record the conditions they were taken under",
+		};
+
+		// `ToolResults.tool` is the head this file was written for. Selecting a
+		// different one does not make the numbers wrong — it makes them about a
+		// different carriage, and carriage mass is what moves the frequency.
+		const moved: Supersede | null =
+			r.fingerprint !== null && r.tool !== tool() ? { kind: "tool-changed", was: r.tool, now: tool() } : null;
+
+		const put = <T>(value: T | null, caveats: () => readonly Caveat[]): Evidence<unknown> => {
+			if (value === null) return { state: "absent" };
+			if (moved !== null) return { state: "superseded", value, cause: moved };
+			return held(value, prov, caveats());
+		};
+
+		const fingerprint = put(r.fingerprint, () => fingerprintCaveats(r.fingerprint!, r.captures, r.sweep));
+		return {
+			fingerprint,
+			sweep: put(r.sweep, () => sweepCaveats(r.sweep!, r.fingerprint)),
+			candidates: put(r.candidates.length === 0 ? null : r.candidates, () =>
+				candidateCaveats(r.candidates, fingerprint, r.verified.length)),
+			verified: put(r.verified.length === 0 ? null : r.verified, () => []),
+			applied: put(r.applied, () => []),
+		};
+	});
+
 	return {
-		store, tool, setTool, resultsFor, reload,
+		store, tool, setTool, resultsFor, reload, products,
 		motion, beginMotion, cancelMotion, setFitted, rememberCapture,
 		results: (): ToolResults => resultsFor(tool()),
 		capturePick, setCapturePick, imports, addImport, loadCapture: loader.text,

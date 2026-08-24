@@ -14,6 +14,7 @@ import { batchSummaryText, captureSourceLabel, refusalText } from "../src/shapin
 import { prototypeFingerprint } from "./helpers/shaping.ts";
 import type { Refusal } from "../src/shaping/preconditions.ts";
 import { SHAPING_STEPS, stepReadiness, type StepInputs } from "../src/shaping/steps.ts";
+import { type Have, productsOf } from "./helpers/shaping.ts";
 import { mm } from "../src/shaping/engine/units.ts";
 
 /**
@@ -104,10 +105,15 @@ test("not-measurable names the settings that have to change", () => {
 // ---- step readiness -------------------------------------------------------
 
 const READY: StepInputs = {
-	refusal: null, present: true, offered: true,
-	hasFingerprint: true, hasSweep: true, hasCandidates: true,
-	hasVerified: true, hasRecommendation: true, hasApplied: true, busy: false,
+	refusal: null, present: true, offered: true, busy: false,
+	products: productsOf({ fingerprint: true, sweep: true, candidates: true, verified: true, applied: true }),
 };
+
+/** READY with one product taken away. */
+const without = (gone: keyof Have): StepInputs => ({
+	...READY,
+	products: productsOf({ fingerprint: true, sweep: true, candidates: true, verified: true, applied: true, [gone]: false }),
+});
 const spec = (step: string) => SHAPING_STEPS.find(s => s.step === step)!;
 
 test("with everything in place, every step is enabled and says so", () => {
@@ -130,23 +136,23 @@ test("a refusal disables the steps that MOVE, and only those", () => {
 
 test("a step whose input is missing says which one, before it says anything else", () => {
 	assert.deepEqual(
-		stepReadiness(spec("rank"), { ...READY, hasFingerprint: false }),
-		{ enabled: false, block: { kind: "input", need: "fingerprint" }, note: "nothing measured yet" },
+		stepReadiness(spec("rank"), without("fingerprint")),
+		{ enabled: false, caveats: [], block: { kind: "input", need: "fingerprint" }, note: "nothing measured yet" },
 	);
 	assert.deepEqual(
-		stepReadiness(spec("verify"), { ...READY, hasCandidates: false }),
-		{ enabled: false, block: { kind: "input", need: "candidates" }, note: "nothing ranked yet" },
+		stepReadiness(spec("verify"), without("candidates")),
+		{ enabled: false, caveats: [], block: { kind: "input", need: "candidates" }, note: "nothing ranked yet" },
 	);
 	assert.deepEqual(
-		stepReadiness(spec("apply"), { ...READY, hasRecommendation: false }),
-		{ enabled: false, block: { kind: "input", need: "recommendation" }, note: "nothing to apply yet" },
+		stepReadiness(spec("apply"), { ...READY, products: productsOf({ fingerprint: true, sweep: true, applied: true }) }),
+		{ enabled: false, caveats: [], block: { kind: "input", need: "recommendation" }, note: "nothing to apply yet" },
 	);
 });
 
 test("the machine's answer outranks the tool's, because it is the one to go and fix", () => {
 	// Verify is blocked BOTH ways. The operator can do something about an
 	// unhomed axis; "nothing ranked yet" would send them to the wrong card.
-	const both: StepInputs = { ...READY, refusal: { kind: "not-homed", axes: "XY" }, hasCandidates: false };
+	const both: StepInputs = { ...without("candidates"), refusal: { kind: "not-homed", axes: "XY" } };
 	const r = stepReadiness(spec("verify"), both);
 	assert.equal(r.enabled, false);
 	assert.equal(r.block.kind, "machine");
@@ -174,7 +180,7 @@ test("a card that IS on the screen and still cannot run the step says so instead
 test("a step already running is disabled while it runs", () => {
 	assert.deepEqual(
 		stepReadiness(spec("rank"), { ...READY, busy: true }),
-		{ enabled: false, block: { kind: "busy" }, note: "working…" },
+		{ enabled: false, caveats: [], block: { kind: "busy" }, note: "working…" },
 	);
 });
 
@@ -185,7 +191,7 @@ test("every step's note is one line of prose, whatever state it is in", () => {
 		{ ...READY, present: false, offered: false },
 		{ ...READY, offered: false },
 		{ ...READY, busy: true },
-		{ ...READY, hasFingerprint: false, hasCandidates: false, hasRecommendation: false },
+		{ ...READY, products: productsOf({ sweep: true, applied: true }) },
 	];
 	for (const s of SHAPING_STEPS) {
 		for (const inputs of states) {
