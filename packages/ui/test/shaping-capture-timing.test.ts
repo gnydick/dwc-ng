@@ -28,7 +28,7 @@ import { hz, mm, mmPerS, mmPerS2 } from "../src/shaping/engine/units.ts";
 import { runMotion } from "../src/shaping/runner.ts";
 import type { MotionState } from "../src/shaping/motionRun.ts";
 import {
-	M955_REPLY, NOW, RATE, config, drain, errorOf, fakeBoard, freshPre, kinds,
+	M955_REPLY, NO_SHAPER, NOW, RATE, config, drain, errorOf, fakeBoard, freshPre, kinds,
 	modelWith, ringPlan, testClock,
 } from "./helpers/shapingMachine.ts";
 
@@ -231,7 +231,7 @@ test("a reply with no rate in it is null, never a default", () => {
 // --- the refusals -----------------------------------------------------------
 
 test("a machine that reports no travel acceleration is refused, not guessed at", () => {
-	const r = planProcedure(ringPlan(), freshPre({ travelAcceleration: null }), config(), NOW, RATE);
+	const r = planProcedure(ringPlan(), freshPre({ travelAcceleration: null }), config(), NOW, RATE, NO_SHAPER);
 	assert.equal(r.ok, false);
 	if (r.ok) return;
 	assert.deepEqual(r.refusal, { kind: "no-acceleration" });
@@ -242,7 +242,7 @@ test("a recording longer than one M956 can ask for is refused at plan time", () 
 	// Refused HERE rather than by the board mid-run, which would leave the
 	// carriage parked halfway through a plan with the lab's shaper still on.
 	const crawl = ringPlan({ start: { x: mm(50), y: mm(100) }, distMm: mm(200), speed: mmPerS(4) });
-	const r = planProcedure(crawl, freshPre(), config(), NOW, RATE);
+	const r = planProcedure(crawl, freshPre(), config(), NOW, RATE, NO_SHAPER);
 	assert.equal(r.ok, false);
 	if (r.ok) return;
 	assert.equal(r.refusal.kind, "capture-too-long");
@@ -256,7 +256,7 @@ test("a speed too small for the move to have a duration refuses rather than thro
 	// input that could have broken that — 60 mm at 1e-320 mm/s overflows the
 	// cruise term to Infinity, which `seconds()` will not mint.
 	const crawl = ringPlan({ speed: mmPerS(1e-320) });
-	const r = planProcedure(crawl, freshPre(), config(), NOW, RATE);
+	const r = planProcedure(crawl, freshPre(), config(), NOW, RATE, NO_SHAPER);
 	assert.equal(r.ok, false);
 	if (r.ok) return;
 	assert.deepEqual(r.refusal, { kind: "not-measurable" });
@@ -368,25 +368,27 @@ test("a capture that takes longer than the old flat budget still succeeds", asyn
 	// the 12.2 s this capture's own recording earns it. Before GIT_63 this run
 	// reported "no capture appeared" while the board was working perfectly.
 	const model = modelWith();
-	const planned = planProcedure(ringPlan({ repeats: 1 }), freshPre(), config(), NOW, RATE);
+	const planned = planProcedure(ringPlan({ repeats: 1 }), freshPre(), config(), NOW, RATE, NO_SHAPER);
 	assert.equal(planned.ok, true);
 	if (!planned.ok) return;
 	const fake = fakeBoard(model, { fileAfterPolls: 45 });
 	const clock = testClock();
 	const events = await drain(planned.proc.run(fake.conn, () => model, clock));
-	assert.deepEqual(kinds(events), ["step", "capture", "step", "capture", "done", "restored"]);
+	// The leading bare "step" is the shaper the ring is recorded through; it
+	// records nothing, so no "capture" follows it.
+	assert.deepEqual(kinds(events), ["step", "step", "capture", "step", "capture", "done", "restored"]);
 	assert.ok(clock.now() > 10_000, "the wait really did run past the old budget");
 });
 
 test("a capture that never arrives still fails, and says how long it waited", async () => {
 	const model = modelWith();
-	const planned = planProcedure(ringPlan({ repeats: 1 }), freshPre(), config(), NOW, RATE);
+	const planned = planProcedure(ringPlan({ repeats: 1 }), freshPre(), config(), NOW, RATE, NO_SHAPER);
 	assert.equal(planned.ok, true);
 	if (!planned.ok) return;
 	const fake = fakeBoard(model, { fileAfterPolls: 100_000 });
 	const clock = testClock();
 	const events = await drain(planned.proc.run(fake.conn, () => model, clock));
-	assert.deepEqual(kinds(events), ["step", "failed", "restored"]);
+	assert.deepEqual(kinds(events), ["step", "step", "failed", "restored"]);
 	assert.match(errorOf(events), /ring_Xp0\.csv/);
 	assert.match(errorOf(events), /within 12\.2 s/);
 	assert.ok(clock.now() < 13_000, "and it gave up rather than waiting forever");

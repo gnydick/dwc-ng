@@ -273,7 +273,8 @@ export class Procedure {
 	 * @invariant restore-is-structural
 	 * @rung 7  sole-constructor type — this is a `#`-private field of a class
 	 *          whose only constructor is private and whose only producer is
-	 *          `plan`, which always computes it from `pre.priorShaping`. There
+	 *          `plan`, which always computes it from the `runPrior` its caller
+ *          had to supply. There
 	 *          is no setter, no optional argument and no code path that yields
 	 *          a Procedure with an empty or absent restore, so "was a restore
 	 *          computed?" is not a question a run can be in the wrong answer
@@ -293,6 +294,21 @@ export class Procedure {
 	 *      faithfully re-apply the candidate under test and leave the operator
 	 *      believing the machine was back to baseline — a wrong belief about a
 	 *      setting that changes every subsequent print
+	 * @note `runPrior` is a PARAMETER and not `pre.priorShaping`, and the
+	 *      difference is a live bug in every multi-leg run. A Measure run is
+	 *      two legs (runPlan.ts, one ring per axis), each its own Procedure
+	 *      built from its own fresh `Preconditions.read` — and that read takes
+	 *      the shaper off the POLLED object model, which the run's own codes
+	 *      have been changing. Leg 1 states its shaper, the poll catches up
+	 *      during leg 1's several seconds of captures, and leg 2 reads that
+	 *      statement back as the thing to restore to: `none` after a baseline,
+	 *      so the operator's shaper is silently gone; the CANDIDATE after a
+	 *      verify leg, so an unproven shaper is left installed. Both end on
+	 *      "the machine's shaper is back as it was found" (copy.ts), because
+	 *      the restore was sent and sending it is all the screen can see.
+	 *      Making it an argument forces the caller to say WHICH reading it
+	 *      means, and a run has exactly one to give: the one from before it
+	 *      touched anything.
 	 */
 	readonly #restore: readonly GcodeCommand[];
 
@@ -430,7 +446,7 @@ export class Procedure {
 	 * the class body, and a module-level function would have to be handed a
 	 * seam to bypass.
 	 */
-	static plan(plan: Plan, pre: Preconditions, cfg: ShapingConfig, now: number, rate: SampleRate): PlanResult {
+	static plan(plan: Plan, pre: Preconditions, cfg: ShapingConfig, now: number, rate: SampleRate, runPrior: Shaping): PlanResult {
 		// First, because it is about the REQUEST and needs no machine to answer:
 		// a plan that measures nothing is refused before the reading is even
 		// consulted. This is also what keeps `plan` total — a zero speed would
@@ -464,7 +480,7 @@ export class Procedure {
 		const timed = timedPasses(plan, pre, rate);
 		if (!timed.ok) return { ok: false, refusal: timed.refusal };
 
-		return { ok: true, proc: new Procedure(now, stepsFor(plan, pre, timed.passes), restoreFor(pre.priorShaping), pre) };
+		return { ok: true, proc: new Procedure(now, stepsFor(plan, pre, timed.passes), restoreFor(runPrior), pre) };
 	}
 }
 
@@ -1212,21 +1228,61 @@ function captureStep(pass: Pass, addr: AccelAddr, timing: CaptureTiming): Step {
  * call to `passesFor` that could be handed a different origin, and no second
  * `captureTiming` that could be handed a different rate.
  *
- * A verify plan prepends one step that does not move: it applies the candidate
- * shaper, so the ring that follows is measured with it live. Everything else is
- * the pass list, one capture step each.
+ * EVERY plan prepends one step that does not move: it states the shaper the
+ * passes are to be recorded through. Everything else is the pass list, one
+ * capture step each.
  */
 function stepsFor(plan: Plan, pre: Preconditions, timed: readonly TimedPass[]): readonly Step[] {
-	const captures = timed.map((t) => captureStep(t.pass, pre.accel, t.timing));
-	if (plan.kind !== "verify") return captures;
-	return [
-		{
-			codes: [cmd.inputShaping(plan.spec)],
-			label: `shaper ${plan.spec.type}`,
-			expectPosition: pre.position,
-		},
-		...captures,
-	];
+	return [shaperStep(plan, pre), ...timed.map((t) => captureStep(t.pass, pre.accel, t.timing))];
+}
+
+/**
+ * The shaper every run installs before it records anything.
+ *
+ * This step used to exist only for verify, and that omission was the worst bug
+ * this module has had. A ring plan sent no `M593` at all, so a baseline was
+ * recorded through whatever `tpost<N>.g` had installed — on 2026-08-23 that was
+ * `M593 P"ei2" F52 S0.034`, and the fingerprint it produced was of the
+ * SUPPRESSED machine: X 18.14 -> 14.94 Hz, Y 51.68 -> 14.83 Hz, the Y mode the
+ * shaper is tuned to null simply gone. Both axes converging on ~15 Hz is the
+ * signature. Nothing downstream could detect it, because the output of
+ * fingerprinting a shaped machine looks exactly like the output of
+ * fingerprinting an unshaped one.
+ *
+ * So the shape of the fix is not "add an `M593 P"none"` to ring". It is that a plan
+ * kind may no longer be SILENT about the shaper: the switch is total and armed
+ * with `never`, and a new plan kind cannot compile until someone has written
+ * down what it measures through. Inheriting the machine's state is no longer
+ * something a plan can do by saying nothing.
+ *
+ * The three answers, each decided rather than inherited:
+ *
+ *  - `ring` — OFF. A baseline is the machine's own modes; a notch tuned to one
+ *    of them erases the very thing being measured.
+ *  - `sweep` — OFF, for the same reason and one more. A sweep reads FORCED
+ *    response across a speed ladder, and a shaper attenuates the drive at its
+ *    own notch, so a shaped sweep draws a black band where the machine's
+ *    loudest mode is. That is a picture of the shaper, not of the machine, and
+ *    it is indistinguishable from a band the ladder never excited (#68).
+ *  - `verify` — the CANDIDATE. Verify's whole question is "what is left with
+ *    this shaper live", so it is the one run that must not be measured clean.
+ *
+ * `restoreFor` puts the operator's own shaper back on every exit path
+ * (failure, cancel, abandonment) and needs no change: it already restores from
+ * `pre.priorShaping`, read before any of this went out.
+ */
+function shaperStep(plan: Plan, pre: Preconditions): Step {
+	switch (plan.kind) {
+		case "verify":
+			return { codes: [cmd.inputShaping(plan.spec)], label: `shaper ${plan.spec.type}`, expectPosition: pre.position };
+		case "ring":
+		case "sweep":
+			return { codes: [cmd.shapingOff()], label: "shaper none", expectPosition: pre.position };
+		default: {
+			const unhandled: never = plan;
+			throw new Error(`plan kind does not say what shaper it measures through: ${String((unhandled as { kind: unknown }).kind)}`);
+		}
+	}
 }
 
 // --- restore ----------------------------------------------------------------

@@ -31,7 +31,7 @@ import type { ObjectModel } from "../src/om/types.ts";
 import { hz, mm, mmPerS, mmPerS2 } from "../src/shaping/engine/units.ts";
 import type { ShaperSpec } from "../src/shaping/engine/shapers.ts";
 import {
-	EI2_PRIOR, FAKE_CSV, NOW, RATE, board, config, drain, errorOf, fakeBoard, freshPre, kinds,
+	EI2_PRIOR, FAKE_CSV, NO_SHAPER, NOW, RATE, board, config, drain, errorOf, fakeBoard, freshPre, kinds,
 	modelWith, ringPlan, testClock, type Fake, type FakeOptions,
 } from "./helpers/shapingMachine.ts";
 
@@ -48,9 +48,24 @@ function ready(fake: FakeOptions = {}, over: Partial<RingPlan> = {}): Fake & { p
 }
 
 function plannedRing(over: Partial<RingPlan> = {}) {
-	const planned = planProcedure(ringPlan({ repeats: 1, ...over }), freshPre(), config(), NOW, RATE);
+	const planned = planProcedure(ringPlan({ repeats: 1, ...over }), freshPre(), config(), NOW, RATE, NO_SHAPER);
 	if (!planned.ok) throw new Error(`fixture refused: ${JSON.stringify(planned.refusal)}`);
 	return planned.proc;
+}
+
+/**
+ * The same one-repeat ring, on a machine whose own shaper is a NAMED one.
+ *
+ * Its restore line is then distinguishable from the `M593 P"none"` every ring
+ * now leads with (#53), which is what lets a fixture reject the restore ALONE.
+ * On the unshaped fixture the two are spelled identically, so "throw on any
+ * M593" would kill the baseline at step 1 and never reach a restore to fail.
+ */
+function readyShaped(fake: FakeOptions = {}): Fake & { proc: ReturnType<typeof plannedRing>; model: ObjectModel } {
+	const model = modelWith({ shaping: EI2_PRIOR });
+	const planned = planProcedure(ringPlan({ repeats: 1 }), freshPre({ shaping: EI2_PRIOR }), config(), NOW, RATE, EI2_PRIOR);
+	if (!planned.ok) throw new Error(`fixture refused: ${JSON.stringify(planned.refusal)}`);
+	return { proc: planned.proc, model, ...fakeBoard(model, fake) };
 }
 
 // --- the happy path ---------------------------------------------------------
@@ -67,7 +82,11 @@ function plannedRing(over: Partial<RingPlan> = {}) {
 //   G4      = ceil((1508/1375 - 0.3667) * 1000)    = 731 ms
 // A change to any of those constants lands here as a failing wire, which is the
 // point: this test is the A/B on `captureTiming` reaching the machine.
-const RING_CODES = [
+//
+// One list per capture step rather than one flat sixteen, so an assertion about
+// the FIRST pass names that pass instead of slicing a count off the front — a
+// count the shaper statement (#53) already moved once.
+const RING_XP = [
 	"G90",
 	"G1 X100 Y100 F12000",
 	"M400",
@@ -76,6 +95,8 @@ const RING_CODES = [
 	"G1 X160 Y100 F12000",
 	"M400",
 	"G4 P731",
+];
+const RING_XM = [
 	"G90",
 	"G1 X160 Y100 F12000",
 	"M400",
@@ -85,12 +106,16 @@ const RING_CODES = [
 	"M400",
 	"G4 P731",
 ];
+const RING_CODES = [...RING_XP, ...RING_XM];
 
-test("a one-repeat ring puts exactly the planned codes on the wire, then the restore", async () => {
+test("a one-repeat ring states its shaper, puts exactly the planned codes on the wire, then restores", async () => {
 	const r = ready();
 	const events = await drain(r.proc.run(r.conn, () => r.model, testClock()));
-	assert.deepEqual(r.sent, [...RING_CODES, OFF]);
-	assert.deepEqual(kinds(events), ["step", "capture", "step", "capture", "done", "restored"]);
+	// The first OFF is the baseline the ring is recorded through and the last is
+	// the restore — same spelling, different jobs, and this fixture's machine
+	// happened to be unshaped to begin with.
+	assert.deepEqual(r.sent, [OFF, ...RING_CODES, OFF]);
+	assert.deepEqual(kinds(events), ["step", "step", "capture", "step", "capture", "done", "restored"]);
 });
 
 test("each capture is downloaded from the accelerometer directory and carried in the event", async () => {
@@ -107,22 +132,23 @@ test("step events carry the index and the label the progress strip shows", async
 	const r = ready();
 	const events = await drain(r.proc.run(r.conn, () => r.model, testClock()));
 	assert.deepEqual(events.filter((e) => e.kind === "step"), [
-		{ kind: "step", index: 0, label: "X+ 200 mm/s (1/1)" },
-		{ kind: "step", index: 1, label: "X- 200 mm/s (1/1)" },
+		{ kind: "step", index: 0, label: "shaper none" },
+		{ kind: "step", index: 1, label: "X+ 200 mm/s (1/1)" },
+		{ kind: "step", index: 2, label: "X- 200 mm/s (1/1)" },
 	]);
 });
 
 test("a capture that only appears on the second poll is still downloaded", async () => {
 	const r = ready({ fileAfterPolls: 1 });
 	const events = await drain(r.proc.run(r.conn, () => r.model, testClock()));
-	assert.deepEqual(kinds(events), ["step", "capture", "step", "capture", "done", "restored"]);
+	assert.deepEqual(kinds(events), ["step", "step", "capture", "step", "capture", "done", "restored"]);
 	assert.deepEqual(r.downloaded, [`${CAPTURE_DIR}/ring_Xp0.csv`, `${CAPTURE_DIR}/ring_Xm0.csv`]);
 });
 
 test("a capture overwriting a file of the same name waits for the board's run counter", async () => {
 	const r = ready({ preexisting: ["ring_Xp0.csv", "ring_Xm0.csv"], fileAfterPolls: 2 });
 	const events = await drain(r.proc.run(r.conn, () => r.model, testClock()));
-	assert.deepEqual(kinds(events), ["step", "capture", "step", "capture", "done", "restored"]);
+	assert.deepEqual(kinds(events), ["step", "step", "capture", "step", "capture", "done", "restored"]);
 });
 
 // --- the file exists before its samples do ----------------------------------
@@ -135,7 +161,7 @@ test("a capture overwriting a file of the same name waits for the board's run co
 test("a board still writing the capture is waited for, not read", async () => {
 	const r = ready({ dumpPolls: 6 });
 	const events = await drain(r.proc.run(r.conn, () => r.model, testClock()));
-	assert.deepEqual(kinds(events), ["step", "capture", "step", "capture", "done", "restored"]);
+	assert.deepEqual(kinds(events), ["step", "step", "capture", "step", "capture", "done", "restored"]);
 	// The entry existed from the FIRST listing of each step. Reading it then is
 	// precisely the bug, so the proof is the ordering: nothing was downloaded
 	// until the dump had run its six polls and the counter had ticked.
@@ -146,7 +172,7 @@ test("a board still writing the capture is waited for, not read", async () => {
 test("a file that appears and is never finished fails, and is never read", async () => {
 	const r = ready({ dumpPolls: 1000 });
 	const events = await drain(r.proc.run(r.conn, () => r.model, testClock()));
-	assert.deepEqual(kinds(events), ["step", "failed", "restored"]);
+	assert.deepEqual(kinds(events), ["step", "step", "failed", "restored"]);
 	assert.match(errorOf(events), /ring_Xp0\.csv appeared in .* but was still being written/);
 	assert.deepEqual(r.downloaded, [], "a half-written capture must never reach the fitter");
 });
@@ -156,7 +182,7 @@ test("a stale file of the right name is refused: the run counter never ticked", 
 	// capture — and the board never runs, so nothing dates the file to now.
 	const r = ready({ preexisting: ["ring_Xp0.csv"], fileAfterPolls: 1000 });
 	const events = await drain(r.proc.run(r.conn, () => r.model, testClock()));
-	assert.deepEqual(kinds(events), ["step", "failed", "restored"]);
+	assert.deepEqual(kinds(events), ["step", "step", "failed", "restored"]);
 	assert.match(errorOf(events), /ring_Xp0\.csv is in .* but the board never reported a finished capture/);
 	assert.deepEqual(r.downloaded, [], "a file the board never claimed is not this run's capture");
 });
@@ -166,7 +192,7 @@ test("a download without the board's trailer is not a finished capture", async (
 	// is not, so the transfer had not finished when the bytes were fetched.
 	const r = ready({ download: () => "Sample,X,Y,Z\n0,0.01,0.02,0.03\n" });
 	const events = await drain(r.proc.run(r.conn, () => r.model, testClock()));
-	assert.deepEqual(kinds(events), ["step", "failed", "restored"]);
+	assert.deepEqual(kinds(events), ["step", "step", "failed", "restored"]);
 	assert.match(errorOf(events), /without the "Rate n, overflows n" line/);
 	assert.ok(r.downloaded.length > 1, "it kept trying within the budget rather than accepting the first partial read");
 });
@@ -174,20 +200,20 @@ test("a download without the board's trailer is not a finished capture", async (
 test("a board reporting no accelerometer run counter refuses BEFORE it is moved", async () => {
 	const boards = [board(0, false), board(20, true, null)];
 	const model = modelWith({ boards });
-	const planned = planProcedure(ringPlan({ repeats: 1 }), freshPre({ boards }), config(), NOW, RATE);
+	const planned = planProcedure(ringPlan({ repeats: 1 }), freshPre({ boards }), config(), NOW, RATE, NO_SHAPER);
 	assert.equal(planned.ok, true);
 	if (!planned.ok) return;
 	const fake = fakeBoard(model);
 	const events = await drain(planned.proc.run(fake.conn, () => model, testClock()));
-	assert.deepEqual(kinds(events), ["step", "failed", "restored"]);
+	assert.deepEqual(kinds(events), ["step", "step", "failed", "restored"]);
 	assert.match(errorOf(events), /not reporting an accelerometer run counter for P20\.0/);
-	assert.deepEqual(fake.sent, [OFF], "the carriage never moved: only the restore went out");
+	assert.deepEqual(fake.sent, [OFF, OFF], "the carriage never moved: the shaper statement, then the restore, and nothing else");
 });
 
 test("a rejected request AND no capture names both pieces of evidence", async () => {
 	const r = ready({ fileAfterPolls: 1000, onSend: (code) => { if (code.startsWith("M956")) throw new Error("signal timed out"); } });
 	const events = await drain(r.proc.run(r.conn, () => r.model, testClock()));
-	assert.deepEqual(kinds(events), ["step", "failed", "restored"]);
+	assert.deepEqual(kinds(events), ["step", "step", "failed", "restored"]);
 	assert.match(errorOf(events), /signal timed out/, "the rejected request is still named");
 	assert.match(errorOf(events), /no capture named ring_Xp0\.csv appeared/, "and so is the absent file");
 });
@@ -206,9 +232,11 @@ const RING_TIMING = captureTiming(captureWindow(mm(60), mmPerS(200), mmPerS2(300
 test("every code of a recording step carries the deadline that recording produced", async () => {
 	const r = ready();
 	await drain(r.proc.run(r.conn, () => r.model, testClock()));
-	// Eight codes per capture step, then the restore, which records nothing
-	// and is therefore back on the transport's flat budget.
+	// The shaper statement first, then eight codes per capture step, then the
+	// restore. The two single M593s record nothing and are therefore back on
+	// the transport's flat budget; only the recording steps carry a deadline.
 	assert.deepEqual(r.deadlines, [
+		undefined,
 		...new Array<number | undefined>(8).fill(RING_TIMING.sendBudgetMs),
 		...new Array<number | undefined>(8).fill(RING_TIMING.sendBudgetMs),
 		undefined,
@@ -225,7 +253,7 @@ test("every code of a recording step carries the deadline that recording produce
 test("a verify plan's shaper step records nothing, so it keeps the flat budget", async () => {
 	const model = modelWith({ shaping: EI2_PRIOR });
 	const verify: VerifyPlan = { kind: "verify", spec: EI2_SPEC, ring: ringPlan({ repeats: 1, namePrefix: "ver" }) };
-	const planned = planProcedure(verify, freshPre({ shaping: EI2_PRIOR }), config(), NOW, RATE);
+	const planned = planProcedure(verify, freshPre({ shaping: EI2_PRIOR }), config(), NOW, RATE, EI2_PRIOR);
 	assert.equal(planned.ok, true);
 	if (!planned.ok) return;
 	const fake = fakeBoard(model);
@@ -248,26 +276,28 @@ test("a step's failure names the code that was refused, not just the transport e
 	// away too, because a rejection with a capture behind it is deliberately
 	// NOT a failure — the machine's evidence decides.
 	const r = ready({
+		// Attempt 0 is the shaper statement, so the first pass's eight codes are
+		// attempts 1..8 and its closing G4 is the eighth.
 		fileAfterPolls: 1000,
-		onSend: (code, nth) => { if (nth === 7 && code.startsWith("G4")) throw new Error("signal timed out"); },
+		onSend: (code, nth) => { if (nth === 8 && code.startsWith("G4")) throw new Error("signal timed out"); },
 	});
 	const events = await drain(r.proc.run(r.conn, () => r.model, testClock()));
-	assert.match(errorOf(events), /^step 1 of 2 \(X\+ 200 mm\/s \(1\/1\)\): G4 P731: signal timed out — /);
+	assert.match(errorOf(events), /^step 2 of 3 \(X\+ 200 mm\/s \(1\/1\)\): G4 P731: signal timed out — /);
 });
 
 test("a failed restore names its code too", async () => {
-	const r = ready({ onSend: (code) => { if (code.startsWith("M593")) throw new Error("link down"); } });
+	const r = readyShaped({ onSend: (code) => { if (code === EI2_LINE) throw new Error("link down"); } });
 	const events = await drain(r.proc.run(r.conn, () => r.model, testClock()));
-	assert.equal(errorOf(events), `restore failed: ${OFF}: link down`);
+	assert.equal(errorOf(events), `restore failed: ${EI2_LINE}: link down`);
 });
 
 // --- refusing rather than correcting ----------------------------------------
 
-test("a position mismatch before step 2 fails the run WITHOUT sending that step's codes", async () => {
+test("a position mismatch before the second capture step fails the run WITHOUT sending that step's codes", async () => {
 	const r = ready({ driftOnMove: 10 });
 	const events = await drain(r.proc.run(r.conn, () => r.model, testClock()));
-	assert.deepEqual(r.sent, [...RING_CODES.slice(0, 8), OFF], "step 2 never went out, and nothing tried to fix the position");
-	assert.deepEqual(kinds(events), ["step", "capture", "failed", "restored"]);
+	assert.deepEqual(r.sent, [OFF, ...RING_XP, OFF], "the X- pass never went out, and nothing tried to fix the position");
+	assert.deepEqual(kinds(events), ["step", "step", "capture", "failed", "restored"]);
 	assert.match(errorOf(events), /X170\.00 Y100\.00/);
 	assert.match(errorOf(events), /X160\.00 Y100\.00/);
 });
@@ -275,7 +305,7 @@ test("a position mismatch before step 2 fails the run WITHOUT sending that step'
 test("a mismatch on the very first step still restores, and sends nothing else", async () => {
 	const model = modelWith({ shaping: EI2_PRIOR });
 	const proc = (() => {
-		const planned = planProcedure(ringPlan({ repeats: 1 }), freshPre({ shaping: EI2_PRIOR }), config(), NOW, RATE);
+		const planned = planProcedure(ringPlan({ repeats: 1 }), freshPre({ shaping: EI2_PRIOR }), config(), NOW, RATE, EI2_PRIOR);
 		if (!planned.ok) throw new Error("fixture refused");
 		return planned.proc;
 	})();
@@ -297,29 +327,34 @@ test("a machine that stops reporting a homed position fails the run rather than 
 
 // --- failures mid-run -------------------------------------------------------
 
-test("a send that throws on step 3 still gets the restore out", async () => {
+test("a send that throws on the third capture step still gets the restore out", async () => {
 	const model = modelWith();
-	const planned = planProcedure(ringPlan({ repeats: 2 }), freshPre(), config(), NOW, RATE);
+	const planned = planProcedure(ringPlan({ repeats: 2 }), freshPre(), config(), NOW, RATE, NO_SHAPER);
 	assert.equal(planned.ok, true);
 	if (!planned.ok) return;
-	// Step 3's codes are sends 16..23; reject the very first of them.
-	const fake = fakeBoard(model, { onSend: (_code, nth) => { if (nth === 16) throw new Error("board said no"); } });
+	// The shaper statement is attempt 0, so the third capture step's codes are
+	// sends 17..24; reject the very first of them.
+	const fake = fakeBoard(model, { onSend: (_code, nth) => { if (nth === 17) throw new Error("board said no"); } });
 	const events = await drain(planned.proc.run(fake.conn, () => model, testClock()));
-	assert.deepEqual(kinds(events), ["step", "capture", "step", "capture", "step", "failed", "restored"]);
+	assert.deepEqual(kinds(events), ["step", "step", "capture", "step", "capture", "step", "failed", "restored"]);
 	assert.match(errorOf(events), /board said no/);
 	assert.equal(fake.sent[fake.sent.length - 1], OFF, "the restore is the last thing the board hears");
 });
 
 test("a request that times out AFTER the capture was armed is not a failure — the file is the evidence", async () => {
-	const r = ready({ onSend: (code, nth) => { if (nth === 7 && code.startsWith("G4")) throw new Error("timed out"); } });
+	// Attempt 8 is the first pass's closing G4 — the shaper statement took 0.
+	const r = ready({ onSend: (code, nth) => { if (nth === 8 && code.startsWith("G4")) throw new Error("timed out"); } });
 	const events = await drain(r.proc.run(r.conn, () => r.model, testClock()));
-	assert.deepEqual(kinds(events), ["step", "capture", "step", "capture", "done", "restored"]);
+	assert.deepEqual(kinds(events), ["step", "step", "capture", "step", "capture", "done", "restored"]);
 });
 
 test("a restore that cannot be sent is reported, not swallowed", async () => {
-	const r = ready({ onSend: (code) => { if (code.startsWith("M593")) throw new Error("link down"); } });
+	// Every step succeeds and only the putting-back fails, which is the case
+	// worth reporting: the run got what it came for and left the machine in the
+	// lab's disable rather than in the operator's own shaper.
+	const r = readyShaped({ onSend: (code) => { if (code === EI2_LINE) throw new Error("link down"); } });
 	const events = await drain(r.proc.run(r.conn, () => r.model, testClock()));
-	assert.deepEqual(kinds(events), ["step", "capture", "step", "capture", "done", "failed"]);
+	assert.deepEqual(kinds(events), ["step", "step", "capture", "step", "capture", "done", "failed"]);
 	assert.match(errorOf(events), /restore/);
 });
 
@@ -328,8 +363,9 @@ test("a restore that cannot be sent is reported, not swallowed", async () => {
 test("abandoning the generator mid-run still sends the restore", async () => {
 	const r = ready({}, { repeats: 3 });
 	const gen = r.proc.run(r.conn, () => r.model, testClock());
-	await gen.next(); // step 0
-	await gen.next(); // capture 0
+	await gen.next(); // step 1: the shaper this run measures through
+	await gen.next(); // step 2: the first capture pass
+	await gen.next(); // and its capture — the run is genuinely mid-flight now
 	const ending = await gen.return();
 	assert.deepEqual(ending.value, { kind: "restored" });
 	assert.equal(r.sent[r.sent.length - 1], OFF);
@@ -352,8 +388,8 @@ test("an aborted signal stops before the next step and restores", async () => {
 		events.push(ev);
 		if (ev.kind === "capture") ac.abort();
 	}
-	assert.deepEqual(kinds(events), ["step", "capture", "restored"]);
-	assert.deepEqual(r.sent, [...RING_CODES.slice(0, 8), OFF]);
+	assert.deepEqual(kinds(events), ["step", "step", "capture", "restored"]);
+	assert.deepEqual(r.sent, [OFF, ...RING_XP, OFF]);
 });
 
 // --- verify -----------------------------------------------------------------
@@ -361,7 +397,7 @@ test("an aborted signal stops before the next step and restores", async () => {
 test("a verify run applies the candidate first and hands the machine back to the prior shaper", async () => {
 	const model = modelWith({ shaping: EI2_PRIOR });
 	const verify: VerifyPlan = { kind: "verify", spec: EI2_SPEC, ring: ringPlan({ repeats: 1, namePrefix: "ver" }) };
-	const planned = planProcedure(verify, freshPre({ shaping: EI2_PRIOR }), config(), NOW, RATE);
+	const planned = planProcedure(verify, freshPre({ shaping: EI2_PRIOR }), config(), NOW, RATE, EI2_PRIOR);
 	assert.equal(planned.ok, true);
 	if (!planned.ok) return;
 	const fake = fakeBoard(model);
@@ -377,7 +413,7 @@ test("a capture that never appears fails after the poll budget rather than hangi
 	const r = ready({ fileAfterPolls: 1000 });
 	const clock = testClock();
 	const events = await drain(r.proc.run(r.conn, () => r.model, clock));
-	assert.deepEqual(kinds(events), ["step", "failed", "restored"]);
+	assert.deepEqual(kinds(events), ["step", "step", "failed", "restored"]);
 	assert.match(errorOf(events), /ring_Xp0\.csv/);
 	// The budget is DERIVED from this capture's own recording, not a constant:
 	// 10 s of fixed overhead plus twice the 1.097 s record = 12.194 s.
