@@ -28,7 +28,7 @@ import { For, Match, Show, Switch, createEffect, createMemo, createSignal } from
 import { cmd } from "../control/commands.ts";
 import { copyText } from "../shell/copyText.ts";
 import { createArmed } from "../control/armed.ts";
-import { allDoneAction, armedRunText, batchSummaryText, type CaptureSource, captureSourceLabel, motionStateText, refusalText, runKindText, stepActionText, stepStatusText, sweepStateText, type StepScope } from "../shaping/copy.ts";
+import { allDoneAction, armedRunText, armedSaveText, batchSummaryText, type CaptureSource, captureSourceLabel, motionStateText, refusalText, runKindText, stepActionText, stepStatusText, sweepStateText, type StepScope } from "../shaping/copy.ts";
 import type { CardCtx } from "../compose/ctx.ts";
 import type { MacroRead } from "../compose/services.ts";
 import { nextStep, SHAPING_STEPS, type ShapingStep, type StepInputs, type StepSpec } from "../shaping/steps.ts";
@@ -851,12 +851,19 @@ export function ShapingCaptureBody(props: { ctx: CardCtx }) {
 	const note = createMemo((): string => {
 		const arm = armed();
 		if (arm !== null && arm.kind === "save") {
-			return `Confirm: write T${arm.tool}'s fingerprint to ${RESULTS_PATH(arm.tool)}. Escape cancels.`;
+			// What is about to be written depends on what the batch IS — a
+			// verify adds a comparison and leaves the fingerprint alone.
+			const run = svc.runState();
+			return armedSaveText(
+				run.kind === "fitted" ? run.purpose : { kind: "baseline" },
+				arm.tool,
+				RESULTS_PATH(arm.tool),
+			);
 		}
 		if (arm !== null) {
 			const range = files();
 			return armedRunText(
-				arm.run,
+				request(),
 				captureCount(),
 				defaults().distMm,
 				defaults().speedMmS,

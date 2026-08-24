@@ -274,7 +274,25 @@ export function safePrefix(text: string, fallback: string): string {
  *  about, then what it is. On a four-head machine the tool number in the name
  *  is the only thing that keeps T1's captures from overwriting T0's. */
 export function defaultPrefix(kind: RunKind, tool: number): string {
-	return safePrefix(`t${tool}_${kind === "sweep" ? "sweep" : "ring"}`, "ring");
+	// Total over RunKind with a never arm, and it was NOT before: the old
+	// ternary said "sweep" or "ring", so `verify` silently took the ring's
+	// name. That is not a cosmetic default — captures are written as
+	// `<prefix>_<axis><dir><rep>.csv`, so a verify run would have overwritten
+	// the tool's BASELINE captures file for file, on the card, with the ring of
+	// a shaped machine. The baseline would then have been unrecoverable and
+	// would still have looked like a baseline.
+	switch (kind) {
+		case "sweep":
+			return safePrefix(`t${tool}_sweep`, "sweep");
+		case "verify":
+			return safePrefix(`t${tool}_verify`, "verify");
+		case "measure":
+			return safePrefix(`t${tool}_ring`, "ring");
+		default: {
+			const unhandled: never = kind;
+			throw new Error(`unknown run kind: ${String(unhandled)}`);
+		}
+	}
 }
 
 /**
