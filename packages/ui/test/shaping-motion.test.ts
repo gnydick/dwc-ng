@@ -110,7 +110,7 @@ test("cancelling is not a failure", () => {
 });
 
 test("the armed confirm names the count, the move and the files it will write", () => {
-	const text = armedRunText("measure", 12, 60, 200, "t0_ring_Xp0.csv", "t0_ring_Ym2.csv");
+	const text = armedRunText({ kind: "measure" }, 12, 60, 200, "t0_ring_Xp0.csv", "t0_ring_Ym2.csv");
 	assert.match(text, /12 captures/);
 	assert.match(text, /60 mm at 200 mm\/s/);
 	assert.match(text, /t0_ring_Xp0\.csv … t0_ring_Ym2\.csv/);
@@ -118,7 +118,7 @@ test("the armed confirm names the count, the move and the files it will write", 
 	// createArmed guarantees Escape; a two-step control whose way out is
 	// invisible is a two-step control with no way out.
 	assert.match(text, /Escape cancels/);
-	assert.match(armedRunText("sweep", 1, 60, 200, "a.csv", "a.csv"), /1 capture,/);
+	assert.match(armedRunText({ kind: "sweep" }, 1, 60, 200, "a.csv", "a.csv"), /1 capture,/);
 });
 
 test("both runs are named in the operator's words", () => {

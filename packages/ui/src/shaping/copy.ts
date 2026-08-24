@@ -34,7 +34,8 @@ import type { Supersede } from "./evidence/evidence.ts";
 import type { Answer, Inquiry } from "./evidence/inquiry.ts";
 import type { ShapingStep, StepBlock, StepNeed, StepSpec, StepStatus } from "./steps.ts";
 import type { MotionOutcome, MotionState } from "./motionRun.ts";
-import type { RunKind } from "./runPlan.ts";
+import type { RunKind, RunRequest } from "./runPlan.ts";
+import type { BatchPurpose } from "../compose/services.ts";
 import type { ApplyHow, ApplyIntent, ApplyState } from "./applyRun.ts";
 import type { SweepState } from "./sweepRun.ts";
 
@@ -534,8 +535,29 @@ export function motionStateText(state: MotionState): string {
  * it, and a two-step control whose way out is invisible is a two-step control
  * with no way out.
  */
-export function armedRunText(kind: RunKind, captures: number, distMm: number, speedMmS: number, first: string, last: string): string {
-	return `Confirm ${runKindText(kind).toLowerCase()}: ${captures} ${captures === 1 ? "capture" : "captures"}, ${distMm} mm at ${speedMmS} mm/s, writing ${first} … ${last} to ${ACCEL_DIR}. Escape cancels.`;
+export function armedRunText(req: RunRequest, captures: number, distMm: number, speedMmS: number, first: string, last: string): string {
+	const what = `${captures} ${captures === 1 ? "capture" : "captures"}, ${distMm} mm at ${speedMmS} mm/s, writing ${first} … ${last} to ${ACCEL_DIR}`;
+	// A verify NAMES THE SHAPER, because that is the whole content of the run
+	// and the confirm is where consent is given. Everything else about it is
+	// identical to a baseline — same distance, same speed, same repeats — so a
+	// sentence without the shaper describes a run the operator cannot tell
+	// apart from the one they already did.
+	return req.kind === "verify"
+		? `Confirm verify: install ${cmd.inputShaping(req.spec)} and re-measure — ${what}. The shaper is put back afterwards. Escape cancels.`
+		: `Confirm ${runKindText(req.kind).toLowerCase()}: ${what}. Escape cancels.`;
+}
+
+/**
+ * What the save bar is about to write, which is not the same for both runs.
+ *
+ * A baseline save REPLACES the tool's fingerprint. A verify save ADDS a
+ * measured comparison and leaves the fingerprint alone. Calling both "write
+ * T0's fingerprint" told the operator the second would do the first.
+ */
+export function armedSaveText(purpose: BatchPurpose, tool: number, path: string): string {
+	return purpose.kind === "verify"
+		? `Confirm: record how ${cmd.inputShaping(purpose.spec)} measured against T${tool}'s baseline, in ${path}. The baseline is not changed. Escape cancels.`
+		: `Confirm: write T${tool}'s fingerprint to ${path}. Escape cancels.`;
 }
 
 /* ------------------------------------------- what the readings actually mean */
