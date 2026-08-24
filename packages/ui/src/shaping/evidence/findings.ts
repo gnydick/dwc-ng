@@ -1,0 +1,186 @@
+/**
+ * Pure functions from measurements to the caveats they imply.
+ *
+ * Everything here is arithmetic over data the app already holds, which is the
+ * claim issue #68 rests on: every statement an operator worked out by hand on
+ * 2026-08-23 was derivable from numbers already on the card. Nothing in this
+ * module reads the object model, touches the connector or decides anything — a
+ * detector's whole job is to notice, and `evidence.ts` decides what noticing it
+ * means for a product.
+ *
+ * @invariant findings-cite-what-they-came-from
+ * @rung 8  illegal state unrepresentable — a `Caveat` has no free-text arm.
+ *          Every reason is a record of the numbers it was derived from, and the
+ *          sentence is written from those numbers by the copy table. A detector
+ *          therefore CANNOT emit a claim it has no evidence for: there is no
+ *          shape in the union to put one in
+ */
+import type { Caveat } from "./caveat.ts";
+import { type Axis, type Fingerprint, isMode, MAX_FIT_ZETA, type Mode } from "../engine/fit.ts";
+import { analysedRows, type SweepMatrix } from "../engine/sweep.ts";
+import type { CaptureRecord } from "../results.ts";
+import { hz, type Hz } from "../engine/units.ts";
+
+/**
+ * The full-step rate the matrix was BUILT with, recovered from it.
+ *
+ * `sweepMatrix` stores `fullStepHz[i] = speeds[i] * fullStepsPerMm`, so the
+ * quotient is that rate exactly. Recovered rather than passed in alongside,
+ * because a rate handed to the finding separately is a second copy of a number
+ * the matrix already holds — and the failure mode of two copies is a finding
+ * that disagrees with the dashed locus drawn on the very chart it annotates.
+ */
+export function fullStepsPerMmOf(m: SweepMatrix): number | null {
+	for (let i = 0; i < m.speeds.length; i++) {
+		const speed = Number(m.speeds[i]);
+		const forced = Number(m.fullStepHz[i]);
+		if (speed > 0 && Number.isFinite(forced) && forced > 0) return forced / speed;
+	}
+	return null;
+}
+
+/** Lowest and highest frequency this ladder's motors actually forced. */
+export function forcingBand(m: SweepMatrix): readonly [Hz, Hz] | null {
+	if (m.fullStepHz.length === 0) return null;
+	const fs = m.fullStepHz.map(Number);
+	return [hz(Math.min(...fs)), hz(Math.max(...fs))];
+}
+
+/**
+ * How close a mode has to sit to a forced frequency before it is more likely to
+ * BE that forcing than to be a structure ringing near it.
+ *
+ * One FFT bin. `sweepMatrix` bins at 1 Hz and rounds each peak into the nearest
+ * one, so a mode inside a bin of the locus is not distinguishable from the
+ * locus by anything the chart can draw — and claiming a distinction the
+ * instrument cannot resolve is the exact error this layer exists to prevent.
+ */
+const LOCUS_BIN_HZ = 1;
+
+const modesOf = (fp: Fingerprint): ReadonlyArray<{ axis: Axis; mode: Mode }> =>
+	([["X", fp.X], ["Y", fp.Y]] as const)
+		.filter((e): e is readonly ["X" | "Y", Mode] => e[1] !== null)
+		.map(([axis, mode]) => ({ axis, mode }));
+
+/**
+ * What this sweep can and cannot say, given the fingerprint beside it.
+ *
+ * The order of the two questions matters and is not arbitrary: a mode is asked
+ * "are you ON the locus" BEFORE "are you outside the band", because a mode
+ * sitting on a forced frequency is inside the band by definition, and reporting
+ * it as merely undriven would name the wrong problem — and the wrong remedy.
+ */
+export function sweepCaveats(m: SweepMatrix, fp: Fingerprint | null): readonly Caveat[] {
+	const out: Caveat[] = [];
+
+	const analysed = analysedRows(m);
+	if (analysed < m.speeds.length) {
+		out.push({ kind: "rows-not-analysed", analysed, rows: m.speeds.length });
+	}
+
+	const band = forcingBand(m);
+	const perMm = fullStepsPerMmOf(m);
+	if (fp === null || band === null || perMm === null) return out;
+
+	for (const { axis, mode } of modesOf(fp)) {
+		const f = Number(mode.f);
+		const onLocus = m.fullStepHz.findIndex((forced) => Math.abs(Number(forced) - f) <= LOCUS_BIN_HZ);
+		if (onLocus >= 0) {
+			out.push({
+				kind: "mode-on-forcing-locus",
+				axis,
+				modeHz: mode.f,
+				speedMmPerS: Number(m.speeds[onLocus]),
+			});
+			continue;
+		}
+		if (f < Number(band[0]) || f > Number(band[1])) {
+			out.push({
+				kind: "forcing-band-excludes-mode",
+				axis,
+				modeHz: mode.f,
+				bandHz: band,
+				needMmPerS: f / perMm,
+			});
+		}
+	}
+	return out;
+}
+
+/**
+ * How much spread makes an axis untrustworthy, as a fraction of its own mode
+ * frequency.
+ *
+ * Ten per cent, and the number is NOT invented for this finding: it is the same
+ * ±10 % mistuning band the Candidates card already ranks robustness over — the
+ * margin that decides whether a shaper survives a tool change. A direction
+ * whose spread eats that whole band has made the ranking meaningless, which is
+ * precisely when the operator needs telling.
+ */
+const SPREAD_FRACTION = 0.1;
+
+const spreadOf = (caps: readonly CaptureRecord[]): number => {
+	const fs = caps.filter((c) => isMode(c.fit)).map((c) => Number((c.fit as Mode).f));
+	return fs.length === 0 ? 0 : Math.max(...fs) - Math.min(...fs);
+};
+
+/**
+ * What a fingerprint can say about its own trustworthiness.
+ *
+ * `sweep` is passed so the locus question can be ASKED here, on the card that
+ * shows the modes, rather than only on the sweep card. Passing `null` does not
+ * mean "no problem": it produces `mode-locus-unknown`, because a fingerprint
+ * card that stayed silent about a check nobody ran reads as a card that ran it.
+ */
+export function fingerprintCaveats(
+	fp: Fingerprint,
+	captures: readonly CaptureRecord[],
+	sweep: SweepMatrix | null,
+): readonly Caveat[] {
+	const out: Caveat[] = [];
+
+	for (const { axis, mode } of modesOf(fp)) {
+		const mine = captures.filter((c) => c.axis === axis);
+		const plus = spreadOf(mine.filter((c) => c.dir === "+"));
+		const minus = spreadOf(mine.filter((c) => c.dir === "-"));
+		const limit = Number(mode.f) * SPREAD_FRACTION;
+		// One direction over the band and the other under it. Both over is a
+		// noisy axis, which `few-fits` and the spread already on the card say;
+		// what is worth a sentence is the ASYMMETRY, because its cause is
+		// physical — the ring-down happens at the opposite end each way.
+		if ((plus > limit) !== (minus > limit)) {
+			out.push({ kind: "direction-spread", axis, plusHz: hz(plus), minusHz: hz(minus), modeHz: mode.f });
+		}
+
+		const attempted = mine.length;
+		const cappedFits = mine.filter((c) => !isMode(c.fit) && c.fit.reason === "damping-out-of-range");
+		if (cappedFits.length > 0 && attempted > 0) {
+			// The MEASURED quantity is how few cycles the ring managed, which is
+			// what `fitDecay` actually rejected on. Reporting a ζ here would mean
+			// back-computing one from the cap — a number the detector invented,
+			// which `findings-cite-what-they-came-from` forbids.
+			const cycles = cappedFits
+				.map((c) => (isMode(c.fit) ? 0 : c.fit.cyclesFit ?? 0))
+				.sort((a, b) => a - b);
+			out.push({
+				kind: "fits-at-damping-cap",
+				axis,
+				refused: cappedFits.length,
+				of: attempted,
+				cyclesFit: cycles[cycles.length >> 1] ?? 0,
+				cap: MAX_FIT_ZETA,
+			});
+		}
+
+		const n = axis === "X" ? fp.n.X : fp.n.Y;
+		if (attempted > 0 && n < attempted / 2) {
+			out.push({ kind: "few-fits", axis, n, of: attempted });
+		}
+	}
+
+	if (modesOf(fp).length === 0) return out;
+	if (sweep === null) out.push({ kind: "mode-locus-unknown" });
+	else out.push(...sweepCaveats(sweep, fp).filter((c) => c.kind === "mode-on-forcing-locus"));
+
+	return out;
+}
