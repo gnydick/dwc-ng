@@ -25,6 +25,8 @@
  * on whether the machine may move.
  */
 import { ACCEL_DIR } from "./captures.ts";
+import { cmd } from "../control/commands.ts";
+import { toolMacroPath } from "./toolMacro.ts";
 import type { Fingerprint } from "./engine/fit.ts";
 import type { Caveat } from "./evidence/caveat.ts";
 import type { Refusal } from "./preconditions.ts";
@@ -33,6 +35,7 @@ import type { Answer, Inquiry } from "./evidence/inquiry.ts";
 import type { ShapingStep, StepBlock, StepNeed, StepSpec, StepStatus } from "./steps.ts";
 import type { MotionOutcome, MotionState } from "./motionRun.ts";
 import type { RunKind } from "./runPlan.ts";
+import type { ApplyHow, ApplyIntent, ApplyState } from "./applyRun.ts";
 import type { SweepState } from "./sweepRun.ts";
 
 /**
@@ -423,6 +426,11 @@ export function captureSourceLabel(source: CaptureSource, tool: number): string 
 /** What a run is called, in the operator's words rather than the union's. */
 export function runKindText(kind: RunKind): string {
 	switch (kind) {
+		case "verify":
+			// Named for what it PROVES, not for what it does. The motion is
+			// the same ring a baseline uses; what makes it a verify is the
+			// shaper installed in front of it.
+			return "Verify";
 		case "measure":
 			return "Measure";
 		case "sweep":
@@ -645,3 +653,54 @@ const STEP_VERB: Record<ShapingStep, string> = {
 	verify: "Verify",
 	apply: "Apply",
 };
+
+/* -------------------------------------------------- installing a shaper */
+
+/**
+ * The difference between the two acts, in the words that matter to somebody
+ * about to press the button.
+ *
+ * Stated as WHAT SURVIVES rather than as "temporary/permanent", because the
+ * thing an operator actually needs to predict is whether the machine is still
+ * shaped tomorrow — and on a toolchanger the answer turns on `tpost<N>.g`
+ * running at every pickup, which "temporary" does not convey.
+ */
+export function applyHowText(how: ApplyHow): string {
+	switch (how) {
+		case "send":
+			return "on the machine now, until it is reset or the next toolchange runs tpost over it";
+		case "macro":
+			return "written into the tool's post-select macro, so every pickup of this head applies it";
+		default: {
+			const unhandled: never = how;
+			throw new Error(`unknown apply kind: ${String(unhandled)}`);
+		}
+	}
+}
+
+/** The armed confirm: the exact line, where it is going, and what that means. */
+export function armedApplyText(i: ApplyIntent): string {
+	const line = cmd.inputShaping(i.spec);
+	return i.how === "send"
+		? `Confirm: send ${line} to the machine — ${applyHowText("send")}. Escape cancels.`
+		: `Confirm: write ${line} into ${toolMacroPath(i.tool)} for T${i.tool} — ${applyHowText("macro")}. Escape cancels.`;
+}
+
+export function applyStateText(s: ApplyState): string {
+	switch (s.kind) {
+		case "idle":
+			return "";
+		case "working":
+			return s.how === "send" ? "sending…" : "writing the macro…";
+		case "done":
+			// Names the LINE and the consequence, not just success: "applied" is
+			// not an answer to "will this survive the next toolchange".
+			return `${s.line} — ${applyHowText(s.how)}`;
+		case "failed":
+			return s.why;
+		default: {
+			const unhandled: never = s;
+			throw new Error(`unknown apply state: ${String((unhandled as { kind: unknown }).kind)}`);
+		}
+	}
+}

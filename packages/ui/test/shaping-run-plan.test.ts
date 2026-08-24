@@ -18,6 +18,7 @@ import {
 	captureNameRange, defaultPrefix, envelopeText, measurePlans, plannedCaptureCount,
 	runOrigin, runPlans, safePrefix, sweepLadder, sweepPlans, SWEEP_POINTS,
 } from "../src/shaping/runPlan.ts";
+import type { RunRequest } from "../src/shaping/runPlan.ts";
 import { mm } from "../src/shaping/engine/units.ts";
 import type { Envelope, ShapingDefaults } from "../src/config/types.ts";
 import { BOX, config, freshPre, NOW, RATE } from "./helpers/shapingMachine.ts";
@@ -92,7 +93,7 @@ test("a move longer than the box is planned anyway — and refused, naming the c
 	// move, and a run quietly reduced to fit is a run the operator did not ask
 	// for.
 	const long: ShapingDefaults = { ...DEFAULTS, distMm: 400 };
-	const plans = runPlans("measure", long, BOX, "r");
+	const plans = runPlans({ kind: "measure" }, long, BOX, "r");
 	const planned = planProcedure(plans[0]!, freshPre(), config(), NOW, RATE);
 	assert.equal(planned.ok, false);
 	if (planned.ok) return;
@@ -162,7 +163,7 @@ test("a preview from somewhere else opens with the travel leg that gets there", 
  */
 test("the segments' file names are the procedure's own capture names, in order", () => {
 	for (const kind of ["measure", "sweep"] as const) {
-		const plans: readonly Plan[] = runPlans(kind, DEFAULTS, BOX, "t0");
+		const plans: readonly Plan[] = runPlans({ kind: kind } as RunRequest, DEFAULTS, BOX, "t0");
 		const pre = freshPre();
 		const fromSteps: string[] = [];
 		for (const plan of plans) {

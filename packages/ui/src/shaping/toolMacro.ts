@@ -42,3 +42,59 @@ export function findShapingLine(text: string): string | null {
 	}
 	return found;
 }
+
+/**
+ * The same file with its shaping line replaced, or the line appended if it had
+ * none.
+ *
+ * The exact counterpart of `findShapingLine`, and here beside it for the reason
+ * the file header already gives: "which line is the shaper" must have ONE
+ * answer. A reader that skipped a commented-out `;M593` while a writer replaced
+ * it would show the operator one line and edit another.
+ *
+ * Three things it preserves, each because losing it damages a file somebody
+ * hand-wrote:
+ *
+ *  - the line's INDENTATION, since `tpost` macros are often written inside
+ *    `if` blocks and a de-indented line changes which branch it belongs to;
+ *  - the file's LINE ENDINGS, because these files are edited on Windows as
+ *    often as not and rewriting CRLF as LF turns a one-line change into a
+ *    whole-file diff (and the reverse leaves a file RRF still runs but nobody
+ *    can review);
+ *  - every OTHER line verbatim, comments included — a tuning macro's
+ *    commented-out attempts are its history.
+ *
+ * @invariant one-answer-to-which-line-is-the-shaper
+ * @rung 6  choke-point — `findShapingLine` and this share the "last
+ *          non-comment M593 wins" rule in one module, and it is the only route
+ *          by which the UI edits a tool macro. A second writer elsewhere could
+ *          still disagree; there is none, and a test pins the pair against the
+ *          same fixtures
+ */
+export function replaceShapingLine(text: string, line: string): string {
+	const crlf = text.includes("\r\n");
+	const rows = text.split(/\r?\n/);
+	// The LAST active one, matching the reader exactly — the firmware runs the
+	// file top to bottom, so a later M593 is the one that takes effect.
+	let target = -1;
+	for (let i = 0; i < rows.length; i++) {
+		const t = rows[i]!.trim();
+		if (t.startsWith(";")) continue;
+		if (/^M593\b/i.test(t)) target = i;
+	}
+	if (target < 0) {
+		// No shaping line to replace. Append rather than prepend: appending puts
+		// it last, which is what makes it the active one under the very rule
+		// this module reads by.
+		const out = [...rows];
+		// A file that already ends in a newline splits to a trailing "", and
+		// writing into that slot keeps exactly one terminator rather than two.
+		if (out.length > 0 && out[out.length - 1] === "") out[out.length - 1] = line;
+		else out.push(line);
+		out.push("");
+		return out.join(crlf ? "\r\n" : "\n");
+	}
+	const indent = /^\s*/.exec(rows[target]!)?.[0] ?? "";
+	rows[target] = `${indent}${line}`;
+	return rows.join(crlf ? "\r\n" : "\n");
+}

@@ -4720,6 +4720,15 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; appe
 /* Settled facts recede; they are there to be counted, not read. */
 .shp-walk-line[data-kind="known"] { opacity: 0.62; }
 .shp-walk-line[data-kind="pad"] { opacity: 0; }
+/* What Apply is about to do, did, or could not. Two declared lines: the armed
+   confirm names a whole G-code line and a path, and it must not resize the
+   card when it appears. */
+.shp-apply-note {
+	min-height: calc(9 * var(--u));
+	margin: calc(1 * var(--u)) 0 0;
+	font: 400 calc(3 * var(--u))/calc(4.5 * var(--u)) var(--font-body);
+	color: var(--silk-dim);
+}
 .shp-walk-line[data-kind="done"] { opacity: 0.62; }
 /* The one to answer now: two lines, so its remedy fits, and the card's colour
    for "this is the thing". */

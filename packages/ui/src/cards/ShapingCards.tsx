@@ -33,6 +33,8 @@ import type { CardCtx } from "../compose/ctx.ts";
 import type { MacroRead } from "../compose/services.ts";
 import { nextStep, SHAPING_STEPS, type ShapingStep, type StepInputs, type StepSpec } from "../shaping/steps.ts";
 import { walkThrough } from "../shaping/evidence/walk.ts";
+import type { ApplyHow, ApplyIntent } from "../shaping/applyRun.ts";
+import { applyStateText, armedApplyText } from "../shaping/copy.ts";
 import { inquiryText } from "../shaping/copy.ts";
 import type { Evidence } from "../shaping/evidence/evidence.ts";
 import type { Caveat } from "../shaping/evidence/caveat.ts";
@@ -46,7 +48,7 @@ import { type Candidate, customCandidate } from "../shaping/engine/rank.ts";
 import { convolve, type Impulses, SHAPER_TYPES, type ShaperSpec, zv } from "../shaping/engine/shapers.ts";
 import { seconds } from "../shaping/engine/units.ts";
 import { longestCapture, plannedSegments, type CaptureWindow, type Plan, type PlannedSegment } from "../shaping/procedure.ts";
-import { captureNameRange, defaultPrefix, envelopeText, plannedCaptureCount, RUN_KINDS, runOrigin, runPlans, safePrefix, type RunKind } from "../shaping/runPlan.ts";
+import { captureNameRange, defaultPrefix, envelopeText, plannedCaptureCount, RUN_KINDS, runOrigin, runPlans, safePrefix, type RunKind, type RunRequest } from "../shaping/runPlan.ts";
 import { commitMotionField, MOTION_FIELDS } from "../shaping/motionFields.ts";
 import { motionBad, motionBusy, motionProgress } from "../shaping/motionRun.ts";
 import { fitCapturesOf, runMotion } from "../shaping/runner.ts";
@@ -327,19 +329,19 @@ export function ShapingStatusBody(props: { ctx: CardCtx }) {
 	 * number this screen made up — which is also the state in which the step is
 	 * refused, so the button carries the reason instead.
 	 */
-	const runScope = (kind: RunKind): StepScope => {
+	const runScope = (req: RunRequest): StepScope => {
 		const env = cfg().envelope;
 		if (env === null) return { kind: "unknown" };
-		const n = plannedCaptureCount(runPlans(kind, cfg().defaults, env, defaultPrefix(kind, svc.tool())));
+		const n = plannedCaptureCount(runPlans(req, cfg().defaults, env, defaultPrefix(req.kind, svc.tool())));
 		return n > 0 ? { kind: "captures", n } : { kind: "unknown" };
 	};
 
 	const scopeFor = (step: ShapingStep): StepScope => {
 		switch (step) {
 			case "measure":
-				return runScope("measure");
+				return runScope({ kind: "measure" });
 			case "sweep":
-				return runScope("sweep");
+				return runScope({ kind: "sweep" });
 			case "rank":
 				return { kind: "shapers", n: SHAPER_TYPES.length };
 			case "verify": {
@@ -616,9 +618,25 @@ export function ShapingCaptureBody(props: { ctx: CardCtx }) {
 	 * carriage actually is is drawn as its own marker, which is the honest
 	 * separation — here is the plan, here is you.
 	 */
+	/**
+	 * The run this card would start, as the thing that can actually be planned.
+	 *
+	 * `kind()` is what the operator picked; a request is that plus whatever the
+	 * run needs. Only `verify` needs anything — the shaper to install — and it
+	 * takes the Candidates card's selection, which is the same one the Verify
+	 * step is about. With nothing ranked there is no verify to request, so this
+	 * falls back to the measure the card was already showing rather than
+	 * inventing a spec.
+	 */
+	const request = createMemo((): RunRequest => {
+		if (kind() !== "verify") return { kind: kind() === "sweep" ? "sweep" : "measure" };
+		const pick = svc.results().candidates[svc.candidateIndex()];
+		return pick === undefined ? { kind: "measure" } : { kind: "verify", spec: pick.spec };
+	});
+
 	const plans = createMemo((): readonly Plan[] => {
 		const env = envelope();
-		return env === null ? [] : runPlans(kind(), defaults(), env, safeName());
+		return env === null ? [] : runPlans(request(), defaults(), env, safeName());
 	});
 
 	const segments = createMemo((): readonly PlannedSegment[] => {
@@ -717,8 +735,14 @@ export function ShapingCaptureBody(props: { ctx: CardCtx }) {
 		if (accel === null) return;
 		const slot = svc.beginMotion();
 		if (slot === null) return;
+		// Read ONCE, here. The completion path below decides what the captures
+		// ARE from this value, and a memo re-read after a minute of machine
+		// time could have moved on to a different candidate — which would file
+		// a verify of one shaper as a verify of another.
+		const req = request();
+		const baseline = svc.results().fingerprint;
 		void (async () => {
-			const result = await runMotion(want, {
+			const result = await runMotion(req, {
 				conn: props.ctx.connector,
 				om: () => props.ctx.om.om,
 				cfg,
@@ -753,7 +777,17 @@ export function ShapingCaptureBody(props: { ctx: CardCtx }) {
 				touched: result.touched,
 				restored: result.restored,
 			});
-			svc.setFitted(records);
+			// What these captures ARE, decided from the request that produced
+			// them rather than from anything read afterwards. A verify run
+			// measured the machine WITH a shaper on, so its fingerprint must
+			// never reach `setMeasurement` — `BatchPurpose` is what makes that
+			// unrepresentable rather than merely avoided here.
+			svc.setFitted(
+				records,
+				req.kind === "verify" && baseline !== null
+					? { kind: "verify", spec: req.spec, baseline }
+					: { kind: "baseline" },
+			);
 			svc.refreshBoard();
 		})();
 	};
@@ -775,7 +809,13 @@ export function ShapingCaptureBody(props: { ctx: CardCtx }) {
 			return;
 		}
 		setArmed(null);
-		void svc.saveMeasurement(tool);
+		// Two writers, and which one is not a choice made here: the batch says
+		// what it is. A verify batch has no route to `saveMeasurement` and a
+		// baseline has none to `saveVerified` (compose/services.ts,
+		// `a-shaped-fingerprint-cannot-become-a-baseline`).
+		const run = svc.runState();
+		if (run.kind === "fitted" && run.purpose.kind === "verify") void svc.saveVerified(tool);
+		else void svc.saveMeasurement(tool);
 	};
 
 	// The status card's step list does not run anything itself: it calls the
@@ -789,6 +829,14 @@ export function ShapingCaptureBody(props: { ctx: CardCtx }) {
 	svc.offer("sweep", () => {
 		setKind("sweep");
 		setArmed({ kind: "run", run: "sweep" });
+	});
+	// Verify is not a run the operator configures — it is "re-measure with THAT
+	// shaper on", and which shaper comes from the Candidates selection. Same
+	// two-press arming as the others, and the second press is still on this
+	// card, which is the one showing the map the carriage will follow.
+	svc.offer("verify", () => {
+		setKind("verify");
+		setArmed({ kind: "run", run: "verify" });
 	});
 
 	/**
@@ -2267,18 +2315,53 @@ function recommendation(r: ToolResults): { spec: ShaperSpec; basis: "verified" |
 export function ShapingApplyBody(props: { ctx: CardCtx }) {
 	const svc = props.ctx.service("shaping");
 	const [copied, setCopied] = createSignal(false);
+	const [armed, setArmed] = createArmed<ApplyHow>();
 	const pick = createMemo(() => recommendation(svc.results()));
 
 	const copy = async (line: string): Promise<void> => {
 		setCopied(await copyText(line));
 	};
 
+	/**
+	 * Both acts through ONE route: first press arms, second press does it.
+	 *
+	 * The two are never armed at once — `createArmed` holds a single value, so
+	 * arming Write disarms Send. An operator who armed one, changed their mind
+	 * and pressed the other would otherwise be one keystroke from installing a
+	 * shaper they had decided against.
+	 */
+	const act = (how: ApplyHow): void => {
+		const made = pick();
+		if (made === null) return;
+		if (armed() !== how) {
+			setArmed(how);
+			return;
+		}
+		setArmed(null);
+		void svc.applyShaper(svc.tool(), made.spec, how);
+	};
+
+	// The status card's step list does not install anything itself: it calls
+	// this handler, which ARMS the persistent act. Two presses either way, and
+	// the second is on the card showing the line about to be written.
+	svc.offer("apply", () => {
+		if (pick() !== null) setArmed("macro");
+	});
+
+	const intent = createMemo((): ApplyIntent | null => {
+		const how = armed();
+		const made = pick();
+		return how === null || made === null ? null : { how, tool: svc.tool(), spec: made.spec };
+	});
+
+	const busy = (): boolean => svc.applyState().kind === "working";
+
 	return (
 		<>
 			<dl class="shp-facts">
 				<div class="shp-fact">
 					<dt>Tool</dt>
-					<dd class="shp-mono">T{svc.tool()} · 0:/sys/tpost{svc.tool()}.g</dd>
+					<dd class="shp-mono">T{svc.tool()} · {toolMacroPath(svc.tool())}</dd>
 				</div>
 				<div class="shp-fact">
 					<dt>Basis</dt>
@@ -2303,13 +2386,40 @@ export function ShapingApplyBody(props: { ctx: CardCtx }) {
 				{made => (
 					<>
 						<p class="shp-line">{shaperLine(made().spec)}</p>
+						{/* Three acts, in increasing consequence left to right:
+						    copy it somewhere else, put it on the machine until
+						    the next reset, or make it this tool's own. The order
+						    is the sentence the operator reads. */}
 						<div class="shp-actions">
-							<button class="fb-tool" onClick={() => void copy(shaperLine(made().spec))}>Copy</button>
+							<button class="fb-tool" disabled={busy()} onClick={() => void copy(shaperLine(made().spec))}>Copy</button>
+							<button
+								class="fb-tool"
+								classList={{ "shp-arming": armed() === "send" }}
+								disabled={busy()}
+								onClick={() => act("send")}
+							>
+								{armed() === "send" ? "Confirm" : "Send now"}
+							</button>
+							<button
+								class="fb-tool"
+								classList={{ "shp-arming": armed() === "macro" }}
+								disabled={busy()}
+								onClick={() => act("macro")}
+							>
+								{armed() === "macro" ? "Confirm" : `Write tpost${svc.tool()}.g`}
+							</button>
 							<span class="shp-copied" aria-live="polite">{copied() ? "copied" : ""}</span>
 						</div>
 					</>
 				)}
 			</Show>
+			{/* One fixed slot for what is about to happen, what happened, or
+			    why it did not. Present in every state so arming moves nothing. */}
+			<p class="shp-apply-note" classList={{ "shp-warn-inline": svc.applyState().kind === "failed" }}>
+				<Show when={intent()} fallback={applyStateText(svc.applyState()) || NONE}>
+					{i => armedApplyText(i())}
+				</Show>
+			</p>
 		</>
 	);
 }
