@@ -11,7 +11,7 @@
  * WHY THE RUN IS CENTRED IN THE ENVELOPE. A ring needs a start and there are
  * only two honest places to get one: where the carriage happens to be, or the
  * box the operator drew. The first makes the same button do a different thing
- * every time — and it fails with `outside-envelope` whenever the head was
+ * every time — and it fails with `plan-leaves-envelope` whenever the head was
  * parked near an edge, which on a toolchanger is where it usually is. The
  * second is the same run every time, as far from the frame as the box allows,
  * and the one number it can fail on is a move longer than the box — which is a

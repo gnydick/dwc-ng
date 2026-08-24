@@ -62,7 +62,7 @@ test("a malformed envelope drops to unset — never to a partial or repaired box
 
 test("a reversed or degenerate range is not a box", () => {
 	// lo >= hi describes an empty region. Accepting it would make every
-	// planned point refuse as "outside-envelope" — a refusal that misdirects
+	// planned point refuse as "plan-leaves-envelope" — a refusal that misdirects
 	// the operator — where dropping to null says the true thing: unset.
 	for (const envelope of [
 		{ x: [300, 0], y: [0, 300] },

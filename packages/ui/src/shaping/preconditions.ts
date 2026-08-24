@@ -32,7 +32,18 @@ export type Refusal =
 	| { readonly kind: "not-homed"; readonly axes: string }
 	| { readonly kind: "no-accelerometer"; readonly addr: string }
 	| { readonly kind: "no-envelope" }
-	| { readonly kind: "outside-envelope"; readonly point: { readonly x: number; readonly y: number } }
+	/** The carriage is PARKED outside the box. `point` is where the head IS —
+	 *  read from the object model, not planned — and the remedy is to move the
+	 *  machine. Distinct from `plan-leaves-envelope` because the two facts have
+	 *  nothing in common but the rectangle test: one is answered by jogging the
+	 *  head in, the other by shortening the move or redrawing the box. Reported
+	 *  by Gabe on a deployed build, 2026-08-24: parked by hand at X-26.7 Y207.1,
+	 *  he was told the "test would leave the envelope" when nothing was going to
+	 *  leave anywhere and no plan existed yet (#49). */
+	| { readonly kind: "head-outside-envelope"; readonly point: { readonly x: number; readonly y: number } }
+	/** A point the PLAN would visit is outside the box. `point` is the offending
+	 *  planned coordinate — a corner the machine has not been to. */
+	| { readonly kind: "plan-leaves-envelope"; readonly point: { readonly x: number; readonly y: number } }
 	| { readonly kind: "stale" }
 	/** The plan describes no measurable run: a zero-length excitation move, a
 	 *  zero feed, or no repeats. Measured against mock-duet on 2026-08-22: a
@@ -166,7 +177,7 @@ export class Preconditions {
 		// mock-duet, 2026-08-23: parked at X180 Y150.5 with the box redrawn to
 		// 200-300, the button was live and the refusal arrived only on confirm.
 		if (!inside({ x, y }, envelope)) {
-			return { ok: false, refusal: { kind: "outside-envelope", point: { x, y } } };
+			return { ok: false, refusal: { kind: "head-outside-envelope", point: { x, y } } };
 		}
 
 		return {

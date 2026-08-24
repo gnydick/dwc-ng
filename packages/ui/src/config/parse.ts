@@ -120,8 +120,8 @@ function parseMacros(raw: unknown): ConfigOverlay["macros"] {
  * `lo >= hi` is rejected rather than repaired. An empty (or reversed) span
  * would still be a box the containment test accepts as a question — and it
  * would answer "outside" for every point, so a run would refuse with
- * `outside-envelope`, which tells the operator their coordinates are wrong
- * when what is actually wrong is the box. Dropping to unset says the true
+ * `plan-leaves-envelope`, which tells the operator their coordinates are
+ * wrong when what is actually wrong is the box. Dropping to unset says the true
  * thing, and points at the Settings editor that fixes it.
  */
 function asRange(value: unknown): Range | null {

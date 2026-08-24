@@ -28,7 +28,8 @@ const EVERY: readonly Refusal[] = [
 	{ kind: "not-homed", axes: "XY" },
 	{ kind: "no-accelerometer", addr: "20.0" },
 	{ kind: "no-envelope" },
-	{ kind: "outside-envelope", point: { x: mm(340.25), y: mm(12) } },
+	{ kind: "head-outside-envelope", point: { x: mm(-26.7), y: mm(207.1) } },
+	{ kind: "plan-leaves-envelope", point: { x: mm(340.25), y: mm(12) } },
 	{ kind: "stale" },
 	{ kind: "not-measurable" },
 ];
@@ -48,7 +49,7 @@ test("the fixture covers the whole union — a new variant is a visible gap", ()
 	assert.equal(kinds.size, EVERY.length, "a kind is listed twice");
 	// Mirrors the union's arity. Bumping this is the deliberate act of having
 	// decided what the new variant should say.
-	assert.equal(kinds.size, 7, "Refusal gained or lost a variant — add it to EVERY and to refusalText");
+	assert.equal(kinds.size, 8, "Refusal gained or lost a variant — add it to EVERY and to refusalText");
 });
 
 test("not-idle names the status it saw", () => {
@@ -79,11 +80,45 @@ test("no-envelope points at the setting that is missing", () => {
 	assert.equal(refusalText({ kind: "no-envelope" }), "set the motion envelope in Settings › Input shaping");
 });
 
-test("outside-envelope names the point, rounded so it does not print float noise", () => {
+test("plan-leaves-envelope names the planned point, rounded so it does not print float noise", () => {
 	assert.equal(
-		refusalText({ kind: "outside-envelope", point: { x: mm(340.25), y: mm(12) } }),
-		"test would leave the envelope at X340.3 Y12.0",
+		refusalText({ kind: "plan-leaves-envelope", point: { x: mm(340.25), y: mm(12) } }),
+		"test would leave the envelope at X340.3 Y12.0 — shorten the move or redraw the envelope in Settings › Input shaping",
 	);
+});
+
+/**
+ * The bug this pair was split for (#49).
+ *
+ * One kind used to carry both facts, so one sentence had to serve both, and
+ * the sentence it had was the PLAN's. Gabe parked the head by hand at
+ * X-26.7 Y207.1 on a deployed build and was told the "test would leave the
+ * envelope" — no test existed yet, nothing was going to leave anywhere, and
+ * the remedy the sentence implied (shorten the move) would not have helped,
+ * because the thing to move was the carriage.
+ */
+test("head-outside-envelope says where the head IS, and that moving it is the fix", () => {
+	const text = refusalText({ kind: "head-outside-envelope", point: { x: mm(-26.7), y: mm(207.1) } });
+	assert.match(text, /X-26\.7 Y207\.1/, "must carry the position it read");
+	// The one thing it must not say: that a test or a run would leave anywhere.
+	// Nothing is planned at the point this refusal is raised.
+	assert.doesNotMatch(text, /\bwould leave\b/);
+	assert.match(text, /parked/, "the coordinates describe the machine now, not a plan");
+	assert.match(text, /move it/i, "the remedy is a move, and must be said");
+});
+
+test("the two envelope refusals do not say the same thing", () => {
+	// Same point deliberately: if the sentences ever collapse back into one
+	// table row, this is what catches it — the numbers cannot be what tells them
+	// apart, because the numbers can legitimately be equal.
+	const point = { x: mm(340.25), y: mm(12) };
+	const head = refusalText({ kind: "head-outside-envelope", point });
+	const plan = refusalText({ kind: "plan-leaves-envelope", point });
+	assert.notEqual(head, plan, "one sentence cannot be right for both facts");
+	// And they name different remedies, which is the whole reason for the split.
+	assert.match(head, /move it/i);
+	assert.match(plan, /shorten the move|redraw the envelope/);
+	assert.doesNotMatch(plan, /move it into/i);
 });
 
 test("stale is said in a human's words, not the union's", () => {

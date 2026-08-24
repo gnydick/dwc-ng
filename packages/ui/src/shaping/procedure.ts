@@ -468,7 +468,7 @@ export class Procedure {
 		// convex, so a segment with both ends inside it never leaves it.
 		for (const point of visitedPoints(plan)) {
 			if (!inside(point, pre.envelope)) {
-				return { ok: false, refusal: { kind: "outside-envelope", point: { x: point.x, y: point.y } } };
+				return { ok: false, refusal: { kind: "plan-leaves-envelope", point: { x: point.x, y: point.y } } };
 			}
 		}
 
