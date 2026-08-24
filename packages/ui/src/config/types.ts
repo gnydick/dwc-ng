@@ -185,7 +185,18 @@ export interface Envelope {
 	readonly y: Range;
 }
 
-/** Motion parameters a capture run starts from; every one is user-editable. */
+/**
+ * Motion parameters a capture run starts from; every one is user-editable.
+ *
+ * MOTION ONLY. There is deliberately no accelerometer sample count here: how
+ * many samples a capture needs is a consequence of how long the move takes and
+ * how long the ring-down lasts, and `shaping/procedure.ts captureTiming`
+ * derives it per pass. It used to be a field, and a single value cannot serve a
+ * speed ladder — on 2026-08-23 the slowest pass of a sweep needed 8× the
+ * recording of the fastest and got the same 1,500 samples, so it recorded 1.09 s
+ * of a 4.0 s move. A key of this name in a stored overlay is simply dropped by
+ * `parseShapingDefaults`, which is what makes older configs harmless.
+ */
 export interface ShapingDefaults {
 	/** Length of the excitation move, mm. */
 	readonly distMm: number;
@@ -193,8 +204,6 @@ export interface ShapingDefaults {
 	readonly speedMmS: number;
 	/** Captures per axis per direction. */
 	readonly repeats: number;
-	/** Accelerometer samples per capture (M956 S). */
-	readonly samples: number;
 }
 
 /**
@@ -293,7 +302,7 @@ export const DEFAULT_CONFIG: UiConfig = {
 	// envelope: null is the invariant, not an omission — see ShapingConfig.
 	shaping: {
 		envelope: null,
-		defaults: { distMm: 60, speedMmS: 200, repeats: 3, samples: 1500 },
+		defaults: { distMm: 60, speedMmS: 200, repeats: 3 },
 		accelByTool: {},
 	},
 };

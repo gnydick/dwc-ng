@@ -42,7 +42,16 @@ const CAPTURE_DIR = "0:/sys/accelerometer";
 const G_MM_S2 = 9806.65;
 /** Sensor noise, 1 sigma, on every axis of every sample. */
 const NOISE_G = 0.01;
-/** Ceiling on M956's S — a 16-bit sample count, as the wire format allows. */
+/**
+ * Ceiling on M956's S — a 16-bit sample count, as the wire format allows.
+ *
+ * The UI declares the same bound as `MAX_CAPTURE_SAMPLES`
+ * (packages/ui/src/shaping/procedure.ts) and refuses at plan time. The two are
+ * NOT one constant shared, on purpose: this one is the BOARD refusing, and a
+ * mock that imported the UI's number could never catch the UI asking for more
+ * than the board allows. Independent statements of the same firmware fact are
+ * what makes this an oracle rather than a mirror.
+ */
 const MAX_SAMPLES = 65535;
 
 // --- the machine's mechanical fingerprint ----------------------------------

@@ -220,7 +220,7 @@ test("reset returns the section to the shipped defaults, envelope back to null",
 	store.setAccelAddr(0, "20.0");
 	store.resetSection("shaping");
 	assert.equal(store.config.shaping.envelope, null);
-	assert.deepEqual(store.config.shaping.defaults, { distMm: 60, speedMmS: 200, repeats: 3, samples: 1500 });
+	assert.deepEqual(store.config.shaping.defaults, { distMm: 60, speedMmS: 200, repeats: 3 });
 	assert.deepEqual(store.config.shaping.accelByTool, {});
 	// And the card falls straight back to the unset sentence, because it reads
 	// the store rather than remembering what it wrote.

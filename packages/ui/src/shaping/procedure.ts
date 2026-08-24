@@ -20,7 +20,8 @@ import { cmd, type AccelAddr } from "../control/commands.ts";
 import type { Envelope, ShapingConfig } from "../config/types.ts";
 import type { ObjectModel, Shaping } from "../om/types.ts";
 import { SHAPER_TYPES, type ShaperSpec, type ShaperType } from "./engine/shapers.ts";
-import { hz, mm, seconds, type Mm, type MmPerS } from "./engine/units.ts";
+import { DECAY_FLOOR, FIT_DEFAULTS } from "./engine/fit.ts";
+import { hz, mm, seconds, type Hz, type Mm, type MmPerS, type MmPerS2, type Seconds } from "./engine/units.ts";
 import { accelerometerOf, inside, planarPosition, Preconditions, type Point, type Refusal } from "./preconditions.ts";
 import { ACCEL_DIR } from "./captures.ts";
 
@@ -33,13 +34,6 @@ const STALE_MS = 2000;
  *  capture is armed. Seven time constants of the slowest mode this machine has
  *  shown (18 Hz at zeta 0.127, tau = 70 ms). */
 const SETTLE_MS = 500;
-
-/** Held still after the excitation move while the accelerometer records the
- *  ring-down. This is not the completion signal — the run loop waits for the
- *  capture FILE before sending the next step — so a capture longer than this
- *  is still recorded intact; the dwell only keeps the carriage from being the
- *  thing that ends the recording. */
-const RINGDOWN_MS = 1500;
 
 /** M956's A parameter: arm at the start of the next move's DECELERATION, which
  *  is the instant the ring-down begins. */
@@ -56,10 +50,11 @@ export const CAPTURE_DIR = ACCEL_DIR;
  *  between what G1 asked for and what the model reports back. */
 const POSITION_TOLERANCE_MM = 0.05;
 
-/** Capture retrieval: how often to look, and for how long. The budget covers a
- *  long move plus the board's own write; past it the capture is not coming. */
+/** How often to look for a capture file. The BUDGET is not here: it is derived
+ *  per capture from the recording that capture will make (`captureTiming`),
+ *  because a fixed budget is a false failure the moment a recording outlasts
+ *  it. */
 const CAPTURE_POLL_MS = 250;
-const CAPTURE_BUDGET_MS = 10_000;
 
 /**
  * Out and back. A ring's return leg is a capture in its own right AND is what
@@ -74,6 +69,18 @@ const RING_DIRECTIONS = ["p", "m"] as const;
  */
 export const PLANAR_AXES = ["X", "Y"] as const;
 
+/**
+ * A plan describes MOTION and nothing about the recording.
+ *
+ * There is deliberately no `samples` here and no way to add one from outside:
+ * how many accelerometer samples a pass needs is a consequence of how long that
+ * pass takes and how long its ring-down lasts, both of which this file already
+ * knows. A configured sample count is the same number stated twice — once as a
+ * setting and once as a physical fact — and on 2026-08-23 they disagreed by 8×
+ * across a speed sweep, so a 25 mm/s pass recorded 1.09 s of a 4.0 s move.
+ * `captureTiming` is the one producer, and there is no field for a caller to
+ * contradict it with.
+ */
 export type RingPlan = {
 	readonly kind: "ring";
 	readonly axis: "X" | "Y";
@@ -81,7 +88,6 @@ export type RingPlan = {
 	readonly distMm: Mm;
 	readonly speed: MmPerS;
 	readonly repeats: number;
-	readonly samples: number;
 	readonly namePrefix: string;
 };
 
@@ -90,7 +96,6 @@ export type SweepPlan = {
 	readonly start: Point;
 	readonly distMm: Mm;
 	readonly speeds: readonly MmPerS[];
-	readonly samples: number;
 	readonly namePrefix: string;
 };
 
@@ -111,10 +116,26 @@ export type Plan = RingPlan | SweepPlan | VerifyPlan;
  */
 type Step = {
 	readonly codes: readonly GcodeCommand[];
-	/** The capture this step produces, if it produces one. */
-	readonly expectFile?: string;
+	/**
+	 * The capture this step produces, if it produces one — the file name AND how
+	 * long to wait for it, together in one optional field.
+	 *
+	 * One field rather than two, because "a step that records" and "a step that
+	 * does not" are the only two states either half of this can be in. A separate
+	 * `expectFile?` and `budgetMs?` would let a step say it records without
+	 * saying for how long, and the answer that would then be reached for is a
+	 * constant — which is the bug this whole module was rewritten to delete.
+	 */
+	readonly capture?: CaptureExpectation;
 	readonly label: string;
 	readonly expectPosition: Point;
+};
+
+/** What a recording step is waiting for: the name M956 will write and the
+ *  budget derived from that same recording's length. */
+type CaptureExpectation = {
+	readonly file: string;
+	readonly budgetMs: number;
 };
 
 /**
@@ -269,7 +290,7 @@ export class Procedure {
 		this.#restore = restore;
 		this.pre = pre;
 		this.#stepViews = Object.freeze(steps.map((s) =>
-			Object.freeze(s.expectFile === undefined ? { label: s.label } : { label: s.label, expectFile: s.expectFile }),
+			Object.freeze(s.capture === undefined ? { label: s.label } : { label: s.label, expectFile: s.capture.file }),
 		));
 		this.#preview = Object.freeze([...steps.flatMap((s) => s.codes.map(String)), ...restore.map(String)]);
 	}
@@ -332,9 +353,9 @@ export class Procedure {
 
 				yield { kind: "step", index, label: step.label };
 
-				const watch = step.expectFile === undefined
+				const watch = step.capture === undefined
 					? null
-					: await beginWatch(conn, om(), this.pre.accel, step.expectFile);
+					: await beginWatch(conn, om(), this.pre.accel, step.capture);
 				const rejected = await sendAll(conn, step.codes);
 
 				if (watch === null) {
@@ -375,11 +396,12 @@ export class Procedure {
 	 * the class body, and a module-level function would have to be handed a
 	 * seam to bypass.
 	 */
-	static plan(plan: Plan, pre: Preconditions, cfg: ShapingConfig, now: number): PlanResult {
+	static plan(plan: Plan, pre: Preconditions, cfg: ShapingConfig, now: number, rate: SampleRate): PlanResult {
 		// First, because it is about the REQUEST and needs no machine to answer:
 		// a plan that measures nothing is refused before the reading is even
-		// consulted. This is also what keeps `plan` total — the G-code builders
-		// throw on a bad sample count, and nothing may throw out of here.
+		// consulted. This is also what keeps `plan` total — a zero speed would
+		// divide by nothing on the way to a capture length, and a zero-length
+		// move produces no file at all, so neither may reach the arithmetic.
 		if (!measurable(plan)) return { ok: false, refusal: { kind: "not-measurable" } };
 
 		if (now - pre.readAt > STALE_MS) return { ok: false, refusal: { kind: "stale" } };
@@ -400,7 +422,15 @@ export class Procedure {
 			}
 		}
 
-		return { ok: true, proc: new Procedure(now, stepsFor(plan, pre), restoreFor(pre.priorShaping), pre) };
+		// The recording, LAST, because it is the only refusal that needs the
+		// machine's acceleration and the board's sampling rate rather than the
+		// geometry. A pass whose capture cannot be expressed as an M956 is refused
+		// here rather than sent and rejected mid-run, which would leave the
+		// carriage parked halfway through a plan with a shaper still applied.
+		const timed = timedPasses(plan, pre, rate);
+		if (!timed.ok) return { ok: false, refusal: timed.refusal };
+
+		return { ok: true, proc: new Procedure(now, stepsFor(plan, pre, timed.passes), restoreFor(pre.priorShaping), pre) };
 	}
 }
 
@@ -417,6 +447,18 @@ const positiveFinite = (v: number): boolean => Number.isFinite(v) && v > 0;
 const wholeAtLeastOne = (v: number): boolean => Number.isInteger(v) && v >= 1;
 
 /**
+ * Does this leg take an expressible amount of time?
+ *
+ * `distMm / speed` is the cruise term of every move and the only place the
+ * arithmetic can leave the number line: both are finite and positive by the
+ * checks beside this one, but a speed small enough — and `parseShapingDefaults`
+ * accepts any positive finite number — overflows the quotient to Infinity, and
+ * `seconds()` refuses to mint that. This is what keeps `plan` TOTAL: it is the
+ * one input that would otherwise throw out of it rather than refuse.
+ */
+const timeable = (dist: number, speed: number): boolean => Number.isFinite(Math.abs(dist) / speed);
+
+/**
  * Does this plan describe a run the machine could actually measure?
  *
  * A zero-length excitation move is the case that matters: measured against
@@ -424,24 +466,26 @@ const wholeAtLeastOne = (v: number): boolean => Number.isInteger(v) && v >= 1;
  * run built from it would move, wait out its whole capture budget and fail —
  * ten seconds after the point at which the answer was already knowable.
  *
- * The sample-count rule restates `cmd.accelCapture`'s own bound rather than
- * replacing it. The builder still throws, which is right for a builder; this
- * exists so the throw is not how a caller of `plan` finds out. If the two ever
- * disagree the builder wins, because it is the one that decides what a legal
- * M956 looks like.
+ * The sample count is NOT among the things checked here, because it is no
+ * longer among the things a plan can say: `captureTiming` derives it from this
+ * very motion, so a plan with a measurable move has a positive sample count by
+ * construction. What a derived count can still be is too LARGE for the board,
+ * and that is `capture-too-long` — decided in `plan`, where the machine's
+ * acceleration and the board's rate are in hand. `cmd.accelCapture` still
+ * throws on a bad count, which is right for a builder; between the two, nothing
+ * a caller of `plan` can ask for reaches the throw.
  */
 function measurable(plan: Plan): boolean {
 	switch (plan.kind) {
 		case "ring":
 			return Number.isFinite(plan.distMm) && plan.distMm !== 0
 				&& positiveFinite(plan.speed)
-				&& wholeAtLeastOne(plan.repeats)
-				&& wholeAtLeastOne(plan.samples);
+				&& timeable(plan.distMm, plan.speed)
+				&& wholeAtLeastOne(plan.repeats);
 		case "sweep":
 			return Number.isFinite(plan.distMm) && plan.distMm !== 0
 				&& plan.speeds.length > 0
-				&& plan.speeds.every((s) => positiveFinite(s))
-				&& wholeAtLeastOne(plan.samples);
+				&& plan.speeds.every((s) => positiveFinite(s) && timeable(plan.distMm, s));
 		case "verify":
 			return measurable(plan.ring);
 		default: {
@@ -535,10 +579,401 @@ type Pass = {
 	readonly from: Point;
 	readonly to: Point;
 	readonly speed: MmPerS;
-	readonly samples: number;
 	readonly file: string;
 	readonly label: string;
 };
+
+/**
+ * How far the excitation leg travels, off the very points the G1 will name.
+ *
+ * Not `plan.distMm`: a pass's legs are `from` and `to`, and the recording has to
+ * cover the move that will actually be COMMANDED. Both are axis-aligned by
+ * construction (`along` carries the other coordinate through unchanged), so one
+ * of these terms is always zero and the sum is the length.
+ */
+const passDistance = (p: Pass): Mm => mm(Math.abs(p.to.x - p.from.x) + Math.abs(p.to.y - p.from.y));
+
+// --- how long a pass records ------------------------------------------------
+
+/**
+ * The board's accelerometer sampling rate, as the board itself reported it.
+ *
+ * @invariant sample-rate-came-from-the-board
+ * @rung 7  branded type — the brand is `unique symbol`-keyed and unexported, so
+ *          a plain number is not assignable to `SampleRate` and the only two
+ *          producers are in this file: `sampleRateFrom`, which parses an M955
+ *          report, and `readSampleRate`, which asks the board for one. There is
+ *          no default and no fallback constant to reach for, so a procedure
+ *          cannot be planned against an assumed rate — `Procedure.plan` takes
+ *          one as an argument and will not compile without it. The universal
+ *          `x as unknown as T` escape is not counted against this rung
+ * @why `samples / rate` is the whole recording. M955's S parameter PERSISTS on
+ *      the board (reference/duet-gcode.md, M955 notes: "These configuration
+ *      settings persist until they are changed"), so the rate in force is
+ *      whatever somebody last set — 1375 Hz on Gabe's toolboard, but nothing in
+ *      this UI put it there. A constant here would silently mis-size every
+ *      capture on any machine configured differently, and the error is
+ *      proportional: at half the assumed rate every recording is twice as long
+ *      as planned and the dwell derived from it covers half of it
+ */
+declare const __sampleRate: unique symbol;
+export type SampleRate = Hz & { readonly [__sampleRate]: true };
+
+/**
+ * The rate out of an M955 report, or null when the reply is not one.
+ *
+ * RRF answers `M955 P<addr>` with a sentence — observed shape (mock-duet's
+ * `reportAccelerometer`, itself modelled on the 3.6 firmware's own wording):
+ * `Accelerometer 20:0 type LIS3DH with orientation 41 samples at 1344Hz with
+ * 10-bit resolution`. Only the rate is taken, and it is taken by the UNIT
+ * rather than by position in the sentence, because the rest of that string is
+ * the firmware's to reword.
+ *
+ * Null, never a guess. A reply this cannot read is an unknown rate, and an
+ * unknown rate is a refusal (`no-sample-rate`) rather than an assumption.
+ */
+export function sampleRateFrom(reply: string): SampleRate | null {
+	const m = /(\d+(?:\.\d+)?)\s*Hz/i.exec(reply);
+	if (m === null) return null;
+	const value = Number(m[1]);
+	return Number.isFinite(value) && value > 0 ? (hz(value) as SampleRate) : null;
+}
+
+/**
+ * Ask the board what its accelerometer is configured for.
+ *
+ * `cmd.accelConfig` sends P and nothing else, which REPORTS rather than sets
+ * (reference/duet-gcode.md, M955 notes) — so calling this cannot change the
+ * configuration it is reading. It lives in this file because `sendCode` does:
+ * shaping talks to the machine here or nowhere (test/shaping-motion-fence).
+ *
+ * A rejected request or an unreadable reply is null, and the caller refuses.
+ */
+export async function readSampleRate(conn: Pick<ConnectorWrites, "sendCode">, addr: AccelAddr): Promise<SampleRate | null> {
+	try {
+		return sampleRateFrom(await conn.sendCode(cmd.accelConfig(addr)));
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * The mode whose ring-down a capture has to outlast, when one is known.
+ *
+ * `f` in Hz and `zeta` dimensionless — the two numbers `fitDecay` returns, so a
+ * measured mode is one of these without conversion.
+ */
+export type RingMode = {
+	readonly f: Hz;
+	readonly zeta: number;
+};
+
+/**
+ * How long the accelerometer is running before the move it was armed for
+ * begins: the gap between M956 being executed and the G1 actually starting.
+ *
+ * MEASURED, not assumed. Across the first real UI run
+ * (tools/accel/runs/ui-first-run-2026-08-23) the first sample whose |X| leaves
+ * the noise floor sits at 0.090 s (t0_ring_Xp0), 0.086 s (t0_sweep_X_200) and
+ * 0.105 s (t0_sweep_X_25) into the record. 0.12 s is the largest of those with
+ * margin, and it is deliberately an OVER-estimate: a lead-in longer than the
+ * truth only adds samples to the head of the record, where there is nothing to
+ * lose. Under-estimating it would cut the tail, which is the part the fit reads.
+ *
+ * That the record begins at the move at all is a firmware observation rather
+ * than a reading of the docs: M956 A2 documents arming at the start of
+ * DECELERATION, and RRF 3.6.3 was seen delivering the whole move for A2 exactly
+ * as for A1 (see shaping/engine/capture.ts and mock-duet's executeM956). The
+ * arithmetic here follows the firmware, not the wiki.
+ */
+const LEAD_IN_S = 0.12;
+
+/**
+ * Margin on the computed ring-down before it is recorded.
+ *
+ * `f` and `zeta` reaching this are estimates — either the fit's, which carries
+ * a few per cent of frequency error by construction (engine/fit.ts MIN_CYCLES),
+ * or a shaper's tuning. A quarter more recording is a fraction of a second on a
+ * typical pass and removes the case where a slightly optimistic zeta ends the
+ * record inside the ring it was supposed to capture.
+ */
+const RING_MARGIN = 1.25;
+
+/**
+ * Fixed cost in a capture's wait budget: the board's own file write, the
+ * listing round-trips, and the download — everything that does not scale with
+ * the recording. This is the OLD flat budget, kept as the floor it always
+ * really was rather than as the whole answer.
+ */
+const CAPTURE_OVERHEAD_MS = 10_000;
+
+/**
+ * How many multiples of the recording the budget allows on top of that.
+ *
+ * Two: one for the recording itself, which cannot be hurried, and one for the
+ * write and transfer, which grow with it — a capture is one CSV row per sample.
+ */
+const CAPTURE_WRITE_FACTOR = 2;
+
+/**
+ * The most samples one M956 may ask for.
+ *
+ * RRF's own M956 documentation states no bound on S (reference/duet-gcode.md,
+ * M956), and reference/dwc's InputShaping plugin simply hard-codes `S1000`
+ * (RecordMotionProfileDialog.vue:555), so neither is the source. The bound is
+ * the wire format: the sample count crosses CAN as a 16-bit field, which is the
+ * same reading mock-duet's own `MAX_SAMPLES` already takes
+ * (packages/mock-duet/src/accelerometer.ts). The two are deliberately
+ * independent — the mock models the BOARD's refusal and this models what the UI
+ * will ask for — and this one is the lower-or-equal of the pair, so the UI
+ * refuses before the board has to.
+ *
+ * At 1375 Hz this is 47 s of continuous recording, which no plan a person would
+ * arm gets near; what it catches is the ladder that ran away — a 25 mm/s pass
+ * over a 1 m axis is 40 s and 55,000 samples, and one more halving is over.
+ *
+ * @invariant no-m956-over-the-boards-limit
+ * @rung 6  choke-point — every M956 this app can send is built by `captureStep`,
+ *          which is reached only from `stepsFor`, which is reached only from the
+ *          private constructor `Procedure.plan` calls; `plan` runs
+ *          `timedPasses` first and returns `capture-too-long` for any pass over
+ *          this bound, so a `Procedure` carrying an oversized capture is not one
+ *          that can be built. Nothing outside this file can reach a
+ *          `GcodeCommand` of a procedure to send one itself: the codes are
+ *          `#`-private and `preview` hands out plain strings `sendCode` refuses
+ * @why the alternative is finding out mid-run. The board rejects the M956, the
+ *      G1 that follows it still executes, and the run ends with the carriage
+ *      somewhere unplanned and the lab's shaper still applied — a refusal that
+ *      arrives after the machine has moved is not a refusal
+ * @debt the NUMBER is a reading of the wire format, not a measurement: RRF's
+ *       source is not vendored here and its M956 docs state no bound. Promote by
+ *       walking a real toolboard up until it refuses and pinning the value that
+ *       came back, or by citing the firmware's own field width. Until then the
+ *       claim is only that the UI refuses before the board does, which holds for
+ *       any true bound at or below this one
+ */
+export const MAX_CAPTURE_SAMPLES = 65535;
+
+/**
+ * The lengths of one recording, in seconds — everything that does not depend on
+ * the board's sampling rate.
+ *
+ * Split from {@link CaptureTiming} on purpose. The Capture card states how long
+ * each pass will record BEFORE any run has happened, and at that point nothing
+ * has asked the board for its rate; the honest thing for it to show is the part
+ * it actually knows. There is no nominal rate in this file for it to reach for.
+ */
+export type CaptureWindow = {
+	/** The excitation move, start to stop. */
+	readonly moveS: Seconds;
+	/** Recording that must follow the stop, for the fit to have a ring-down. */
+	readonly ringS: Seconds;
+	/** The whole record: lead-in, move, ring-down. */
+	readonly captureS: Seconds;
+};
+
+/**
+ * The recording a pass needs, as a whole: seconds, samples, the dwell that
+ * keeps the carriage still for them, and the budget the file is waited for in.
+ *
+ * @invariant one-capture-timing
+ * @rung 8  illegal state unrepresentable — the sample count, the dwell and the
+ *          wait budget are three consequences of one recording and are produced
+ *          by one function from one argument, so "the dwell disagrees with the
+ *          capture length" is not a state this type can hold. `dwellMs` is
+ *          derived from `samples`, not recomputed from `captureS`, so the
+ *          rounding that turns seconds into a whole M956 S cannot leave the
+ *          dwell a sample short. There is no other producer and no field to set
+ *          by hand: `Pass` carries no sample count, `RingPlan`/`SweepPlan` carry
+ *          none, and `ShapingDefaults` no longer has one
+ * @why the constant this replaced was 1500 ms of dwell beside a free-floating
+ *      `samples` setting, and on 2026-08-23 a sweep recorded 7.5 s against it —
+ *      every following pass landed inside the previous pass's file. The two
+ *      numbers had no way to know about each other, and neither knew about the
+ *      move
+ */
+export type CaptureTiming = CaptureWindow & {
+	/** The rate the seconds were turned into samples at. */
+	readonly rate: Hz;
+	/** M956's S. */
+	readonly samples: number;
+	/** G4 P after the excitation move — long enough that the carriage is not
+	 *  what ends the recording. */
+	readonly dwellMs: number;
+	/** How long `awaitCapture` may wait for this capture's file. */
+	readonly budgetMs: number;
+};
+
+/**
+ * How long a `dist` move at `speed` takes under `accel`, start to stop.
+ *
+ * Trapezoid when there is room to reach `speed` — ramp up, cruise, ramp down,
+ * which is `dist/speed + speed/accel` — and a triangle when there is not, where
+ * the move never gets there and takes `2*sqrt(dist/accel)`. RRF's own planner
+ * does more than this (jerk, junction deviation, input shaping's own extension),
+ * all of which make the real move LONGER, so this is a lower bound and the
+ * margins above sit on top of it.
+ *
+ * `accel` is `move.travelAcceleration` as the board reported it; there is no
+ * fallback, which is why `plan` refuses `no-acceleration` when the model has
+ * none.
+ */
+export function moveSeconds(dist: Mm, speed: MmPerS, accel: MmPerS2): Seconds {
+	const d = Math.abs(dist);
+	const rampD = (speed * speed) / accel;
+	return seconds(d >= rampD ? d / speed + speed / accel : 2 * Math.sqrt(d / accel));
+}
+
+/**
+ * How much recording must follow the stop.
+ *
+ * The bounds are the FITTER's, not new numbers. `decayWindow` opens its
+ * analysis region `FIT_DEFAULTS.leadS` after the stop and reads at most
+ * `FIT_DEFAULTS.windowS` of it, and it returns null — `short-window`, no fit at
+ * all — unless at least `FIT_DEFAULTS.minWindowS` of samples are there. So
+ * `leadS + minWindowS` is the least recording that can produce a fit and
+ * `leadS + windowS` is the most that will ever be read. Recording outside that
+ * band is either unusable or ignored, whatever the arithmetic says.
+ *
+ * Inside the band the length is the mode's own: the decay to
+ * {@link DECAY_FLOOR}, the level the fit describes the ring down to, takes
+ * `ln(1/0.15) / (2*pi*f*zeta)` seconds.
+ *
+ * WHEN THE MODE IS UNKNOWN — which is every first measurement, since f and zeta
+ * are what the run is being made to find out — this returns the top of the
+ * band. Not a guessed damping: the fitter's whole window is the most that could
+ * ever be looked at, so recording it is the one choice that cannot be too short
+ * for any machine, and it costs 0.45 s of recording per pass against the best
+ * case. Assuming a damping instead would be assuming a machine, and the
+ * lightest the fitter accepts (zeta 0.005, engine/fit.ts) would ask for 6 s of
+ * ring-down at 10 Hz — far more than the window that would read it.
+ */
+export function ringSeconds(mode: RingMode | null): Seconds {
+	const shortest = FIT_DEFAULTS.leadS + FIT_DEFAULTS.minWindowS;
+	const longest = FIT_DEFAULTS.leadS + FIT_DEFAULTS.windowS;
+	if (mode === null || !(mode.f > 0) || !(mode.zeta > 0)) return seconds(longest);
+	const decay = (Math.log(1 / DECAY_FLOOR) / (2 * Math.PI * mode.f * mode.zeta)) * RING_MARGIN;
+	return seconds(Math.min(longest, Math.max(shortest, decay)));
+}
+
+/** The seconds of one pass's recording. Pure: numbers in, numbers out. */
+export function captureWindow(dist: Mm, speed: MmPerS, accel: MmPerS2, mode: RingMode | null): CaptureWindow {
+	const moveS = moveSeconds(dist, speed, accel);
+	const ringS = ringSeconds(mode);
+	return { moveS, ringS, captureS: seconds(LEAD_IN_S + moveS + ringS) };
+}
+
+/**
+ * The same recording in samples, plus the two waits that must cover it.
+ *
+ * The DWELL is computed from `samples`, not from `captureS`: `samples` is what
+ * M956 is actually given, so `samples / rate` is what the board actually
+ * records, and a dwell derived from anything else can be a rounding short. It
+ * subtracts the move but NOT the lead-in — the conservative reading, since a
+ * record that began later than we think ends later too, and the lead-in is the
+ * one term measured off a handful of files rather than derived. That costs
+ * about 0.12 s of standing still per pass and removes the whole class of "the
+ * next move started while the sensor was recording".
+ *
+ * The BUDGET covers the same recording twice over — once because the file
+ * cannot exist before the recording ends, once for the write and the transfer,
+ * which grow with it — on top of the fixed overhead that was the old flat 10 s.
+ */
+export function captureTiming(w: CaptureWindow, rate: SampleRate): CaptureTiming {
+	const samples = Math.max(1, Math.ceil(w.captureS * rate));
+	const recordS = samples / rate;
+	return {
+		...w,
+		rate,
+		samples,
+		dwellMs: Math.ceil(Math.max(0, recordS - w.moveS) * 1000),
+		budgetMs: CAPTURE_OVERHEAD_MS + Math.ceil(recordS * 1000 * CAPTURE_WRITE_FACTOR),
+	};
+}
+
+/**
+ * The mode a plan already knows about, or null.
+ *
+ * A VERIFY plan carries the shaper under test, and a named shaper's F and S ARE
+ * the mode it was built to cancel — the same f and zeta the fit produced. The
+ * ring it leaves behind is at that frequency with that damping (a shaper
+ * cancels amplitude, not decay rate), so its recording can be sized to it.
+ *
+ * A ring or a sweep is the measurement that FINDS f and zeta, so there is
+ * nothing to know and this returns null. Deliberately not "the last fingerprint
+ * we have": that would size a fresh measurement to a stale belief about the
+ * machine, and the case where the belief is wrong is exactly the case the
+ * measurement is being run to catch. The custom shaper form carries an impulse
+ * train rather than an F/S pair and is null for the same reason.
+ */
+function modeOf(plan: Plan): RingMode | null {
+	if (plan.kind !== "verify") return null;
+	const spec = plan.spec;
+	return spec.type === "custom" ? null : { f: spec.F, zeta: spec.S };
+}
+
+/** One pass and the recording it needs — produced together, so the codes that
+ *  arm the capture and the codes that hold the carriage still for it cannot be
+ *  built from two different ideas of how long it takes. */
+type TimedPass = {
+	readonly pass: Pass;
+	readonly timing: CaptureTiming;
+};
+
+type TimedResult =
+	| { readonly ok: true; readonly passes: readonly TimedPass[] }
+	| { readonly ok: false; readonly refusal: Refusal };
+
+/**
+ * Every pass of a plan with its recording attached, or the refusal that stops
+ * the run before it starts.
+ *
+ * The two refusals are the two facts the arithmetic cannot proceed without and
+ * must not invent: an acceleration the board never reported, and a recording
+ * longer than one M956 can ask for.
+ */
+function timedPasses(plan: Plan, pre: Preconditions, rate: SampleRate): TimedResult {
+	const accel = pre.travelAccel;
+	if (accel === null) return { ok: false, refusal: { kind: "no-acceleration" } };
+	const mode = modeOf(plan);
+	const out: TimedPass[] = [];
+	for (const pass of passesFor(plan, pre.position)) {
+		const timing = captureTiming(captureWindow(passDistance(pass), pass.speed, accel, mode), rate);
+		if (timing.samples > MAX_CAPTURE_SAMPLES) {
+			return { ok: false, refusal: { kind: "capture-too-long", samples: timing.samples, max: MAX_CAPTURE_SAMPLES } };
+		}
+		out.push({ pass, timing });
+	}
+	return { ok: true, passes: out };
+}
+
+/**
+ * The longest recording any pass of these plans will make, for a card that
+ * wants to say so before anything is armed.
+ *
+ * Seconds only, and that is the point: this is reached from the screen, which
+ * has not asked the board for its sampling rate and must not pretend to know
+ * it. It is the SAME `captureWindow` the run sizes its M956 with, over the same
+ * `passesFor` the map draws, so the figure on the card is the figure the run
+ * will use — one arithmetic, two readers.
+ *
+ * The longest rather than each, because a sweep's passes differ by the full
+ * speed ratio and the number worth stating is the worst case. Null when there
+ * is nothing to measure or the machine has not reported an acceleration.
+ */
+export function longestCapture(plans: readonly Plan[], origin: Point, accel: MmPerS2 | null): CaptureWindow | null {
+	if (accel === null) return null;
+	let longest: CaptureWindow | null = null;
+	let where = origin;
+	for (const plan of plans) {
+		for (const pass of passesFor(plan, where)) {
+			const w = captureWindow(passDistance(pass), pass.speed, accel, modeOf(plan));
+			if (longest === null || w.captureS > longest.captureS) longest = w;
+			where = pass.to;
+		}
+	}
+	return longest;
+}
 
 function ringPasses(plan: RingPlan, origin: Point): Pass[] {
 	const far = along(plan.start, plan.axis, plan.distMm);
@@ -556,7 +991,6 @@ function ringPasses(plan: RingPlan, origin: Point): Pass[] {
 				from,
 				to,
 				speed: plan.speed,
-				samples: plan.samples,
 				file: ringCaptureName(plan.namePrefix, plan.axis, dir, i),
 				label: `${plan.axis}${dir === "p" ? "+" : "-"} ${plan.speed} mm/s (${i + 1}/${plan.repeats})`,
 			});
@@ -577,7 +1011,6 @@ function sweepPasses(plan: SweepPlan, origin: Point): Pass[] {
 				from: plan.start,
 				to,
 				speed,
-				samples: plan.samples,
 				file: sweepCaptureName(plan.namePrefix, axis, speed),
 				label: `${axis}+ ${speed} mm/s`,
 			});
@@ -664,15 +1097,21 @@ export function plannedSegments(plans: readonly Plan[], origin: Point): readonly
 const samePoint = (a: Point, b: Point): boolean => a.x === b.x && a.y === b.y;
 
 /**
- * One capture: position, settle, arm, excite, settle.
+ * One capture: position, settle, arm, excite, hold still for the recording.
  *
  * The order is the contract — the arm has to be queued before the move that
  * triggers it, and the wait has to be between the positioning move and the
  * arm, or the capture records the wrong ring. Both moves run at the plan's
  * speed; there is no separate travel feed to be a second number that means
  * "how fast the lab moves".
+ *
+ * The M956's sample count and the G4 that follows it come from ONE
+ * `CaptureTiming`, and so does the budget the run loop waits for the file in.
+ * That is the fix this whole module was reshaped for: those three used to be a
+ * setting, a constant and another constant, and nothing related any of them to
+ * the move between them.
  */
-function captureStep(pass: Pass, addr: AccelAddr): Step {
+function captureStep(pass: Pass, addr: AccelAddr, timing: CaptureTiming): Step {
 	const feed = feedOf(pass.speed);
 	return {
 		codes: [
@@ -680,26 +1119,31 @@ function captureStep(pass: Pass, addr: AccelAddr): Step {
 			cmd.moveTo(xy(pass.from), feed),
 			cmd.waitMoves(),
 			cmd.dwell(SETTLE_MS),
-			cmd.accelCapture(addr, pass.samples, TRIGGER_ON_DECELERATION, pass.file),
+			cmd.accelCapture(addr, timing.samples, TRIGGER_ON_DECELERATION, pass.file),
 			cmd.moveTo(xy(pass.to), feed),
 			cmd.waitMoves(),
-			cmd.dwell(RINGDOWN_MS),
+			cmd.dwell(timing.dwellMs),
 		],
-		expectFile: pass.file,
+		capture: { file: pass.file, budgetMs: timing.budgetMs },
 		label: pass.label,
 		expectPosition: pass.at,
 	};
 }
 
 /**
- * The commands, from the same passes the map draws.
+ * The commands, from the same passes the map draws and the timings `plan`
+ * already accepted.
+ *
+ * It takes the timed passes rather than re-deriving them, so there is no second
+ * call to `passesFor` that could be handed a different origin, and no second
+ * `captureTiming` that could be handed a different rate.
  *
  * A verify plan prepends one step that does not move: it applies the candidate
  * shaper, so the ring that follows is measured with it live. Everything else is
  * the pass list, one capture step each.
  */
-function stepsFor(plan: Plan, pre: Preconditions): readonly Step[] {
-	const captures = passesFor(plan, pre.position).map((pass) => captureStep(pass, pre.accel));
+function stepsFor(plan: Plan, pre: Preconditions, timed: readonly TimedPass[]): readonly Step[] {
+	const captures = timed.map((t) => captureStep(t.pass, pre.accel, t.timing));
 	if (plan.kind !== "verify") return captures;
 	return [
 		{
@@ -814,6 +1258,10 @@ type CaptureWatch = {
 	readonly existedBefore: boolean;
 	readonly runsBefore: number | null;
 	readonly accel: AccelAddr;
+	/** How long this capture may take to appear — carried on the watch rather
+	 *  than passed alongside it, so `awaitCapture` cannot be called with a
+	 *  budget belonging to a different capture, or with none. */
+	readonly budgetMs: number;
 };
 
 type CaptureOutcome =
@@ -830,14 +1278,15 @@ type CaptureOutcome =
  * accepted, so a failed pre-list can never turn a stale capture into a fresh
  * one.
  */
-async function beginWatch(conn: RunConnector, om: ObjectModel, accel: AccelAddr, file: string): Promise<CaptureWatch> {
+async function beginWatch(conn: RunConnector, om: ObjectModel, accel: AccelAddr, expect: CaptureExpectation): Promise<CaptureWatch> {
 	const before = await listCaptures(conn);
 	return {
-		file,
-		path: `${CAPTURE_DIR}/${file}`,
-		existedBefore: before === null || before.has(file),
+		file: expect.file,
+		path: `${CAPTURE_DIR}/${expect.file}`,
+		existedBefore: before === null || before.has(expect.file),
 		runsBefore: accelerometerOf(om, accel)?.runs ?? null,
 		accel,
+		budgetMs: expect.budgetMs,
 	};
 }
 
@@ -862,9 +1311,14 @@ async function listCaptures(conn: RunConnector): Promise<Set<string> | null> {
  * request that armed the capture timed out. So a pre-existing name has to be
  * accompanied by a tick, and a name that was not there before speaks for
  * itself.
+ *
+ * The budget comes off the WATCH, which got it from the same `CaptureTiming`
+ * that sized the M956. A flat budget was a false failure waiting for a longer
+ * recording: at 5,700 samples the file legitimately cannot exist for 4.2 s, and
+ * "no capture appeared" would have been reported for a run that was working.
  */
 async function awaitCapture(conn: RunConnector, om: () => ObjectModel, watch: CaptureWatch, clock: Clock): Promise<CaptureOutcome> {
-	const deadline = clock.now() + CAPTURE_BUDGET_MS;
+	const deadline = clock.now() + watch.budgetMs;
 	let sawRun = false;
 	for (;;) {
 		if (clock.signal?.aborted === true) return { ok: false, cancelled: true };
@@ -887,7 +1341,7 @@ async function awaitCapture(conn: RunConnector, om: () => ObjectModel, watch: Ca
 				cancelled: false,
 				reason: sawRun
 					? `the board finished a capture but ${watch.file} never appeared in ${CAPTURE_DIR}`
-					: `no capture named ${watch.file} appeared in ${CAPTURE_DIR} within ${CAPTURE_BUDGET_MS / 1000} s`,
+					: `no capture named ${watch.file} appeared in ${CAPTURE_DIR} within ${(watch.budgetMs / 1000).toFixed(1)} s`,
 			};
 		}
 		await clock.sleep(CAPTURE_POLL_MS);

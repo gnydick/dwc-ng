@@ -175,7 +175,7 @@ function harness(over: {
 /** One-repeat rings on both axes: four captures, and short enough to read. */
 const ONE_REP: ShapingConfig = {
 	envelope: { x: [50, 250], y: [50, 250] },
-	defaults: { distMm: 60, speedMmS: 200, repeats: 1, samples: 1500 },
+	defaults: { distMm: 60, speedMmS: 200, repeats: 1 },
 	accelByTool: {},
 };
 

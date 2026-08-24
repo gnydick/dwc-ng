@@ -20,9 +20,9 @@ import {
 } from "../src/shaping/runPlan.ts";
 import { mm } from "../src/shaping/engine/units.ts";
 import type { Envelope, ShapingDefaults } from "../src/config/types.ts";
-import { BOX, config, freshPre, NOW } from "./helpers/shapingMachine.ts";
+import { BOX, config, freshPre, NOW, RATE } from "./helpers/shapingMachine.ts";
 
-const DEFAULTS: ShapingDefaults = { distMm: 60, speedMmS: 200, repeats: 3, samples: 1500 };
+const DEFAULTS: ShapingDefaults = { distMm: 60, speedMmS: 200, repeats: 3 };
 const at = (x: number, y: number): { x: number; y: number } => ({ x, y });
 const ends = (s: { from: { x: number; y: number }; to: { x: number; y: number } }): [number, number, number, number] =>
 	[Number(s.from.x), Number(s.from.y), Number(s.to.x), Number(s.to.y)];
@@ -93,7 +93,7 @@ test("a move longer than the box is planned anyway — and refused, naming the c
 	// for.
 	const long: ShapingDefaults = { ...DEFAULTS, distMm: 400 };
 	const plans = runPlans("measure", long, BOX, "r");
-	const planned = planProcedure(plans[0]!, freshPre(), config(), NOW);
+	const planned = planProcedure(plans[0]!, freshPre(), config(), NOW, RATE);
 	assert.equal(planned.ok, false);
 	if (planned.ok) return;
 	assert.equal(planned.refusal.kind, "outside-envelope");
@@ -169,7 +169,7 @@ test("the segments' file names are the procedure's own capture names, in order",
 			// The reading a leg is planned from decides where its steps EXPECT the
 			// carriage; it has no bearing on what the captures are called, which is
 			// the whole of what this test is about.
-			const planned = planProcedure(plan, pre, config(), NOW);
+			const planned = planProcedure(plan, pre, config(), NOW, RATE);
 			assert.equal(planned.ok, true, `${kind}: ${JSON.stringify(planned)}`);
 			if (!planned.ok) return;
 			for (const step of planned.proc.steps) {

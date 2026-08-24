@@ -20,7 +20,7 @@ const box = { x: [0, 300], y: [10, 290] };
 
 test("the shipped defaults leave the envelope unset", () => {
 	assert.equal(DEFAULT_CONFIG.shaping.envelope, null, "no guessed box, ever (I8)");
-	assert.deepEqual(DEFAULT_CONFIG.shaping.defaults, { distMm: 60, speedMmS: 200, repeats: 3, samples: 1500 });
+	assert.deepEqual(DEFAULT_CONFIG.shaping.defaults, { distMm: 60, speedMmS: 200, repeats: 3 });
 	assert.deepEqual(DEFAULT_CONFIG.shaping.accelByTool, {});
 	const store = createConfigStore();
 	assert.equal(store.config.shaping.envelope, null);
@@ -30,7 +30,7 @@ test("a well-formed shaping section round-trips the boundary unchanged", () => {
 	const overlay = {
 		shaping: {
 			envelope: { x: [0, 300], y: [10, 290] },
-			defaults: { distMm: 80, speedMmS: 250, repeats: 5, samples: 2000 },
+			defaults: { distMm: 80, speedMmS: 250, repeats: 5 },
 			accelByTool: { "0": "0.0", "1": "121.0" },
 		},
 	};
@@ -85,7 +85,7 @@ test("motion defaults fall back per field, not as a block", () => {
 				distMm: "80",              // mis-typed → default
 				speedMmS: 250,             // good
 				repeats: 2.5,              // not a whole count → default
-				samples: 0,                // no capture is not a capture size → default
+				samples: 1500,             // no longer a setting at all → dropped
 			},
 		},
 	});
@@ -98,7 +98,7 @@ test("motion defaults fall back per field, not as a block", () => {
 
 	for (const bad of [
 		{ distMm: -1 }, { distMm: 0 }, { speedMmS: 0 }, { speedMmS: -5 },
-		{ repeats: 0 }, { repeats: -2 }, { samples: -1 }, { samples: 1.5 },
+		{ repeats: 0 }, { repeats: -2 }, { samples: 1500 },
 		{ distMm: Number.POSITIVE_INFINITY },
 	]) {
 		assert.deepEqual(parseOverlay({ shaping: { defaults: bad } }), {},

@@ -38,7 +38,7 @@ import type { Axis, Mode, NoFit } from "./engine/fit.ts";
 import type { Seconds } from "./engine/units.ts";
 import type { MotionOutcome, MotionState } from "./motionRun.ts";
 import { Preconditions } from "./preconditions.ts";
-import { planProcedure, type Plan, type ProcEvent } from "./procedure.ts";
+import { planProcedure, readSampleRate, type Plan, type ProcEvent, type SampleRate } from "./procedure.ts";
 import type { CaptureRecord } from "./results.ts";
 import { plannedCaptureCount, runPlans, type RunKind } from "./runPlan.ts";
 
@@ -113,6 +113,27 @@ export async function runMotion(kind: RunKind, deps: RunDeps): Promise<RunResult
 	expected = plannedCaptureCount(plans);
 	totalSteps = totalStepsOf(plans, kind);
 
+	/**
+	 * The board's accelerometer sampling rate: ONE M955 per run, read the first
+	 * time a leg is about to be planned and reused for the rest.
+	 *
+	 * The rate is what turns a capture's length in seconds into M956's S, and
+	 * M955's S setting PERSISTS on the board, so what is in force is whatever
+	 * somebody last configured rather than anything this UI chose. Once per run
+	 * and not per leg because nothing can change it while the run holds the
+	 * machine — a run is the only thing sending G-code — and emphatically not per
+	 * POLL, because the screen's gate (compose/services.ts) calls
+	 * `Preconditions.read` on every status cycle and RRF's HTTP server does not
+	 * have the requests to spare.
+	 *
+	 * It is a REPORT and not a write: `cmd.accelConfig` sends P alone, which M955
+	 * documents as asking rather than setting, so reading the rate cannot change
+	 * it. It is nevertheless read AFTER the machine's own refusals, so a run that
+	 * is refused — busy, unhomed, parked outside the box — still sends nothing at
+	 * all.
+	 */
+	let rate: SampleRate | null = null;
+
 	for (const plan of plans) {
 		if (deps.signal.aborted) return finish({ kind: "cancelled" });
 
@@ -120,7 +141,12 @@ export async function runMotion(kind: RunKind, deps: RunDeps): Promise<RunResult
 		const read = Preconditions.read(deps.om(), deps.cfg(), deps.accel, Date.now());
 		if (!read.ok) return finish({ kind: "refused", refusal: read.refusal });
 
-		const planned = planProcedure(plan, read.pre, deps.cfg(), Date.now());
+		if (rate === null) {
+			rate = await readSampleRate(deps.conn, deps.accel);
+			if (rate === null) return finish({ kind: "refused", refusal: { kind: "no-sample-rate" } });
+		}
+
+		const planned = planProcedure(plan, read.pre, deps.cfg(), Date.now(), rate);
 		if (!planned.ok) return finish({ kind: "refused", refusal: planned.refusal });
 
 		let failed: string | null = null;

@@ -28,7 +28,7 @@ import type { ObjectModel } from "../src/om/types.ts";
 import { hz } from "../src/shaping/engine/units.ts";
 import type { ShaperSpec } from "../src/shaping/engine/shapers.ts";
 import {
-	EI2_PRIOR, FAKE_CSV, NOW, config, drain, errorOf, fakeBoard, freshPre, kinds,
+	EI2_PRIOR, FAKE_CSV, NOW, RATE, config, drain, errorOf, fakeBoard, freshPre, kinds,
 	modelWith, ringPlan, testClock, type Fake, type FakeOptions,
 } from "./helpers/shapingMachine.ts";
 
@@ -45,30 +45,42 @@ function ready(fake: FakeOptions = {}, over: Partial<RingPlan> = {}): Fake & { p
 }
 
 function plannedRing(over: Partial<RingPlan> = {}) {
-	const planned = planProcedure(ringPlan({ repeats: 1, ...over }), freshPre(), config(), NOW);
+	const planned = planProcedure(ringPlan({ repeats: 1, ...over }), freshPre(), config(), NOW, RATE);
 	if (!planned.ok) throw new Error(`fixture refused: ${JSON.stringify(planned.refusal)}`);
 	return planned.proc;
 }
 
 // --- the happy path ---------------------------------------------------------
 
+// S1508 and G4 P731 are DERIVED, and this is where the derivation reaches the
+// wire. The fixture machine is 3000 mm/s^2 at 1375 Hz (helpers/shapingMachine),
+// the pass is 60 mm at 200 mm/s, and the mode is unknown because a ring is the
+// measurement that finds it — so:
+//   move    = 60/200 + 200/3000                    = 0.3667 s
+//   ring    = FIT_DEFAULTS.leadS + windowS         = 0.61 s   (the whole window
+//                                                   the fitter can ever read)
+//   capture = 0.12 lead-in + 0.3667 + 0.61         = 1.0967 s
+//   S       = ceil(1.0967 * 1375)                  = 1508
+//   G4      = ceil((1508/1375 - 0.3667) * 1000)    = 731 ms
+// A change to any of those constants lands here as a failing wire, which is the
+// point: this test is the A/B on `captureTiming` reaching the machine.
 const RING_CODES = [
 	"G90",
 	"G1 X100 Y100 F12000",
 	"M400",
 	"G4 P500",
-	'M956 P20.0 S1500 A2 F"ring_Xp0.csv"',
+	'M956 P20.0 S1508 A2 F"ring_Xp0.csv"',
 	"G1 X160 Y100 F12000",
 	"M400",
-	"G4 P1500",
+	"G4 P731",
 	"G90",
 	"G1 X160 Y100 F12000",
 	"M400",
 	"G4 P500",
-	'M956 P20.0 S1500 A2 F"ring_Xm0.csv"',
+	'M956 P20.0 S1508 A2 F"ring_Xm0.csv"',
 	"G1 X100 Y100 F12000",
 	"M400",
-	"G4 P1500",
+	"G4 P731",
 ];
 
 test("a one-repeat ring puts exactly the planned codes on the wire, then the restore", async () => {
@@ -124,7 +136,7 @@ test("a position mismatch before step 2 fails the run WITHOUT sending that step'
 test("a mismatch on the very first step still restores, and sends nothing else", async () => {
 	const model = modelWith({ shaping: EI2_PRIOR });
 	const proc = (() => {
-		const planned = planProcedure(ringPlan({ repeats: 1 }), freshPre({ shaping: EI2_PRIOR }), config(), NOW);
+		const planned = planProcedure(ringPlan({ repeats: 1 }), freshPre({ shaping: EI2_PRIOR }), config(), NOW, RATE);
 		if (!planned.ok) throw new Error("fixture refused");
 		return planned.proc;
 	})();
@@ -148,7 +160,7 @@ test("a machine that stops reporting a homed position fails the run rather than 
 
 test("a send that throws on step 3 still gets the restore out", async () => {
 	const model = modelWith();
-	const planned = planProcedure(ringPlan({ repeats: 2 }), freshPre(), config(), NOW);
+	const planned = planProcedure(ringPlan({ repeats: 2 }), freshPre(), config(), NOW, RATE);
 	assert.equal(planned.ok, true);
 	if (!planned.ok) return;
 	// Step 3's codes are sends 16..23; reject the very first of them.
@@ -210,7 +222,7 @@ test("an aborted signal stops before the next step and restores", async () => {
 test("a verify run applies the candidate first and hands the machine back to the prior shaper", async () => {
 	const model = modelWith({ shaping: EI2_PRIOR });
 	const verify: VerifyPlan = { kind: "verify", spec: EI2_SPEC, ring: ringPlan({ repeats: 1, namePrefix: "ver" }) };
-	const planned = planProcedure(verify, freshPre({ shaping: EI2_PRIOR }), config(), NOW);
+	const planned = planProcedure(verify, freshPre({ shaping: EI2_PRIOR }), config(), NOW, RATE);
 	assert.equal(planned.ok, true);
 	if (!planned.ok) return;
 	const fake = fakeBoard(model);
@@ -228,6 +240,9 @@ test("a capture that never appears fails after the poll budget rather than hangi
 	const events = await drain(r.proc.run(r.conn, () => r.model, clock));
 	assert.deepEqual(kinds(events), ["step", "failed", "restored"]);
 	assert.match(errorOf(events), /ring_Xp0\.csv/);
-	assert.ok(clock.now() >= 10_000, "the full budget was spent before giving up");
-	assert.ok(clock.now() < 11_000, "and no more than the budget");
+	// The budget is DERIVED from this capture's own recording, not a constant:
+	// 10 s of fixed overhead plus twice the 1.097 s record = 12.194 s.
+	assert.ok(clock.now() >= 12_194, "the full budget was spent before giving up");
+	assert.ok(clock.now() < 12_500, "and no more than the budget");
+	assert.match(errorOf(events), /within 12\.2 s/, "the sentence states the budget it actually waited");
 });

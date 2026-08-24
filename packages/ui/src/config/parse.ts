@@ -156,9 +156,14 @@ export function isAccelAddr(value: unknown): value is string {
 
 /**
  * Capture-run motion defaults, per field. Each is a positive quantity in a
- * G-code parameter slot — a zero or negative distance, feed, repeat count or
- * sample count has no move to describe, so it falls back to the shipped
- * default rather than reaching a builder.
+ * G-code parameter slot — a zero or negative distance, feed or repeat count has
+ * no move to describe, so it falls back to the shipped default rather than
+ * reaching a builder.
+ *
+ * A `samples` key in a stored overlay is not among them and is dropped like any
+ * other unknown key: the recording length is derived from the motion now
+ * (shaping/procedure.ts), and a config written before that is not a reason to
+ * resurrect it.
  */
 export function parseShapingDefaults(raw: unknown): Partial<ShapingDefaults> | undefined {
 	if (!isPlainObject(raw)) return undefined;
@@ -173,8 +178,6 @@ export function parseShapingDefaults(raw: unknown): Partial<ShapingDefaults> | u
 	if (speedMmS !== undefined) out.speedMmS = speedMmS;
 	const repeats = count(raw.repeats);
 	if (repeats !== undefined) out.repeats = repeats;
-	const samples = count(raw.samples);
-	if (samples !== undefined) out.samples = samples;
 	return Object.keys(out).length > 0 ? out : undefined;
 }
 

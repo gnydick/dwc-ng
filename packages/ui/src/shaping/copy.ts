@@ -79,10 +79,21 @@ export function refusalText(r: Refusal): string {
 		case "stale":
 			return "the machine moved while this was being set up — try again";
 		case "not-measurable":
-			// No payload to name the offending field with, so it names all four
+			// No payload to name the offending field with, so it names all three
 			// and the condition they share. The Capture card renders this beside
-			// the very inputs it is talking about.
-			return "nothing to measure — distance, speed, repeats and samples must all be above zero";
+			// the very inputs it is talking about. Samples are no longer among
+			// them: the tool derives the recording from the motion.
+			return "nothing to measure — distance, speed and repeats must all be above zero";
+		case "no-acceleration":
+			// The remedy is a machine one, so the sentence names the setting
+			// rather than the object-model key it is read from.
+			return "the machine is not reporting a travel acceleration — set one with M204 and try again";
+		case "no-sample-rate":
+			return "the accelerometer did not report a sampling rate — check the board's M955 configuration";
+		case "capture-too-long":
+			// Both numbers, because the ratio is what says how much slower the
+			// run is than the board can record — and the remedy follows from it.
+			return `this run would record ${r.samples} samples per pass and the board accepts ${r.max} — shorten the move or raise the speed`;
 		default: {
 			const unhandled: never = r;
 			throw new Error(`unknown refusal: ${String((unhandled as { kind: unknown }).kind)}`);

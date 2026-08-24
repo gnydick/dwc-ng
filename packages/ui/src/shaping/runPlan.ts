@@ -131,7 +131,6 @@ export function measurePlans(defaults: ShapingDefaults, env: Envelope, prefix: s
 		distMm: mm(defaults.distMm),
 		speed: mmPerS(defaults.speedMmS),
 		repeats: defaults.repeats,
-		samples: defaults.samples,
 		namePrefix: prefix,
 	}));
 }
@@ -154,7 +153,6 @@ export function sweepPlans(defaults: ShapingDefaults, env: Envelope, prefix: str
 		start,
 		distMm: mm(dist),
 		speeds: sweepLadder(defaults.speedMmS).map(mmPerS),
-		samples: defaults.samples,
 		namePrefix: prefix,
 	}];
 }

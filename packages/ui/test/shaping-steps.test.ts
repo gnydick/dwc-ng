@@ -232,7 +232,7 @@ test("the primary action names the run's real size, from the plans themselves", 
 	// Not a restated formula: the number is counted off the very plans an armed
 	// confirm would execute, so the figure the operator consents to and the
 	// number of capture steps that get built cannot be two arithmetics.
-	const plans = measurePlans({ distMm: 60, speedMmS: 200, repeats: 3, samples: 1500 }, { x: [50, 250], y: [50, 250] }, "t0_ring");
+	const plans = measurePlans({ distMm: 60, speedMmS: 200, repeats: 3 }, { x: [50, 250], y: [50, 250] }, "t0_ring");
 	// Three repeats is what ships: out and back, on each of two axes.
 	assert.equal(plannedCaptureCount(plans), 12);
 	const scope: StepScope = { kind: "captures", n: plannedCaptureCount(plans) };
