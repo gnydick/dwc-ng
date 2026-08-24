@@ -29,7 +29,8 @@ import type { Fingerprint } from "./engine/fit.ts";
 import type { Caveat } from "./evidence/caveat.ts";
 import type { Refusal } from "./preconditions.ts";
 import type { Supersede } from "./evidence/evidence.ts";
-import type { StepBlock, StepNeed, StepSpec, StepStatus } from "./steps.ts";
+import type { Answer, Inquiry } from "./evidence/inquiry.ts";
+import type { ShapingStep, StepBlock, StepNeed, StepSpec, StepStatus } from "./steps.ts";
 import type { MotionOutcome, MotionState } from "./motionRun.ts";
 import type { RunKind } from "./runPlan.ts";
 import type { SweepState } from "./sweepRun.ts";
@@ -602,3 +603,45 @@ export function caveatText(c: Caveat): string {
 		}
 	}
 }
+
+/**
+ * A question and what would settle it, as one sentence.
+ *
+ * The question comes first and the act second, always. An operator reading
+ * "set the ladder to 7.6 mm/s and sweep" has to take it on trust; one reading
+ * "is X at 38.0 Hz really there? nothing has driven it yet — a sweep reaching
+ * about 7.6 mm/s would say" knows what the run buys them, which is what lets
+ * them judge whether to do it and recognise the answer when it comes back.
+ */
+export function inquiryText(q: Inquiry): string {
+	return `${q.question} ${answerText(q.answer)}`;
+}
+
+export function answerText(a: Answer): string {
+	switch (a.kind) {
+		case "step":
+			// The adjustment is part of the SAME sentence when there is one.
+			// Splitting them is how somebody runs the step with the settings
+			// that already failed to answer the question.
+			return a.adjust === null
+				? `Run ${STEP_VERB[a.step]} to find out.`
+				: `Run ${STEP_VERB[a.step]} to find out — but first, ${a.adjust}.`;
+		case "machine":
+			return `${a.how.charAt(0).toUpperCase()}${a.how.slice(1)}.`;
+		case "not-yet":
+			// Never phrased as something the operator has neglected.
+			return `Nothing on this screen can answer it yet: ${a.blocked}.`;
+		default: {
+			const unhandled: never = a;
+			throw new Error(`unknown answer: ${String((unhandled as { kind: unknown }).kind)}`);
+		}
+	}
+}
+
+const STEP_VERB: Record<ShapingStep, string> = {
+	measure: "Measure",
+	sweep: "Sweep",
+	rank: "Rank",
+	verify: "Verify",
+	apply: "Apply",
+};
