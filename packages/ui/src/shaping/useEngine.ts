@@ -3,7 +3,7 @@
  * id-correlated replies. This is the ONLY `new Worker(...)` site for shaping
  * (the lazy-bundle/structural walkers pin it).
  */
-import type { Artefact } from "./engine/artefact.ts";
+import type { PeakReport } from "./engine/artefact.ts";
 import type { Axis, Fingerprint } from "./engine/fit.ts";
 import type { Candidate, RankOptions } from "./engine/rank.ts";
 import type { SweepMatrix } from "./engine/sweep.ts";
@@ -14,7 +14,7 @@ export type Engine = {
 	fit(csv: string, axis: Axis): Promise<FitResult>;
 	rank(fp: Fingerprint, opts?: RankOptions): Promise<Candidate[]>;
 	sweep(rows: ReadonlyArray<SweepRequestRow>, fullStepsPerMm: number, maxHz?: number): Promise<SweepMatrix>;
-	artefact(baseline: Fingerprint, verified: Fingerprint): Promise<Artefact[]>;
+	artefact(baseline: Fingerprint, verified: Fingerprint): Promise<PeakReport>;
 	terminate(): void;
 };
 

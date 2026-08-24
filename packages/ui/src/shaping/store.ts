@@ -55,6 +55,16 @@ export type VerifiedCandidate = Candidate & {
 	/** Post-shaping peak as a fraction of the baseline peak, per axis. 0 = the ring is gone. */
 	readonly measured: { X?: number; Y?: number };
 	readonly artefacts: readonly Artefact[];
+	/**
+	 * Axes the artefact check could not judge, because the baseline has no mode
+	 * on them.
+	 *
+	 * NOT the same as "no artefacts", and kept apart from it for the reason the
+	 * whole findings layer exists: an empty artefact list on an unjudged axis
+	 * means nothing was checked, and a card that showed it as a clean result
+	 * would be recommending a shaper on the strength of a test that did not run.
+	 */
+	readonly unjudged: readonly ("X" | "Y")[];
 	/** The fingerprint measured WITH the shaper on — the evidence for `measured`. */
 	readonly fingerprint: Fingerprint;
 };
@@ -83,7 +93,10 @@ export function verifyAnalysis(baseline: Fingerprint, candidate: Candidate, meas
 	const analysed: Omit<VerifiedCandidate, typeof __verified> = {
 		...candidate,
 		measured,
-		artefacts: newPeaks(baseline, measuredFingerprint),
+		...(() => {
+			const report = newPeaks(baseline, measuredFingerprint);
+			return { artefacts: report.artefacts, unjudged: report.unjudged };
+		})(),
 		fingerprint: measuredFingerprint,
 	};
 	return analysed as VerifiedCandidate;

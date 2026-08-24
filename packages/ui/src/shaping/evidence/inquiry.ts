@@ -209,6 +209,24 @@ export function inquiryFor(c: Caveat): Inquiry {
 					how: "send M593 with no parameters to see what is active; if a shaper is on, turn it off with M593 P\"none\" and measure again",
 				},
 			};
+		case "verify-artefact":
+			return {
+				question: `${c.spec} adds a ${c.hz.toFixed(0)} Hz ring of its own. Is there a candidate that does not?`,
+				answer: {
+					kind: "step",
+					step: "verify",
+					adjust: "pick a different candidate — this one's own impulse spacing is exciting that mode, so no F or S will tune it away",
+				},
+			};
+		case "verify-unjudged":
+			return {
+				question: `Did ${c.spec} add anything on ${c.axes.join(" and ")}?`,
+				answer: {
+					kind: "step",
+					step: "measure",
+					adjust: `the baseline has no mode on ${c.axes.length === 1 ? "that axis" : "those axes"}, so there is nothing to compare a new ring against — a faster or longer move would give it one`,
+				},
+			};
 		case "predicted-not-measured":
 			return {
 				question: "Does the top-ranked shaper actually help on this machine?",
