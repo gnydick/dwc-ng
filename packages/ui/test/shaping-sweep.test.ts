@@ -28,12 +28,17 @@ test("sweepMatrix: full-step line is speed × 5 and the 100 mm/s row peaks at ~2
 	const m = sweepMatrix(rows(), 5);
 	assert.deepEqual(m.speeds, [20, 50, 100, 200]);
 	assert.deepEqual(m.fullStepHz.map(Number), [100, 250, 500, 1000]);
-	assert.equal(m.freqs.length, 701);
+	// Derived, not pinned at 701. The ceiling used to be a hard-coded 700 Hz;
+	// it is now the lower of the locus-plus-headroom and Nyquist
+	// (engine/sweep.ts `plotCeiling`), so a fixed number here would be
+	// asserting the old default rather than this test's actual subject.
+	const bins = m.freqs.length;
+	assert.equal(bins, m.maxHz + 1);
 	const row = 2; // 100 mm/s
 	let best = 0;
-	for (let k = 5; k <= 700; k++) if (m.amps[row * 701 + k]! > m.amps[row * 701 + best]!) best = k;
+	for (let k = 5; k < bins; k++) if (m.amps[row * bins + k]! > m.amps[row * bins + best]!) best = k;
 	assert.ok(Math.abs(best - 250) <= 2, `peak bin ${best}`);
-	assert.ok(m.amps[row * 701 + best]! > 1.0, `amplitude ${m.amps[row * 701 + best]} g`); // prototype: 1.55 g
+	assert.ok(m.amps[row * bins + best]! > 1.0, `amplitude ${m.amps[row * bins + best]} g`); // prototype: 1.55 g
 });
 
 test("worker handle: fit routes a capture through detectStop + fitDecay and returns transferables", () => {

@@ -30,6 +30,15 @@ export type Caveat =
 			/** The speed that WOULD have driven it: modeHz / fullStepsPerMm. */
 			readonly needMmPerS: number;
 	  }
+	/**
+	 * The fastest speeds force above what the accelerometer can sample.
+	 *
+	 * A bin above half the sampling rate holds nothing and never can, so those
+	 * rows cannot show their own forced ridge — the plot goes black there and
+	 * reads as "quiet" when it means "the instrument cannot look". Gabe's board
+	 * samples at 1377 Hz (Nyquist ~688) while his 200 mm/s pass forces 1000 Hz.
+	 */
+	| { readonly kind: "locus-above-nyquist"; readonly speeds: readonly number[]; readonly nyquistHz: number; readonly forcedHz: number }
 	/** Rows the transform could not use, which a heat map would paint as silence. */
 	| { readonly kind: "rows-not-analysed"; readonly analysed: number; readonly rows: number }
 	/** The fitted mode sits where motor ripple would be. Shaping cannot move it. */
@@ -177,6 +186,7 @@ export function severityOf(c: Caveat): Severity {
 			return severityOf(c.caveat);
 		case "forcing-band-excludes-mode":
 		case "rows-not-analysed":
+		case "locus-above-nyquist":
 		case "mode-locus-unknown":
 		case "direction-spread":
 		case "fits-refused":

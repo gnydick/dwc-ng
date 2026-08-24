@@ -27,9 +27,49 @@ export function cruiseWindow(capture: Capture, moveS: Seconds): { from: number; 
 	return { from, to };
 }
 
-export function sweepMatrix(rows: ReadonlyArray<SweepRow>, fullStepsPerMm: number, maxHz = 700): SweepMatrix {
+/**
+ * How far past the full-step locus the plot should reach.
+ *
+ * Fifteen per cent. The locus is the thing the chart is read AGAINST — a ridge
+ * lying along it is motor ripple and a stripe crossing it is a mode — so a
+ * plot that stops exactly where the line does gives the eye nothing to judge
+ * the top of the line by, and a ridge that continues past the last row cannot
+ * be told from one that stops there.
+ */
+const LOCUS_HEADROOM = 1.15;
+
+/**
+ * The highest frequency worth plotting for these captures.
+ *
+ * Two ceilings, and the lower one wins:
+ *
+ *  - the LOCUS plus headroom, because past that there is nothing the chart is
+ *    for. A fixed 700 Hz made a slow ladder unreadable — the 5-15 mm/s pass
+ *    the coverage finding asks for forces only 25-75 Hz at 5 full steps/mm,
+ *    which is a sliver at the left of an otherwise empty plot.
+ *  - NYQUIST, because a bin above half the sampling rate holds nothing and
+ *    never can. The captures on Gabe's board sample at 1377 Hz, so everything
+ *    above ~688 Hz was structurally black and read as "the machine is quiet
+ *    there" rather than "the instrument cannot look".
+ *
+ * Rounded up to 25 Hz so the axis lands on readable numbers.
+ */
+export function plotCeiling(rows: ReadonlyArray<SweepRow>, fullStepsPerMm: number): number {
+	const rates = rows.map((r) => Number(r.capture.rate)).filter((n) => Number.isFinite(n) && n > 0);
+	const speeds = rows.map((r) => Number(r.speed)).filter((n) => Number.isFinite(n) && n > 0);
+	// Nothing to derive from: keep the historical width rather than inventing
+	// a narrow plot around no data.
+	if (rates.length === 0 || speeds.length === 0 || !(fullStepsPerMm > 0)) return 700;
+	const nyquist = Math.floor(Math.min(...rates) / 2);
+	const wanted = Math.ceil((Math.max(...speeds) * fullStepsPerMm * LOCUS_HEADROOM) / 25) * 25;
+	// At least a readable band even for a very slow ladder.
+	return Math.max(25, Math.min(wanted, nyquist));
+}
+
+export function sweepMatrix(rows: ReadonlyArray<SweepRow>, fullStepsPerMm: number, maxHz?: number): SweepMatrix {
 	const sorted = [...rows].sort((a, b) => a.speed - b.speed);
-	const nBins = maxHz + 1;
+	const ceiling = maxHz ?? plotCeiling(rows, fullStepsPerMm);
+	const nBins = ceiling + 1;
 	const freqs = new Float64Array(nBins);
 	for (let i = 0; i < nBins; i++) freqs[i] = i;
 	const amps = new Float64Array(sorted.length * nBins);
@@ -51,7 +91,7 @@ export function sweepMatrix(rows: ReadonlyArray<SweepRow>, fullStepsPerMm: numbe
 		freqs,
 		amps,
 		fullStepHz: sorted.map((r) => hz(r.speed * fullStepsPerMm)),
-		maxHz,
+		maxHz: ceiling,
 	};
 }
 

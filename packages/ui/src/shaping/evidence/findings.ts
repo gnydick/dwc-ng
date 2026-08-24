@@ -80,6 +80,20 @@ export function sweepCaveats(m: SweepMatrix, fp: Fingerprint | null): readonly C
 		out.push({ kind: "rows-not-analysed", analysed, rows: m.speeds.length });
 	}
 
+	// Speeds whose forced frequency is above the plot's own ceiling. When the
+	// ceiling is Nyquist — which is what caps it whenever the ladder is fast —
+	// those rows cannot show their forced ridge at all, and the black there is
+	// the instrument rather than the machine.
+	const overNyquist = m.speeds.filter((_, i) => Number(m.fullStepHz[i]) > m.maxHz);
+	if (overNyquist.length > 0) {
+		out.push({
+			kind: "locus-above-nyquist",
+			speeds: overNyquist.map(Number),
+			nyquistHz: m.maxHz,
+			forcedHz: Math.max(...m.fullStepHz.map(Number)),
+		});
+	}
+
 	const band = forcingBand(m);
 	const perMm = fullStepsPerMmOf(m);
 	if (fp === null || band === null || perMm === null) return out;
