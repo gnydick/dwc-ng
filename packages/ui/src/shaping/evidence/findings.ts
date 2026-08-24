@@ -16,7 +16,7 @@
  *          shape in the union to put one in
  */
 import { type Caveat, severityOf } from "./caveat.ts";
-import { type Axis, type Fingerprint, isMode, MAX_FIT_ZETA, type Mode } from "../engine/fit.ts";
+import { type Axis, type Fingerprint, isMode, MAX_FIT_ZETA, type Mode, type NoFit } from "../engine/fit.ts";
 import { analysedRows, type SweepMatrix } from "../engine/sweep.ts";
 import type { Evidence } from "./evidence.ts";
 import type { WorkflowProducts } from "../steps.ts";
@@ -143,41 +143,72 @@ export function fingerprintCaveats(
 
 	for (const { axis, mode } of modesOf(fp)) {
 		const mine = captures.filter((c) => c.axis === axis);
-		const plus = spreadOf(mine.filter((c) => c.dir === "+"));
-		const minus = spreadOf(mine.filter((c) => c.dir === "-"));
-		const limit = Number(mode.f) * SPREAD_FRACTION;
-		// One direction over the band and the other under it. Both over is a
-		// noisy axis, which `few-fits` and the spread already on the card say;
-		// what is worth a sentence is the ASYMMETRY, because its cause is
-		// physical — the ring-down happens at the opposite end each way.
-		if ((plus > limit) !== (minus > limit)) {
-			out.push({ kind: "direction-spread", axis, plusHz: hz(plus), minusHz: hz(minus), modeHz: mode.f });
+		const attempted = mine.length;
+		const fitted = mine.filter((c) => isMode(c.fit));
+		const plusFits = fitted.filter((c) => c.dir === "+");
+		const minusFits = fitted.filter((c) => c.dir === "-");
+
+		// A spread needs at least two numbers to BE a spread, and both sides
+		// need them. `spreadOf([])` is 0, and comparing against that reported
+		// "0.00 Hz of spread" for a direction that fitted nothing — a
+		// fabricated measurement, which `findings-cite-what-they-came-from`
+		// exists to make impossible. Found on Gabe's board 2026-08-24, where
+		// all ten Y-plus captures were refused.
+		if (plusFits.length >= 2 && minusFits.length >= 2) {
+			const plus = spreadOf(plusFits);
+			const minus = spreadOf(minusFits);
+			const limit = Number(mode.f) * SPREAD_FRACTION;
+			// One direction over the band and the other under it. Both over is
+			// a noisy axis; what is worth a sentence is the ASYMMETRY, because
+			// its cause is physical.
+			if ((plus > limit) !== (minus > limit)) {
+				out.push({ kind: "direction-spread", axis, plusHz: hz(plus), minusHz: hz(minus), modeHz: mode.f });
+			}
+		} else if (fitted.length > 0 && (plusFits.length === 0 || minusFits.length === 0)) {
+			// One direction produced everything. Only worth saying when the
+			// other was actually ATTEMPTED — a run that only ever drove one way
+			// has not lost anything.
+			const dir: "+" | "-" = plusFits.length === 0 ? "-" : "+";
+			const other = mine.filter((c) => c.dir !== dir).length;
+			if (other > 0) {
+				out.push({ kind: "one-direction-only", axis, dir, n: fitted.length, refused: other });
+			}
 		}
 
-		const attempted = mine.length;
-		const cappedFits = mine.filter((c) => !isMode(c.fit) && c.fit.reason === "damping-out-of-range");
-		if (cappedFits.length > 0 && attempted > 0) {
-			// The MEASURED quantity is how few cycles the ring managed, which is
-			// what `fitDecay` actually rejected on. Reporting a ζ here would mean
-			// back-computing one from the cap — a number the detector invented,
-			// which `findings-cite-what-they-came-from` forbids.
-			const cycles = cappedFits
-				.map((c) => (isMode(c.fit) ? 0 : c.fit.cyclesFit ?? 0))
+		// Refusals, whatever reason they carry. Reported by the DOMINANT
+		// reason: a mixed bag is still one story to the operator, and naming
+		// the most common one keeps the sentence to a single remedy.
+		const refusedFits = mine.filter((c) => !isMode(c.fit));
+		if (refusedFits.length > 0) {
+			const tally = new Map<NoFit["reason"], number>();
+			for (const c of refusedFits) {
+				if (isMode(c.fit)) continue;
+				tally.set(c.fit.reason, (tally.get(c.fit.reason) ?? 0) + 1);
+			}
+			let reason: NoFit["reason"] = "short-window";
+			let best = -1;
+			for (const [r, n] of tally) if (n > best) { reason = r; best = n; }
+			const cycles = refusedFits
+				.map((c) => (isMode(c.fit) ? null : c.fit.cyclesFit ?? null))
+				.filter((n): n is number => n !== null)
 				.sort((a, b) => a - b);
 			out.push({
-				kind: "fits-at-damping-cap",
+				kind: "fits-refused",
 				axis,
-				refused: cappedFits.length,
+				refused: refusedFits.length,
 				of: attempted,
-				cyclesFit: cycles[cycles.length >> 1] ?? 0,
+				reason,
+				cyclesFit: cycles.length === 0 ? null : cycles[cycles.length >> 1]!,
 				cap: MAX_FIT_ZETA,
 			});
 		}
 
+		// A median over fewer than three is barely a median. This is about the
+		// SURVIVORS being thin, which is a different fact from captures having
+		// been refused (`fits-refused` above) — the old `n < attempted / 2`
+		// conflated the two and then missed the case at exactly half.
 		const n = axis === "X" ? fp.n.X : fp.n.Y;
-		if (attempted > 0 && n < attempted / 2) {
-			out.push({ kind: "few-fits", axis, n, of: attempted });
-		}
+		if (n > 0 && n < 3) out.push({ kind: "few-fits", axis, n, of: attempted });
 	}
 
 	// Two axes agreeing, which needs BOTH and so cannot live in the per-axis

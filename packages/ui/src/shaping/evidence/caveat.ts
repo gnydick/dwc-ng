@@ -17,7 +17,7 @@
  *      ACTION. A caveat that rendered as the empty string would be worse than
  *      no caveat at all: the operator would read a clean card and act on it
  */
-import type { Axis } from "../engine/fit.ts";
+import type { Axis, NoFit } from "../engine/fit.ts";
 import type { Hz } from "../engine/units.ts";
 
 export type Caveat =
@@ -50,23 +50,38 @@ export type Caveat =
 			readonly minusHz: Hz;
 			readonly modeHz: Hz;
 	  }
-	/** Refusals clustered on the two-cycle damping cap: arithmetic, not noise. */
+	/**
+	 * Captures the fitter refused, and why.
+	 *
+	 * Generalised from a damping-cap-only arm on 2026-08-24. It matched only
+	 * `damping-out-of-range`, so when ten of Gabe's twenty Y captures were
+	 * refused as `short-decay` the card said nothing and his Y frequency rested
+	 * on the other half without a word about it. A finding that covers one
+	 * reason out of four is a finding that stays silent three times in four.
+	 *
+	 * `cyclesFit` is present only where the fitter reported it (the two
+	 * decay-length reasons); it is the measured quantity, never a ζ
+	 * back-computed from the cap.
+	 */
 	| {
-			readonly kind: "fits-at-damping-cap";
+			readonly kind: "fits-refused";
 			readonly axis: Axis;
 			readonly refused: number;
 			readonly of: number;
-			/**
-			 * Median cycles the refused fits managed, against `MIN_CYCLES`.
-			 *
-			 * The MEASURED quantity, not a back-computed ζ. A ζ inferred from
-			 * the cap would be a number the detector invented, and
-			 * `findings-cite-what-they-came-from` has no shape to put an
-			 * invented number in.
-			 */
-			readonly cyclesFit: number;
+			readonly reason: NoFit["reason"];
+			readonly cyclesFit: number | null;
 			readonly cap: number;
 	  }
+	/**
+	 * Every surviving fit on this axis came from one direction of travel.
+	 *
+	 * Not the same as `direction-spread`, which compares two directions that
+	 * both produced numbers. This is the case where one direction produced NONE
+	 * — and it matters because the ring-down happens at the opposite end of the
+	 * axis each way, so a one-directional fingerprint has characterised one END
+	 * of the travel and is being read as the whole axis.
+	 */
+	| { readonly kind: "one-direction-only"; readonly axis: Axis; readonly dir: "+" | "-"; readonly n: number; readonly refused: number }
 	| { readonly kind: "few-fits"; readonly axis: Axis; readonly n: number; readonly of: number }
 	/**
 	 * X and Y came back at the same frequency.
@@ -123,7 +138,8 @@ export function severityOf(c: Caveat): Severity {
 		case "rows-not-analysed":
 		case "mode-locus-unknown":
 		case "direction-spread":
-		case "fits-at-damping-cap":
+		case "fits-refused":
+		case "one-direction-only":
 		case "few-fits":
 		case "axes-agree":
 		case "predicted-not-measured":

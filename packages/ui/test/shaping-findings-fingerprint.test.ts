@@ -67,21 +67,27 @@ const SEVEN_OF_TEN: CaptureRecord[] = [
 const FP_Y: Fingerprint = { X: null, Y: mode(41.5), n: { X: 0, Y: 3 }, spreadHz: { X: 0, Y: 0.1 } };
 
 test("refusals clustered on the damping cap are reported as arithmetic", () => {
-	const c = fingerprintCaveats(FP_Y, SEVEN_OF_TEN, null).find((x) => x.kind === "fits-at-damping-cap");
-	assert.ok(c !== undefined && c.kind === "fits-at-damping-cap");
+	const c = fingerprintCaveats(FP_Y, SEVEN_OF_TEN, null).find((x) => x.kind === "fits-refused");
+	assert.ok(c !== undefined && c.kind === "fits-refused");
 	assert.equal(c.axis, "Y");
 	assert.equal(c.refused, 7);
 	assert.equal(c.of, 10);
 	assert.ok(Math.abs(c.cap - MAX_FIT_ZETA) < 1e-9, "the cap must be the fitter's own constant");
 	// The MEASURED quantity, not a back-computed zeta.
-	assert.ok(Math.abs(c.cyclesFit - 1.9) < 1e-9, `cycles ${c.cyclesFit}`);
+	assert.ok(c.cyclesFit !== null && Math.abs(c.cyclesFit - 1.9) < 1e-9, `cycles ${c.cyclesFit}`);
 });
 
-test("a median resting on few captures is called out with both counts", () => {
-	const c = fingerprintCaveats(FP_Y, SEVEN_OF_TEN, null).find((x) => x.kind === "few-fits");
-	assert.ok(c !== undefined && c.kind === "few-fits");
-	assert.equal(c.n, 3);
-	assert.equal(c.of, 10);
+test("refusals and a thin median are two findings, not one", () => {
+	// They used to be conflated: `few-fits` fired on `n < attempted / 2`, which
+	// both missed the case at exactly half AND said "the median is thin" when
+	// what had actually happened was "seven captures were refused". Three fits
+	// IS a median; the seven refusals beside it are their own story.
+	const cs = fingerprintCaveats(FP_Y, SEVEN_OF_TEN, null);
+	assert.equal(cs.filter((c) => c.kind === "few-fits").length, 0, "three is a median");
+	const refused = cs.find((c) => c.kind === "fits-refused");
+	assert.ok(refused !== undefined && refused.kind === "fits-refused");
+	assert.equal(refused.refused, 7);
+	assert.equal(refused.of, 10);
 });
 
 test("with no sweep, the locus question is answered as unasked", () => {
