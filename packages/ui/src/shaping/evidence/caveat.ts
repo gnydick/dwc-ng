@@ -68,6 +68,24 @@ export type Caveat =
 			readonly cap: number;
 	  }
 	| { readonly kind: "few-fits"; readonly axis: Axis; readonly n: number; readonly of: number }
+	/**
+	 * X and Y came back at the same frequency.
+	 *
+	 * Two axes of one machine carry different effective masses and normally
+	 * ring at clearly different frequencies — the prototype baseline on this
+	 * machine reads X 18.14 Hz against Y 51.68 Hz. When they AGREE, one of two
+	 * things is true, and the tool cannot yet tell which: either there is a
+	 * shared frame mode dominating both, or a shaper was active during the
+	 * measurement and suppressed each axis's own mode, leaving the same
+	 * residual on both.
+	 *
+	 * Advisory rather than disqualifying precisely because both readings are
+	 * legitimate. What is NOT legitimate is saying nothing: the second case is
+	 * #53, the worst bug currently open, and it is silent and self-reinforcing.
+	 * On the 2026-08-23 run that bug produced X 14.78 / Y 14.99 — 1.4 % apart —
+	 * and every capture fitted cleanly, so no other quality finding fires.
+	 */
+	| { readonly kind: "axes-agree"; readonly xHz: Hz; readonly yHz: Hz; readonly apartFraction: number }
 	/** The ranked list is arithmetic over a fingerprint, not a measurement. */
 	| { readonly kind: "predicted-not-measured"; readonly n: number }
 	/**
@@ -107,6 +125,7 @@ export function severityOf(c: Caveat): Severity {
 		case "direction-spread":
 		case "fits-at-damping-cap":
 		case "few-fits":
+		case "axes-agree":
 		case "predicted-not-measured":
 			return "advisory";
 		default: {

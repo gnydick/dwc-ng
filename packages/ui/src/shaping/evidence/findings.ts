@@ -178,6 +178,22 @@ export function fingerprintCaveats(
 		}
 	}
 
+	// Two axes agreeing, which needs BOTH and so cannot live in the per-axis
+	// loop above. See the `axes-agree` arm in caveat.ts for why this matters:
+	// on the 2026-08-23 run every capture fitted cleanly and no other quality
+	// finding fires, yet the measurement was taken through an active shaper.
+	if (fp.X !== null && fp.Y !== null) {
+		const x = Number(fp.X.f);
+		const y = Number(fp.Y.f);
+		const apart = Math.abs(x - y) / Math.max(x, y);
+		// The same ±10 % the rest of this module uses, and for the same reason:
+		// inside it a single shaper tuned to one axis sits within the other's
+		// mistuning band, so the two are not separable by shaping at all.
+		if (apart <= SPREAD_FRACTION) {
+			out.push({ kind: "axes-agree", xHz: fp.X.f, yHz: fp.Y.f, apartFraction: apart });
+		}
+	}
+
 	if (modesOf(fp).length === 0) return out;
 	if (sweep === null) out.push({ kind: "mode-locus-unknown" });
 	else out.push(...sweepCaveats(sweep, fp).filter((c) => c.kind === "mode-on-forcing-locus"));

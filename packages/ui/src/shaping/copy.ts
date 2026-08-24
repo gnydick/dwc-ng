@@ -520,6 +520,12 @@ export function caveatText(c: Caveat): string {
 			// the sentence carries both: that is what turns "noise" into
 			// arithmetic the operator can check for themselves.
 			return `${c.refused} of ${c.of} ${c.axis} captures were refused because the ring died in ${c.cyclesFit.toFixed(1)} cycles, short of the two a fit needs — that is the ζ ${c.cap.toFixed(4)} ceiling, arithmetic rather than noise`;
+		case "axes-agree":
+			// Names BOTH readings, because the tool genuinely cannot tell them
+			// apart yet and picking one would be the invented verdict this
+			// layer exists to prevent. The remedy is the measurement that
+			// would settle it, not a guess.
+			return `X and Y came back ${(c.apartFraction * 100).toFixed(1)} % apart (${c.xHz.toFixed(1)} and ${c.yHz.toFixed(1)} Hz) — two axes of one machine normally ring at clearly different frequencies, so this is either a shared frame mode or a shaper that was active and suppressed both; nothing recorded here says which`;
 		case "few-fits":
 			return `${c.axis} rests on ${c.n} of ${c.of} captures — a median over that few moves with any one of them`;
 		case "predicted-not-measured":
