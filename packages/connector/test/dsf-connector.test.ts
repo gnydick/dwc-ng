@@ -830,3 +830,130 @@ test("fileinfo → getThumbnail round-trips the offset token to real image bytes
 		await h.close();
 	}
 });
+
+// ---- per-call deadlines (SendCodeOptions.timeoutMs) ----
+
+/**
+ * A DSF server that completes the WebSocket handshake, pushes one full frame
+ * so the connector reaches "connected", and then HOLDS every POST
+ * /machine/code until the test lets it go.
+ *
+ * The mock cannot express this. DSF answers /machine/code only once the code
+ * has EXECUTED, so the fault being reproduced — a code that runs for longer
+ * than the flat request budget — is a server that does not answer yet, and
+ * mock-duet always answers at once. `/machine/connect` 404s here, which is the
+ * connector's documented sessionless fallback.
+ */
+function createStallingCodeServer(): {
+	listen(): Promise<number>;
+	pending(): number;
+	release(body: string): void;
+	close(): Promise<void>;
+} {
+	const sockets: Duplex[] = [];
+	let held: http.ServerResponse[] = [];
+	const server = http.createServer((req, res) => {
+		if (req.method === "POST" && (req.url ?? "").startsWith("/machine/code")) {
+			req.resume();
+			held.push(res);
+			// The abort that a timed-out fetch causes must not leave a corpse
+			// in `held` — the tests count pending requests to know the POST
+			// actually reached the wire before they move the clock.
+			res.on("close", () => { held = held.filter(r => r !== res); });
+			return;
+		}
+		res.writeHead(404).end();
+	});
+	server.on("upgrade", (req, socket) => {
+		sockets.push(socket);
+		const accept = createHash("sha1")
+			.update((req.headers["sec-websocket-key"] ?? "") + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11")
+			.digest("base64");
+		socket.write(
+			"HTTP/1.1 101 Switching Protocols\r\n" +
+			"Upgrade: websocket\r\nConnection: Upgrade\r\n" +
+			`Sec-WebSocket-Accept: ${accept}\r\n\r\n`,
+		);
+		// One unmasked text frame carrying an empty full model: enough for
+		// applyFull, the ack and "connected". Frames the client sends back
+		// (the ack, a PING) are simply never read.
+		const payload = Buffer.from("{}", "utf8");
+		socket.write(Buffer.concat([Buffer.from([0x81, payload.length]), payload]));
+	});
+	return {
+		listen: () => new Promise<number>(resolve => server.listen(0, () => {
+			resolve((server.address() as { port: number }).port);
+		})),
+		pending: () => held.length,
+		release(body: string) {
+			for (const res of held) res.writeHead(200, { "Content-Type": "text/plain" }).end(body);
+			held = [];
+		},
+		close: () => new Promise<void>(resolve => {
+			for (const res of held) res.destroy();
+			for (const s of sockets) s.destroy();
+			server.closeAllConnections();
+			server.close(() => resolve());
+		}),
+	};
+}
+
+test("DSF: sendCode's deadline replaces the flat budget for that call and nothing else", T, async () => {
+	// The bug, on the transport where it showed. DSF's POST /machine/code does
+	// not answer until the code has EXECUTED, so `G4 P3601` behind a 2.01 s
+	// move is a 5.61 s request — and a flat 5 s budget aborted it on Gabe's
+	// machine twice on 2026-08-23 while the board carried on and wrote the
+	// capture. `pingIntervalMs` is enormous because the liveness clock and the
+	// request budget share the virtual clock and only the budget is on trial.
+	const stall = createStallingCodeServer();
+	const port = await stall.listen();
+	const clock = createVirtualClock();
+	const requestTimeoutMs = 5000;
+	const c = new DsfConnector({
+		baseUrl: `http://127.0.0.1:${port}`,
+		clock,
+		requestTimeoutMs,
+		pingIntervalMs: 600_000,
+		reconnectDelayMs: 600_000,
+		events: {},
+	});
+	try {
+		await c.connect();
+		assert.equal(c.status, "connected");
+
+		// A: no deadline — today's behaviour, unchanged. The flat budget ends it.
+		const plain = assert.rejects(
+			c.sendCode("G4 P3601"),
+			(err: unknown) => err instanceof OperationFailedError,
+			"a code with no deadline is still aborted at the flat default",
+		);
+		await until(() => stall.pending() === 1, "the un-budgeted POST reached the server");
+		await clock.advance(requestTimeoutMs);
+		await plain;
+
+		// B: the same stall, with a deadline. It must survive well past the
+		// default and then resolve with the reply the board eventually sent.
+		let settled = false;
+		const budgeted = c.sendCode("G4 P3601", { timeoutMs: 20_000 })
+			.then(v => { settled = true; return v; }, err => { settled = true; throw err; });
+		await until(() => stall.pending() === 1, "the budgeted POST reached the server");
+		await clock.advance(19_000);
+		assert.equal(settled, false, "still in flight 19 s in — 4x the flat budget it was NOT given");
+		stall.release("capture complete");
+		assert.equal(await budgeted, "capture complete", "resolves with the reply, not a timeout");
+
+		// C: the deadline was that call's alone — the next code is back on 5 s.
+		const after = assert.rejects(
+			c.sendCode("M400"),
+			(err: unknown) => err instanceof OperationFailedError,
+			"the widened budget did not leak into the following call",
+		);
+		await until(() => stall.pending() === 1, "the following POST reached the server");
+		await clock.advance(requestTimeoutMs);
+		await after;
+
+		await c.disconnect();
+	} finally {
+		await stall.close();
+	}
+});

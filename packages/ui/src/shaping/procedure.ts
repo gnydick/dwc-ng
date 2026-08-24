@@ -126,17 +126,41 @@ type Step = {
 	 * `expectFile?` and `budgetMs?` would let a step say it records without
 	 * saying for how long, and the answer that would then be reached for is a
 	 * constant — which is the bug this whole module was rewritten to delete.
+	 *
+	 * The same field is why a step cannot say its codes are slow without saying
+	 * why: `sendBudgetMs` lives in here beside the wait budget, so "a long step
+	 * that records nothing" is not a shape this type can hold.
 	 */
 	readonly capture?: CaptureExpectation;
 	readonly label: string;
 	readonly expectPosition: Point;
 };
 
-/** What a recording step is waiting for: the name M956 will write and the
- *  budget derived from that same recording's length. */
+/**
+ * What a recording step is waiting for: the name M956 will write, and the two
+ * budgets derived from that same recording's length.
+ *
+ * Both budgets, not one. `budgetMs` is how long the FILE is waited for after
+ * the codes have gone out; `sendBudgetMs` is how long ONE of those codes may
+ * keep the transport busy while they are going out. They are different waits
+ * with different consumers, and collapsing them would make a change to either
+ * silently move the other.
+ */
 type CaptureExpectation = {
 	readonly file: string;
 	readonly budgetMs: number;
+	/**
+	 * The per-call deadline every code in this step is sent with.
+	 *
+	 * PER STEP rather than per code, because that is what the failure said. RRF
+	 * executes queued codes in order and answers each request when its code
+	 * runs, so ANY code in a recording step can be waiting on the whole of the
+	 * work queued ahead of it — on 2026-08-23 the request that timed out was
+	 * not the longest code, it was the one standing behind it. A per-code
+	 * deadline would have to model RRF's attribution of that wait; a per-step
+	 * one does not have to, because the step is the unit of queued work.
+	 */
+	readonly sendBudgetMs: number;
 };
 
 /**
@@ -361,11 +385,15 @@ export class Procedure {
 					yield { kind: "failed", error: `${where}: ${noCounter(this.pre.accel)}` };
 					return;
 				}
-				const rejected = await sendAll(conn, step.codes);
+				// A recording step's codes carry the deadline the SAME recording
+				// produced: the transport may stay busy with any one of them for
+				// as long as this pass's queued work takes. A step that records
+				// nothing has no long code in it and keeps the flat default.
+				const rejected = await sendAll(conn, step.codes, step.capture?.sendBudgetMs);
 
 				if (watching.kind === "none") {
 					if (rejected === null) continue;
-					yield { kind: "failed", error: `${where}: ${describe(rejected.failed)}` };
+					yield { kind: "failed", error: `${where}: ${describeSend(rejected)}` };
 					return;
 				}
 
@@ -376,7 +404,7 @@ export class Procedure {
 					continue;
 				}
 				if (outcome.cancelled) return;
-				const because = rejected === null ? outcome.reason : `${describe(rejected.failed)} — ${outcome.reason}`;
+				const because = rejected === null ? outcome.reason : `${describeSend(rejected)} — ${outcome.reason}`;
 				yield { kind: "failed", error: `${where}: ${because}` };
 				return;
 			}
@@ -392,7 +420,7 @@ export class Procedure {
 			// the case that must still be undone.
 			const problem = await sendAll(conn, this.#restore);
 			if (problem === null) yield { kind: "restored" };
-			else yield { kind: "failed", error: `restore failed: ${describe(problem.failed)}` };
+			else yield { kind: "failed", error: `restore failed: ${describeSend(problem)}` };
 		}
 	}
 
@@ -722,6 +750,20 @@ const CAPTURE_OVERHEAD_MS = 10_000;
 const CAPTURE_WRITE_FACTOR = 2;
 
 /**
+ * The part of a recording step's queued work that the recording itself does
+ * not account for: the approach move to the pass start, the {@link SETTLE_MS}
+ * pause before the arm, and the HTTP round trip on top of all of it.
+ *
+ * This is the connector's flat per-request budget, kept as the FLOOR of a
+ * capture step's send deadline rather than as the whole of it — the same
+ * reading {@link CAPTURE_OVERHEAD_MS} takes of the old flat wait. Raising the
+ * flat default instead would have been the wrong shape twice over: it would
+ * charge every short request for the lab's longest one, and it would still
+ * fail the first code that outlived whatever the new number was.
+ */
+const SEND_FLOOR_MS = 5_000;
+
+/**
  * The most samples one M956 may ask for.
  *
  * RRF's own M956 documentation states no bound on S (reference/duet-gcode.md,
@@ -783,10 +825,15 @@ export type CaptureWindow = {
  * keeps the carriage still for them, and the budget the file is waited for in.
  *
  * @invariant one-capture-timing
- * @rung 8  illegal state unrepresentable — the sample count, the dwell and the
- *          wait budget are three consequences of one recording and are produced
- *          by one function from one argument, so "the dwell disagrees with the
- *          capture length" is not a state this type can hold. `dwellMs` is
+ * @rung 8  illegal state unrepresentable — the sample count, the dwell, the
+ *          wait budget and the send deadline are four consequences of one
+ *          recording and are produced by one function from one argument, so
+ *          "the dwell disagrees with the capture length" is not a state this
+ *          type can hold, and neither is "the deadline disagrees with the
+ *          dwell": `sendBudgetMs` is derived from the SAME `recordS` that
+ *          `dwellMs` is, in the same expression, so the send site cannot be
+ *          told a different duration from the one the codes were built with.
+ *          `dwellMs` is
  *          derived from `samples`, not recomputed from `captureS`, so the
  *          rounding that turns seconds into a whole M956 S cannot leave the
  *          dwell a sample short. There is no other producer and no field to set
@@ -808,6 +855,18 @@ export type CaptureTiming = CaptureWindow & {
 	readonly dwellMs: number;
 	/** How long `awaitCapture` may wait for this capture's file. */
 	readonly budgetMs: number;
+	/**
+	 * How long ONE code of the step that makes this recording may keep the
+	 * transport busy — `sendCode`'s per-call deadline.
+	 *
+	 * It exists because the flat 5 s request budget is a constant that has to
+	 * agree with a physical fact it never consults: DSF answers
+	 * `POST /machine/code` only once the code has EXECUTED, so a pass that
+	 * derived a `G4 P3601` and moves for 2.01 s produces a request that waits
+	 * 5.61 s, and on 2026-08-23 that aborted the second pass of a sweep twice
+	 * on Gabe's machine while the board carried on perfectly well.
+	 */
+	readonly sendBudgetMs: number;
 };
 
 /**
@@ -884,6 +943,14 @@ export function captureWindow(dist: Mm, speed: MmPerS, accel: MmPerS2, mode: Rin
  * The BUDGET covers the same recording twice over — once because the file
  * cannot exist before the recording ends, once for the write and the transfer,
  * which grow with it — on top of the fixed overhead that was the old flat 10 s.
+ *
+ * The SEND DEADLINE is the whole recording plus {@link SEND_FLOOR_MS} and the
+ * settle, because the recording IS the queued work: `recordS` is the move plus
+ * the dwell by construction (the dwell is `recordS` minus the move), so one
+ * term covers both of the codes that take real time, and the floor covers the
+ * approach and the round trip. Derived from `recordS` rather than added up out
+ * of `dwellMs` and `moveS` for the same reason the dwell is: one arithmetic,
+ * one rounding, no second opinion about how long this pass takes.
  */
 export function captureTiming(w: CaptureWindow, rate: SampleRate): CaptureTiming {
 	const samples = Math.max(1, Math.ceil(w.captureS * rate));
@@ -894,6 +961,7 @@ export function captureTiming(w: CaptureWindow, rate: SampleRate): CaptureTiming
 		samples,
 		dwellMs: Math.ceil(Math.max(0, recordS - w.moveS) * 1000),
 		budgetMs: CAPTURE_OVERHEAD_MS + Math.ceil(recordS * 1000 * CAPTURE_WRITE_FACTOR),
+		sendBudgetMs: SEND_FLOOR_MS + SETTLE_MS + Math.ceil(recordS * 1000),
 	};
 }
 
@@ -1112,10 +1180,10 @@ const samePoint = (a: Point, b: Point): boolean => a.x === b.x && a.y === b.y;
  * "how fast the lab moves".
  *
  * The M956's sample count and the G4 that follows it come from ONE
- * `CaptureTiming`, and so does the budget the run loop waits for the file in.
- * That is the fix this whole module was reshaped for: those three used to be a
- * setting, a constant and another constant, and nothing related any of them to
- * the move between them.
+ * `CaptureTiming`, and so do the budget the run loop waits for the file in and
+ * the deadline every one of these codes is sent with. That is the fix this
+ * whole module was reshaped for: those used to be a setting and a run of
+ * constants, and nothing related any of them to the move between them.
  */
 function captureStep(pass: Pass, addr: AccelAddr, timing: CaptureTiming): Step {
 	const feed = feedOf(pass.speed);
@@ -1130,7 +1198,7 @@ function captureStep(pass: Pass, addr: AccelAddr, timing: CaptureTiming): Step {
 			cmd.waitMoves(),
 			cmd.dwell(timing.dwellMs),
 		],
-		capture: { file: pass.file, budgetMs: timing.budgetMs },
+		capture: { file: pass.file, budgetMs: timing.budgetMs, sendBudgetMs: timing.sendBudgetMs },
 		label: pass.label,
 		expectPosition: pass.at,
 	};
@@ -1228,17 +1296,37 @@ const at = (p: { readonly x: number; readonly y: number }): string => `X${p.x.to
  * keep going: the step loop turns it into a `failed` event, and the restore
  * has to be able to report a broken link without the throw escaping the
  * generator's `finally` and replacing whatever went wrong first.
+ *
+ * The rejection NAMES THE CODE, and that is not a nicety. A capture step is
+ * eight codes; on 2026-08-23 three rounds of diagnosis were spent on "POST
+ * http://duet3/machine/code: signal timed out", which is true of all eight and
+ * identifies none of them. The code is captured as a plain `String` here so no
+ * `GcodeCommand` escapes into the message path (`shaping-motion-only-via-
+ * procedure`) — what the caller gets is a sentence, not a sendable value.
+ *
+ * `budgetMs`, when the step has one, is that step's per-call deadline and goes
+ * to every code in it. Undefined leaves each send exactly as it was.
  */
-async function sendAll(conn: RunConnector, codes: readonly GcodeCommand[]): Promise<{ readonly failed: unknown } | null> {
+type SendFailure = { readonly failed: unknown; readonly code: string };
+
+async function sendAll(
+	conn: RunConnector,
+	codes: readonly GcodeCommand[],
+	budgetMs?: number,
+): Promise<SendFailure | null> {
+	const opts = budgetMs === undefined ? undefined : { timeoutMs: budgetMs };
 	for (const code of codes) {
 		try {
-			await conn.sendCode(code);
+			await conn.sendCode(code, opts);
 		} catch (err) {
-			return { failed: err };
+			return { failed: err, code: String(code) };
 		}
 	}
 	return null;
 }
+
+/** A send failure as a sentence: which code, then what the transport said. */
+const describeSend = (failure: SendFailure): string => `${failure.code}: ${describe(failure.failed)}`;
 
 /**
  * Is the carriage where this step needs it to be? Returns the sentence to put

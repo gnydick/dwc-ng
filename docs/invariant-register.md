@@ -351,7 +351,7 @@ in the diff that drops it.
 
 **Debt — promotion.** the bypass is chosen by inspecting the code string. Promote by giving the e-stop its own method on the transport so "send this without a slot" is a distinct operation rather than a branch inside the general one, and cannot be reached by any other payload. One transparent re-auth on a culled session (also unqueued), then re-fire; any other failure surfaces to the button, which honestly reports "failed" rather than pretending.
 
-`packages/connector/src/PollConnector.ts:322`
+`packages/connector/src/PollConnector.ts:342`
 
 ### `connector/estop-vocabulary` — rung 6
 
@@ -847,7 +847,7 @@ in the diff that drops it.
 
 **Why.** RRF creates the file and then streams the samples into it off the CAN toolboard, so the directory entry exists long before its contents do. On 2026-08-23 a sweep took the name as proof, accepted pass 1 while the board was still writing it, and pass 2's M956 queued behind that write until the run died one capture in. A name proves a file was CREATED and says nothing about whether a capture FINISHED — and a half-written file fits to a confident, wrong frequency The budget comes off the WATCH, which got it from the same `CaptureTiming` that sized the M956. A flat budget was a false failure waiting for a longer recording: at 5,700 samples the file legitimately cannot exist for 4.2 s, and "no capture appeared" would have been reported for a run that was working.
 
-`packages/ui/src/shaping/procedure.ts:1417`
+`packages/ui/src/shaping/procedure.ts:1505`
 
 ### `shaping/a-filter-finds-rows-it-does-not-choose-them` — rung 6
 
@@ -993,15 +993,15 @@ in the diff that drops it.
 
 **Debt — promotion.** the NUMBER is a reading of the wire format, not a measurement: RRF's source is not vendored here and its M956 docs state no bound. Promote by walking a real toolboard up until it refuses and pinning the value that came back, or by citing the firmware's own field width. Until then the claim is only that the UI refuses before the board does, which holds for any true bound at or below this one
 
-`packages/ui/src/shaping/procedure.ts:741`
+`packages/ui/src/shaping/procedure.ts:783`
 
 ### `shaping/one-capture-timing` — rung 8
 
-**Mechanism.** illegal state unrepresentable — the sample count, the dwell and the wait budget are three consequences of one recording and are produced by one function from one argument, so "the dwell disagrees with the capture length" is not a state this type can hold. `dwellMs` is derived from `samples`, not recomputed from `captureS`, so the rounding that turns seconds into a whole M956 S cannot leave the dwell a sample short. There is no other producer and no field to set by hand: `Pass` carries no sample count, `RingPlan`/`SweepPlan` carry none, and `ShapingDefaults` no longer has one
+**Mechanism.** illegal state unrepresentable — the sample count, the dwell, the wait budget and the send deadline are four consequences of one recording and are produced by one function from one argument, so "the dwell disagrees with the capture length" is not a state this type can hold, and neither is "the deadline disagrees with the dwell": `sendBudgetMs` is derived from the SAME `recordS` that `dwellMs` is, in the same expression, so the send site cannot be told a different duration from the one the codes were built with. `dwellMs` is derived from `samples`, not recomputed from `captureS`, so the rounding that turns seconds into a whole M956 S cannot leave the dwell a sample short. There is no other producer and no field to set by hand: `Pass` carries no sample count, `RingPlan`/`SweepPlan` carry none, and `ShapingDefaults` no longer has one
 
 **Why.** the constant this replaced was 1500 ms of dwell beside a free-floating `samples` setting, and on 2026-08-23 a sweep recorded 7.5 s against it — every following pass landed inside the previous pass's file. The two numbers had no way to know about each other, and neither knew about the move
 
-`packages/ui/src/shaping/procedure.ts:785`
+`packages/ui/src/shaping/procedure.ts:827`
 
 ### `shaping/one-motion-field-table` — rung 6
 
@@ -1025,7 +1025,7 @@ in the diff that drops it.
 
 **Why.** the machine's prior shaper is knowable only BEFORE the run changes it. A restore derived from live state after a verify pass would faithfully re-apply the candidate under test and leave the operator believing the machine was back to baseline — a wrong belief about a setting that changes every subsequent print
 
-`packages/ui/src/shaping/procedure.ts:249`
+`packages/ui/src/shaping/procedure.ts:273`
 
 ### `shaping/results-file-is-parsed-not-cast` — rung 6
 
@@ -1053,7 +1053,7 @@ in the diff that drops it.
 
 **Why.** `samples / rate` is the whole recording. M955's S parameter PERSISTS on the board (reference/duet-gcode.md, M955 notes: "These configuration settings persist until they are changed"), so the rate in force is whatever somebody last set — 1375 Hz on Gabe's toolboard, but nothing in this UI put it there. A constant here would silently mis-size every capture on any machine configured differently, and the error is proportional: at half the assumed rate every recording is twice as long as planned and the dwell derived from it covers half of it
 
-`packages/ui/src/shaping/procedure.ts:607`
+`packages/ui/src/shaping/procedure.ts:635`
 
 ### `shaping/shaping-motion-only-via-procedure` — rung 7
 
@@ -1061,7 +1061,7 @@ in the diff that drops it.
 
 **Why.** this is the feature's whole safety story. The lab sends 200 mm/s moves with nobody watching the axis, and the difference between a capture and a crash into the frame is whether those four facts were true at the moment of planning. A second way to build a run is a second place to forget one of them
 
-`packages/ui/src/shaping/procedure.ts:202`
+`packages/ui/src/shaping/procedure.ts:226`
 
 ### `shaping/step-readiness-has-one-answer` — rung 6
 

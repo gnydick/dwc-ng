@@ -23,9 +23,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { planProcedure, CAPTURE_DIR, type ProcEvent, type RingPlan, type VerifyPlan } from "../src/shaping/procedure.ts";
+import {
+	captureTiming, captureWindow, planProcedure, CAPTURE_DIR,
+	type ProcEvent, type RingPlan, type VerifyPlan,
+} from "../src/shaping/procedure.ts";
 import type { ObjectModel } from "../src/om/types.ts";
-import { hz } from "../src/shaping/engine/units.ts";
+import { hz, mm, mmPerS, mmPerS2 } from "../src/shaping/engine/units.ts";
 import type { ShaperSpec } from "../src/shaping/engine/shapers.ts";
 import {
 	EI2_PRIOR, FAKE_CSV, NOW, RATE, board, config, drain, errorOf, fakeBoard, freshPre, kinds,
@@ -187,6 +190,75 @@ test("a rejected request AND no capture names both pieces of evidence", async ()
 	assert.deepEqual(kinds(events), ["step", "failed", "restored"]);
 	assert.match(errorOf(events), /signal timed out/, "the rejected request is still named");
 	assert.match(errorOf(events), /no capture named ring_Xp0\.csv appeared/, "and so is the absent file");
+});
+
+// --- the per-call deadline (GIT_69) -----------------------------------------
+
+/**
+ * The deadline every code of a recording step is sent with, derived here the
+ * same way the procedure derives it — from the pass, not from a number copied
+ * out of the implementation. The fixture machine is 3000 mm/s^2 and the ring
+ * pass is 60 mm at 200 mm/s with the mode unknown, which is exactly what
+ * `captureStep` sizes its M956 and its G4 from.
+ */
+const RING_TIMING = captureTiming(captureWindow(mm(60), mmPerS(200), mmPerS2(3000), null), RATE);
+
+test("every code of a recording step carries the deadline that recording produced", async () => {
+	const r = ready();
+	await drain(r.proc.run(r.conn, () => r.model, testClock()));
+	// Eight codes per capture step, then the restore, which records nothing
+	// and is therefore back on the transport's flat budget.
+	assert.deepEqual(r.deadlines, [
+		...new Array<number | undefined>(8).fill(RING_TIMING.sendBudgetMs),
+		...new Array<number | undefined>(8).fill(RING_TIMING.sendBudgetMs),
+		undefined,
+	]);
+	// The A/B against the bug: it is bigger than the flat budget that aborted
+	// the sweep, and bigger than the whole of the step's excitation work.
+	assert.ok(RING_TIMING.sendBudgetMs > 5000, `${RING_TIMING.sendBudgetMs} ms is not past the flat default`);
+	assert.ok(
+		RING_TIMING.sendBudgetMs > RING_TIMING.dwellMs + RING_TIMING.moveS * 1000,
+		"the deadline must cover the move AND the dwell it is queued behind",
+	);
+});
+
+test("a verify plan's shaper step records nothing, so it keeps the flat budget", async () => {
+	const model = modelWith({ shaping: EI2_PRIOR });
+	const verify: VerifyPlan = { kind: "verify", spec: EI2_SPEC, ring: ringPlan({ repeats: 1, namePrefix: "ver" }) };
+	const planned = planProcedure(verify, freshPre({ shaping: EI2_PRIOR }), config(), NOW, RATE);
+	assert.equal(planned.ok, true);
+	if (!planned.ok) return;
+	const fake = fakeBoard(model);
+	await drain(planned.proc.run(fake.conn, () => model, testClock()));
+	// A verify ring knows the mode under test, so its recording — and with it
+	// its deadline — is sized differently from a blind ring. Derived here the
+	// same way, which is the point: one arithmetic, two callers.
+	const verifyTiming = captureTiming(
+		captureWindow(mm(60), mmPerS(200), mmPerS2(3000), { f: EI2_SPEC.F, zeta: EI2_SPEC.S }), RATE,
+	);
+	assert.equal(fake.sent[0], EI2_LINE, "precondition: the shaper step is first");
+	assert.equal(fake.deadlines[0], undefined, "one M593 is not a recording and does not get a recording's budget");
+	assert.equal(fake.deadlines[1], verifyTiming.sendBudgetMs, "the capture step that follows does");
+});
+
+test("a step's failure names the code that was refused, not just the transport error", async () => {
+	// The second defect in the ticket. A capture step is eight codes; "POST
+	// timed out" is true of all of them and identifies none, which is what
+	// made the real fault take three rounds to place. The file must be kept
+	// away too, because a rejection with a capture behind it is deliberately
+	// NOT a failure — the machine's evidence decides.
+	const r = ready({
+		fileAfterPolls: 1000,
+		onSend: (code, nth) => { if (nth === 7 && code.startsWith("G4")) throw new Error("signal timed out"); },
+	});
+	const events = await drain(r.proc.run(r.conn, () => r.model, testClock()));
+	assert.match(errorOf(events), /^step 1 of 2 \(X\+ 200 mm\/s \(1\/1\)\): G4 P731: signal timed out — /);
+});
+
+test("a failed restore names its code too", async () => {
+	const r = ready({ onSend: (code) => { if (code.startsWith("M593")) throw new Error("link down"); } });
+	const events = await drain(r.proc.run(r.conn, () => r.model, testClock()));
+	assert.equal(errorOf(events), `restore failed: ${OFF}: link down`);
 });
 
 // --- refusing rather than correcting ----------------------------------------

@@ -6,7 +6,7 @@
 // plan pass here and a run fail there for reasons neither test could see.
 import { Preconditions } from "../../src/shaping/preconditions.ts";
 import { sampleRateFrom, type ProcEvent, type Procedure, type RingPlan, type RunConnector, type SampleRate } from "../../src/shaping/procedure.ts";
-import type { FileListEntry, GcodeCommand } from "@dwc-ng/connector";
+import type { FileListEntry, GcodeCommand, SendCodeOptions } from "@dwc-ng/connector";
 import { accelAddr } from "../../src/control/commands.ts";
 import { emptyModel, type Axis, type Board, type ObjectModel, type Shaping } from "../../src/om/types.ts";
 import type { Envelope, ShapingConfig } from "../../src/config/types.ts";
@@ -152,6 +152,11 @@ export type FakeOptions = {
 export type Fake = {
 	conn: RunConnector;
 	sent: string[];
+	/** The per-call deadline each `sent` code carried, index for index —
+	 *  `undefined` where the caller passed none. A parallel array rather than
+	 *  a richer `sent`, so every existing assertion about the WIRE keeps
+	 *  reading the wire. */
+	deadlines: Array<number | undefined>;
 	listed: string[];
 	downloaded: string[];
 	/** How many listings had happened when each download was issued. This is
@@ -162,6 +167,7 @@ export type Fake = {
 
 export function fakeBoard(model: ObjectModel, opts: FakeOptions = {}): Fake {
 	const sent: string[] = [];
+	const deadlines: Array<number | undefined> = [];
 	const listed: string[] = [];
 	const downloaded: string[] = [];
 	const downloadedAfterListings: number[] = [];
@@ -182,9 +188,10 @@ export function fakeBoard(model: ObjectModel, opts: FakeOptions = {}): Fake {
 	};
 
 	const conn: RunConnector = {
-		async sendCode(code: GcodeCommand): Promise<string> {
+		async sendCode(code: GcodeCommand, sendOpts?: SendCodeOptions): Promise<string> {
 			opts.onSend?.(String(code), attempts++);
 			sent.push(String(code));
+			deadlines.push(sendOpts?.timeoutMs);
 			const armed = /^M956 .* F"(.+)"$/.exec(String(code));
 			if (armed !== null) {
 				const appearIn = opts.fileAfterPolls ?? 0;
@@ -225,7 +232,7 @@ export function fakeBoard(model: ObjectModel, opts: FakeOptions = {}): Fake {
 			return opts.download === undefined ? FAKE_CSV : opts.download(path);
 		},
 	};
-	return { conn, sent, listed, downloaded, downloadedAfterListings };
+	return { conn, sent, deadlines, listed, downloaded, downloadedAfterListings };
 }
 
 /** Instant, deterministic time. Every poll advances the clock by its own wait,

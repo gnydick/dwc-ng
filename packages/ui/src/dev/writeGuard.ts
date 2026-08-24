@@ -11,7 +11,7 @@
  * caller gates it behind import.meta.env.DEV) and it gates nothing on machine
  * state. The firmware remains the only authority over what the machine will do.
  */
-import type { Connector, ConnectorReads, ConnectorWrites, GcodeCommand } from "@dwc-ng/connector";
+import type { Connector, ConnectorReads, ConnectorWrites, GcodeCommand, SendCodeOptions } from "@dwc-ng/connector";
 import { isEmergencyStop } from "@dwc-ng/connector";
 
 export { isEmergencyStop };
@@ -67,11 +67,15 @@ export function guardWrites(inner: Connector, opts: GuardOptions): Connector {
 
 	// Mutations: fail closed on real unless armed.
 	const writes: ConnectorWrites = {
-		sendCode: async (code: GcodeCommand) => {
+		sendCode: async (code: GcodeCommand, opts?: SendCodeOptions) => {
 			if (!isEmergencyStop(code) && blocked()) {
 				throw new RealWriteBlockedError(code.split("\n")[0] ?? code);
 			}
-			return inner.sendCode(code);
+			// Forwarded whole: the guard decides WHETHER a code goes out, never
+			// how long it may take. Dropping the per-call deadline here would
+			// silently put a lab code back on the flat default in dev and
+			// nowhere else — a divergence that only shows on real hardware.
+			return inner.sendCode(code, opts);
 		},
 		upload: async (path: string, content: Uint8Array | string) => {
 			if (blocked()) throw new RealWriteBlockedError(`upload ${path}`);

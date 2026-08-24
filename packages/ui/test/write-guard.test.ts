@@ -149,3 +149,27 @@ test("the guard forwards file-operation arguments unchanged", async () => {
 
 	assert.deepEqual(calls, [["remove", "0:/gcodes/batch", true], ["move", "0:/a", "0:/b", true]]);
 });
+
+test("the guard forwards sendCode's per-call deadline unchanged", async () => {
+	// The guard decides WHETHER a code goes out, never how long it may take.
+	// Dropping the deadline here would put the shaping lab's long codes back on
+	// the flat request budget in dev and nowhere else — a divergence that only
+	// shows up on real hardware, which is exactly where it would hurt.
+	const seen: Array<{ code: string; timeoutMs?: number }> = [];
+	const inner = {
+		status: "connected",
+		sendCode: async (code: string, opts?: { timeoutMs?: number }) => {
+			seen.push({ code, timeoutMs: opts?.timeoutMs });
+			return "";
+		},
+	} as unknown as Connector;
+	const c = guardWrites(inner, { isReal: () => true, isArmed: () => true });
+
+	await c.sendCode(operatorTyped("G4 P3601"), { timeoutMs: 8239 });
+	await c.sendCode(operatorTyped("M400"));
+
+	assert.deepEqual(seen, [
+		{ code: "G4 P3601", timeoutMs: 8239 },
+		{ code: "M400", timeoutMs: undefined },
+	]);
+});

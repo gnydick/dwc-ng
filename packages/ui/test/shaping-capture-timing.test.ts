@@ -169,6 +169,48 @@ test("the wait budget covers the recording with room for the write", () => {
 	assert.ok(slow.budgetMs > quick.budgetMs + 5_000);
 });
 
+/**
+ * The SEND deadline (GIT_69), the fourth consequence of the same recording.
+ *
+ * The failure it answers, on Gabe's machine on 2026-08-23 and again the same
+ * evening: DSF answers POST /machine/code only once the code has EXECUTED, so
+ * a request waits on its own code plus whatever is queued ahead of it. A sweep
+ * pass queues a move and then the dwell that pass's own recording asked for,
+ * and against a flat 5 s budget the second pass never armed — twice — while
+ * the board wrote pass one's capture perfectly both times.
+ *
+ * The assertions below are PROPERTIES of the derivation rather than the
+ * ticket's field numbers. The ticket reports a `G4 P3601` from that run, which
+ * today's `captureTiming` does not produce for any pass: with the mode unknown
+ * the dwell is the lead-in plus the fitter's whole window, about 730 ms
+ * whatever the move. Those numbers are therefore not pinned here — what is
+ * pinned is that the deadline covers the move and the dwell for any pass,
+ * which is true of a 730 ms dwell and of a 3.6 s one alike.
+ */
+test("the send deadline covers the whole of the queued work a pass makes", () => {
+	const slow = captureTiming(captureWindow(mm(300), mmPerS(25), A, null), RATE_1375);
+	const quick = captureTiming(captureWindow(mm(60), mmPerS(200), A, X_MODE), RATE_1375);
+
+	for (const t of [slow, quick]) {
+		assert.ok(
+			t.sendBudgetMs > t.dwellMs + t.moveS * 1000,
+			"a deadline under the move plus the dwell is the bug this replaced",
+		);
+		assert.ok(t.sendBudgetMs > 5_000, "the flat request budget is the floor, not the answer");
+	}
+
+	// The A/B against the failure. This pass queues 12 s of execution behind
+	// its own requests; a flat 5 s budget aborts one of them by construction,
+	// and the derived deadline clears the lot with the flat budget still to
+	// spare for the approach, the settle and the round trip.
+	const queuedMs = slow.moveS * 1000 + slow.dwellMs;
+	assert.ok(queuedMs > 5_000, `precondition: this pass outlives the flat budget (${Math.round(queuedMs)} ms)`);
+	assert.ok(slow.sendBudgetMs >= queuedMs + 5_000, "and clears it by the floor, not by a hair");
+
+	// And it GROWS with the recording, which a constant could not.
+	assert.ok(slow.sendBudgetMs > quick.sendBudgetMs);
+});
+
 // --- the rate, from the board -----------------------------------------------
 
 test("the sampling rate is parsed out of M955's own report", () => {

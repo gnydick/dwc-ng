@@ -143,14 +143,68 @@ export interface ConnectorReads {
 }
 
 /**
+ * Per-call concerns for {@link ConnectorWrites.sendCode}.
+ *
+ * An OPTIONS OBJECT rather than a positional `timeoutMs`, chosen for two
+ * reasons and not for taste. A second per-call concern already exists in the
+ * implementations — PollConnector routes every send at a fixed
+ * `RequestPriority` and the run loop carries an `AbortSignal` its transport
+ * never sees — so this is the first of a set, not a one-off. And widening an
+ * object is source-compatible at every call site, where widening a positional
+ * argument is not: a caller that omits this gets EXACTLY today's behaviour,
+ * which is the property that lets the deadline be added to the four codes that
+ * need it and to nothing else.
+ *
+ * Every field is optional, so `{}` and omission mean the same thing.
+ */
+export type SendCodeOptions = {
+	/**
+	 * How long the transport may stay busy with THIS code, in milliseconds,
+	 * replacing the connector's flat per-request budget for this call only.
+	 *
+	 * For a CALLER that knows how long its code will take to execute — the
+	 * shaping lab derives a `G4 P<dwell>` from the recording it just sized —
+	 * this is that duration plus its margin. Nobody else should pass it: the
+	 * flat default is right for a code whose duration is unknown, and a bigger
+	 * flat default would be wrong for the same reason 5000 is (it punishes
+	 * every short request and still fails the first code that outlives it).
+	 *
+	 * Each transport honours it in ITS OWN TERMS, because the two do not agree
+	 * on what a long code costs:
+	 *
+	 * - DSF (`POST /machine/code`) does not answer until the code has
+	 *   EXECUTED, so a long code is literally a long request: this becomes
+	 *   that request's timeout.
+	 * - Standalone (`rr_gcode` + `rr_reply`) buffers the code and drains the
+	 *   reply separately, so a long code is NOT a long request — but a board
+	 *   busy for seconds answers `rr_gcode` with 503 until its buffer frees.
+	 *   There this bounds the busy/503 recovery ladder IN TIME rather than in
+	 *   retries, and is the request budget for the send and the drain behind
+	 *   it.
+	 *
+	 * It is a CEILING on waiting, never a floor: a code that finishes early
+	 * resolves early on both transports.
+	 */
+	readonly timeoutMs?: number;
+};
+
+/**
  * The write half: everything that can change the machine or its SD card.
  * The dev write guard fails ALL of this closed on the real board unless
  * writes are armed (sendCode's e-stop pass-through is the one documented
  * exception).
  */
 export interface ConnectorWrites {
-	/** Execute a G/M/T-code; resolves with its reply text ("" if none came). */
-	sendCode(code: GcodeCommand): Promise<string>;
+	/**
+	 * Execute a G/M/T-code; resolves with its reply text ("" if none came).
+	 *
+	 * `opts.timeoutMs` lets a caller that has already computed how long its
+	 * code will take say so (see {@link SendCodeOptions}); omitting it is
+	 * exactly the behaviour every call site had before the option existed.
+	 * The e-stop pass-through above ignores it — that payload is recognised at
+	 * the transport before any budget, gate or queue applies.
+	 */
+	sendCode(code: GcodeCommand, opts?: SendCodeOptions): Promise<string>;
 	/**
 	 * Upload a file, verified as strongly as the transport allows: rr_ carries
 	 * a CRC32 the board checks; DSF's PUT has no integrity mechanism (success
