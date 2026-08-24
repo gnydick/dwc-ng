@@ -11,6 +11,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { type Have, productsOf } from "./helpers/shaping.ts";
 import {
 	nextStep,
 	SHAPING_STEPS,
@@ -28,25 +29,31 @@ import { measurePlans, plannedCaptureCount } from "../src/shaping/runPlan.ts";
  * the screen and offering, and nothing has been done yet. Every case below is
  * this minus one thing, so a failure names the thing rather than the fixture.
  */
-const OPEN: StepInputs = {
-	refusal: null,
-	present: true,
-	offered: true,
-	hasFingerprint: false,
-	hasSweep: false,
-	hasCandidates: false,
-	hasVerified: false,
-	hasRecommendation: false,
-	hasApplied: false,
-	busy: false,
-};
+type Over = Partial<Omit<StepInputs, "products">> & Have;
+
+/**
+ * The machine and the card at their best: nothing refuses, every card is on
+ * the screen and offering, and nothing has been done yet. Every case below is
+ * this minus one thing, so a failure names the thing rather than the fixture.
+ *
+ * The product flags are a shorthand for SOUND evidence (helpers/shaping.ts
+ * `productsOf`). Cases about what limits a product live in
+ * shaping-steps-evidence.test.ts, which builds the states directly.
+ */
+const build = (o: Over = {}): StepInputs => ({
+	refusal: o.refusal ?? null,
+	present: o.present ?? true,
+	offered: o.offered ?? true,
+	busy: o.busy ?? false,
+	products: productsOf(o),
+});
 
 /** Uniform inputs for every step. */
-const all = (over: Partial<StepInputs> = {}) => (): StepInputs => ({ ...OPEN, ...over });
+const all = (over: Over = {}) => (): StepInputs => build(over);
 
 /** Per-step inputs: the base for everyone, overridden for named steps. */
-const per = (base: Partial<StepInputs>, over: Partial<Record<ShapingStep, Partial<StepInputs>>>) =>
-	(spec: StepSpec): StepInputs => ({ ...OPEN, ...base, ...(over[spec.step] ?? {}) });
+const per = (base: Over, over: Partial<Record<ShapingStep, Over>>) =>
+	(spec: StepSpec): StepInputs => build({ ...base, ...(over[spec.step] ?? {}) });
 
 const ORDER: readonly ShapingStep[] = ["measure", "sweep", "rank", "verify", "apply"];
 
@@ -97,7 +104,7 @@ test("a done step is skipped even though its button stays live", () => {
 	// Gabe's machine today: T0 has a fingerprint saved. Measure is done, so the
 	// next thing is the next UNDONE step, not a re-measure — but the row must
 	// still be runnable, because re-measuring is a thing people do.
-	const wf = nextStep(all({ hasFingerprint: true }));
+	const wf = nextStep(all({ fingerprint: true }));
 	assert.equal(wf.byStep.measure.done, true);
 	assert.equal(wf.byStep.measure.status, "done");
 	assert.equal(wf.byStep.measure.readiness.enabled, true, "a done step must stay re-runnable");
@@ -108,7 +115,7 @@ test("a runnable step later in the order beats a blocked one earlier", () => {
 	// Sweep cannot run (its card is not on the screen); Rank can. The region
 	// points at what can actually be done, not at the first thing that is stuck.
 	const wf = nextStep(per(
-		{ hasFingerprint: true },
+		{ fingerprint: true },
 		{ sweep: { present: false, offered: false } },
 	));
 	assert.equal(wf.byStep.sweep.status, "off-screen");
@@ -135,8 +142,8 @@ test("all blocked: the reason shown is the FIRST step's, not the loudest", () =>
 
 test("all done: there is no next step, and the region says so instead of emptying", () => {
 	const wf = nextStep(all({
-		hasFingerprint: true, hasSweep: true, hasCandidates: true,
-		hasVerified: true, hasRecommendation: true, hasApplied: true,
+		fingerprint: true, sweep: true, candidates: true,
+		verified: true, applied: true,
 	}));
 	assert.equal(wf.next, null);
 	for (const s of wf.steps) assert.equal(s.status, "done", `${s.spec.step} should read done`);
@@ -146,7 +153,7 @@ test("all done: there is no next step, and the region says so instead of emptyin
 });
 
 test("a step running is neither blocked nor available", () => {
-	const wf = nextStep(per({ hasFingerprint: true }, { rank: { busy: true } }));
+	const wf = nextStep(per({ fingerprint: true }, { rank: { busy: true } }));
 	assert.equal(wf.byStep.rank.status, "busy");
 	assert.equal(wf.byStep.rank.readiness.note, "working…");
 	// It is still the pick — it is what is happening — but the button is off.
@@ -205,11 +212,11 @@ test("every state a step can reach has a chip, and no two chips are the same wid
 	const seen = new Set<StepStatus>();
 	const inputs: Array<(spec: StepSpec) => StepInputs> = [
 		all(),
-		all({ hasFingerprint: true, hasSweep: true, hasCandidates: true, hasVerified: true, hasRecommendation: true, hasApplied: true }),
+		all({ fingerprint: true, sweep: true, candidates: true, verified: true, applied: true }),
 		all({ refusal: { kind: "no-envelope" } }),
 		all({ present: false, offered: false }),
 		all({ offered: false }),
-		per({ hasFingerprint: true }, { rank: { busy: true } }),
+		per({ fingerprint: true }, { rank: { busy: true } }),
 	];
 	for (const f of inputs) for (const st of nextStep(f).steps) seen.add(st.status);
 	// All seven reachable from six input sets; a state nothing can produce would

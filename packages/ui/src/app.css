@@ -4642,6 +4642,59 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; appe
 }
 .shp-next-why.shp-next-ready { color: var(--ok); }
 
+/* The screen-level thread: what the readings MEAN.
+
+   Deliberately NOT built like .shp-next-why above. That one is a short step
+   note and is nowrap + ellipsis; a finding sentence is long and carries its
+   numbers at the END ("...a pass near 7.7 mm/s would bracket it"), so ellipsing
+   it would cut off exactly the part that tells the operator what to do. This
+   wraps instead, inside a box whose height is DECLARED rather than grown.
+
+   Three lines, always, whether it holds a sentence or the em dash. The card is
+   watched while the machine works, so a finding arriving must not move the
+   step list under it. Longer sentences clamp rather than push. */
+.shp-thread {
+	display: flex;
+	align-items: flex-start;
+	gap: calc(2 * var(--u));
+	margin: 0 0 calc(2.5 * var(--u));
+	padding-bottom: calc(2 * var(--u));
+	box-shadow: inset 0 -1px 0 var(--hairline);
+}
+.shp-thread-note { display: flex; flex: 1 1 auto; min-width: 0; }
+.shp-thread-why {
+	/* Declared zero width plus grow, the same construction and the same
+	   measured reason as .shp-next-why: min-width alone leaves the sentence's
+	   min-content contribution voting on this card's minimum width. */
+	flex: 1 1 auto;
+	width: 0;
+	min-width: 0;
+	margin: 0;
+	font: 400 calc(3.25 * var(--u))/calc(4.5 * var(--u)) var(--font-body);
+	color: var(--silk-dim);
+	height: calc(13.5 * var(--u));
+	overflow: hidden;
+	display: -webkit-box;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 3;
+}
+
+/* What limits one card's own reading. Two declared lines whether it holds a
+   sentence or the em dash, for the same reason .shp-thread has three: these
+   cards are watched while the machine works and a finding arriving must not
+   move the rows under it. Clamped rather than ellipsed, because a finding
+   carries its remedy at the end of the sentence. */
+.shp-caveat {
+	margin: calc(1 * var(--u)) 0 0;
+	font: 400 calc(3 * var(--u))/calc(4 * var(--u)) var(--font-body);
+	color: var(--silk-dim);
+	height: calc(8 * var(--u));
+	overflow: hidden;
+	display: -webkit-box;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 2;
+}
+
 /* The workflow, one row per step. A LIST rather than a button bar: each step
    carries a sentence saying what it is waiting for, and five captions under
    five side-by-side buttons is unreadable at any card width this screen uses.

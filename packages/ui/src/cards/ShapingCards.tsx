@@ -32,6 +32,10 @@ import { allDoneAction, armedRunText, batchSummaryText, type CaptureSource, capt
 import type { CardCtx } from "../compose/ctx.ts";
 import type { MacroRead } from "../compose/services.ts";
 import { nextStep, SHAPING_STEPS, type ShapingStep, type StepInputs, type StepSpec } from "../shaping/steps.ts";
+import { screenThread } from "../shaping/evidence/findings.ts";
+import type { Evidence } from "../shaping/evidence/evidence.ts";
+import type { Caveat } from "../shaping/evidence/caveat.ts";
+import { caveatText } from "../shaping/copy.ts";
 import { toolMacroPath } from "../shaping/toolMacro.ts";
 import type { Envelope, ShapingConfig, ShapingDefaults } from "../config/types.ts";
 import type { Shaping } from "../om/types.ts";
@@ -117,6 +121,34 @@ const specS = (spec: ShaperSpec): string => (spec.type === "custom" ? NONE : `${
  *  there, and the Apply card shows it in full a few centimetres away. */
 const shaperShort = (spec: ShaperSpec): string =>
 	spec.type === "custom" ? "custom shaper" : `${specName(spec)} ${specF(spec)} Hz`;
+
+/**
+ * What limits this card's own reading, in one reserved slot.
+ *
+ * ONE component for all three cards rather than three copies of the same JSX:
+ * duplicating it is the tripwire that says the design is wrong, and the failure
+ * mode of three copies is three cards that come to describe the same
+ * measurement differently.
+ *
+ * The slot is present in every state and holds the em dash when there is
+ * nothing to say, so a finding arriving never moves the rows under it. Only the
+ * FIRST caveat is shown: the full list is the status card's job, and a card
+ * that grew by a line per finding would be a card whose height depends on how
+ * bad the news is.
+ */
+function CardCaveat(props: { evidence: Evidence<unknown> }) {
+	const first = createMemo((): Caveat | null => {
+		const e = props.evidence;
+		return e.state === "held" && e.caveats.length > 0 ? e.caveats[0]! : null;
+	});
+	return (
+		<p class="shp-caveat">
+			<Show when={first()} fallback={NONE}>
+				{c => <span title={caveatText(c())}>{caveatText(c())}</span>}
+			</Show>
+		</p>
+	);
+}
 
 /** One axis of a fingerprint as a single cell: frequency over damping and
  *  peak. Two lines either way — an axis that did not fit reserves the second
@@ -217,27 +249,22 @@ export function ShapingStatusBody(props: { ctx: CardCtx }) {
 
 	const cfg = (): ShapingConfig => props.ctx.config.config.shaping;
 
-	const inputsFor = (spec: StepSpec): StepInputs => {
-		const r = selected();
-		return {
-			refusal: svc.gate(),
-			// Two different facts, and telling them apart is what this card
-			// gained: `present` is the operator's composition, `offered` is
-			// whether that card has a run control yet.
-			present: svc.onScreen(spec.ownerCard),
-			offered: svc.offers(spec.step),
-			hasFingerprint: r.fingerprint !== null,
-			hasSweep: r.sweep !== null,
-			hasCandidates: r.candidates.length > 0,
-			hasVerified: r.verified.length > 0,
-			hasRecommendation: recommendation(r) !== null,
-			hasApplied: r.applied !== null,
-			// Anything that MOVES is busy while the machine is moving, whichever
-			// card asked it to. One machine, one carriage: a Verify offered while
-			// a measure run is mid-pass is not a step that could be taken.
-			busy: (spec.step === "rank" && svc.ranking()) || (spec.moves && motionBusy(svc.motion())),
-		};
-	};
+	const inputsFor = (spec: StepSpec): StepInputs => ({
+		refusal: svc.gate(),
+		// Two different facts, and telling them apart is what this card gained:
+		// `present` is the operator's composition, `offered` is whether that
+		// card has a run control yet.
+		present: svc.onScreen(spec.ownerCard),
+		offered: svc.offers(spec.step),
+		// Anything that MOVES is busy while the machine is moving, whichever
+		// card asked it to. One machine, one carriage: a Verify offered while a
+		// measure run is mid-pass is not a step that could be taken.
+		busy: (spec.step === "rank" && svc.ranking()) || (spec.moves && motionBusy(svc.motion())),
+		// The five products, each in whatever state its own machine says. This
+		// used to be six booleans, and a boolean made "a fingerprint exists" and
+		// "a fingerprint valid for ranking" the same value.
+		products: svc.products(),
+	});
 
 	// ONE readiness pass per render, for the whole card. The prominent button
 	// and the five rows read the same objects out of this — `workflow().next`
@@ -330,6 +357,29 @@ export function ShapingStatusBody(props: { ctx: CardCtx }) {
 				    construction as .shp-step-note; see app.css for the mechanism. */}
 				<div class="shp-next-note">
 					<p class="shp-next-why" classList={{ "shp-next-ready": primary().enabled }}>{primary().note}</p>
+				</div>
+			</div>
+			{/* The screen-level thread: what the readings MEAN, as one sentence
+			    folded out of the five products (evidence/findings.ts
+			    `screenThread`). A FOLD and not a stored value, so it cannot come
+			    to contradict the card it is summarising — the same guarantee
+			    `nextStep` gives one level down.
+
+			    It sits BELOW the next action rather than above it on purpose.
+			    The next action is what to DO and stays the card's first answer;
+			    this says what the numbers mean, which is the question the
+			    operator asks second. Its slot is three declared lines in every
+			    state, filled with the em dash when there is nothing to say, so a
+			    finding arriving moves nothing under it. */}
+			<div class="shp-thread">
+				<span class="shp-cap">Means</span>
+				<div class="shp-thread-note">
+					<Show
+						when={screenThread(svc.products())}
+						fallback={<p class="shp-thread-why">{NONE}</p>}
+					>
+						{c => <p class="shp-thread-why" title={caveatText(c())}>{caveatText(c())}</p>}
+					</Show>
 				</div>
 			</div>
 			<p class="shp-active">
@@ -1928,6 +1978,10 @@ export function ShapingSweepBody(props: { ctx: CardCtx }) {
 				<span>{readout()[1]}</span>
 				<span>{readout()[2]}</span>
 			</p>
+			{/* What this sweep cannot say, beside the numbers it can. The
+			    coverage finding belongs HERE and not only on the status card:
+			    the operator reading a black band is looking at this chart. */}
+			<CardCaveat evidence={svc.products().sweep} />
 			<p class="shp-sweep-note" classList={{ "shp-warn-inline": svc.sweepState().kind === "failed" }}>
 				<Show when={arming()} fallback={sweepStateText(svc.sweepState())}>
 					{a => <>Confirm: write T{a().tool}&apos;s results, this sweep included, to {RESULTS_PATH(a().tool)}. Escape cancels.</>}
