@@ -28,7 +28,7 @@ import { For, Match, Show, Switch, createEffect, createMemo, createSignal } from
 import { cmd } from "../control/commands.ts";
 import { copyText } from "../shell/copyText.ts";
 import { createArmed } from "../control/armed.ts";
-import { allDoneAction, armedRunText, armedSaveText, batchSummaryText, type CaptureSource, captureSourceLabel, motionStateText, refusalText, runKindText, stepActionText, stepStatusText, sweepStateText, type StepScope } from "../shaping/copy.ts";
+import { allDoneAction, armedRunText, armedSaveText, batchSummaryText, type CaptureSource, captureSourceLabel, captureWhenText, livenessNote, motionStateText, refusalText, rescanNoteText, runKindText, stepActionText, stepStatusText, sweepStateText, type StepScope } from "../shaping/copy.ts";
 import type { CardCtx } from "../compose/ctx.ts";
 import type { MacroRead } from "../compose/services.ts";
 import { nextStep, SHAPING_STEPS, type ShapingStep, type StepInputs, type StepSpec } from "../shaping/steps.ts";
@@ -64,7 +64,7 @@ import { fingerprintMarkers, type SweepMarker } from "../charts/sweepData.ts";
 import type { SweepMatrix } from "../shaping/engine/sweep.ts";
 import type { FullStep } from "../shaping/fullStep.ts";
 import { decaySeries, type DecayView } from "../charts/decayData.ts";
-import { ACCEL_DIR, accelPath, boardRef, type CaptureFamily, type CaptureRef, captureNameParts, chosenCaptures, familyView, matchesQuery, MAX_BATCH, resolvePick, type SweepFamily } from "../shaping/captures.ts";
+import { ACCEL_DIR, accelPath, boardRef, type CaptureFamily, type CaptureRef, captureNameParts, chosenCaptures, familyView, type Liveness, matchesQuery, MAX_BATCH, rescanReadiness, resolvePick, type SweepFamily } from "../shaping/captures.ts";
 import { useEngine } from "../shaping/useEngine.ts";
 import type { FitResult } from "../shaping/worker.ts";
 
@@ -1133,8 +1133,17 @@ export function ShapingCaptureBody(props: { ctx: CardCtx }) {
 
 /* ------------------------------------------------------------------- 3. decay */
 
-/** One pickable row, whichever of the three places it came from. The table has
- *  one body, so the three sources cannot lay out differently. */
+/**
+ * One pickable row, whichever of the three places it came from. The table has
+ * one body, so the three sources cannot lay out differently.
+ *
+ * `live` is NOT optional, and that is the whole of GitHub #59's second half. A
+ * row used to be built out of a stored fit and a file name, neither of which
+ * is a claim about the SD card, so a capture whose CSV had been deleted
+ * rendered pixel for pixel as one that was still there. Liveness is now a
+ * field like any other: a row cannot be constructed without asking, because
+ * there is no row without the answer.
+ */
 type DecayRow = {
 	readonly key: string;
 	readonly ref: CaptureRef;
@@ -1142,6 +1151,7 @@ type DecayRow = {
 	readonly tag: string;
 	readonly origin: DecaySource;
 	readonly when: string;
+	readonly live: Liveness;
 	readonly fit: Mode | NoFit | null;
 	readonly problem: string;
 };
@@ -1216,6 +1226,19 @@ function rowReason(row: DecayRow): string {
 	if (row.problem !== "") return row.problem;
 	if (row.fit === null) return row.origin === "imported" ? "fitting…" : "not fitted";
 	return fitReasonText(row.fit);
+}
+
+/**
+ * A row's tooltip: where its bytes are, and what its liveness has to add.
+ *
+ * The liveness half is silent for a row that is fine (`livenessNote` returns
+ * the empty string for `held` and `live`), so hovering 259 healthy board rows
+ * says exactly what it said before — the path on the card.
+ */
+function rowTitle(row: DecayRow): string {
+	const where = row.origin === "imported" ? `${row.file} — imported from this computer` : accelPath(row.file);
+	const note = livenessNote(row.live, row.file);
+	return note === "" ? where : `${where} — ${note}`;
 }
 
 /**
@@ -1297,6 +1320,7 @@ export function ShapingDecayBody(props: { ctx: CardCtx }) {
 						tag: `${c.axis}${c.dir}${c.rep}`,
 						origin: "tool",
 						when: NONE,
+						live: svc.liveness(ref),
 						// THIS session's fit wins over the stored one. #33 replaced the
 						// estimator on 2026-08-23, so what a results file records may
 						// have been computed by a fitter that no longer exists; re-fit a
@@ -1317,6 +1341,7 @@ export function ShapingDecayBody(props: { ctx: CardCtx }) {
 						tag: parts.matched ? `${parts.axis}${parts.dir}${parts.rep}` : NONE,
 						origin: "board",
 						when: shortWhen(entry.date),
+						live: svc.liveness(ref),
 						fit: batchFits().get(ref.key) ?? null,
 						problem: "",
 					};
@@ -1329,6 +1354,7 @@ export function ShapingDecayBody(props: { ctx: CardCtx }) {
 					tag: `${c.axis}${c.dir}${c.rep}`,
 					origin: "imported",
 					when: NONE,
+					live: svc.liveness(c.ref),
 					fit: batchFits().get(c.ref.key) ?? c.fit,
 					problem: c.problem,
 				}));
@@ -1375,6 +1401,20 @@ export function ShapingDecayBody(props: { ctx: CardCtx }) {
 		board: svc.board().length,
 		imported: svc.imports().length,
 	}));
+
+	/**
+	 * Whether Rescan may be pressed, and what pressing it would do — ONE value,
+	 * so the button's disabled state and the sentence under it are the same
+	 * answer rather than two expressions that agree today.
+	 *
+	 * Rescan re-lists `ACCEL_DIR` and nothing else, which means three different
+	 * things to the three sources (shaping/captures.ts `Rescan`). It used to be
+	 * `disabled={source() !== "board"}` with no explanation anywhere, which on
+	 * the Tool source was wrong twice over: re-listing the directory is exactly
+	 * how a tool row learns whether its capture is still there, and a control
+	 * greyed out in silence cannot be told from one that is broken.
+	 */
+	const rescan = createMemo(() => rescanReadiness(source(), svc.tool(), svc.boardState()));
 
 	/**
 	 * The capture the chart is drawing — resolved against the UNFILTERED list.
@@ -1430,6 +1470,15 @@ export function ShapingDecayBody(props: { ctx: CardCtx }) {
 		const mine = ++generation;
 		if (row === null) {
 			setAnalysis({ kind: "idle" });
+			return;
+		}
+		// The row already KNOWS there is no file; this is reading its liveness,
+		// not inferring one. Worth a branch for two reasons: it spares an
+		// embedded HTTP server a request that is certain to 404, and it puts the
+		// deletion in the verdict box in words instead of a transport error the
+		// operator has to decode.
+		if (row.live.kind === "gone") {
+			setAnalysis({ kind: "failed", why: livenessNote(row.live, row.file) });
 			return;
 		}
 		setAnalysis({ kind: "loading" });
@@ -1779,14 +1828,25 @@ export function ShapingDecayBody(props: { ctx: CardCtx }) {
 						</button>
 					)}
 				</Show>
+				{/* Disabled from the readiness, never from the source directly, and
+				    carrying the readiness's own sentence on the title as well as in
+				    the slot below — one value, so the grey and the reason cannot
+				    describe different states. */}
 				<button
 					class="fb-tool shp-rescan"
-					disabled={source() !== "board"}
+					disabled={!rescan().enabled}
+					title={rescanNoteText(rescan().rescan)}
 					onClick={() => svc.refreshBoard()}
 				>
-					Rescan
+					{svc.boardState() === "unread" ? "Scan" : "Rescan"}
 				</button>
 			</div>
+			{/* Two lines high in every state, present for every source, and holding
+			    a sentence whether Rescan is enabled or not — so the explanation
+			    arriving moves nothing, which is the same rule the verdict box and
+			    the batch report follow. It is also where a marked-missing row is
+			    explained: the mark is in the table, the meaning is here. */}
+			<p class="shp-listing-note" title={rescanNoteText(rescan().rescan)}>{rescanNoteText(rescan().rescan)}</p>
 			<div class="shp-scroll">
 			<table class="shp-table shp-captures">
 				<colgroup>
@@ -1847,17 +1907,26 @@ export function ShapingDecayBody(props: { ctx: CardCtx }) {
 									/>
 								</td>
 								<td>
+									{/* A dead reference is struck through and in the fault
+									    colour — not colour alone, and not a slot that appears —
+									    and its name still says what it is. The numbers to the
+									    right are untouched: the fit is a real measurement of a
+									    real move, and only the redraw died with the file. */}
 									<button
 										class="shp-pick shp-pick-wide"
-										classList={{ "shp-imported": row.origin === "imported" }}
+										classList={{ "shp-imported": row.origin === "imported", "shp-gone": row.live.kind === "gone" }}
 										aria-pressed={svc.capturePick() === row.key}
 										onClick={() => pick(row)}
-										title={row.origin === "imported" ? `${row.file} — imported from this computer` : accelPath(row.file)}
+										title={rowTitle(row)}
 									>
 										{row.file}
 									</button>
 								</td>
-								<td class="shp-mono shp-when">{row.when}</td>
+								{/* The reserved slot the mark lives in. It held an em dash for
+								    every tool row, which is exactly how a deleted capture passed
+								    for a live one; `captureWhenText` is the one place that
+								    decides between the date and the word. */}
+								<td class="shp-mono shp-when" classList={{ "shp-gone-when": row.live.kind === "gone" }}>{captureWhenText(row.when, row.live)}</td>
 								<td class="shp-mono">{row.tag}</td>
 								<Show
 									when={row.fit !== null && isMode(row.fit) ? row.fit : null}

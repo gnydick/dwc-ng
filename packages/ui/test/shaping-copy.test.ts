@@ -10,7 +10,9 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { batchSummaryText, captureSourceLabel, refusalText } from "../src/shaping/copy.ts";
+import { batchSummaryText, captureSourceLabel, captureWhenText, livenessNote, refusalText, rescanNoteText } from "../src/shaping/copy.ts";
+import { ACCEL_DIR, type Liveness, type Rescan } from "../src/shaping/captures.ts";
+import { RESULTS_PATH } from "../src/shaping/results.ts";
 import { prototypeFingerprint } from "./helpers/shaping.ts";
 import type { Refusal } from "../src/shaping/preconditions.ts";
 import { SHAPING_STEPS, stepReadiness, type StepInputs } from "../src/shaping/steps.ts";
@@ -286,4 +288,75 @@ test("the tool source names its tool, so a row's head is on screen", () => {
 test("the other two sources are named for what they are, not for a tool", () => {
 	assert.equal(captureSourceLabel("board", 2), "Board");
 	assert.equal(captureSourceLabel("imported", 2), "Imported");
+});
+
+/* -------------------- what the listing has to say about a row (GitHub #59) */
+
+/**
+ * One of each, typed as the union so that adding a variant fails the coverage
+ * check below rather than going quietly untested — the same device the
+ * `Refusal` table at the top of this file uses.
+ */
+const EVERY_LIVENESS: readonly Liveness[] = [
+	{ kind: "held" },
+	{ kind: "unchecked" },
+	{ kind: "live" },
+	{ kind: "gone" },
+];
+
+const EVERY_RESCAN: readonly Rescan[] = [
+	{ kind: "lists-the-rows" },
+	{ kind: "checks-the-rows", tool: 0, checked: false },
+	{ kind: "checks-the-rows", tool: 2, checked: true },
+	{ kind: "nothing-to-list" },
+];
+
+test("every rescan state has a sentence, including the ones where the button works", () => {
+	// A slot that is empty in some states is a slot that moves the table under
+	// it when it fills. The `never` arm makes the table total at compile time;
+	// this makes it non-empty.
+	assert.equal(new Set(EVERY_RESCAN.map(r => r.kind)).size, 3, "one of each kind is offered");
+	for (const r of EVERY_RESCAN) {
+		const text = rescanNoteText(r);
+		assert.ok(text.length > 0, `${r.kind} says nothing`);
+		assert.ok(text.includes(ACCEL_DIR), `${r.kind} does not name the directory it is about: ${text}`);
+	}
+});
+
+test("the tool source's sentence names the tool's own results file, which is where its rows come from", () => {
+	// The reason Rescan looked broken: the rows are named by tool0.json and the
+	// button re-reads a directory, and nothing said so. Reported by Gabe,
+	// 2026-08-23, after emptying 0:/sys/accelerometer.
+	const before = rescanNoteText({ kind: "checks-the-rows", tool: 0, checked: false });
+	assert.ok(before.includes(RESULTS_PATH(0)), before);
+	assert.match(before, /T0/);
+	// And once it HAS been read, the sentence is about what the marks mean.
+	const after = rescanNoteText({ kind: "checks-the-rows", tool: 0, checked: true });
+	assert.notEqual(after, before);
+	assert.match(after, /missing/);
+});
+
+test("a live row shows its date; a dead one shows that there is no file", () => {
+	assert.equal(captureWhenText("08-23 09:14", { kind: "live" }), "08-23 09:14");
+	assert.equal(captureWhenText("—", { kind: "held" }), "—");
+	// The defect in one assertion: a gone row used to render the same em dash a
+	// healthy tool row does.
+	assert.equal(captureWhenText("—", { kind: "gone" }), "missing");
+	assert.notEqual(captureWhenText("—", { kind: "gone" }), captureWhenText("—", { kind: "live" }));
+	// And "we have not looked" is not "it is fine" either.
+	assert.notEqual(captureWhenText("—", { kind: "unchecked" }), captureWhenText("—", { kind: "live" }));
+});
+
+test("the liveness note is silent for a row that is fine and specific for one that is not", () => {
+	assert.equal(new Set(EVERY_LIVENESS.map(l => l.kind)).size, 4, "one of each kind is offered");
+	assert.equal(livenessNote({ kind: "held" }, "a.csv"), "");
+	assert.equal(livenessNote({ kind: "live" }, "a.csv"), "");
+	for (const live of [{ kind: "unchecked" } as const, { kind: "gone" } as const]) {
+		const note = livenessNote(live, "ring1_Xp0.csv");
+		assert.ok(note.includes("ring1_Xp0.csv"), `${live.kind} does not name the file: ${note}`);
+		assert.ok(note.includes(ACCEL_DIR), `${live.kind} does not name the directory: ${note}`);
+	}
+	// The gone sentence has to say what SURVIVES as well as what is lost: the
+	// fit beside the row is a real measurement and stays on screen.
+	assert.match(livenessNote({ kind: "gone" }, "ring1_Xp0.csv"), /recorded numbers/);
 });
