@@ -31,13 +31,8 @@ import {
 } from "../src/shaping/evidence/evidence.ts";
 import { conditionsOf, measuredThrough, type RingPlan, type VerifyPlan } from "../src/shaping/procedure.ts";
 import { productsFor } from "../src/shaping/evidence/products.ts";
-import {
-	emptyResults,
-	type Measurement,
-	parseResults,
-	serializeResults,
-	type ToolResults,
-} from "../src/shaping/results.ts";
+import { emptyResults, type Measurement, type ToolResults } from "../src/shaping/results.ts";
+import { parseResults, serializeResults } from "../src/shaping/resultsCodec.ts";
 import { modeForTest, prototypeFingerprint } from "./helpers/shaping.ts";
 
 /**

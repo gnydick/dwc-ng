@@ -55,11 +55,22 @@ const HEAVY = /"(codemirror|@codemirror\/|@babylonjs\/|@lezer\/)/;
  * eagerly by some future card while ShapingCards stays lazy. Both are reached
  * only from compose/cards.tsx, via `lazy(() => import(...))`.
  *
+ * `shaping/resultsCodec.ts` is here for a subtler version of the same failure.
+ * It was part of shaping/results.ts, which the EAGER service registry imports
+ * for `emptyResults`, `RESULTS_PATH` and `fingerprintOf` — so ~3 KB of
+ * hostile-input JSON validation, run twice per tool per session behind an
+ * awaited round trip to the board, was on the critical path of every cold load
+ * (measured 2026-08-24: it was what put the eager payload 579 B over its
+ * ceiling). It is reached only from shaping/store.ts's `load` and `save`, via
+ * `import(...)`. Nothing stops a future edit from importing `parseResults`
+ * statically "just for a type guard" and quietly putting it all back, which is
+ * precisely what this list is.
+ *
  * Adding a name is the deliberate act this list exists to make — see the
  * ledger row on the invariant (`heavy-libraries-stay-behind-a-dynamic-import`,
  * declared on src/main.tsx).
  */
-const DYNAMIC_ONLY = [...LAZY_OWNERS, "cards/ShapingCards.tsx", "charts/DecayChart.tsx"];
+const DYNAMIC_ONLY = [...LAZY_OWNERS, "cards/ShapingCards.tsx", "charts/DecayChart.tsx", "shaping/resultsCodec.ts"];
 
 function sourceFiles(): string[] {
 	const out: string[] = [];
@@ -119,6 +130,21 @@ test("the fence would actually catch a static import of the shaping bodies", () 
 	assert.equal(judge('import { DecayChart } from "../charts/DecayChart.tsx";'), true);
 	assert.equal(judge('import type { DecayChart } from "../charts/DecayChart.tsx";'), false);
 	assert.equal(judge('const m = await import("../cards/ShapingCards.tsx");'), false);
+	assert.equal(judge('import { parseResults } from "./resultsCodec.ts";'), true);
+	assert.equal(judge('const { parseResults } = await import("./resultsCodec.ts");'), false);
+});
+
+test("the results codec really is behind a dynamic import in the store", () => {
+	// Same second direction as the registry check below: "nobody imports it
+	// statically" is also true of a module nobody imports at all, and a codec
+	// nothing reaches is a results file nothing can read. The store is the sole
+	// route to it — see the results-persist-through-one-writer invariant — so
+	// this pins that route to the dynamic form.
+	const store = readFileSync(join(SRC, "shaping", "store.ts"), "utf8");
+	assert.match(store, /import\("\.\/resultsCodec\.ts"\)/);
+	// And that BOTH halves of the round trip go through it, not just the read.
+	assert.match(store, /\bparseResults\b/);
+	assert.match(store, /\bserializeResults\b/);
 });
 
 test("the shaping bodies really are behind a dynamic import in the registry", () => {

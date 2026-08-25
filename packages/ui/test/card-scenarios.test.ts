@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { scenarioFile, scenarioModel, SCENARIOS } from "../src/dev/cardScenarios.ts";
-import { capturesOf, fingerprintOf, parseResults, RESULTS_PATH } from "../src/shaping/results.ts";
+import { capturesOf, fingerprintOf, RESULTS_PATH } from "../src/shaping/results.ts";
+import { parseResults } from "../src/shaping/resultsCodec.ts";
 import { findShapingLine, toolMacroPath } from "../src/shaping/toolMacro.ts";
 
 test("every listed scenario builds a model", () => {

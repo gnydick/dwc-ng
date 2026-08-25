@@ -44,7 +44,30 @@ import type { Fingerprint } from "./engine/fit.ts";
 import type { Candidate } from "./engine/rank.ts";
 import type { ShaperSpec } from "./engine/shapers.ts";
 import type { SweepMatrix } from "./engine/sweep.ts";
-import { emptyResults, type Measurement, parentDirs, parseResults, RESULTS_PATH, serializeResults, type ToolResults } from "./results.ts";
+import { emptyResults, type Measurement, parentDirs, RESULTS_PATH, type ToolResults } from "./results.ts";
+
+/**
+ * The results-file codec, fetched the first time a file is actually read or
+ * written and shared by both callers thereafter.
+ *
+ * DYNAMIC, and this is the one place in the app that may say so. The parser and
+ * the serializer are ~3 KB of hostile-input validation that runs exactly twice
+ * per tool per session — once inside `load`, once inside `save` — and both of
+ * those were already awaiting a round trip to the board. Statically imported
+ * they rode on every cold load instead, for screens that never touch a results
+ * file; see the header of resultsCodec.ts for the measurement that found it.
+ *
+ * A rejected fetch clears the memo rather than being cached forever: a codec
+ * that failed to load once because the connection dropped must not make every
+ * later load fail with a stale rejection.
+ */
+type ResultsCodec = typeof import("./resultsCodec.ts");
+let codec: Promise<ResultsCodec> | null = null;
+const resultsCodec = (): Promise<ResultsCodec> =>
+	(codec ??= import("./resultsCodec.ts").catch((e: unknown) => {
+		codec = null;
+		throw e;
+	}));
 
 // Declared, never exported, and with no runtime value: the brand exists only
 // in the type system, which is exactly where the guarantee is needed.
@@ -172,6 +195,21 @@ export function createShapingStore(conn: ResultsConnector): ShapingStore {
 			const path = RESULTS_PATH(tool);
 			setLoading(true);
 			setError("");
+			// The reader comes FIRST and OUTSIDE the try below, because the two
+			// failures mean opposite things. The catch below means "this tool
+			// has no file", which is the normal state of an unmeasured tool and
+			// is deliberately silent. A reader that did not load means this
+			// deployment is incomplete, which is never normal — folded into the
+			// same catch it would report every tool on the machine as never
+			// measured, over a card that may hold a full session.
+			let parseResults: ResultsCodec["parseResults"];
+			try {
+				({ parseResults } = await resultsCodec());
+			} catch {
+				setError(`${path} could not be read: this build's results-file reader did not load.`);
+				setLoading(false);
+				return;
+			}
 			try {
 				const parsed = parseResults(await conn.download(path));
 				if (parsed === null) {
@@ -208,6 +246,10 @@ export function createShapingStore(conn: ResultsConnector): ShapingStore {
 			for (const dir of parentDirs(path)) {
 				await conn.mkdir(dir).catch(() => undefined);
 			}
+			// No swallow to worry about here: `save` reports failure by
+			// rejecting, so a writer that did not load surfaces to the operator
+			// as a save that did not happen — which is exactly what it is.
+			const { serializeResults } = await resultsCodec();
 			await conn.upload(path, serializeResults(current));
 		},
 
