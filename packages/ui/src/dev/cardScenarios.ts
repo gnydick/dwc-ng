@@ -351,8 +351,7 @@ function emptyResultsFile(tool: number): string {
 	return JSON.stringify({
 		version: RESULTS_VERSION,
 		tool,
-		fingerprint: null,
-		captures: [],
+		measurement: null,
 		sweep: null,
 		candidates: [],
 		verified: [],
@@ -364,8 +363,21 @@ function ring1ResultsFile(tool: number): string {
 	return JSON.stringify({
 		version: RESULTS_VERSION,
 		tool,
-		fingerprint: RING1_FINGERPRINT,
-		captures: RING1_CAPTURES,
+		measurement: {
+			fingerprint: RING1_FINGERPRINT,
+			captures: RING1_CAPTURES,
+			// The session's own conditions, from tools/accel/runs/ring/ring1/ring.json:
+			// 60 mm at 200 mm/s, three repeats each way, shaping off, on a
+			// machine set to 6000 mm/s². Measured like everything else in this
+			// block — the lab is a bench for cards, and a card rendering an
+			// invented provenance beside measured numbers would be exactly the
+			// mixture #57 exists to end.
+			provenance: {
+				kind: "measured",
+				at: "2026-08-22T14:31:07",
+				under: { shaper: null, accelMmPerS2: 6000, speedMmPerS: 200, distMm: 60, repeats: 3 },
+			},
+		},
 		// The prototype ran no speed sweep in this session.
 		sweep: null,
 		candidates: RING1_CANDIDATES,

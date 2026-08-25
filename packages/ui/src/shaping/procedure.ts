@@ -23,6 +23,7 @@ import { parseCapture } from "./engine/capture.ts";
 import { SHAPER_TYPES, type ShaperSpec, type ShaperType } from "./engine/shapers.ts";
 import { DECAY_FLOOR, FIT_DEFAULTS } from "./engine/fit.ts";
 import { hz, mm, seconds, type Hz, type Mm, type MmPerS, type MmPerS2, type Seconds } from "./engine/units.ts";
+import type { Conditions } from "./evidence/evidence.ts";
 import { accelerometerOf, inside, planarPosition, Preconditions, type Point, type Refusal } from "./preconditions.ts";
 import { ACCEL_DIR } from "./captures.ts";
 
@@ -1272,12 +1273,81 @@ function stepsFor(plan: Plan, pre: Preconditions, timed: readonly TimedPass[]): 
  * `pre.priorShaping`, read before any of this went out.
  */
 function shaperStep(plan: Plan, pre: Preconditions): Step {
+	const spec = measuredThrough(plan);
+	return spec === null
+		? { codes: [cmd.shapingOff()], label: "shaper none", expectPosition: pre.position }
+		: { codes: [cmd.inputShaping(spec)], label: `shaper ${spec.type}`, expectPosition: pre.position };
+}
+
+/**
+ * The shaper a plan measures through, as a value: `null` is `M593 P"none"`.
+ *
+ * Split out of `shaperStep` for #57, and the split is the point rather than a
+ * refactor. A run now RECORDS what it measured through so a file can be read
+ * months later, and there were two ways to get that string: ask this switch,
+ * or write a second one beside the recorder. The second is the tripwire — the
+ * same processing step duplicated at a second call site — and its failure mode
+ * is a `tool0.json` labelled "shaping off" beside an `M593 P"ei2"` that was
+ * really sent, which is a worse lie than the silence #57 is about. So the
+ * command and the label come from ONE expression: `shaperStep` builds the
+ * G-code from this, and the runner writes this into `Conditions.shaper`.
+ *
+ * The three answers, each decided rather than inherited (this is #53's switch,
+ * moved, not a new decision):
+ *
+ *  - `ring` — OFF. A baseline is the machine's own modes; a notch tuned to one
+ *    of them erases the very thing being measured.
+ *  - `sweep` — OFF, for the same reason and one more. A sweep reads FORCED
+ *    response across a speed ladder, and a shaper attenuates the drive at its
+ *    own notch, so a shaped sweep draws a black band where the machine's
+ *    loudest mode is — a picture of the shaper, not of the machine, and
+ *    indistinguishable from a band the ladder never excited (#68).
+ *  - `verify` — the CANDIDATE. Verify's whole question is "what is left with
+ *    this shaper live", so it is the one run that must not be measured clean.
+ *
+ * Total with a `never` arm: a plan kind added without an answer to "what does
+ * this measure through" does not compile.
+ */
+/**
+ * The machine state a plan's captures will have been taken under, or null
+ * where the question has no single answer.
+ *
+ * Built from the PLAN rather than from the settings the plan was made out of,
+ * which is the same discipline `plannedCaptureCount` follows and for the same
+ * reason: the operator can edit Settings between arming a run and its second
+ * leg, and what a capture was recorded under is a fact about the move that was
+ * sent, not about what the box says now. `accel` comes from the reading that
+ * `planProcedure` refused or accepted — one `move.travelAcceleration`, the
+ * same number the capture window was computed from.
+ *
+ * A SWEEP returns null, and that is a real answer rather than a gap. A sweep
+ * is one move at eight speeds, so there is no `speedMmPerS` that describes it;
+ * and its captures deliberately never reach `aggregate` (ShapingCards returns
+ * early on `kind === "sweep"`, because a median across speeds is a median of
+ * eight different excitations). Nothing that consumes `Conditions` is reached
+ * from a sweep, so inventing a speed for it would be a number recorded only to
+ * make a type happy — and a plausible wrong number in a provenance is worse
+ * than no provenance, because it can be COMPARED and will agree.
+ */
+export function conditionsOf(plan: Plan, accel: MmPerS2): Conditions | null {
+	const ring = plan.kind === "verify" ? plan.ring : plan.kind === "ring" ? plan : null;
+	if (ring === null) return null;
+	return {
+		shaper: measuredThrough(plan),
+		accelMmPerS2: accel,
+		speedMmPerS: ring.speed,
+		distMm: ring.distMm,
+		repeats: ring.repeats,
+	};
+}
+
+export function measuredThrough(plan: Plan): ShaperSpec | null {
 	switch (plan.kind) {
 		case "verify":
-			return { codes: [cmd.inputShaping(plan.spec)], label: `shaper ${plan.spec.type}`, expectPosition: pre.position };
+			return plan.spec;
 		case "ring":
 		case "sweep":
-			return { codes: [cmd.shapingOff()], label: "shaper none", expectPosition: pre.position };
+			return null;
 		default: {
 			const unhandled: never = plan;
 			throw new Error(`plan kind does not say what shaper it measures through: ${String((unhandled as { kind: unknown }).kind)}`);

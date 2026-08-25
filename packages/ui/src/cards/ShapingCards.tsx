@@ -56,7 +56,7 @@ import { motionBad, motionBusy, motionProgress } from "../shaping/motionRun.ts";
 import { fitCapturesOf, runMotion } from "../shaping/runner.ts";
 import { planarPosition, travelAcceleration } from "../shaping/preconditions.ts";
 import { mapPoint, mapSummary, mapView, type MapView } from "../charts/mapData.ts";
-import { RESULTS_PATH, type ToolResults } from "../shaping/results.ts";
+import { capturesOf, fingerprintOf, RESULTS_PATH, type ToolResults } from "../shaping/results.ts";
 import type { VerifiedCandidate } from "../shaping/store.ts";
 import { DecayChart } from "../charts/DecayChart.tsx";
 import { SweepHeatmap } from "../charts/SweepHeatmap.tsx";
@@ -109,7 +109,7 @@ function progressOf(r: ToolResults): string {
 	if (r.applied !== null) return "applied";
 	if (r.verified.length > 0) return "verified";
 	if (r.candidates.length > 0) return "ranked";
-	if (r.fingerprint !== null) return "measured";
+	if (r.measurement !== null) return "measured";
 	return "not measured";
 }
 
@@ -289,7 +289,7 @@ export function ShapingStatusBody(props: { ctx: CardCtx }) {
 	 *  A memo per body rather than a field on the service: the service is eager
 	 *  and every screen pays for what it drags, while this is only ever read
 	 *  behind the Shaping screen's dynamic import (#72). */
-	const products = createMemo(() => productsFor(selected(), svc.tool(), spec => cmd.inputShaping(spec as never)));
+	const products = createMemo(() => productsFor(selected(), svc.machineNow(), spec => cmd.inputShaping(spec as never)));
 
 	const workflow = createMemo(() => nextStep(inputsFor));
 
@@ -497,8 +497,8 @@ export function ShapingStatusBody(props: { ctx: CardCtx }) {
 											T{tool.number}
 										</button>
 									</td>
-									<td><ModeCell mode={svc.resultsFor(tool.number).fingerprint?.X ?? null} /></td>
-									<td><ModeCell mode={svc.resultsFor(tool.number).fingerprint?.Y ?? null} /></td>
+									<td><ModeCell mode={fingerprintOf(svc.resultsFor(tool.number))?.X ?? null} /></td>
+									<td><ModeCell mode={fingerprintOf(svc.resultsFor(tool.number))?.Y ?? null} /></td>
 									<td class="shp-state">{progressOf(svc.resultsFor(tool.number))}</td>
 								</tr>
 								<Show when={svc.macroFor(tool.number).kind !== "closed"}>
@@ -772,7 +772,7 @@ export function ShapingCaptureBody(props: { ctx: CardCtx }) {
 		// time could have moved on to a different candidate — which would file
 		// a verify of one shaper as a verify of another.
 		const req = request();
-		const baseline = svc.results().fingerprint;
+		const baseline = fingerprintOf(svc.results());
 		void (async () => {
 			const result = await runMotion(req, {
 				conn: props.ctx.connector,
@@ -1288,7 +1288,7 @@ export function ShapingDecayBody(props: { ctx: CardCtx }) {
 	const allRows = createMemo((): readonly DecayRow[] => {
 		switch (source()) {
 			case "tool":
-				return svc.results().captures.map((c): DecayRow => {
+				return capturesOf(svc.results()).map((c): DecayRow => {
 					const ref = boardRef(c.file);
 					return {
 						key: ref.key,
@@ -1371,7 +1371,7 @@ export function ShapingDecayBody(props: { ctx: CardCtx }) {
 	const rows = (): readonly DecayRow[] => browse().shown;
 
 	const counts = createMemo(() => ({
-		tool: svc.results().captures.length,
+		tool: capturesOf(svc.results()).length,
 		board: svc.board().length,
 		imported: svc.imports().length,
 	}));
@@ -2004,7 +2004,7 @@ export function ShapingSweepBody(props: { ctx: CardCtx }) {
 	 *  so choosing one here would be a guess — and the labels say which is
 	 *  which, so marking both costs nothing. */
 	const markers = createMemo((): readonly SweepMarker[] => {
-		const fp = svc.results().fingerprint;
+		const fp = fingerprintOf(svc.results());
 		return fp === null ? [] : fingerprintMarkers([{ axis: "X", hz: fp.X?.f ?? null }, { axis: "Y", hz: fp.Y?.f ?? null }]);
 	});
 
@@ -2128,7 +2128,7 @@ export function ShapingSweepBody(props: { ctx: CardCtx }) {
 			{/* What this sweep cannot say, beside the numbers it can. The
 			    coverage finding belongs HERE and not only on the status card:
 			    the operator reading a black band is looking at this chart. */}
-			<CardCaveat evidence={productsFor(svc.results(), svc.tool(), sp => cmd.inputShaping(sp as never)).sweep} />
+			<CardCaveat evidence={productsFor(svc.results(), svc.machineNow(), sp => cmd.inputShaping(sp as never)).sweep} />
 			<p class="shp-sweep-note" classList={{ "shp-warn-inline": svc.sweepState().kind === "failed" }}>
 				<Show when={arming()} fallback={sweepStateText(svc.sweepState())}>
 					{a => <>Confirm: write T{a().tool}&apos;s results, this sweep included, to {RESULTS_PATH(a().tool)}. Escape cancels.</>}
@@ -2235,7 +2235,7 @@ export function ShapingCustomBody(props: { ctx: CardCtx }) {
 	/** null when either axis is unmeasured, or when the convolution does not
 	 *  make a legal train — a card must not be able to throw its way off screen. */
 	const composed = createMemo((): { candidate: Candidate; spec: Extract<ShaperSpec, { type: "custom" }> } | null => {
-		const fp: Fingerprint | null = svc.results().fingerprint;
+		const fp: Fingerprint | null = fingerprintOf(svc.results());
 		if (fp === null || fp.X === null || fp.Y === null) return null;
 		try {
 			const spec = customSpecOf(convolve(zv(fp.X.f, fp.X.zeta), zv(fp.Y.f, fp.Y.zeta)));

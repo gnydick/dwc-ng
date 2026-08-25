@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { scenarioFile, scenarioModel, SCENARIOS } from "../src/dev/cardScenarios.ts";
-import { parseResults, RESULTS_PATH } from "../src/shaping/results.ts";
+import { capturesOf, fingerprintOf, parseResults, RESULTS_PATH } from "../src/shaping/results.ts";
 import { findShapingLine, toolMacroPath } from "../src/shaping/toolMacro.ts";
 
 test("every listed scenario builds a model", () => {
@@ -66,9 +66,9 @@ test("shaping-measured carries the prototype session, artefact and all", () => {
 	const r = parseResults(scenarioFile("shaping-measured", RESULTS_PATH(0))!);
 	assert.ok(r !== null);
 	// The prototype's ring1 fingerprint (tools/accel/runs/ring/ring1).
-	assert.ok(Math.abs(r!.fingerprint!.X!.f - 18.1) < 0.1, `X ${r!.fingerprint!.X!.f}`);
-	assert.ok(Math.abs(r!.fingerprint!.Y!.f - 51.6) < 0.1, `Y ${r!.fingerprint!.Y!.f}`);
-	assert.equal(r!.captures.length, 12, "six stops per axis");
+	assert.ok(Math.abs(fingerprintOf(r!)!.X!.f - 18.1) < 0.1, `X ${fingerprintOf(r!)!.X!.f}`);
+	assert.ok(Math.abs(fingerprintOf(r!)!.Y!.f - 51.6) < 0.1, `Y ${fingerprintOf(r!)!.Y!.f}`);
+	assert.equal(capturesOf(r!).length, 12, "six stops per axis");
 	assert.ok(r!.candidates.length >= 6, "one candidate per shaper type at least");
 	// The campaign's whole point: a shaper the model rated best measured worse,
 	// because it excited a mode the unshaped machine does not have.
@@ -79,7 +79,7 @@ test("shaping-measured carries the prototype session, artefact and all", () => {
 	}
 	assert.ok(artefacted[0]!.measured.X! > 1, "and it left MORE ring on X than no shaper at all");
 	// T0 is measured; the other three tools are present and empty.
-	assert.equal(parseResults(scenarioFile("shaping-measured", RESULTS_PATH(1))!)!.fingerprint, null);
+	assert.equal(parseResults(scenarioFile("shaping-measured", RESULTS_PATH(1))!)!.measurement, null);
 });
 
 test("shaping-measured serves a tpost macro whose live M593 the reader finds", () => {

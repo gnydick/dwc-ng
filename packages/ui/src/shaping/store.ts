@@ -44,7 +44,7 @@ import type { Fingerprint } from "./engine/fit.ts";
 import type { Candidate } from "./engine/rank.ts";
 import type { ShaperSpec } from "./engine/shapers.ts";
 import type { SweepMatrix } from "./engine/sweep.ts";
-import { type CaptureRecord, emptyResults, parentDirs, parseResults, RESULTS_PATH, serializeResults, type ToolResults } from "./results.ts";
+import { emptyResults, type Measurement, parentDirs, parseResults, RESULTS_PATH, serializeResults, type ToolResults } from "./results.ts";
 
 // Declared, never exported, and with no runtime value: the brand exists only
 // in the type system, which is exactly where the guarantee is needed.
@@ -110,20 +110,24 @@ export type ShapingStore = {
 	readonly error: Accessor<string>;
 	load(tool: number): Promise<void>;
 	save(tool: number): Promise<void>;
-	setFingerprint(tool: number, fingerprint: Fingerprint | null): void;
 	/**
-	 * A whole measurement in one act: the fingerprint and the captures it was
-	 * aggregated from, replacing whatever the tool had.
+	 * A whole measurement in one act: the fingerprint, the captures it was
+	 * aggregated from, and where they came from — replacing whatever the tool
+	 * had.
 	 *
-	 * One call rather than `setFingerprint` plus N `addCapture`s, because those
-	 * two are not independent — a fingerprint is the aggregate OF those
-	 * captures, and any moment in which the store holds one without the other
-	 * is a state where the card would show a frequency that nothing on screen
-	 * accounts for. Captures REPLACE rather than append: a fingerprint run is
-	 * the tool's measurement, not an addition to a previous one.
+	 * ONE argument, and it is the whole point rather than an ergonomic. This
+	 * used to sit beside `setFingerprint(tool, fp | null)` and
+	 * `addCapture(tool, one)`, which between them could put a fingerprint in
+	 * the store with nobody's captures under it, captures under no fingerprint,
+	 * and — once #57 gave a measurement an origin — numbers with no origin at
+	 * all. Neither had a caller outside the tests. They are gone, and
+	 * `Measurement` being one value is what makes their absence permanent: this
+	 * is the only door, and it does not open without a provenance.
+	 *
+	 * Captures REPLACE rather than append: a fingerprint run is the tool's
+	 * measurement, not an addition to a previous one.
 	 */
-	setMeasurement(tool: number, fingerprint: Fingerprint, captures: readonly CaptureRecord[]): void;
-	addCapture(tool: number, capture: CaptureRecord): void;
+	setMeasurement(tool: number, measurement: Measurement): void;
 	setSweep(tool: number, sweep: SweepMatrix | null): void;
 	setCandidates(tool: number, candidates: readonly Candidate[]): void;
 	addVerified(tool: number, verified: VerifiedCandidate): void;
@@ -207,10 +211,7 @@ export function createShapingStore(conn: ResultsConnector): ShapingStore {
 			await conn.upload(path, serializeResults(current));
 		},
 
-		setFingerprint: (tool, fingerprint): void => {
-			patch(tool, () => ({ fingerprint }));
-		},
-		setMeasurement: (tool, fingerprint, captures): void => {
+		setMeasurement: (tool, measurement): void => {
 			// Candidates and verified go with it, and that is the honest
 			// behaviour rather than tidiness. A Candidate is a spec SCORED
 			// against a fingerprint and a VerifiedCandidate is a comparison
@@ -218,10 +219,7 @@ export function createShapingStore(conn: ResultsConnector): ShapingStore {
 			// silently re-interpret it against a baseline it was never measured
 			// with. `applied` stays: it records what is on the machine, which a
 			// new measurement does not change.
-			patch(tool, () => ({ fingerprint, captures: [...captures], candidates: [], verified: [] }));
-		},
-		addCapture: (tool, capture): void => {
-			patch(tool, (c) => ({ captures: [...c.captures, capture] }));
+			patch(tool, () => ({ measurement, candidates: [], verified: [] }));
 		},
 		setSweep: (tool, sweep): void => {
 			patch(tool, () => ({ sweep }));

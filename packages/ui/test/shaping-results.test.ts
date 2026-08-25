@@ -18,6 +18,7 @@ import { aggregate, type Fingerprint } from "../src/shaping/engine/fit.ts";
 import { hz, mmPerS, seconds } from "../src/shaping/engine/units.ts";
 import type { SweepMatrix } from "../src/shaping/engine/sweep.ts";
 import { modeForTest, prototypeFingerprint } from "./helpers/shaping.ts";
+import { measuredUnder } from "./helpers/shaping.ts";
 
 function sweepFixture(): SweepMatrix {
 	return {
@@ -40,11 +41,14 @@ function fullResults(tool = 0): ToolResults {
 	const custom = candidateFor({ type: "custom", H: [0.335, 0.2641, 0.2242], T: [seconds(0.00972), seconds(0.0278), seconds(0.03752)] }, fp);
 	return {
 		tool,
-		fingerprint: fp,
-		captures: [
-			{ file: "0:/sys/accelerometer/ring_Xp0.csv", axis: "X", dir: "+", rep: 0, fit: fp.X!, tStop: seconds(0.312) },
-			{ file: "0:/sys/accelerometer/ring_Xm0.csv", axis: "X", dir: "-", rep: 0, fit: { reason: "below-floor" }, tStop: null },
-		],
+		measurement: {
+			fingerprint: fp,
+			captures: [
+				{ file: "0:/sys/accelerometer/ring_Xp0.csv", axis: "X", dir: "+", rep: 0, fit: fp.X!, tStop: seconds(0.312) },
+				{ file: "0:/sys/accelerometer/ring_Xm0.csv", axis: "X", dir: "-", rep: 0, fit: { reason: "below-floor" }, tStop: null },
+			],
+			provenance: measuredUnder(),
+		},
 		sweep: sweepFixture(),
 		candidates: [best, custom],
 		verified: [verifyAnalysis(fp, best, verifyFp)],
@@ -77,15 +81,27 @@ test("malformed JSON is null, never a throw", () => {
 
 test("well-formed JSON with mis-typed fields is refused whole", () => {
 	const good = JSON.parse(serializeResults(fullResults(0))) as Record<string, unknown>;
+	const measurement = good.measurement as Record<string, unknown>;
+	const conditions = (measurement.provenance as { under: Record<string, unknown> }).under;
 	const broken: Array<[string, unknown]> = [
 		["tool", "0"],
 		["tool", -1],
 		["tool", 1.5],
-		["captures", "many"],
-		["captures", [{ file: 7, axis: "X", dir: "+", rep: 0, fit: { reason: "below-floor" }, tStop: null }]],
-		["captures", [{ file: "a.csv", axis: "Z", dir: "+", rep: 0, fit: { reason: "below-floor" }, tStop: null }]],
-		["fingerprint", { X: { f: "eighteen", zeta: 0.1, peakG: 0.05, cyclesFit: 3 }, Y: null, n: { X: 1, Y: 0 }, spreadHz: { X: 0, Y: 0 } }],
-		["fingerprint", { X: { f: 18, zeta: 9, peakG: 0.05, cyclesFit: 3 }, Y: null, n: { X: 1, Y: 0 }, spreadHz: { X: 0, Y: 0 } }],
+		["measurement", "a measurement"],
+		["measurement", { ...measurement, captures: "many" }],
+		["measurement", { ...measurement, captures: [{ file: 7, axis: "X", dir: "+", rep: 0, fit: { reason: "below-floor" }, tStop: null }] }],
+		["measurement", { ...measurement, captures: [{ file: "a.csv", axis: "Z", dir: "+", rep: 0, fit: { reason: "below-floor" }, tStop: null }] }],
+		["measurement", { ...measurement, fingerprint: { X: { f: "eighteen", zeta: 0.1, peakG: 0.05, cyclesFit: 3 }, Y: null, n: { X: 1, Y: 0 }, spreadHz: { X: 0, Y: 0 } } }],
+		["measurement", { ...measurement, fingerprint: { X: { f: 18, zeta: 9, peakG: 0.05, cyclesFit: 3 }, Y: null, n: { X: 1, Y: 0 }, spreadHz: { X: 0, Y: 0 } } }],
+		// A measurement with no origin at all is the state #57 exists to make
+		// unwritable; a file asserting one is refused rather than downgraded.
+		["measurement", { fingerprint: measurement.fingerprint, captures: measurement.captures }],
+		["measurement", { ...measurement, provenance: { kind: "guessed", why: "somebody typed it" } }],
+		["measurement", { ...measurement, provenance: { kind: "measured", at: "2026-08-23T09:14:02" } }],
+		["measurement", { ...measurement, provenance: { kind: "measured", at: "2026-08-23T09:14:02", under: { ...conditions, accelMmPerS2: 0 } } }],
+		["measurement", { ...measurement, provenance: { kind: "measured", at: "2026-08-23T09:14:02", under: { ...conditions, repeats: 0 } } }],
+		["measurement", { ...measurement, provenance: { kind: "measured", at: "2026-08-23T09:14:02", under: { ...conditions, shaper: { type: "ei9", F: 52, S: 0.1 } } } }],
+		["measurement", { ...measurement, provenance: { kind: "assembled", n: -1 } }],
 		["sweep", { speeds: [100], freqs: [0, 1], amps: [0.1], fullStepHz: [500], maxHz: 1 }],
 		["candidates", [{ type: "ei9", F: 52, S: 0.075 }]],
 		["candidates", [{ type: "custom", H: [0.9, 0.9], T: [0.01, 0.02] }]],
@@ -170,8 +186,7 @@ test("save writes RESULTS_PATH and load brings the same results back", async () 
 	const conn = fakeConn();
 	const store = createShapingStore(conn);
 	const results = fullResults(1);
-	store.setFingerprint(1, results.fingerprint);
-	for (const c of results.captures) store.addCapture(1, c);
+	store.setMeasurement(1, results.measurement!);
 	store.setSweep(1, results.sweep);
 	store.setCandidates(1, results.candidates);
 	for (const v of results.verified) store.addVerified(1, v);
@@ -242,7 +257,6 @@ test("save creates the directory chain the results file needs", async () => {
 	const conn = fakeConn();
 	assert.equal(conn.dirs.has("0:/sys/dwc-ng/shaping"), false, "the board starts without it");
 	const store = createShapingStore(conn);
-	store.setFingerprint(0, null);
 	await store.save(0);
 	assert.ok(conn.dirs.has("0:/sys/dwc-ng"), [...conn.dirs].join(", "));
 	assert.ok(conn.dirs.has("0:/sys/dwc-ng/shaping"), [...conn.dirs].join(", "));
@@ -266,15 +280,14 @@ test("parentDirs names every directory between the volume and the file", () => {
 test("setMeasurement replaces the captures and drops what was scored against the old fingerprint", () => {
 	const store = createShapingStore(fakeConn());
 	const before = fullResults(0);
-	store.setFingerprint(0, before.fingerprint);
-	for (const c of before.captures) store.addCapture(0, c);
+	store.setMeasurement(0, before.measurement!);
 	store.setCandidates(0, before.candidates);
 	store.setApplied(0, before.applied);
 	assert.ok(store.results[0]!.candidates.length > 0);
 
 	const after = fullResults(0);
-	store.setMeasurement(0, after.fingerprint!, [after.captures[0]!]);
-	assert.equal(store.results[0]!.captures.length, 1, "captures replaced, not appended");
+	store.setMeasurement(0, { ...after.measurement!, captures: [after.measurement!.captures[0]!] });
+	assert.equal(store.results[0]!.measurement!.captures.length, 1, "captures replaced, not appended");
 	assert.deepEqual(store.results[0]!.candidates, [], "a ranking scored against the old baseline is gone");
 	assert.deepEqual(store.results[0]!.verified, []);
 	assert.deepEqual(store.results[0]!.applied, before.applied, "what is on the machine is unchanged by a re-measure");
