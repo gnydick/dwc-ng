@@ -53,8 +53,10 @@ test("mis-typed iterated fields are replaced with safe defaults", () => {
 });
 
 test("unknown keys pass through untouched — the model stays open", () => {
-	const gated = conformModelKey("network", { interfaces: [{ ip: "10.0.0.5" }] });
-	assert.deepEqual(gated, { ok: true, value: { interfaces: [{ ip: "10.0.0.5" }] } });
+	// network is gated as of the network-is-gated test below; use a key that
+	// stays genuinely unknown so this test keeps demonstrating the open model.
+	const gated = conformModelKey("scanner", { status: "idle" });
+	assert.deepEqual(gated, { ok: true, value: { status: "idle" } });
 });
 
 test("good subtrees pass through with served values intact", () => {
@@ -232,4 +234,35 @@ test("a mis-typed accelerometer keeps the board and defaults its numbers", () =>
 		// 20 is RRF's own default orientation (reference/objectmodel/src/boards/index.ts:8).
 		assert.deepEqual(b.accelerometer, { orientation: 20, points: 0, runs: 3 });
 	}
+});
+
+test("network is gated: interfaces is always an array, entries are objects or null", () => {
+	// The real capture's shape (duet3-real-2026-07-15/model/verbose-network.json).
+	const ok = conformModelKey("network", {
+		hostname: "duet3",
+		name: "Duet 3",
+		interfaces: [{ mac: "2C:CF:67:CF:F5:50", type: "ethernet", state: "active" }],
+	});
+	assert.equal(ok.ok, true);
+	assert.deepEqual((ok as { value: { interfaces: unknown[] } }).value.interfaces, [
+		{ mac: "2C:CF:67:CF:F5:50", type: "ethernet", state: "active" },
+	]);
+
+	// A board that serves network WITHOUT interfaces must not be rejected —
+	// conform, don't refuse (the layerStats lesson). It gets an empty list.
+	const sparse = conformModelKey("network", { hostname: "duet3" });
+	assert.equal(sparse.ok, true);
+	assert.deepEqual((sparse as { value: { interfaces: unknown[] } }).value.interfaces, []);
+
+	// interfaces present but not an array is the shape identity would trip on.
+	const bad = conformModelKey("network", { interfaces: { 0: { mac: "x" } } });
+	assert.deepEqual((bad as { value: { interfaces: unknown[] } }).value.interfaces, []);
+
+	// A non-object network key is unusable: reject, keep the last good subtree.
+	assert.deepEqual(conformModelKey("network", "garbage"), { ok: false });
+});
+
+test("a non-object interface entry becomes null, never a string read for .mac", () => {
+	const out = conformModelKey("network", { interfaces: ["nope", { mac: null }] });
+	assert.deepEqual((out as { value: { interfaces: unknown[] } }).value.interfaces, [null, { mac: null }]);
 });
