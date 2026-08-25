@@ -266,7 +266,7 @@ export interface NetworkInterface {
 	readonly actualIP?: string | null;
 }
 
-/** reference/objectmodel/src/network/Network.ts */
+/** reference/objectmodel/src/network/index.ts (Network) */
 export interface Network {
 	readonly interfaces: (NetworkInterface | null)[];
 	/** M550 — an operator renames this. Display, never a key. */
