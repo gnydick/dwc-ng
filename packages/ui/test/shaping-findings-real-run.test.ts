@@ -3,9 +3,12 @@
  * wrong conclusion, and require them to say the thing that was worked out by
  * hand that night.
  *
- * These are the real files, referenced in place rather than copied — #53 also
- * names this directory as its regression fixture home, and two copies of 1.3 MB
- * of captures is two things that can drift.
+ * These are the real files, and there is exactly one copy of them: they live in
+ * this package's fixture tree beside ring1 (`test/fixtures/shaping/`), tracked.
+ * They used to be read in place out of `tools/accel/runs/`, which is the capture
+ * tool's output tree and is gitignored, so this gate — the one that exists to
+ * stop the 2026-08-23 wrong conclusion coming back — could only run on the
+ * machine that took them (GIT_80).
  *
  * Note what is and is not asserted. The ARITHMETIC findings (which band, which
  * speed) are exact: they do not go through the fitter and cannot move. The
@@ -26,7 +29,7 @@ import { mmPerS, seconds } from "../src/shaping/engine/units.ts";
 import type { CaptureRecord } from "../src/shaping/results.ts";
 
 const run = (n: string): string =>
-	readFileSync(new URL(`../../../tools/accel/runs/ui-first-run-2026-08-23/${n}`, import.meta.url), "utf8");
+	readFileSync(new URL(`./fixtures/shaping/ui-first-run-2026-08-23/${n}`, import.meta.url), "utf8");
 
 const LADDER = [25, 34, 45, 61, 82, 110, 149, 200];
 /** Gabe's X: 80 steps/mm / 16x microstepping (shaping/fullStep.ts). */

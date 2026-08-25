@@ -20,7 +20,7 @@ import { hz, seconds, type Hz, type Seconds } from "./units.ts";
  * for begins: the gap between `M956` executing and the `G1` behind it starting.
  *
  * MEASURED, not assumed. Across the first real UI run
- * (tools/accel/runs/ui-first-run-2026-08-23) the first sample whose |X| leaves
+ * (test/fixtures/shaping/ui-first-run-2026-08-23) the first sample whose |X| leaves
  * the noise floor sits at 0.090 s (t0_ring_Xp0), 0.086 s (t0_sweep_X_200) and
  * 0.105 s (t0_sweep_X_25) into the record; re-measured across all sixteen sweep
  * captures on 2026-08-24 it spans 0.072-0.105 s at every detector setting that

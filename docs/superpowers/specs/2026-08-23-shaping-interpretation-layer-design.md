@@ -243,10 +243,17 @@ against this spec.
 ## Stress test
 
 The architecture is to be judged by running it against the data that produced the
-wrong conclusion, all of which is already in the repo.
+wrong conclusion.
 
-`tools/accel/runs/ui-first-run-2026-08-23/` — 36 real captures from the first
-hardware run through the UI:
+**Corrected 2026-08-24 (GIT_80).** This section said that data was "already in the
+repo". It was not: it sat in `tools/accel/runs/`, which `tools/accel/.gitignore`
+ignores, so the gate below ran only on the machine that captured it. The 36 files
+now live at `packages/ui/test/fixtures/shaping/ui-first-run-2026-08-23/`, tracked,
+and `packages/ui/test/fixtures-are-tracked.test.ts` fails if a test ever again reads
+data a clone would not have.
+
+`packages/ui/test/fixtures/shaping/ui-first-run-2026-08-23/` — 36 real captures from
+the first hardware run through the UI:
 
 - `t0_sweep_X_{25,34,45,61,82,110,149,200}.csv` — the 8-speed ladder. At 5 full
   steps/mm that is a 125–1000 Hz forcing band, and the modes are at 38.7/41.5 Hz.
