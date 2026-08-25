@@ -37,7 +37,7 @@ export type SweepMatrix = {
  * transient — at exactly the speeds whose forcing frequencies the chart is read
  * for, and for five of the eight rows of the standard ladder.
  *
- * Measured on tools/accel/runs/ui-first-run-2026-08-23 (60 mm, 6000 mm/s^2,
+ * Measured on test/fixtures/shaping/ui-first-run-2026-08-23 (60 mm, 6000 mm/s^2,
  * first motion 0.090-0.108 s across the ladder):
  *
  *   speed   old window     first motion   real cruise

@@ -1,1 +1,9 @@
+# This is the capture tool's output tree. Captures are large, numerous, and
+# rewritten by every run, so they are not committed.
+#
+# A capture a TEST reads is therefore not allowed to live here: it would be
+# invisible to every clone but the one that took it, which is exactly how the
+# shaping regression gate came to be green on one machine only (GIT_80).
+# Test fixtures live in packages/ui/test/fixtures/, tracked, where this file
+# cannot reach them and the capture tool does not write.
 runs/**/*.csv

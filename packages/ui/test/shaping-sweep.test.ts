@@ -26,11 +26,11 @@ test("cruiseWindow stays inside the record for a move longer than the capture", 
 });
 
 /**
- * The real ladder, referenced in place — the same files and the same reason as
- * shaping-findings-real-run.test.ts: two copies of 1.3 MB of captures is two
- * things that can drift.
+ * The real ladder — the same files, and the same single copy, as
+ * shaping-findings-real-run.test.ts reads. Tracked in this package's fixture
+ * tree; see that file for why they are no longer read out of tools/accel/runs.
  */
-const run = (n: string): string => readFileSync(new URL(`../../../tools/accel/runs/ui-first-run-2026-08-23/${n}`, import.meta.url), "utf8");
+const run = (n: string): string => readFileSync(new URL(`./fixtures/shaping/ui-first-run-2026-08-23/${n}`, import.meta.url), "utf8");
 
 const LADDER = [25, 34, 45, 61, 82, 110, 149, 200];
 /** `shaping.defaults.distMm` (config/types.ts) — what the run was taken with. */

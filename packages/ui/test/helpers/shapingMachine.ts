@@ -21,7 +21,7 @@ export const M955_REPLY = "Accelerometer 20:0 type LIS3DH with orientation 41 sa
 
 /** The board's reported accelerometer rate, minted the ONLY way one can be:
  *  through the parser, off the sentence M955 P answers with. The number is the
- *  one Gabe's toolboard reports (tools/accel/runs/ui-first-run-2026-08-23:
+ *  one Gabe's toolboard reports (test/fixtures/shaping/ui-first-run-2026-08-23:
  *  "Rate 1375"), so the sample counts these tests assert are the counts that
  *  machine would be asked for. */
 export const RATE: SampleRate = (() => {
