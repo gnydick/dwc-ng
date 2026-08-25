@@ -19,7 +19,7 @@ import type { ConnectorReads, ConnectorWrites, GcodeCommand } from "@dwc-ng/conn
 import { cmd, type AccelAddr } from "../control/commands.ts";
 import type { Envelope, ShapingConfig } from "../config/types.ts";
 import type { ObjectModel, Shaping } from "../om/types.ts";
-import { parseCapture } from "./engine/capture.ts";
+import { LEAD_IN_S, parseCapture } from "./engine/capture.ts";
 import { SHAPER_TYPES, type ShaperSpec, type ShaperType } from "./engine/shapers.ts";
 import { DECAY_FLOOR, FIT_DEFAULTS } from "./engine/fit.ts";
 import { hz, mm, seconds, type Hz, type Mm, type MmPerS, type MmPerS2, type Seconds } from "./engine/units.ts";
@@ -37,8 +37,34 @@ const STALE_MS = 2000;
  *  shown (18 Hz at zeta 0.127, tau = 70 ms). */
 const SETTLE_MS = 500;
 
-/** M956's A parameter: arm at the start of the next move's DECELERATION, which
- *  is the instant the ring-down begins. */
+/**
+ * M956's A parameter, the value the wiki labels "start at the deceleration
+ * segment of the next move" (reference/duet-gcode.md, M956).
+ *
+ * THE NAME IS THE REQUEST, NOT THE RECORD. RRF 3.6.3 does not do what that
+ * label says: for A2 it delivers the WHOLE move, exactly as for A1 - the arm,
+ * the acceleration ramp, the cruise, the deceleration and the ring-down, all in
+ * one file. Observed on the board 2026-08-22 and relied on in two places since:
+ * `engine/capture.ts:110` locates the stop from the DATA because the trigger
+ * time cannot, and mock-duet reproduces the same behaviour deliberately
+ * (packages/mock-duet/src/accelerometer.ts:601-604). The whole sweep analysis
+ * exists only because the cruise is in these files.
+ *
+ * The comment that used to sit here said the record begins "the instant the
+ * ring-down begins", repeating the wiki instead of the firmware. That sentence
+ * is what produced issue #55 - a ticket to go and find the missing cruise in
+ * captures that had it all along - so it is worth being blunt: this constant
+ * names an argument we send, and the only thing it says about the file that
+ * comes back is that its first {@link LEAD_IN_S} seconds are the wait before
+ * the carriage moves.
+ *
+ * The identifier carries the same trap the sentence did, since "TRIGGER ON
+ * DECELERATION" reads as a claim about where the record starts. Renaming it is
+ * held back from this change for one reason and no other: its single use site
+ * was under concurrent edit when this was written (#78, GIT_82). Value and
+ * behaviour are unchanged either way - A2 is what the run has always sent, and
+ * what every capture in tools/accel/runs was taken with.
+ */
 const TRIGGER_ON_DECELERATION = 2;
 
 /** Where RRF puts an M956 capture: the F parameter is a bare file name and the
@@ -310,6 +336,19 @@ export class Procedure {
 	 *      Making it an argument forces the caller to say WHICH reading it
 	 *      means, and a run has exactly one to give: the one from before it
 	 *      touched anything.
+	 * @note the SHAPER is the whole of what this puts back, and the other thing
+	 *      a run touches — the accelerometer — is deliberately absent rather
+	 *      than forgotten (#43). RRF has no command that cancels an armed M956
+	 *      (reference/duet-gcode.md, M956), so there is nothing this array could
+	 *      hold that would disarm one; a restore that "covers everything the run
+	 *      touched" cannot be written for the accelerometer, only for the
+	 *      shaper. What covers the accelerometer instead is `cmd.captureMove`:
+	 *      an arm and the move that consumes it are ONE command and one request,
+	 *      so a run cannot end with a pending capture on the board and there is
+	 *      no state left for a `finally` to undo. That is the stronger of the
+	 *      two mechanisms and the reason the weaker one is not attempted here —
+	 *      a cleanup built on a guess about what a second M956 does to a pending
+	 *      one would be a remediation nobody had verified, on a machine.
 	 */
 	readonly #restore: readonly GcodeCommand[];
 
@@ -522,7 +561,7 @@ const timeable = (dist: number, speed: number): boolean => Number.isFinite(Math.
  * very motion, so a plan with a measurable move has a positive sample count by
  * construction. What a derived count can still be is too LARGE for the board,
  * and that is `capture-too-long` — decided in `plan`, where the machine's
- * acceleration and the board's rate are in hand. `cmd.accelCapture` still
+ * acceleration and the board's rate are in hand. `cmd.captureMove` still
  * throws on a bad count, which is right for a builder; between the two, nothing
  * a caller of `plan` can ask for reaches the throw.
  */
@@ -718,26 +757,6 @@ export type RingMode = {
 	readonly f: Hz;
 	readonly zeta: number;
 };
-
-/**
- * How long the accelerometer is running before the move it was armed for
- * begins: the gap between M956 being executed and the G1 actually starting.
- *
- * MEASURED, not assumed. Across the first real UI run
- * (tools/accel/runs/ui-first-run-2026-08-23) the first sample whose |X| leaves
- * the noise floor sits at 0.090 s (t0_ring_Xp0), 0.086 s (t0_sweep_X_200) and
- * 0.105 s (t0_sweep_X_25) into the record. 0.12 s is the largest of those with
- * margin, and it is deliberately an OVER-estimate: a lead-in longer than the
- * truth only adds samples to the head of the record, where there is nothing to
- * lose. Under-estimating it would cut the tail, which is the part the fit reads.
- *
- * That the record begins at the move at all is a firmware observation rather
- * than a reading of the docs: M956 A2 documents arming at the start of
- * DECELERATION, and RRF 3.6.3 was seen delivering the whole move for A2 exactly
- * as for A1 (see shaping/engine/capture.ts and mock-duet's executeM956). The
- * arithmetic here follows the firmware, not the wiki.
- */
-const LEAD_IN_S = 0.12;
 
 /**
  * Margin on the computed ring-down before it is recorded.
@@ -1188,13 +1207,26 @@ export function plannedSegments(plans: readonly Plan[], origin: Point): readonly
 const samePoint = (a: Point, b: Point): boolean => a.x === b.x && a.y === b.y;
 
 /**
- * One capture: position, settle, arm, excite, hold still for the recording.
+ * One capture: position, settle, arm-and-excite, hold still for the recording.
  *
  * The order is the contract — the arm has to be queued before the move that
  * triggers it, and the wait has to be between the positioning move and the
  * arm, or the capture records the wrong ring. Both moves run at the plan's
  * speed; there is no separate travel feed to be a second number that means
  * "how fast the lab moves".
+ *
+ * SEVEN codes, not eight, and the pair that got fused is the point (#43). The
+ * arm and the move it records are ONE `cmd.captureMove` — one entry in this
+ * array, one `sendCode`, one request on the wire. They used to be two, and
+ * `sendAll` stops at the first refusal, so an accepted `M956` followed by a
+ * rejected `G1` ended the run with the board still armed: RRF documents no way
+ * to cancel a pending capture, an A2 request is consumed by the next move and
+ * by nothing else, and so the next move ANYONE made — a jog, a homing macro,
+ * the start of a print — was written into this pass's file. Nothing in the
+ * `finally` could have undone that, because there is no command to undo it
+ * with; the only fix available is to make the gap unreachable, which is what
+ * fusing does. See `cmd.captureMove` for the invariant and its firmware
+ * citation.
  *
  * The M956's sample count and the G4 that follows it come from ONE
  * `CaptureTiming`, and so do the budget the run loop waits for the file in and
@@ -1210,8 +1242,7 @@ function captureStep(pass: Pass, addr: AccelAddr, timing: CaptureTiming): Step {
 			cmd.moveTo(xy(pass.from), feed),
 			cmd.waitMoves(),
 			cmd.dwell(SETTLE_MS),
-			cmd.accelCapture(addr, timing.samples, TRIGGER_ON_DECELERATION, pass.file),
-			cmd.moveTo(xy(pass.to), feed),
+			cmd.captureMove(addr, timing.samples, TRIGGER_ON_DECELERATION, pass.file, xy(pass.to), feed),
 			cmd.waitMoves(),
 			cmd.dwell(timing.dwellMs),
 		],

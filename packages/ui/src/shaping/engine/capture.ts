@@ -15,6 +15,36 @@
 
 import { hz, seconds, type Hz, type Seconds } from "./units.ts";
 
+/**
+ * How long the accelerometer is already running before the move it was armed
+ * for begins: the gap between `M956` executing and the `G1` behind it starting.
+ *
+ * MEASURED, not assumed. Across the first real UI run
+ * (tools/accel/runs/ui-first-run-2026-08-23) the first sample whose |X| leaves
+ * the noise floor sits at 0.090 s (t0_ring_Xp0), 0.086 s (t0_sweep_X_200) and
+ * 0.105 s (t0_sweep_X_25) into the record; re-measured across all sixteen sweep
+ * captures on 2026-08-24 it spans 0.072-0.105 s at every detector setting that
+ * finds it at all. 0.12 s is the largest of those with margin, and it is
+ * deliberately an OVER-estimate — which means it is safe in ONE direction only,
+ * and each reader below has to say which direction it is using.
+ *
+ * TWO READERS, ONE NUMBER, and they must not be allowed to disagree. It sizes
+ * the recording (`shaping/procedure.ts` `captureWindow`), where longer than the
+ * truth only adds samples to the head and under-estimating would cut the tail
+ * the fit reads. And it locates the move inside a finished record
+ * (`./sweep.ts` `cruiseWindow`), where longer than the truth pushes the cruise
+ * window's head further from the accel ramp. Written down twice, the two could
+ * drift; this file is where the number lives because the lead-in is a property
+ * of how `M956` records, which is what this file is about.
+ *
+ * That the record begins at the move at all is a firmware observation rather
+ * than a reading of the docs: `M956 A2` documents arming at the start of
+ * DECELERATION, and RRF 3.6.3 was seen delivering the whole move for A2 exactly
+ * as for A1 (see {@link detectStop} below and mock-duet's `executeM956`). The
+ * arithmetic here follows the firmware, not the wiki.
+ */
+export const LEAD_IN_S = 0.12;
+
 export type ParseError =
 	| { readonly kind: "no-trailer" }
 	| { readonly kind: "overflows"; readonly count: number }

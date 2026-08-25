@@ -235,7 +235,7 @@ test("a Y ring names its files on Y", () => {
 	assert.deepEqual(r.proc.steps.map((s) => s.expectFile), [undefined, "probe_Yp0.csv", "probe_Ym0.csv"]);
 });
 
-test("every capture step puts exactly [G90, G1 start, M400, G4, M956, G1 end, M400, G4] on the wire", async () => {
+test("every capture step puts exactly [G90, G1 start, M400, G4, M956+G1 end, M400, G4] on the wire", async () => {
 	const model = modelWith();
 	const r = planProcedure(ringPlan({ repeats: 1 }), freshPre(), config(), NOW, RATE, NO_SHAPER);
 	assert.equal(r.ok, true);
@@ -250,8 +250,7 @@ test("every capture step puts exactly [G90, G1 start, M400, G4, M956, G1 end, M4
 		"G1 X100 Y100 F12000",
 		"M400",
 		"G4 P500",
-		'M956 P20.0 S1508 A2 F"ring_Xp0.csv"',
-		"G1 X160 Y100 F12000",
+		'M956 P20.0 S1508 A2 F"ring_Xp0.csv"\nG1 X160 Y100 F12000',
 		"M400",
 		"G4 P731",
 	]);
@@ -260,8 +259,7 @@ test("every capture step puts exactly [G90, G1 start, M400, G4, M956, G1 end, M4
 		"G1 X160 Y100 F12000",
 		"M400",
 		"G4 P500",
-		'M956 P20.0 S1508 A2 F"ring_Xm0.csv"',
-		"G1 X100 Y100 F12000",
+		'M956 P20.0 S1508 A2 F"ring_Xm0.csv"\nG1 X100 Y100 F12000',
 		"M400",
 		"G4 P731",
 	]);
@@ -289,7 +287,10 @@ test("the steps chain: each one starts where the last left the carriage", async 
 	// The leading bare "step" is the shaper statement: it records nothing, so no
 	// "capture" follows it.
 	assert.deepEqual(kinds(events), ["step", "step", "capture", "step", "capture", "step", "capture", "step", "capture", "done", "restored"]);
-	assert.deepEqual(fake.sent.filter((c) => c.startsWith("G1")), [
+	// Every G1 LINE, not every code that starts with one: an excitation move now
+	// travels on the second line of its own arm's command (#43), and a filter
+	// that only saw whole codes would silently stop counting half the moves.
+	assert.deepEqual(fake.sent.flatMap((c) => c.split("\n")).filter((c) => c.startsWith("G1")), [
 		"G1 X100 Y100 F12000", "G1 X160 Y100 F12000", // out from where the OM said we were
 		"G1 X160 Y100 F12000", "G1 X100 Y100 F12000", // and back
 		"G1 X100 Y100 F12000", "G1 X160 Y100 F12000",
@@ -463,8 +464,7 @@ test("a sweep's speed is a different feed rate on the same geometry", async () =
 		"G1 X100 Y100 F6000",
 		"M400",
 		"G4 P500",
-		'M956 P20.0 S1875 A2 F"sweep_X_100.csv"',
-		"G1 X160 Y100 F6000",
+		'M956 P20.0 S1875 A2 F"sweep_X_100.csv"\nG1 X160 Y100 F6000',
 		"M400",
 		"G4 P731",
 	]);
@@ -473,8 +473,7 @@ test("a sweep's speed is a different feed rate on the same geometry", async () =
 		"G1 X100 Y100 F6000",
 		"M400",
 		"G4 P500",
-		'M956 P20.0 S1875 A2 F"sweep_Y_100.csv"',
-		"G1 X100 Y160 F6000",
+		'M956 P20.0 S1875 A2 F"sweep_Y_100.csv"\nG1 X100 Y160 F6000',
 		"M400",
 		"G4 P731",
 	]);

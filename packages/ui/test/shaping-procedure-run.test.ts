@@ -34,6 +34,7 @@ import {
 	EI2_PRIOR, FAKE_CSV, NO_SHAPER, NOW, RATE, board, config, drain, errorOf, fakeBoard, freshPre, kinds,
 	modelWith, ringPlan, testClock, type Fake, type FakeOptions,
 } from "./helpers/shapingMachine.ts";
+import { operatorTyped } from "../src/control/commands.ts";
 
 const CSV = FAKE_CSV;
 const EI2_SPEC: ShaperSpec = { type: "ei2", F: hz(52), S: 0.075 };
@@ -91,8 +92,7 @@ const RING_XP = [
 	"G1 X100 Y100 F12000",
 	"M400",
 	"G4 P500",
-	'M956 P20.0 S1508 A2 F"ring_Xp0.csv"',
-	"G1 X160 Y100 F12000",
+	'M956 P20.0 S1508 A2 F"ring_Xp0.csv"\nG1 X160 Y100 F12000',
 	"M400",
 	"G4 P731",
 ];
@@ -101,8 +101,7 @@ const RING_XM = [
 	"G1 X160 Y100 F12000",
 	"M400",
 	"G4 P500",
-	'M956 P20.0 S1508 A2 F"ring_Xm0.csv"',
-	"G1 X100 Y100 F12000",
+	'M956 P20.0 S1508 A2 F"ring_Xm0.csv"\nG1 X100 Y100 F12000',
 	"M400",
 	"G4 P731",
 ];
@@ -232,13 +231,14 @@ const RING_TIMING = captureTiming(captureWindow(mm(60), mmPerS(200), mmPerS2(300
 test("every code of a recording step carries the deadline that recording produced", async () => {
 	const r = ready();
 	await drain(r.proc.run(r.conn, () => r.model, testClock()));
-	// The shaper statement first, then eight codes per capture step, then the
-	// restore. The two single M593s record nothing and are therefore back on
-	// the transport's flat budget; only the recording steps carry a deadline.
+	// The shaper statement first, then seven codes per capture step — the arm
+	// and its move are ONE of them (#43) — then the restore. The two single
+	// M593s record nothing and are therefore back on the transport's flat
+	// budget; only the recording steps carry a deadline.
 	assert.deepEqual(r.deadlines, [
 		undefined,
-		...new Array<number | undefined>(8).fill(RING_TIMING.sendBudgetMs),
-		...new Array<number | undefined>(8).fill(RING_TIMING.sendBudgetMs),
+		...new Array<number | undefined>(7).fill(RING_TIMING.sendBudgetMs),
+		...new Array<number | undefined>(7).fill(RING_TIMING.sendBudgetMs),
 		undefined,
 	]);
 	// The A/B against the bug: it is bigger than the flat budget that aborted
@@ -270,16 +270,17 @@ test("a verify plan's shaper step records nothing, so it keeps the flat budget",
 });
 
 test("a step's failure names the code that was refused, not just the transport error", async () => {
-	// The second defect in the ticket. A capture step is eight codes; "POST
+	// The second defect in the ticket. A capture step is seven codes; "POST
 	// timed out" is true of all of them and identifies none, which is what
 	// made the real fault take three rounds to place. The file must be kept
 	// away too, because a rejection with a capture behind it is deliberately
 	// NOT a failure — the machine's evidence decides.
 	const r = ready({
-		// Attempt 0 is the shaper statement, so the first pass's eight codes are
-		// attempts 1..8 and its closing G4 is the eighth.
+		// Attempt 0 is the shaper statement, so the first pass's seven codes are
+		// attempts 1..7 and its closing G4 is the seventh. The `startsWith` guard
+		// is what stops a renumbering from quietly disarming this test.
 		fileAfterPolls: 1000,
-		onSend: (code, nth) => { if (nth === 8 && code.startsWith("G4")) throw new Error("signal timed out"); },
+		onSend: (code, nth) => { if (nth === 7 && code.startsWith("G4")) throw new Error("signal timed out"); },
 	});
 	const events = await drain(r.proc.run(r.conn, () => r.model, testClock()));
 	assert.match(errorOf(events), /^step 2 of 3 \(X\+ 200 mm\/s \(1\/1\)\): G4 P731: signal timed out — /);
@@ -333,8 +334,13 @@ test("a send that throws on the third capture step still gets the restore out", 
 	assert.equal(planned.ok, true);
 	if (!planned.ok) return;
 	// The shaper statement is attempt 0, so the third capture step's codes are
-	// sends 17..24; reject the very first of them.
-	const fake = fakeBoard(model, { onSend: (_code, nth) => { if (nth === 17) throw new Error("board said no"); } });
+	// sends 15..21; reject the very first of them.
+	const fake = fakeBoard(model, { onSend: (code, nth) => {
+		if (nth === 15) {
+			assert.equal(code, "G90", "fixture: attempt 15 is the third capture step's first code");
+			throw new Error("board said no");
+		}
+	} });
 	const events = await drain(planned.proc.run(fake.conn, () => model, testClock()));
 	assert.deepEqual(kinds(events), ["step", "step", "capture", "step", "capture", "step", "failed", "restored"]);
 	assert.match(errorOf(events), /board said no/);
@@ -342,8 +348,13 @@ test("a send that throws on the third capture step still gets the restore out", 
 });
 
 test("a request that times out AFTER the capture was armed is not a failure — the file is the evidence", async () => {
-	// Attempt 8 is the first pass's closing G4 — the shaper statement took 0.
-	const r = ready({ onSend: (code, nth) => { if (nth === 8 && code.startsWith("G4")) throw new Error("timed out"); } });
+	// Attempt 7 is the first pass's closing G4 — the shaper statement took 0,
+	// and a capture step is seven codes since the arm was fused to its move.
+	const r = ready({ onSend: (code, nth) => {
+		if (nth !== 7) return;
+		assert.ok(code.startsWith("G4"), `fixture: attempt 7 should be the closing G4, was ${code}`);
+		throw new Error("timed out");
+	} });
 	const events = await drain(r.proc.run(r.conn, () => r.model, testClock()));
 	assert.deepEqual(kinds(events), ["step", "step", "capture", "step", "capture", "done", "restored"]);
 });
@@ -369,7 +380,7 @@ test("abandoning the generator mid-run still sends the restore", async () => {
 	const ending = await gen.return();
 	assert.deepEqual(ending.value, { kind: "restored" });
 	assert.equal(r.sent[r.sent.length - 1], OFF);
-	assert.ok(r.sent.length < 8 * 6, "the remaining steps were never sent");
+	assert.ok(r.sent.length < 7 * 6, "the remaining steps were never sent");
 });
 
 test("breaking out of a for-await loop restores the machine", async () => {
@@ -404,6 +415,61 @@ test("a verify run applies the candidate first and hands the machine back to the
 	const events = await drain(planned.proc.run(fake.conn, () => model, testClock()));
 	assert.equal(fake.sent[0], EI2_LINE);
 	assert.equal(fake.sent[fake.sent.length - 1], EI2_LINE);
+	assert.deepEqual(kinds(events), ["step", "step", "capture", "step", "capture", "done", "restored"]);
+});
+
+// --- the accelerometer is never left armed (#43) -----------------------------
+//
+// M956 with A1 or A2 does not record; it ARMS, and the recording starts when
+// the next move does (reference/duet-gcode.md, M956). RRF documents no way to
+// cancel one — the command's parameters are P, S, X/Y/Z, A and F and there is
+// no disarm among them — so an arm that loses its move is not something a
+// `finally` can put right. It waits on the board, and the next move ANYONE
+// makes, jog or homing macro or the start of a print, is written into the
+// abandoned pass's file.
+//
+// So the fix is not a cleanup, it is the absence of a gap: the arm and the move
+// that consumes it are one command and therefore one request. These two tests
+// are the two halves of that claim — what the wire carries, and what a refusal
+// at the worst possible moment leaves behind.
+
+test("the fake board really does hold an arm until a move consumes it", async () => {
+	// Otherwise the test below measures nothing: a board that recorded on the
+	// arm alone would report `armed() === false` however badly the run failed.
+	const r = ready();
+	await r.conn.sendCode(operatorTyped('M956 P20.0 S10 A2 F"stray.csv"'));
+	assert.equal(r.armed(), true, "an M956 on its own leaves a capture pending");
+	await r.conn.sendCode(operatorTyped("G1 X100 Y100 F6000"));
+	assert.equal(r.armed(), false, "and the next move is what consumes it");
+});
+
+test("no arm reaches the board without the move that consumes it", async () => {
+	const r = ready();
+	await drain(r.proc.run(r.conn, () => r.model, testClock()));
+	const arms = r.sent.filter((code) => code.includes("M956"));
+	assert.equal(arms.length, 2, "one arm per capture pass");
+	for (const arm of arms) {
+		assert.match(arm, /^M956 [^\n]*\nG1 X-?[\d.]+ Y-?[\d.]+ F/, "the arm went out with no move behind it");
+	}
+});
+
+test("a refusal immediately after the arm leaves nothing pending on the board", async () => {
+	// The ticket's failure, written as a gesture rather than as an index:
+	// whatever the transport is asked to send NEXT after the code that armed the
+	// capture is refused. While the arm was a code of its own, that next code
+	// WAS the excitation move, so the run ended with the board holding a capture
+	// no move would ever trigger. Fused, the refusal lands on the M400 behind
+	// them, the move has already gone, and the pass still produces its file.
+	let armedAt: number | null = null;
+	const r = ready({
+		onSend: (code, nth) => {
+			if (armedAt !== null && nth === armedAt + 1) throw new Error("link down");
+			if (code.includes("M956")) armedAt = nth;
+		},
+	});
+	const events = await drain(r.proc.run(r.conn, () => r.model, testClock()));
+	assert.equal(r.armed(), false, "the run ended with a capture still armed on the board");
+	// And the refusal is still not a failure by itself: the file is the evidence.
 	assert.deepEqual(kinds(events), ["step", "step", "capture", "step", "capture", "done", "restored"]);
 });
 
