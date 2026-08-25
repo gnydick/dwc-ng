@@ -45,6 +45,75 @@ row (`2026-08-24-machine-profile-design.md:423`):
 3. **No sensors is a legitimate, supported answer**, and its remedy is a confirm
    with an autoconfirm opt-out, explicitly modelled on `macros.autoConfirmRun`.
 
+## Decided (Gabe, 2026-08-24)
+
+Four of §6's nine questions are answered. Each is recorded with the consequence
+it forces, because three of the four **change a verdict elsewhere in this
+document** rather than merely filling a blank. The five that remain open are
+still marked open in §6.
+
+**Q1 — what an "engagement sensor" senses: "tool present on the carriage", not
+"coupler locked".** Gabe chose the present-on-carriage reading as *the*
+definition, so it is what this design builds on — not a per-machine variable to
+be surveyed later. **Consequence: partial engagement is undetectable in every
+topology in §2.1.** A tool that has touched down on the carriage but is not
+latched asserts the sensor, because touching down is what the sensor measures.
+§3.2 row C is demoted accordingly: it is no longer a topology in which Q3 is
+MEASURED without qualification.
+
+**Q2 — Gabe's machine has dock sensors only.** There is no switch reading the
+coupler. Engagement is not sensed at all, and the C axis (`G1 C0` locked /
+`G1 C121` open) is a commanded stepper position that §1.5 has already refused as
+a measurement. **Consequence: Gabe's own toolchanger is topology A,
+permanently** — not "A until a coupler switch gets wired". Every verdict in
+§3.2 row A is therefore a verdict about the machine this feature is being built
+and verified on. §3.2 A′ states what that means for #49's approach leg.
+
+**Q3 — `state.currentTool` is evidence, never proof.** It **may narrow** a
+confirm — *"about to move with T2 held"* rather than *"unknown tool"* — and it
+may **never skip** one. **Consequence: no branch of §3 may promote a conclusion
+from BELIEVED to MEASURED because `currentTool` agrees with a sensor.** Agreement
+between a measurement and a belief is two facts that happen to be consistent,
+which §3.2 row A already said of itself and which is now a ruling rather than
+this document's opinion.
+
+**Q4 — autoconfirm MAY suppress the confirm for a move the app cannot prove is
+safe.** Gabe's words: *"my machine, my call."* §4.4 argued it both ways and named
+a third shape — suppress the two-step, keep the sentence as a standing caveat.
+That third shape was on the table and was **not** the one chosen.
+**Consequence: the `autoConfirmRun` mechanism is granted the same power over an
+unprovable move that it already has over an arbitrary macro run.** §4.4's
+"against" column is not deleted: it is the reasoning that keeps the default
+`false` (§4.3), and that default is not re-derivable from this ruling.
+
+### The rule Q3 and Q4 compose into
+
+They govern different steps of the same path, so they stack rather than
+conflict:
+
+1. The app decides whether the move is **provable from sensor readings alone**,
+   per §3. `state.currentTool` is not an input to that decision — it can change
+   the *words* of a confirm, never the *existence* of one (Q3).
+2. Where it is not provable, the operation **routes to the confirm path** (§4).
+3. The autoconfirm checkbox decides whether that confirm is a **two-step or a
+   pass-through** (Q4).
+
+**The state this composes into, stated plainly and on purpose:** on a sensorless
+machine (F), an unsurveyed one (G), or a dock-only machine outside its
+all-docked case (A — which is Gabe's machine during normal operation, because a
+picked-up tool leaves its dock reading empty), **with autoconfirm ticked the app
+authors and sends the approach leg with nothing having checked anything.** Not
+the sensors, which cannot answer the question; not the firmware's belief, which
+is not consulted for this decision; and not the operator, who ticked the box
+that means do not ask.
+
+That is Gabe's explicit, informed decision, taken with §4.4's counter-argument
+in front of him. It is recorded here **as a decision** so that a later session
+reading §4.4's "against" column does not mistake it for an oversight and "fix"
+it. What is *not* re-openable is the ruling; what remains true is that the box
+ships off (§4.3), and that being wrong here drives a carriage through a dock
+body.
+
 ---
 
 ## 1. What exists today
@@ -293,7 +362,7 @@ carefully so it cannot be mistaken for a sensor.
 | Kind | Scope | The proposition it measures | Physical reading |
 |---|---|---|---|
 | **dock** | one tool | "tool T is present in its dock" | a switch or probe in the dock body |
-| **engagement** | one tool | "tool T is coupled to the carriage" | a switch on the tool or coupler — **see open question 1** |
+| **engagement** | one tool | "tool T is **present on the carriage**" — *not* "T is latched" (**decided**, Q1) | a switch that asserts when the tool touches down |
 | **mounted** | one gantry | "something is on the carriage", identity unknown | a single switch on the carriage |
 | **none** | machine | there are no such sensors | — |
 | *(coupler actuator position)* | one gantry | *nothing* — it is a commanded stepper position | **not admitted as a sensor.** §1.5 |
@@ -303,6 +372,22 @@ tempting thing on Gabe's machine to treat as an engagement sensor, and it is the
 exact failure this campaign exists to prevent: a plausible number that is not a
 measurement. If it is admitted at all it must be admitted as belief, in the same
 column as `currentTool`, and it must never satisfy a safety predicate on its own.
+
+**Q1's answer is a property of the ROLE, not of a machine.** Because "engagement"
+now means *present on the carriage* everywhere, the role cannot be surveyed into
+meaning "latched" on some other machine. An operator who really does have a
+coupler-lock switch is describing a **different** proposition, and this design
+has no role for it — which is the honest outcome, since admitting one would
+require every §3 verdict to be written twice, once per meaning of the same word.
+A `lock` role can be added later as a fourth arm of `PresenceSensor`; nothing
+here forecloses it, and §3 would gain rows rather than change existing ones.
+
+**Q2's answer removes the temptation on Gabe's machine entirely.** There is no
+switch on his coupler, so the C axis is not merely *demoted* to belief here — it
+is the **only** thing his machine offers about coupling, and the design refuses
+it. His machine's sensing is four dock inputs and nothing else:
+`sensors.gpIn[T + 10]` for T0..T3, `value == 1` meaning docked (§1.5, corroborated
+by `packages/mock-duet/captures/duet3-real-2026-07-15/model/live-d99fn.json`).
 
 ### 2.2 The type
 
@@ -330,7 +415,7 @@ export interface PresenceInput {
 /**
  * Which carriage. A machine with one gantry has exactly one; IDEX and similar
  * have more. Minted like the other id namespaces (config/types.ts:13-25), so a
- * gantry id cannot be confused with a tool number. See open question 5.
+ * gantry id cannot be confused with a tool number. See open question 6.
  */
 export type GantryId = `g-${string}`;
 
@@ -467,7 +552,42 @@ leaves behind. Project memory has wanted this since 2026-07-12
 
 **Held to be true even though it feels safe: exactly-one-away + `currentTool`
 agreeing is NOT proof.** It is a measured fact and a belief that happen to be
-consistent. The tool could be half-coupled, or in a hand. See §3.3.
+consistent. The tool could be half-coupled, or in a hand. See §3.3. **Decided
+(Q3):** that consistency may narrow the confirm's wording; it may not remove the
+confirm.
+
+#### A′ — what Gabe's machine can and cannot prove
+
+Not a table row, because it is the practical result of the whole document and it
+should not have to be reassembled from one.
+
+**Gabe's machine is topology A and will stay topology A** (Q2). It has four dock
+inputs and no carriage sensing of any kind. Therefore, for the first consumer —
+#49's approach leg, the `G1` the Shaping lab authors to bring a parked head into
+the envelope:
+
+- **"Safe to command an XY move" is provable on exactly one reading of the
+  machine: all four dock sensors read docked.** That measures the carriage empty,
+  and carriage-clear follows with no belief involved. It is the state the machine
+  sits in between jobs, so it is a real and frequent case, not a technicality.
+- **Every other state falls to the confirm path (§4)** — including *normal
+  operation with a tool picked up*, which is what the machine looks like for the
+  whole of a print and for the whole of a shaping run on a mounted tool. One dock
+  reading empty proves that tool is out of its dock; it proves nothing about
+  where the tool is, and *nothing whatsoever* about whether it is on the carriage.
+- **So the confirm is the common path on Gabe's machine, not the exception.**
+  Any design in which the confirm is treated as the rare unhappy branch —
+  cramped wording, a slot borrowed from somewhere else, a sentence assembled
+  ad hoc — is designing the wrong thing for the machine it will run on. §4.2.1
+  gives the dock-only sentence in full for that reason.
+- **The one thing his topology buys that no other does:** `currentTool == T ∧
+  dock[T] == docked` is a **measured refutation** of the firmware's belief, and
+  it is exactly what an aborted tool change leaves behind. That contradiction is
+  a state in which an XY move drags the carriage across the dock rank, and A is
+  one of only three topologies that can see it (§3.3 case 3).
+
+**Being wrong about this crashes a head into a dock body.** That is the failure
+this row is describing, in the machine it is describing it for.
 
 #### B — engagement sensor per tool, no dock sensors
 
@@ -483,27 +603,77 @@ engagement sensor is the *better* sensor for knowing what is on the carriage, an
 the *worse* sensor for knowing whether it is safe to move. A design that treats
 "engagement sensor present" as strictly better than "dock sensor present" gets
 Q3 wrong in the one direction that crashes a head. **Route Q3 to the confirm
-path (§4) unless `currentTool == -1` and nothing reads engaged**, which is
-MEASURED-empty and safe.
+path (§4) unless nothing reads engaged**, which is MEASURED-empty and safe.
+(`currentTool == -1` may accompany it in the wording; per Q3 it is not a
+component of the proof, and `currentTool >= 0` alongside an empty carriage is a
+measured refutation to state, not a reason to refuse a move that is already
+proved safe.)
 
-#### C — dock **and** engagement, both per tool (the complete topology)
+**The trap, recorded because it was walked into.** While putting Q1 and Q2 to
+Gabe on 2026-08-24 I told him that engagement-only sensing makes an XY move
+safe, reasoning: *"Engaged(T) → T is held by the carriage → T is out of its
+dock."* **That is wrong.** The second arrow does not hold: a tool is engaged and
+still inside its dock for the entire instant between the pickup and the carriage
+backing out, and — with Q1 now decided as *present on the carriage* — for the
+whole of a pickup that touches down and then fails. The inference confuses *held*
+with *withdrawn*, which are separate facts measured by separate hardware, and it
+fails in the exact direction that drives the head sideways through the dock body.
+Row B's table above already had this right; this note exists because the wrong
+version is the intuitive one and the next reader will re-derive it. The correct
+one-liner: **an engagement sensor answers "is something on the carriage",
+never "may the carriage move".**
+
+#### C — dock **and** engagement, both per tool (the fullest topology)
+
+**Demoted 2026-08-24 by Q1.** This row previously read `Q3 — MEASURED`, with the
+gap listed as conditional on what an engagement sensor senses. That question is
+now answered *"tool present on the carriage"*, and the answer removes the
+condition under which the MEASURED claim held. The row is restated, not
+annotated, because a table that says MEASURED with a paragraph underneath saying
+"except…" is exactly the confident-wrong-answer shape this campaign exists to
+stop.
 
 | Question | Class | What can be said |
 |---|---|---|
-| Q1 | **MEASURED** | |
-| Q2 | **MEASURED**, with identity | |
-| Q3 | **MEASURED** | `engaged(T) ∧ ¬docked(T)` → carriage-clear. `¬∃engaged ∧ ∀T docked(T)` → carriage-clear. **Everything else → refuse**, and the refusal names which of the two halves failed. |
+| Q1 | **MEASURED** | Per tool, directly, as in A. |
+| Q2 "anything mounted?" | **MEASURED** | Something reads present → the carriage is occupied. Nothing does → it is empty. |
+| Q2 "which tool?" | **MEASURED** | The present-sensor is per tool, so the occupant is named, not inferred. This is the one place identity is measured rather than narrowed. |
+| Q3 | **PARTIAL — the dock-clearance half is MEASURED; the engagement half is NOT** | `present(T) ∧ ¬docked(T)` measures that T is on the carriage **and** that T's dock is empty, which settles *clearance*. It does **not** settle whether T is latched: a tool resting on the carriage unlatched asserts the same input (Q1). `¬∃present ∧ ∀T docked(T)` → carriage empty → carriage-clear, MEASURED and complete. **Everything else → refuse**, naming which half failed. |
 
-This is the only topology in which Q3 is answered without trusting a belief, and
-it is why the design must be able to express it — today's config cannot.
+**What C still buys, and it is a lot:**
 
-**Its residual gap is partial engagement**, and whether it exists depends
-entirely on what the engagement sensor physically senses (**open question 1**).
-A coupler-lock switch that only closes when the lock is fully home leaves no
-gap. A "tool present on the carriage" switch closes as soon as the tool touches,
-and a partly-coupled tool reads engaged. **Until that is answered, this row is a
-design intent, not a claim**, and Phase 5 must not ship a MEASURED verdict from
-it.
+- **Identity is measured.** C is the only topology in this document where "which
+  tool is on the carriage" is a reading rather than an inference (contrast E,
+  where it is capped at INFERRED, and A/D where it is unknowable or believed).
+- **Dock clearance is measured for the occupant.** `present(T) ∧ ¬docked(T)`
+  rules out the single most dangerous state in §3.3 case 3 — firmware believes
+  T is held while T is sitting in its dock — for the named tool, directly.
+- **The empty case is fully measured**, the same as A's all-docked case, and with
+  a second sensor agreeing.
+- **The aborted-change contradiction is visible twice over**: `docked(T) ∧
+  present(T)` is a physical impossibility for a withdrawn tool and reads as a
+  live disagreement between two measurements, not between a measurement and a
+  belief.
+
+**What C does not buy, stated because silence would read as "checked, and
+fine"** (`2026-08-23-shaping-interpretation-layer-design.md:166-169`):
+
+- **Whether the tool is actually latched.** Undetectable. A tool that touched
+  down and did not couple, or one whose coupler released mid-move, reads
+  identical to a correctly latched tool.
+- **Therefore: whether the tool will still be there after the move.** Clearance
+  is measured at the current instant; retention is not measured at all. An
+  unlatched tool clears its dock and then falls off somewhere else in the box.
+- **And therefore Phase 5 must not ship a MEASURED "safe to move" verdict from
+  row C either.** C reduces the confirm's content — the sentence can name the
+  occupant and state that its dock is clear — but it does not remove the
+  confirm, because the residual failure is the tool leaving the carriage under
+  acceleration, and nothing on any machine in §2.1 measures that.
+
+**A `lock` role would close this gap and no survey answer can.** If a machine
+genuinely has a coupler-lock switch, that is a fourth sensor role (§2.1's note
+on Q1), not a re-reading of this one. Until such a role exists, **no topology in
+this design detects partial engagement** — §3.3 case 2, now unconditional.
 
 #### D — one "mounted" sensor on the gantry
 
@@ -563,13 +733,17 @@ check**, at ≤ ~500 ms staleness (§1.5): a change that *starts* after the read
 not seen. The mitigation is the existing `stale` refusal
 (`shaping/preconditions.ts:47`, and `readAt` at `:97`, `:138-140`), not a tighter poll.
 
-**2. A tool partially engaged.** Undetectable in A, B, D, E, and detectable in C
-only if the engagement sensor is a coupler-lock (open question 1). **No topology
-in this design may claim to detect it unless that question is answered
-"coupler-locked".** Where it cannot be detected, the safety statement must say so
-in words rather than being silently omitted — the interpretation spec's rule that
-silence reads as "checked, and fine"
-(`2026-08-23-shaping-interpretation-layer-design.md:166-169`).
+**2. A tool partially engaged. Undetectable in every topology in this design —
+A, B, C, D, E, F and G alike.** This was conditional on open question 1 when the
+document was written; **Q1 is now decided as "present on the carriage"** (see
+Decided), so the one topology that might have detected it does not. A tool that
+has touched down and not latched asserts the same input as one that has. **No
+topology in this design may claim to detect partial engagement**, and no verdict
+anywhere may be written as though something upstream had ruled it out. Because it
+cannot be detected, the safety statement must **say so in words** rather than
+omit it — the interpretation spec's rule that silence reads as "checked, and
+fine" (`2026-08-23-shaping-interpretation-layer-design.md:166-169`). Closing this
+gap needs a `lock` sensor role that no machine in scope currently has (§3.2 C).
 
 **3. The firmware believes T0 is mounted while T0 is still in its dock.** This is
 what a failed or aborted tool change leaves behind, and it is the state in which
@@ -590,13 +764,20 @@ Consolidated, because this is the routing rule:
 
 | Topology | Q3 answerable without a confirm? |
 |---|---|
-| **A** dock per tool | **Only when all tools read docked** (carriage empty). |
+| **A** dock per tool | **Only when all tools read docked** (carriage empty). Gabe's machine — see A′. |
 | **B** engagement per tool | **Only when nothing reads engaged** (carriage empty). |
-| **C** dock + engagement | **Yes**, both directions — subject to open question 1. |
+| **C** dock + engagement | **Only when nothing reads present and all tools read docked** (carriage empty). *Was "yes, both directions"; demoted by Q1 — the occupied direction cannot rule out an unlatched tool.* |
 | **D** mounted per gantry | **Only when the sensor reads not-mounted.** |
 | **E** dock + mounted | **Only when not-mounted and all docked.** |
 | **F** none | **No.** |
 | **G** unknown | **No** — and say it is unsurveyed, not unsensored. |
+
+**Every row now has the same shape: the only provable state is the empty
+carriage.** That is the honest consequence of Q1, and it is worth saying out
+loud, because a design built around "better sensors unlock more motion" is built
+around a promise this table cannot keep. What better sensing buys is a **better
+sentence** — more of the confirm's clause 2 becomes a measurement instead of a
+gap — not fewer confirms.
 
 **Every "no" and every case outside a row's stated "yes" routes to §4.** The
 refusal, where a refusal is chosen instead, follows the existing ladder: one new
@@ -644,12 +825,16 @@ device rather than an informative one.
 1. **What is about to happen** — the actual motion in machine terms: *"travel to
    X150.0 Y150.0 at 200 mm/s."* Read off the plan, never re-derived.
 2. **What could not be verified, and why** — naming the topology:
+   - **A**: *"T1's dock reads empty and T0, T2 and T3 read docked; nothing on
+     this machine senses the carriage."* The one that matters most — see §4.2.1.
    - F: *"this machine has no tool-presence sensors, so nothing can tell whether
      a tool is on the carriage or still in its dock."*
    - G: *"this machine has not been surveyed for tool-presence sensors"* + a link
      to the survey. **Different sentence, different remedy.**
-   - B: *"T2 reads engaged; nothing on this machine reports whether it is clear
-     of its dock."*
+   - B: *"T2 reads present on the carriage; nothing on this machine reports
+     whether it is clear of its dock."*
+   - C: *"T2 reads present on the carriage and its dock reads empty; nothing
+     reports whether it is latched."*
    - E: *"T2's dock reads empty and the carriage reads occupied — nothing proves
      the thing on the carriage is T2."*
 3. **What the firmware believes** — *"the firmware reports T0 selected"*, or
@@ -657,6 +842,56 @@ device rather than an informative one.
 4. **The physical consequence of being wrong** — *"if T0 is still in its dock,
    this move drives the carriage through it."* This is the clause that makes the
    confirm worth reading, and it is the one a generic "Are you sure?" omits.
+
+### 4.2.1 The dock-only sentence, in full
+
+Written out rather than described, because Q2 makes this **the common path on
+the machine the feature will be verified on** (§3.2 A′), not an edge case. The
+voice is `shaping/copy.ts` — `armedRunText` (`:585-594`) and `armedSaveText`
+(`:604-607`): sentence case, *"Confirm ⟨verb⟩: ⟨what⟩"*, every figure read off
+the plan, clauses separated by full stops, closing on *"Escape cancels."*
+because `createArmed` guarantees it and a two-step whose way out is invisible has
+no way out (`copy.ts:580-583`).
+
+**Topology A, one tool away, `currentTool` naming it (the ordinary case):**
+
+> **Confirm approach: travel to X150.0 Y150.0 at 200 mm/s. T1's dock reads
+> empty; T0, T2 and T3 read docked. Nothing on this machine senses the carriage,
+> so whether T1 is held — and whether it is clear of its dock — cannot be read.
+> The firmware reports T1 selected, which records that the change macros ran.
+> If T1 is still in its dock, this move drives the carriage through it. Escape
+> cancels.**
+
+Clause by clause, against §4.2: sentence 1 is the motion, read off the plan;
+sentence 2 is **what the sensors actually measured**, named tool by tool, so the
+operator can check it against the machine in front of them; sentence 3 is the
+gap, stated as a gap; sentence 4 is `currentTool` **labelled as a report** — this
+is Q3's "narrow, never skip" in one clause, and the phrase *"records that the
+change macros ran"* is the whole of §1.5 compressed to six words; sentence 5 is
+the consequence, in metal.
+
+**Variants, all four clauses intact:**
+
+- **`currentTool == -1`** — sentence 4 becomes *"The firmware reports no tool
+  selected, and one dock is empty; those disagree."* The disagreement is a
+  **measured refutation** of the firmware's belief (§3.2 A) and is the strongest
+  thing this topology ever says. Sentence 5 becomes *"If T1 is on the carriage,
+  this move takes it with it; if it is not, something has been moved by hand."*
+- **Two or more docks empty** — sentence 2 lists them all; sentence 3 gains
+  *"and which of them, if either, is on the carriage cannot be read"*; sentence 5
+  names the set: *"If T1 or T3 is still in its dock, this move drives the
+  carriage through it."*
+- **A tool with no dock sensor mapped** (partial coverage, `coversAll` false —
+  open question 7) — sentence 2 must say *"T3 has no dock sensor mapped"*, not
+  omit T3. An omitted tool reads as a docked one, which is the silence-as-
+  reassurance failure again.
+- **All docked** — there is no sentence, because there is no confirm. That case
+  is proved (§3.2 A′).
+
+**What the sentence must never say:** *"T1 is on the carriage."* Nothing on this
+machine measures that, and clause 4 exists precisely to keep the firmware's
+report from being restated as a fact. The wording above says *reports*, once, and
+attaches what the report is evidence of.
 
 ### 4.3 Where the checkbox lives, and its default
 
@@ -686,9 +921,23 @@ Whichever is chosen, **the affected control must state the current mode in
 words** the way the Macros hint does (`cards/FileCards.tsx:225-227`): *"Move
 fires on the first click"* / *"Move asks twice."*
 
-### 4.4 The open argument: may autoconfirm suppress an unprovable move?
+### 4.4 May autoconfirm suppress an unprovable move? — **Decided: yes**
 
-Presented both ways. **Not decided here.** (Open question 4.)
+**Decided (Gabe, 2026-08-24): yes.** *"my machine, my call."* The argument is
+kept below in both directions, unedited, because it is the reasoning behind the
+default (§4.3) and behind every word of the sentence in §4.2.1 — but it is no
+longer an open question, and the "against" column is **not** grounds for a later
+session to reintroduce a gate.
+
+**What the ruling settles:** with the checkbox ticked, an operation that §3.4
+cannot prove safe **runs on the first click**, on the machine's own authority.
+The third shape below — keep the sentence, drop only the two-step — was on the
+table and was not the one chosen.
+
+**What the ruling does not touch:** the default stays `false` (§4.3), the
+sentence stays exactly as specified for every operator who has not ticked the
+box, and nothing here weakens `Preconditions.read`'s existing `not-idle` gate
+(§3.3 case 1), which is a firmware-state check rather than a presence one.
 
 **For — autoconfirm suppresses it, exactly like `autoConfirmRun`.**
 
@@ -724,7 +973,8 @@ Presented both ways. **Not decided here.** (Open question 4.)
   situation — naming a different tool, a different coordinate, a different
   unverified fact each time — is read differently from a fixed "Are you sure?".
 
-**A third shape, named so it is on the table:** autoconfirm removes the *two-step*
+**A third shape, named so it is on the table — offered, and not chosen:**
+autoconfirm removes the *two-step*
 but the sentence stays, rendered persistently beside the control as a standing
 caveat rather than a gate — the exact idiom the interpretation layer already uses
 for `caveated` evidence
@@ -811,6 +1061,15 @@ are required for it either way — a confirm sentence that says *"nothing can te
 whether a tool is on the carriage"* still has to know that that is true of this
 machine.
 
+**Q4 relaxes this tension rather than sharpening it.** Because autoconfirm may
+suppress the confirm (Decided), the operator retains a switch that returns
+app-authored motion to first-click behaviour. What Phase 5 adds on a machine
+whose owner has ticked the box is therefore **not a gate at all** — it is the
+decision of *what to say* when it can say nothing, and the option to say nothing.
+The refusals in §3 that remain unconditional are the ones already in
+`Preconditions.read` (`shaping/preconditions.ts:30-66`), which Gabe accepted for
+this feature before this campaign existed.
+
 **One line that holds under either ruling**, from the interpretation layer
 (`2026-08-23-shaping-interpretation-layer-design.md:114-116`, note 4): *"a caveat
 never blocks a control that sends G-code; it makes the operator read one sentence
@@ -819,28 +1078,56 @@ machine may move."*
 
 ---
 
-## 6. Open questions (Gabe)
+## 6. Questions (Gabe)
 
-1. **What does an "engagement sensor" physically sense** — the coupler *locked*,
-   or a tool merely *present on the carriage*? (Locked → partial engagement is
-   detectable; present → it is not, and §3.2 row C cannot claim MEASURED.)
-2. **On your machine, is there any actual switch reading the coupler**, or only
-   the C axis position (`G1 C0` locked / `G1 C121` open)? A commanded stepper
-   position is a belief, not a measurement — may it be used at all?
-3. **May the app ever trust `state.currentTool` when no sensor corroborates it**,
-   or must an uncorroborated belief always produce a confirm?
-4. **May autoconfirm suppress a confirm for a move the app cannot prove safe**
-   (§4.4) — yes, no, or "the sentence stays and only the two-step goes"?
-5. **Is autoconfirm global, per-operation-type, or per-machine?** (`autoConfirmRun`
-   is currently person-scoped and global — `2026-08-24-machine-profile-design.md:292`.)
-6. **Does "mounted, per gantry" ever mean more than one gantry** on a machine you
-   care about (IDEX)? If never, `GantryId` collapses to a single implicit
-   carriage and §2.2 gets smaller.
-7. **Is a partially-mapped topology usable?** Three of four tools with dock
-   sensors: refuse every all-tools conclusion (§2.2's `coversAll`), or let you
-   declare the fourth tool sensorless?
-8. **Should the app parse your `tfree`/`tpre`/`tpost` to PROPOSE the topology and
-   ask you to confirm what it found** — the same offer as open question 3 in the
-   profile spec for dock positions — or is typing it in cleaner?
-9. **Where does the autoconfirm checkbox live** (§4.3): on each motion card, or
-   on the machine-profile card?
+Numbering is preserved so earlier cross-references stay valid. Four are answered
+and carry their answers here; **five are still open and are the only things in
+this document waiting on a ruling.**
+
+1. ~~What does an "engagement sensor" physically sense?~~ **Decided (Gabe,
+   2026-08-24): "tool present on the carriage", not "coupler locked."**
+   Consequence: partial engagement is undetectable in every topology (§3.3
+   case 2); **§3.2 row C is demoted** from MEASURED on Q3 to PARTIAL. A
+   coupler-lock switch, if a machine has one, is a *different* role that this
+   design does not yet define (§2.1).
+2. ~~Is there an actual switch reading the coupler on your machine?~~
+   **Decided (Gabe, 2026-08-24): no — dock sensors only.** Engagement is not
+   sensed at all and the C axis is not a sensor. Consequence: **Gabe's machine is
+   topology A, permanently** (§3.2 A′), so the confirm path is his normal
+   operating path, not an exception.
+3. ~~May the app trust `state.currentTool` when nothing corroborates it?~~
+   **Decided (Gabe, 2026-08-24): it is evidence, never proof.** It may **narrow**
+   a confirm — *"about to move with T2 held"* rather than *"unknown tool"* — and
+   may **never skip** one. Consequence: nothing in §3 may be promoted to MEASURED
+   on the strength of `currentTool` agreeing with a sensor.
+4. ~~May autoconfirm suppress a confirm for a move the app cannot prove safe?~~
+   **Decided (Gabe, 2026-08-24): yes — *"my machine, my call."*** The "sentence
+   stays, two-step goes" variant was offered and not chosen. Consequence: with
+   the box ticked on a sensorless or dock-only machine, the approach leg is sent
+   with nothing checking. See **Decided → "The rule Q3 and Q4 compose into"**;
+   default stays `false` (§4.3).
+
+**Still open:**
+
+5. **OPEN — Is autoconfirm global, per-operation-type, or per-machine?**
+   (`autoConfirmRun` is currently person-scoped and global —
+   `2026-08-24-machine-profile-design.md:292`.) Sharper now that Q4 is decided:
+   the answer chooses how far one tick reaches.
+6. **OPEN — Does "mounted, per gantry" ever mean more than one gantry** on a
+   machine you care about (IDEX)? If never, `GantryId` collapses to a single
+   implicit carriage and §2.2 gets smaller. Unaffected by the four answers.
+7. **OPEN — Is a partially-mapped topology usable?** Three of four tools with
+   dock sensors: refuse every all-tools conclusion (§2.2's `coversAll`), or let
+   you declare the fourth tool sensorless? Q2 raises the stakes — on a dock-only
+   machine, `coversAll` failing removes the *only* provable state there is
+   (§3.2 A′), so a three-of-four map means every move confirms, forever.
+8. **OPEN — Should the app parse your `tfree`/`tpre`/`tpost` to PROPOSE the
+   topology** and ask you to confirm what it found — the same offer as open
+   question 3 in the profile spec for dock positions — or is typing it in
+   cleaner? Note what it could *not* find: the macros command the coupler, so
+   they reveal wiring only where a macro reads an input.
+9. **OPEN — Where does the autoconfirm checkbox live** (§4.3): on each motion
+   card, or on the machine-profile card? Q4 makes this a safety question rather
+   than a layout one — the checkbox now silences a confirm about motion, and
+   `autoConfirmRun`'s own rationale (`config/types.ts:43-48`) is that a persisted
+   suppression must be **visible on the screen it suppresses**.
