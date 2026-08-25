@@ -257,6 +257,17 @@ export type Fake = {
 	 *  of this and is allowed to be behind it; a test asking "what was the
 	 *  machine left with?" has to ask here. */
 	shaping: () => Shaping;
+	/**
+	 * Is the board still holding a capture request that no move has consumed?
+	 *
+	 * The fake arms on `M956` and consumes the arm on the next `G1`, which is
+	 * what RRF's `A1`/`A2` do (reference/duet-gcode.md, M956: "activate just
+	 * before the start of the next move" / "of the deceleration segment of the
+	 * next move"). Modelling those as two events rather than one is what lets a
+	 * test see the #43 failure at all: a fake that wrote the capture on the arm
+	 * alone would report a perfectly finished run for a board left waiting.
+	 */
+	armed: () => boolean;
 };
 
 export function fakeBoard(model: ObjectModel, opts: FakeOptions = {}): Fake {
@@ -307,24 +318,52 @@ export function fakeBoard(model: ObjectModel, opts: FakeOptions = {}): Fake {
 		(model.move as unknown as Record<string, unknown>).shaping = boardShaping;
 	};
 
+	/**
+	 * The capture the board is holding, waiting for a move to trigger it.
+	 *
+	 * A real board's `A2` request survives until a move consumes it and has no
+	 * documented way to be cancelled, so this survives too — including past the
+	 * end of the run, which is the whole of what #43 was about. What a SECOND
+	 * arm does to a pending one is a firmware fact nobody here has established,
+	 * so the fake takes no position on it: `cmd.captureMove` cannot emit an arm
+	 * without the move that consumes it, so two pending arms is not a state the
+	 * app can put a board into.
+	 */
+	let armedFile: string | null = null;
+
+	/** One line of one request, the way the firmware would take it. */
+	const execute = (line: string): string => {
+		const arm = /^M956 .* F"(.+)"$/.exec(line);
+		if (arm !== null) armedFile = arm[1] ?? "";
+		const move = /^G1 X(-?[\d.]+) Y(-?[\d.]+) F/.exec(line);
+		if (move !== null) {
+			setAt(Number(move[1]) + (opts.driftOnMove ?? 0), Number(move[2]));
+			if (armedFile !== null) {
+				const appearIn = opts.fileAfterPolls ?? 0;
+				pending.push({ file: armedFile, appearIn, finishIn: appearIn + (opts.dumpPolls ?? 0) });
+				armedFile = null;
+			}
+		}
+		applyShaping(line);
+		// M955 with P alone REPORTS; the board answers with a sentence and
+		// changes nothing. `opts.accelReply` is how a test says the board
+		// answered with something unusable.
+		if (/^M955 P[\d.]+$/.test(line)) return opts.accelReply ?? M955_REPLY;
+		return "";
+	};
+
 	const conn: RunConnector = {
 		async sendCode(code: GcodeCommand, sendOpts?: SendCodeOptions): Promise<string> {
 			opts.onSend?.(String(code), attempts++);
 			sent.push(String(code));
 			deadlines.push(sendOpts?.timeoutMs);
-			const armed = /^M956 .* F"(.+)"$/.exec(String(code));
-			if (armed !== null) {
-				const appearIn = opts.fileAfterPolls ?? 0;
-				pending.push({ file: armed[1] ?? "", appearIn, finishIn: appearIn + (opts.dumpPolls ?? 0) });
-			}
-			const move = /^G1 X(-?[\d.]+) Y(-?[\d.]+) F/.exec(String(code));
-			if (move !== null) setAt(Number(move[1]) + (opts.driftOnMove ?? 0), Number(move[2]));
-			applyShaping(String(code));
-			// M955 with P alone REPORTS; the board answers with a sentence and
-			// changes nothing. `opts.accelReply` is how a test says the board
-			// answered with something unusable.
-			if (/^M955 P[\d.]+$/.test(String(code))) return opts.accelReply ?? M955_REPLY;
-			return "";
+			// One request may carry several newline-separated codes, and RRF runs
+			// every line of it (packages/mock-duet/src/gcode.ts says the same of
+			// the mock). The fake has to as well, or a fused arm-and-move would
+			// look to it like a code it has never heard of.
+			let reply = "";
+			for (const line of String(code).split("\n")) reply = execute(line) || reply;
+			return reply;
 		},
 		async list(dir: string): Promise<FileListEntry[]> {
 			listed.push(dir);
@@ -356,7 +395,11 @@ export function fakeBoard(model: ObjectModel, opts: FakeOptions = {}): Fake {
 			return opts.download === undefined ? FAKE_CSV : opts.download(path);
 		},
 	};
-	return { conn, sent, deadlines, listed, downloaded, downloadedAfterListings, shaping: () => boardShaping };
+	return {
+		conn, sent, deadlines, listed, downloaded, downloadedAfterListings,
+		shaping: () => boardShaping,
+		armed: () => armedFile !== null,
+	};
 }
 
 /** Instant, deterministic time. Every poll advances the clock by its own wait,

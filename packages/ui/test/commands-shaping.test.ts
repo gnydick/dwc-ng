@@ -27,8 +27,37 @@ test("M955 configures the accelerometer by board.device address", () => {
 	assert.equal(cmd.accelConfig(TOOLBOARD), "M955 P20.0");
 });
 
-test("M956 collects samples: P then S then A then the quoted file", () => {
-	assert.equal(cmd.accelCapture(TOOLBOARD, 1500, 2, "ring_Xp0.csv"), 'M956 P20.0 S1500 A2 F"ring_Xp0.csv"');
+test("M956 collects samples: P then S then A then the quoted file, and the move behind it", () => {
+	assert.equal(
+		cmd.captureMove(TOOLBOARD, 1500, 2, "ring_Xp0.csv", [{ axis: "X", mm: mm(160) }, { axis: "Y", mm: mm(100) }], 12000),
+		'M956 P20.0 S1500 A2 F"ring_Xp0.csv"\nG1 X160 Y100 F12000',
+	);
+});
+
+// #43. The arm is not a command this module can produce on its own: there is
+// no builder that emits an M956 and stops, so the only M956 the app can send
+// is one with the move that consumes it on the line below. RRF documents no
+// way to cancel a pending capture (reference/duet-gcode.md, M956), so an arm
+// that lost its move would sit on the board and record whatever the operator
+// did next — and the way to not have that state is to have no request boundary
+// where the second half can be refused.
+test("no builder can emit an M956 without the move that consumes it", () => {
+	const emitted = Object.entries(cmd)
+		.filter(([, build]) => typeof build === "function")
+		.map(([name, build]) => {
+			try {
+				// Every builder's own arguments are wrong for every other builder,
+				// so most of these throw; the ones that do not are what is checked.
+				return [name, String((build as (...a: unknown[]) => string)(TOOLBOARD, 1500, 2, "ring_Xp0.csv", [{ axis: "X", mm: mm(160) }], 12000))] as const;
+			} catch {
+				return [name, ""] as const;
+			}
+		});
+	for (const [name, text] of emitted) {
+		if (!/\bM956\b/.test(text)) continue;
+		assert.match(text, /^M956 [^\n]*\nG1 /, `${name} emitted a bare arm: ${JSON.stringify(text)}`);
+	}
+	assert.ok(emitted.some(([, text]) => /\bM956\b/.test(text)), "no builder emitted an M956 at all — the check would pass vacuously");
 });
 
 test("M593 named shaper: quoted type, %g frequency and damping", () => {

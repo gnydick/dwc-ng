@@ -310,6 +310,19 @@ export class Procedure {
 	 *      Making it an argument forces the caller to say WHICH reading it
 	 *      means, and a run has exactly one to give: the one from before it
 	 *      touched anything.
+	 * @note the SHAPER is the whole of what this puts back, and the other thing
+	 *      a run touches — the accelerometer — is deliberately absent rather
+	 *      than forgotten (#43). RRF has no command that cancels an armed M956
+	 *      (reference/duet-gcode.md, M956), so there is nothing this array could
+	 *      hold that would disarm one; a restore that "covers everything the run
+	 *      touched" cannot be written for the accelerometer, only for the
+	 *      shaper. What covers the accelerometer instead is `cmd.captureMove`:
+	 *      an arm and the move that consumes it are ONE command and one request,
+	 *      so a run cannot end with a pending capture on the board and there is
+	 *      no state left for a `finally` to undo. That is the stronger of the
+	 *      two mechanisms and the reason the weaker one is not attempted here —
+	 *      a cleanup built on a guess about what a second M956 does to a pending
+	 *      one would be a remediation nobody had verified, on a machine.
 	 */
 	readonly #restore: readonly GcodeCommand[];
 
@@ -522,7 +535,7 @@ const timeable = (dist: number, speed: number): boolean => Number.isFinite(Math.
  * very motion, so a plan with a measurable move has a positive sample count by
  * construction. What a derived count can still be is too LARGE for the board,
  * and that is `capture-too-long` — decided in `plan`, where the machine's
- * acceleration and the board's rate are in hand. `cmd.accelCapture` still
+ * acceleration and the board's rate are in hand. `cmd.captureMove` still
  * throws on a bad count, which is right for a builder; between the two, nothing
  * a caller of `plan` can ask for reaches the throw.
  */
@@ -1188,13 +1201,26 @@ export function plannedSegments(plans: readonly Plan[], origin: Point): readonly
 const samePoint = (a: Point, b: Point): boolean => a.x === b.x && a.y === b.y;
 
 /**
- * One capture: position, settle, arm, excite, hold still for the recording.
+ * One capture: position, settle, arm-and-excite, hold still for the recording.
  *
  * The order is the contract — the arm has to be queued before the move that
  * triggers it, and the wait has to be between the positioning move and the
  * arm, or the capture records the wrong ring. Both moves run at the plan's
  * speed; there is no separate travel feed to be a second number that means
  * "how fast the lab moves".
+ *
+ * SEVEN codes, not eight, and the pair that got fused is the point (#43). The
+ * arm and the move it records are ONE `cmd.captureMove` — one entry in this
+ * array, one `sendCode`, one request on the wire. They used to be two, and
+ * `sendAll` stops at the first refusal, so an accepted `M956` followed by a
+ * rejected `G1` ended the run with the board still armed: RRF documents no way
+ * to cancel a pending capture, an A2 request is consumed by the next move and
+ * by nothing else, and so the next move ANYONE made — a jog, a homing macro,
+ * the start of a print — was written into this pass's file. Nothing in the
+ * `finally` could have undone that, because there is no command to undo it
+ * with; the only fix available is to make the gap unreachable, which is what
+ * fusing does. See `cmd.captureMove` for the invariant and its firmware
+ * citation.
  *
  * The M956's sample count and the G4 that follows it come from ONE
  * `CaptureTiming`, and so do the budget the run loop waits for the file in and
@@ -1210,8 +1236,7 @@ function captureStep(pass: Pass, addr: AccelAddr, timing: CaptureTiming): Step {
 			cmd.moveTo(xy(pass.from), feed),
 			cmd.waitMoves(),
 			cmd.dwell(SETTLE_MS),
-			cmd.accelCapture(addr, timing.samples, TRIGGER_ON_DECELERATION, pass.file),
-			cmd.moveTo(xy(pass.to), feed),
+			cmd.captureMove(addr, timing.samples, TRIGGER_ON_DECELERATION, pass.file, xy(pass.to), feed),
 			cmd.waitMoves(),
 			cmd.dwell(timing.dwellMs),
 		],

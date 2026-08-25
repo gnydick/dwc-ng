@@ -162,6 +162,34 @@ const axisWords = (target: ReadonlyArray<{ readonly axis: string; readonly mm: n
 	target.map((t) => `${axisLetter(t.axis)}${sig(t.mm)}`).join(" ") as Param;
 
 /**
+ * The G1 itself, at module level rather than inside the builder table.
+ *
+ * `cmd.moveTo` is this function, and so is the move half of `cmd.captureMove`
+ * below — one producer of a G1, reached under two names. It has to live out
+ * here to be reachable from a sibling builder at all: a member of the table
+ * that referenced `rawCmd` from inside the table's own initializer would make
+ * the table's inferred type circular and stop compilation.
+ *
+ * Plain G1 — no H flag, like cmd.jog: the shaping procedure only ever runs on
+ * a homed machine and axis limits should apply. G90 is NOT bundled in; the
+ * procedure sends cmd.absolute() once, because repeating a modal per move
+ * would be the same fact stated twice.
+ *
+ * Refuses an empty target (a G1 with no axes is a feed-rate change wearing a
+ * move) and a repeated axis (`G1 X1 X2` is malformed). Both are runtime
+ * refusals — rung 2 — because the parameter shape is fixed by the procedure
+ * API; the honest claim is that they fail loudly at the one place that could
+ * have emitted them, not that they are unrepresentable.
+ */
+function g1To(target: ReadonlyArray<{ axis: "X" | "Y"; mm: Mm }>, feedMmPerMin: number): string {
+	if (target.length === 0) throw new Error("a move needs at least one axis");
+	if (new Set(target.map((t) => t.axis)).size !== target.length) {
+		throw new Error(`repeated axis in a move: ${target.map((t) => t.axis).join("")}`);
+	}
+	return gc`G1 ${axisWords(target)} F${sig(feedMmPerMin)}`;
+}
+
+/**
  * An accelerometer, spelled the way M955/M956 address one: `20.0` for device 0
  * on the CAN board at address 20, and the bare `0` for the mainboard's own.
  * Only accelAddr() below can make one.
@@ -494,27 +522,10 @@ const rawCmd = {
 		return gc`G4 P${sig(ms)}`;
 	},
 
-	/**
-	 * An absolute X/Y move at a given feed rate (mm/min, as F always is).
-	 *
-	 * Plain G1 — no H flag, like cmd.jog: the shaping procedure only ever runs on
-	 * a homed machine and axis limits should apply. G90 is NOT bundled in; the
-	 * procedure sends cmd.absolute() once, because repeating a modal per move
-	 * would be the same fact stated twice.
-	 *
-	 * Refuses an empty target (a G1 with no axes is a feed-rate change wearing a
-	 * move) and a repeated axis (`G1 X1 X2` is malformed). Both are runtime
-	 * refusals — rung 2 — because the parameter shape is fixed by the procedure
-	 * API; the honest claim is that they fail loudly at the one place that could
-	 * have emitted them, not that they are unrepresentable.
-	 */
-	moveTo: (target: ReadonlyArray<{ axis: "X" | "Y"; mm: Mm }>, feedMmPerMin: number): string => {
-		if (target.length === 0) throw new Error("a move needs at least one axis");
-		if (new Set(target.map((t) => t.axis)).size !== target.length) {
-			throw new Error(`repeated axis in a move: ${target.map((t) => t.axis).join("")}`);
-		}
-		return gc`G1 ${axisWords(target)} F${sig(feedMmPerMin)}`;
-	},
+	/** An absolute X/Y move at a given feed rate (mm/min, as F always is). The
+	 *  form and its refusals are documented on `g1To` above, which is also the
+	 *  move half of `captureMove` — one G1 producer, two names. */
+	moveTo: g1To,
 
 	// --- accelerometer + input shaping (M955 / M956 / M593) ---
 
@@ -553,7 +564,7 @@ const rawCmd = {
 	},
 
 	/**
-	 * Collect `samples` accelerometer readings into a .csv (M956).
+	 * Arm a capture and make the move it records, as ONE command (M956 + G1).
 	 *
 	 * Parameter order P, S, A, F follows reference/dwc
 	 * (plugins/InputShaping/RecordMotionProfileDialog.vue:555) and the wiki's own
@@ -565,10 +576,45 @@ const rawCmd = {
 	 * number, so there is no fourth value to send.
 	 *
 	 * F is a bare file name; RRF puts it in 0:/sys/accelerometer.
+	 *
+	 * @invariant an-arm-never-outlives-its-move
+	 * @rung 7  sole-constructor type — this is the ONLY builder in this module
+	 *          that emits an M956, it takes the move's target and feed as
+	 *          REQUIRED arguments, and `gc` is the only assembly form here, so
+	 *          an M956 that this app can send without the move behind it is not
+	 *          a string any caller can obtain. Outside this file `gc` is a
+	 *          fenced pattern (test/shaping-motion-fence.test.ts) and
+	 *          `GcodeCommand` is a brand only these builders and
+	 *          `operatorTyped` mint, so there is no second producer to forget.
+	 *          The two lines then cross the wire as one `sendCode` — one
+	 *          rr_gcode request, one DSF POST — so there is no send boundary
+	 *          between them at which a transport can refuse the second half
+	 * @why RRF documents no way to CANCEL an armed M956 (reference/duet-gcode.md,
+	 *      M956: the parameters are P, S, X/Y/Z, A and F, and the notes describe
+	 *      no disarm). An A1 or A2 request is consumed by the next move and by
+	 *      nothing else, so an arm that loses its move sits on the board waiting,
+	 *      and the next move anyone makes — a jog, a homing macro, the start of a
+	 *      print — is recorded into the abandoned pass's file. Issue #43: the
+	 *      arm went out, the G1 behind it was rejected by the transport, and the
+	 *      run aborted with the board still armed. Fusing them is what makes that
+	 *      state unreachable, because there is no longer a second request to
+	 *      reject. reference/dwc reaches the same place from the other end: its
+	 *      InputShaping plugin puts M956 and its G1 in a single `doCode` string
+	 *      (RecordMotionProfileDialog.vue:555) and so never had the gap to close
 	 */
-	accelCapture: (addr: AccelAddr, samples: number, trigger: 0 | 1 | 2, file: string): string => {
+	captureMove: (
+		addr: AccelAddr,
+		samples: number,
+		trigger: 0 | 1 | 2,
+		file: string,
+		target: ReadonlyArray<{ axis: "X" | "Y"; mm: Mm }>,
+		feedMmPerMin: number,
+	): string => {
 		if (!Number.isInteger(samples) || samples <= 0) throw new Error(`not a sample count: ${String(samples)}`);
-		return gc`M956 P${accelParam(addr)} S${n(samples)} A${n(trigger)} F${gcodeQuote(file)}`;
+		return lines(
+			gc`M956 P${accelParam(addr)} S${n(samples)} A${n(trigger)} F${gcodeQuote(file)}`,
+			g1To(target, feedMmPerMin),
+		);
 	},
 
 	/**
