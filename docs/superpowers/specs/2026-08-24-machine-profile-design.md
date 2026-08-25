@@ -250,19 +250,45 @@ after every reload, the envelope is `unknown` and the Shaping card refuses. That
 is the right trade — a refusal that clears in a second, against an envelope
 belonging to a different machine. **Open question 5** puts it to Gabe anyway.
 
-**When identity is unavailable:**
+**When `uniqueId` is unavailable — DECIDED (Gabe, 2026-08-25, open question 4):
+fall back to the MAC address of the first network interface that has one.**
 
 ```ts
 export type MachineId =
 	| { readonly kind: "board"; readonly uniqueId: string }
+	| { readonly kind: "mac"; readonly mac: string }
 	| { readonly kind: "unidentified"; readonly why: string };
 ```
 
-An `unidentified` machine gets **no local machine cache at all** — SD is its only
-store, and every operator-supplied fact reads `unknown` until that file loads.
-Safe by construction: there is no key under which anything could have been saved
-for it, so there is nothing to inherit. (Whether an operator may instead name it
-by hand is **open question 4**.)
+Resolution order, and it is an order, not a choice: `boards[main].uniqueId`
+first; failing that the first entry of `network.interfaces` whose `mac` is a
+non-empty string; failing that `unidentified`.
+
+The fallback qualifies on the same grounds `uniqueId` does — factory-assigned,
+not operator-editable, survives firmware updates and SD swaps — and it is on the
+wire today: `"2C:CF:67:CF:F5:50"` at
+`packages/mock-duet/captures/duet3-real-2026-07-15/model/verbose-network.json`.
+
+Three properties of the fallback that the implementation must not paper over:
+
+- **`mac` is nullable** (`reference/objectmodel/src/network/NetworkInterface.ts:38`)
+  and the real capture's second interface is a disabled wifi radio. "First
+  interface found" therefore means *first interface carrying a non-empty mac*,
+  never `interfaces[0].mac` — that would resolve to `null` on a board whose
+  ethernet is absent and silently produce an unidentified machine that has one.
+- **It is a different key space from `uniqueId`.** A board that gains
+  `uniqueId` support in a firmware update re-keys, and its machine settings read
+  as a fresh machine. That is the correct failure: re-keying loses settings,
+  where merging key spaces would risk attaching one machine's envelope to
+  another. The card says so rather than leaving it a mystery.
+- **`network` is not a typed model key today** (`om/types.ts:361-370`) — it
+  arrives through the open `Record<string, unknown>` arm, ungated. Identity
+  cannot rest on an ungated subtree, so phase 1 types and conforms it.
+
+An `unidentified` machine — neither id available — gets **no local machine cache
+at all**: SD is its only store, and every operator-supplied fact reads `unknown`
+until that file loads. Safe by construction: there is no key under which anything
+could have been saved for it, so there is nothing to inherit.
 
 **When identity changes** — a mainboard swap, or an SD card moved to a different
 board — the key changes, so the profile is fresh and every fact is `unknown`.
@@ -291,18 +317,22 @@ which heater, not about which colour is nice.
 | `macros.autoConfirmRun` | person | A habit about confirmations. |
 | `bed.probePointCommand` | **machine** | Names a macro path on that card and drives the probe. |
 | `screens.custom/renames/hidden` | person | A person's screen set. |
-| `screens.layouts` | person *(provisionally)* | #76 says origin-global; CLAUDE.md says "4 layouts per machine". **Open question 1.** |
+| `screens.layouts` | **machine** | #76 said origin-global and #76 was wrong: CLAUDE.md's "4 layouts per machine" is a recorded decision and outranks it. **Open question 1, closed 2026-08-25.** A layout places cards that name machine indices, so it was never purely a person's taste. Note the cost, stated: point this browser at a second Duet and your arrangement is not there. The *four-variant matrix* (desktop/mobile × portrait/landscape) is a separate, still-unimplemented requirement — this row only decides the key space the one existing layout set lives in. |
 | `cards` | person | User-authored card definitions. |
 | `pins` | **machine** | A pin *re-sends G-code on an interval*. `"fan:<n>"` keys are machine indices. A pin from machine A firing at machine B is an unasked-for command at a machine nobody aimed it at. |
 | `shaping` (all of it) | **machine** | `envelope` is the safety headline; `accelByTool` is hardware addressing; `defaults` is one machine's mass (#61). |
 
-localStorage, from the verified key list: `dwc-ng.canvas.<screenId>`,
-`dwc-ng.scale` (`shell/scale.ts:44`), `dwc-ng.theme` (`shell/theme.ts:47`),
-`dwc-ng.nav-hidden`, `dwc-ng.speed-flow-mode`, `dwc-ng.camera-view` and the
-`dwc-ng.lab-*` dev keys stay **person**. `dwc-ng.drafts` (`editor/drafts.ts:29`)
-is **machine** — those are drafts of files on that card. `dwc-ng.cmdHistory`
-(`om/commandHistory.ts:17`) and `dwc-ng.console` (`om/consoleLog.ts:73`) are
-**open question 6**.
+localStorage, from the verified key list: `dwc-ng.scale` (`shell/scale.ts:44`),
+`dwc-ng.theme` (`shell/theme.ts:47`), `dwc-ng.nav-hidden`,
+`dwc-ng.speed-flow-mode`, `dwc-ng.density-pitch`, `dwc-ng.camera-view` and the
+`dwc-ng.lab-*` dev keys stay **person**. **Machine:** `dwc-ng.drafts`
+(`editor/drafts.ts:29`) — those are drafts of files on that card;
+`dwc-ng.canvas.<screenId>` — the layout store, following `screens.layouts`
+above; and, **decided 2026-08-25 (open question 6), `dwc-ng.cmdHistory`
+(`om/commandHistory.ts:17`) and `dwc-ng.console` (`om/consoleLog.ts:73`)** —
+the console log is literally that board's replies, and a recalled command may
+name a tool number or a macro path that exists only on that card.
+`dwc-ng.canvas.cardlab` is a dev key and stays person.
 
 ### The migration
 
@@ -518,8 +548,16 @@ against a stale tree:
 
 ## Open questions (Gabe)
 
-1. **Layouts:** CLAUDE.md says "4 layouts per machine"; #76 says layouts stay
-   origin-global. Per machine, or per person?
+**Three of six answered 2026-08-25. Nothing in phase 1 is blocked; 2, 3 and 5
+belong to phases 3–5 and are still open.**
+
+1. ~~**Layouts:** CLAUDE.md says "4 layouts per machine"; #76 says layouts stay
+   origin-global. Per machine, or per person?~~
+   **CLOSED 2026-08-25 — machine.** Not put to Gabe: CLAUDE.md already records
+   the decision ("Unique desktop and mobile profiles … 4 layouts per machine")
+   and a spec does not get to overrule project memory. §4's table row and
+   `dwc-ng.canvas.<screenId>` follow it. The four-variant matrix remains
+   unimplemented and out of this campaign's scope.
 2. **Accelerometer orientation:** your four toolboards report `I41`, not the
    default 20. Does RRF's `M956 X/Y/Z` already hand back machine-axis columns
    (making the app's `axis === "Y" ? 1 : 0` right by accident), or must the app
@@ -527,11 +565,19 @@ against a stale tree:
    falsifying test is one capture with the head excited along +X only.
 3. **Dock positions:** type them in per tool, or parse them out of your
    `tfree<N>.g`/`tpost<N>.g` and ask you to confirm what was found?
-4. **A board with no `uniqueId`:** refuse machine-scoped local settings entirely
-   (SD only), or let you name the machine yourself and accept that names collide?
+4. ~~**A board with no `uniqueId`:** refuse machine-scoped local settings entirely
+   (SD only), or let you name the machine yourself and accept that names collide?~~
+   **ANSWERED (Gabe, 2026-08-25): neither — use the MAC address of the first
+   network interface found in the object model.** Written up as the second arm of
+   `MachineId` in §3, including the two things the answer does not say out loud:
+   `mac` is nullable so "first found" means first non-empty one, and `network`
+   must be typed and conformed because identity may not rest on an ungated
+   subtree. Operator-supplied names were not chosen and are not implemented —
+   a colliding name is an inherited envelope.
 5. **The one-poll gap:** after this lands, machine facts read `unknown` for about
    one poll cycle after every reload, so the Shaping card refuses for ~1 s.
    Acceptable, or do you want the last-seen machine's cache applied optimistically
    (which re-opens a narrow version of the inheritance hole)?
-6. **`dwc-ng.cmdHistory` and `dwc-ng.console`:** machine-scoped (that machine's
-   traffic) or person-scoped (your habits)?
+6. ~~**`dwc-ng.cmdHistory` and `dwc-ng.console`:** machine-scoped (that machine's
+   traffic) or person-scoped (your habits)?~~
+   **ANSWERED (Gabe, 2026-08-25): machine-scoped, both.** Recorded in §4.
