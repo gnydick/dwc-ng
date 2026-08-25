@@ -52,7 +52,8 @@ import type { Axis, Mode, NoFit } from "./engine/fit.ts";
 import type { Seconds } from "./engine/units.ts";
 import type { MotionOutcome, MotionState } from "./motionRun.ts";
 import { Preconditions } from "./preconditions.ts";
-import { planProcedure, readSampleRate, type Plan, type ProcEvent, type SampleRate } from "./procedure.ts";
+import { conditionsOf, planProcedure, readSampleRate, type Plan, type ProcEvent, type SampleRate } from "./procedure.ts";
+import type { Conditions } from "./evidence/evidence.ts";
 import type { CaptureRecord } from "./results.ts";
 import { plannedCaptureCount, runPlans, type RunKind, type RunRequest } from "./runPlan.ts";
 
@@ -87,6 +88,22 @@ export type RunResult = {
 	readonly kind: RunKind;
 	readonly captures: readonly RawCapture[];
 	readonly outcome: MotionOutcome;
+	/**
+	 * The machine state these captures were taken under, for the fingerprint
+	 * they will become. Null in exactly two cases, and neither of them ends in
+	 * a fingerprint: a run refused before its first leg was ever planned (which
+	 * captures nothing), and a sweep, whose captures are a family on the Sweep
+	 * card and are never aggregated (`conditionsOf` says why).
+	 *
+	 * Taken from the FIRST leg that planned. A measure run is one ring per
+	 * planar axis out of one `measurePlans` call, so both legs carry the same
+	 * distance, speed and repeats by construction, and the acceleration is read
+	 * once per leg from a machine that only this run is sending G-code to. What
+	 * would make the two legs differ is the operator editing Settings mid-run —
+	 * and the honest record of what these captures were taken under is what the
+	 * run was ARMED with, not what the box said afterwards.
+	 */
+	readonly conditions: Conditions | null;
 	/** Was anything sent to the machine at all? False for a refusal. */
 	readonly touched: boolean;
 	readonly restored: boolean;
@@ -113,6 +130,16 @@ export async function runMotion(req: RunRequest, deps: RunDeps): Promise<RunResu
 	let expected = 0;
 	let stepsDone = 0;
 	let totalSteps = 0;
+	/**
+	 * What the first planned leg was taken under. See `RunResult.conditions`.
+	 *
+	 * Declared up here with the other tallies rather than beside the loop that
+	 * fills it, because `finish` reads it and `finish` is called from the
+	 * envelope refusal above the loop — a `let` further down is in its temporal
+	 * dead zone there, which turns a clean "no envelope" refusal into a thrown
+	 * ReferenceError.
+	 */
+	let conditions: Conditions | null = null;
 
 	deps.report({ kind: "planning", run: kind });
 
@@ -177,6 +204,15 @@ export async function runMotion(req: RunRequest, deps: RunDeps): Promise<RunResu
 		const planned = planProcedure(plan, read.pre, deps.cfg(), Date.now(), rate, runPrior);
 		if (!planned.ok) return finish({ kind: "refused", refusal: planned.refusal });
 
+		// After the plan was ACCEPTED, so a refused run records nothing about a
+		// state it never reached. A null acceleration records nothing rather
+		// than a stand-in: `planProcedure` refuses `no-acceleration` before it
+		// returns ok, so this branch is unreachable today — and if a future
+		// plan kind makes it reachable, "no conditions" is the answer that
+		// cannot be compared and mislead, while a zero is one that can.
+		const planAccel = read.pre.travelAccel;
+		if (conditions === null && planAccel !== null) conditions = conditionsOf(plan, planAccel);
+
 		let failed: string | null = null;
 		// `for await` and not `.next()` in a while loop: a `break` out of this
 		// calls the generator's `return`, which runs the `finally` that sends the
@@ -205,7 +241,7 @@ export async function runMotion(req: RunRequest, deps: RunDeps): Promise<RunResu
 			touched,
 			restored,
 		});
-		return { kind, captures, outcome, touched, restored };
+		return { kind, captures, outcome, conditions, touched, restored };
 	}
 
 	/** One event. Returns the failure sentence when this was one, else null. */

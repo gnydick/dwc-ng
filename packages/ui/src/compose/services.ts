@@ -58,8 +58,9 @@ import { forcedJobInfoErrorNow } from "../dev/forcedJobInfoError.ts";
 import { createHeightMapStore } from "../heightmap/store.ts";
 import { cellPosition } from "../heightmap/parse.ts";
 import { createShapingStore } from "../shaping/store.ts";
-import { type CaptureRecord, emptyResults, RESULTS_PATH, type ToolResults } from "../shaping/results.ts";
-import { Preconditions, type Refusal } from "../shaping/preconditions.ts";
+import { type CaptureRecord, emptyResults, fingerprintOf, RESULTS_PATH, type ToolResults } from "../shaping/results.ts";
+import { Preconditions, type Refusal, travelAcceleration } from "../shaping/preconditions.ts";
+import type { Conditions, MachineNow, Provenance } from "../shaping/evidence/evidence.ts";
 import { findShapingLine, replaceShapingLine, toolMacroPath } from "../shaping/toolMacro.ts";
 import type { ShapingStep } from "../shaping/steps.ts";
 import { candidateFor, shortlist } from "../shaping/engine/rank.ts";
@@ -274,7 +275,26 @@ export type MacroRead =
  * reached with imported data without the compiler objecting first.
  */
 export type BatchAttribution =
-	| { readonly kind: "machine"; readonly records: readonly CaptureRecord[] }
+	| {
+			readonly kind: "machine";
+			readonly records: readonly CaptureRecord[];
+			/**
+			 * Where these records came from, minted at the source and carried
+			 * rather than reconstructed at the save.
+			 *
+			 * It sits in the `machine` arm beside the records for the same
+			 * reason the records do: `store.setMeasurement` takes a
+			 * `Measurement`, whose provenance is a required field, so the only
+			 * way to reach the writer is to have been handed one — and the only
+			 * two places that mint one are the batch fit (which knows the
+			 * operator ticked a list, so `assembled`) and the run (which knows
+			 * the acceleration and the shaper it planned with, so `measured`).
+			 * A third opinion formed at the save would be exactly the "second
+			 * producer of a fact the run already had" that #57's design
+			 * constraint forbids.
+			 */
+			readonly provenance: Provenance;
+	  }
 	| { readonly kind: "imported"; readonly why: string };
 
 /**
@@ -600,7 +620,21 @@ function shapingService(base: ServiceBaseCtx) {
 			// imported CSV is a file the operator brought, not a capture of this
 			// tool, so there is nothing here for `saveMeasurement` to write.
 			attribution: imported === 0
-				? { kind: "machine", records }
+				? {
+					kind: "machine",
+					records,
+					// ASSEMBLED, not measured, and this is #57's requirement 2
+					// in the one line that decides it. These files were ticked
+					// off the card: their names say axis and direction and
+					// nothing else, and this UI has no idea what tool was
+					// mounted, what shaper was live or what the machine's
+					// acceleration was when M956 wrote them. Re-deriving any of
+					// that from the names is what the ticket rules out. So the
+					// fingerprint stays usable — `assembled` is unattributable,
+					// which arms a control, never disables one — and stops
+					// looking identical to one a run produced.
+					provenance: { kind: "assembled", n: records.length },
+				}
 				: {
 					kind: "imported",
 					why: `${imported === 1 ? "One capture was" : `${imported} captures were`} imported from this computer, so this fit cannot be written to a tool — a tool's results file records that machine's own captures.`,
@@ -629,7 +663,11 @@ function shapingService(base: ServiceBaseCtx) {
 		if (run.kind !== "fitted" || run.purpose.kind !== "baseline" || run.attribution.kind !== "machine") return;
 		setRunState({ kind: "saving", tool });
 		try {
-			store.setMeasurement(tool, run.fingerprint, run.attribution.records);
+			store.setMeasurement(tool, {
+				fingerprint: run.fingerprint,
+				captures: run.attribution.records,
+				provenance: run.attribution.provenance,
+			});
 			await store.save(tool);
 			setRunState({ kind: "saved", tool, contributed: run.contributed, total: run.total });
 			// The screen follows the tool just measured: every other card on it
@@ -1031,7 +1069,7 @@ function shapingService(base: ServiceBaseCtx) {
 	const [ranking, setRanking] = createSignal(false);
 	const rank = async (): Promise<void> => {
 		const n = tool();
-		const fingerprint = resultsFor(n).fingerprint;
+		const fingerprint = fingerprintOf(resultsFor(n));
 		if (fingerprint === null || ranking()) return;
 		setRanking(true);
 		setProblem("");
@@ -1127,7 +1165,11 @@ function shapingService(base: ServiceBaseCtx) {
 	 * run that lands twelve captures has not measured anything until they are
 	 * fitted, and fitting them is not a motion.
 	 */
-	const setFitted = (records: readonly CaptureRecord[], purpose: BatchPurpose = { kind: "baseline" }): void => {
+	const setFitted = (
+		records: readonly CaptureRecord[],
+		purpose: BatchPurpose = { kind: "baseline" },
+		under: Conditions | null = null,
+	): void => {
 		const fingerprint = aggregate(records.map(r => ({ axis: r.axis, fit: r.fit })));
 		setRunState({
 			kind: "fitted",
@@ -1135,11 +1177,43 @@ function shapingService(base: ServiceBaseCtx) {
 			purpose,
 			// This machine's own captures, by construction: they came off it a
 			// moment ago through `Procedure.run`.
-			attribution: { kind: "machine", records: [...records] },
+			attribution: {
+				kind: "machine",
+				records: [...records],
+				// MEASURED, with what the run planned against — #57's
+				// requirement 1. `under` is the run's own record (`conditionsOf`
+				// off the accepted plan), never re-derived here; this service
+				// has no business forming a second opinion about an
+				// acceleration a run already read.
+				//
+				// The `unknown` arm is reachable only for a run that captured
+				// something without ever planning a ring — which is a sweep,
+				// whose captures the Capture card returns on before they ever
+				// reach here. It is written out rather than asserted away
+				// because a wrong `measured` claim is worse than an honest
+				// "cannot be checked": one arms a confirm, the other blesses a
+				// number nobody recorded the conditions for.
+				provenance: under === null
+					? { kind: "unknown", why: "this run did not record the machine state it ran under" }
+					: { kind: "measured", at: new Date().toISOString(), under },
+			},
 			contributed: fingerprint.n.X + fingerprint.n.Y,
 			total: records.length,
 		});
 	};
+
+	/**
+	 * The machine in front of the operator, as the evidence layer's two facts.
+	 *
+	 * On the SERVICE and not in a card, for the reason `fullStepFor` is: a card
+	 * that read `move.travelAcceleration` for itself would be a second
+	 * derivation of the number a stored measurement is checked against, and the
+	 * two would eventually disagree about whether a fingerprint is current.
+	 * `travelAcceleration` is the same sole reader `Preconditions.read` uses to
+	 * plan a run, so what supersedes a measurement and what a run was planned
+	 * with come off one expression.
+	 */
+	const machineNow = (): MachineNow => ({ tool: tool(), accelMmPerS2: travelAcceleration(base.om.om) });
 
 	/** Bytes a run already paid for, put where the Decay card looks. */
 	const rememberCapture = (file: string, csv: string, fit: Mode | NoFit): void => {
@@ -1203,7 +1277,7 @@ function shapingService(base: ServiceBaseCtx) {
 		results: (): ToolResults => resultsFor(tool()),
 		capturePick, setCapturePick, imports, addImport, loadCapture: loader.text,
 		board, boardState, boardError, wantBoard, refreshBoard,
-		runState, fitCaptures, saveMeasurement, clearRun,
+		runState, fitCaptures, saveMeasurement, clearRun, machineNow,
 		fits, families, fullStepFor, sweepState, buildSweep, saveSweep,
 		candidateIndex, setCandidateIndex,
 		accelFor, accelReportFor, readAccel, setAccelRate, gate, macroFor, toggleMacro, rank, ranking, problem, offer, runStep,

@@ -3,7 +3,7 @@
 // estimator's resolution, which is all these tests need.
 import { fitDecay, isMode, type Mode, type Fingerprint } from "../../src/shaping/engine/fit.ts";
 import { hz, seconds } from "../../src/shaping/engine/units.ts";
-import { type Evidence, held, type Provenance } from "../../src/shaping/evidence/evidence.ts";
+import { type Conditions, type Evidence, held, type Provenance } from "../../src/shaping/evidence/evidence.ts";
 import type { WorkflowProducts } from "../../src/shaping/steps.ts";
 
 export function modeForTest(f: number, zeta: number, amp = 0.3, rate = 2688): Mode {
@@ -38,7 +38,27 @@ export function prototypeFingerprint(): Fingerprint {
  */
 export type Have = Partial<Record<"fingerprint" | "sweep" | "candidates" | "verified" | "applied", boolean>>;
 
-const SOUND: Provenance = { kind: "measured", at: "2026-08-23T09:14:02", tool: 0 };
+/**
+ * The conditions the prototype baseline was actually taken under
+ * (tools/accel/runs/ring/ring1): 100 mm at 100 mm/s, three repeats each way,
+ * shaping off, on a machine set to 6000 mm/s².
+ *
+ * Real numbers rather than round ones, so a test that accidentally compares a
+ * measurement against itself cannot pass on zeroes.
+ */
+export const PROTOTYPE_CONDITIONS: Conditions = {
+	shaper: null,
+	accelMmPerS2: 6000,
+	speedMmPerS: 100,
+	distMm: 100,
+	repeats: 3,
+};
+
+/** A measured provenance, optionally under conditions other than the prototype's. */
+export const measuredUnder = (under: Conditions = PROTOTYPE_CONDITIONS): Provenance =>
+	({ kind: "measured", at: "2026-08-23T09:14:02", under });
+
+const SOUND: Provenance = measuredUnder();
 
 export const productsOf = (have: Have = {}): WorkflowProducts => {
 	const one = (yes: boolean | undefined): Evidence<unknown> => (yes === true ? held({}, SOUND, []) : { state: "absent" });

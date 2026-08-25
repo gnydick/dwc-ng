@@ -9,16 +9,17 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { type CaveatCopy, held, lifecycleOf, type Provenance } from "../src/shaping/evidence/evidence.ts";
 import type { Caveat } from "../src/shaping/evidence/caveat.ts";
-import { caveatText, supersedeText } from "../src/shaping/copy.ts";
+import { caveatText, provenanceText, supersedeText } from "../src/shaping/copy.ts";
 import { hz } from "../src/shaping/engine/units.ts";
+import { measuredUnder } from "./helpers/shaping.ts";
 
-const MEASURED: Provenance = { kind: "measured", at: "2026-08-23T09:14:02", tool: 0 };
+const MEASURED: Provenance = measuredUnder();
 const UNKNOWN: Provenance = { kind: "unknown", why: "conditions were not recorded" };
 const ADVISORY: Caveat = { kind: "few-fits", axis: "Y", n: 3, of: 10 };
 const DISQUALIFYING: Caveat = { kind: "mode-on-forcing-locus", axis: "X", modeHz: hz(125), speedMmPerS: 25 };
 
 /** The real table, so the sentences are the ones the screen shows. */
-const COPY: CaveatCopy = { caveat: caveatText, supersede: supersedeText };
+const COPY: CaveatCopy = { caveat: caveatText, supersede: supersedeText, provenance: provenanceText };
 
 test("a sound product gives a plain enabled control", () => {
 	assert.equal(lifecycleOf(held(1, MEASURED, []), COPY).kind, "enabled");
@@ -36,6 +37,37 @@ test("an unattributable product arms rather than blocks", () => {
 	const l = lifecycleOf(held(1, UNKNOWN, []), COPY);
 	assert.equal(l.kind, "armed");
 	assert.ok(l.kind === "armed" && /cannot be checked/.test(l.confirm));
+});
+
+test("a hand-assembled product arms with a sentence that names WHY it cannot be checked", () => {
+	// Newly reachable with #57: `assembled` is unattributable too, so the
+	// confirm has to have words. Before the copy table gained a provenance row
+	// this rendered as a bare em dash — an armed dialog asking the operator to
+	// agree to nothing.
+	const l = lifecycleOf(held(1, { kind: "assembled", n: 12 }, []), COPY);
+	assert.equal(l.kind, "armed");
+	if (l.kind !== "armed") return;
+	assert.match(l.confirm, /12 captures/, "the count the operator ticked");
+	assert.match(l.confirm, /tool, the shaper or the acceleration/, "what is missing, by name");
+	assert.match(l.confirm, /cannot be checked/);
+});
+
+test("every provenance arm has a sentence, and none of them is empty", () => {
+	// The same standard `refusalText` and `caveatText` are held to. An arm with
+	// no words renders as an armed confirm over nothing.
+	const arms: readonly Provenance[] = [
+		MEASURED,
+		{ kind: "assembled", n: 1 },
+		{ kind: "loaded", path: "0:/sys/dwc-ng/shaping/tool0.json" },
+		UNKNOWN,
+	];
+	for (const p of arms) {
+		const text = provenanceText(p);
+		assert.ok(text.length > 20, `${p.kind}: ${JSON.stringify(text)}`);
+		assert.equal(text.trim(), text, `${p.kind} has stray whitespace`);
+	}
+	// One capture is not "1 captures".
+	assert.match(provenanceText({ kind: "assembled", n: 1 }), /this is one capture/);
 });
 
 test("a disqualified product disables and names the remedy", () => {

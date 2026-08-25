@@ -33,7 +33,7 @@ import type { Evidence } from "./evidence.ts";
 import { type Inquiry, inquiryFor } from "./inquiry.ts";
 import { severityOf } from "./caveat.ts";
 import type { ShapingStep, WorkflowProducts } from "../steps.ts";
-import type { ToolResults } from "../results.ts";
+import { capturesOf, fingerprintOf, type ToolResults } from "../results.ts";
 
 /**
  * What each step would TELL you — the reason to run it, not the act.
@@ -87,6 +87,43 @@ export type Walk = {
 const hz1 = (v: number): string => v.toFixed(1);
 
 /**
+ * The end of the measure line: where these numbers came from.
+ *
+ * #57 requirement 4 — "the UI shows the provenance where a fingerprint is
+ * consumed" — at the one place on this screen where a fingerprint's meaning is
+ * narrated rather than tabulated. SHORT on purpose: this is a clause on an
+ * existing sentence, not a second sentence, because the walk is read as a
+ * thread and a paragraph per stage would stop it being one. The full account —
+ * the acceleration, the speed, the shaper — is `provenanceText` in the armed
+ * confirm, where somebody is about to act on it.
+ *
+ * A total switch with a `never` arm, so a provenance arm added without a
+ * clause stops compilation rather than trailing an empty string off the end of
+ * a sentence.
+ */
+function originClause(r: ToolResults): string {
+	const prov = r.measurement?.provenance;
+	if (prov === undefined) return "";
+	switch (prov.kind) {
+		case "measured":
+			// Just the date. The conditions are what the SUPERSEDED line says
+			// when one of them has changed, and repeating them here would put
+			// six numbers on a line whose job is to say what was found.
+			return `measured ${prov.at.slice(0, 10)}`;
+		case "assembled":
+			return "gathered by hand, so the conditions are not recorded";
+		case "loaded":
+			return `loaded from ${prov.path}`;
+		case "unknown":
+			return "with no record of the conditions";
+		default: {
+			const unhandled: never = prov;
+			throw new Error(`unknown provenance: ${String((unhandled as { kind: unknown }).kind)}`);
+		}
+	}
+}
+
+/**
  * What the tool can say about where this session has got to.
  *
  * Takes the results as well as the products because a KNOWN line has to carry
@@ -130,12 +167,12 @@ export function walkThrough(r: ToolResults, p: WorkflowProducts): Walk {
 	};
 
 	stage("measure", p.fingerprint, () => {
-		const x = r.fingerprint?.X;
-		const y = r.fingerprint?.Y;
+		const x = fingerprintOf(r)?.X;
+		const y = fingerprintOf(r)?.Y;
 		const both = [x === undefined || x === null ? null : `X ${hz1(Number(x.f))} Hz`, y === undefined || y === null ? null : `Y ${hz1(Number(y.f))} Hz`]
 			.filter((s): s is string => s !== null)
 			.join(", ");
-		return `T${r.tool} rings at ${both || "no fitted mode"}, from ${r.captures.length} captures`;
+		return `T${r.tool} rings at ${both || "no fitted mode"}, from ${capturesOf(r).length} captures ${originClause(r)}`;
 	});
 
 	stage("sweep", p.sweep, () => {

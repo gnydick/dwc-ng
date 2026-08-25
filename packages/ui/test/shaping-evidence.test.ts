@@ -11,8 +11,9 @@ import assert from "node:assert/strict";
 import type { Caveat } from "../src/shaping/evidence/caveat.ts";
 import { type Evidence, held, type Provenance, valueFor, verdictOf } from "../src/shaping/evidence/evidence.ts";
 import { hz } from "../src/shaping/engine/units.ts";
+import { measuredUnder } from "./helpers/shaping.ts";
 
-const MEASURED: Provenance = { kind: "measured", at: "2026-08-23T09:14:02", tool: 0 };
+const MEASURED: Provenance = measuredUnder();
 const UNKNOWN: Provenance = { kind: "unknown", why: "assembled by hand from the card" };
 
 const ADVISORY: Caveat = { kind: "few-fits", axis: "Y", n: 3, of: 10 };

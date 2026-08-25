@@ -12,8 +12,9 @@ import { caveatText } from "../src/shaping/copy.ts";
 import { type Caveat, severityOf } from "../src/shaping/evidence/caveat.ts";
 import { type Evidence, held, type Provenance } from "../src/shaping/evidence/evidence.ts";
 import { hz } from "../src/shaping/engine/units.ts";
+import { measuredUnder } from "./helpers/shaping.ts";
 
-const MEASURED: Provenance = { kind: "measured", at: "2026-08-23T09:14:02", tool: 0 };
+const MEASURED: Provenance = measuredUnder();
 const FEW: Caveat = { kind: "few-fits", axis: "Y", n: 3, of: 10 };
 const RIPPLE: Caveat = { kind: "mode-on-forcing-locus", axis: "X", modeHz: hz(125), speedMmPerS: 25 };
 const CANDS: readonly unknown[] = [{}, {}, {}];

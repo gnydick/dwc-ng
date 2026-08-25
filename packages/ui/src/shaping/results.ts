@@ -40,6 +40,7 @@ import { isPlainObject } from "@dwc-ng/connector";
 import { type Axis, type Fingerprint, type Mode, type NoFit, reviveFingerprint, reviveMode } from "./engine/fit.ts";
 import { type Candidate, candidateFor } from "./engine/rank.ts";
 import { SHAPER_TYPES, type ShaperSpec, type ShaperType } from "./engine/shapers.ts";
+import type { Conditions, Provenance } from "./evidence/evidence.ts";
 import type { SweepMatrix } from "./engine/sweep.ts";
 import { g, type G, hz, type Hz, mmPerS, type Seconds, seconds } from "./engine/units.ts";
 import { type VerifiedCandidate, verifyAnalysis } from "./store.ts";
@@ -68,8 +69,26 @@ import { type VerifiedCandidate, verifyAnalysis } from "./store.ts";
  * The CSVs on the card are untouched. Silently loading a fingerprint of a
  * shaped machine is the failure this whole ticket exists to end — the numbers
  * looked fine, which is exactly why refusing them has to be automatic.
+ *
+ * **3 (#57)** — the shape DID change, and this is the version #53 said would
+ * need more than one field. `fingerprint` and `captures` are gone as loose
+ * keys; in their place is one `measurement` object carrying both plus a
+ * `provenance` that says where they came from and, for a real run, the machine
+ * state they were taken under: the shaper the run stated, the acceleration it
+ * planned against, the speed, the distance and the repeats. A version-2 file
+ * has no honest answer to any of that. It could be read as
+ * `provenance: unknown`, and that was considered and rejected: the operator
+ * would then see "this cannot be checked" over numbers that in every case we
+ * have evidence of WERE checkable — they came off a build that already sent
+ * `M593 P"none"` — and a warning that fires on good data is the failure mode
+ * `axes-agree` was written under. Refusing is one re-measure; a permanently
+ * unattributable card is a warning nobody reads.
+ *
+ * The cost is the same as version 2's and accepted for the same reason: the
+ * CSVs on the card are untouched, and the run that rebuilds the file takes a
+ * few minutes and produces something that can answer the question.
  */
-export const RESULTS_VERSION = 2;
+export const RESULTS_VERSION = 3;
 
 export type CaptureRecord = {
 	file: string;
@@ -80,15 +99,59 @@ export type CaptureRecord = {
 	tStop: Seconds | null;
 };
 
+/**
+ * A fingerprint, the captures it is the median of, and where all of it came
+ * from — ONE value, and #57's whole answer.
+ *
+ * Gabe, 2026-08-23, reading `tool0.json`: "is there some sort of session
+ * there? because there's no notion of session for the UI." The file held three
+ * loose fields — a fingerprint, an array of captures and nothing at all about
+ * their origin — and a reader could only assume they belonged together. They
+ * did not have to. `fitCaptures` aggregated whatever the operator had ticked,
+ * so a shaping-off baseline and a verify capture recorded through `ei2 F52`
+ * both parsed as `X+0` and `X-0`, both fitted, and landed in one median that
+ * described neither machine.
+ *
+ * Bundling them is not tidiness, it is the mechanism. "Kept beside each other
+ * so they cannot drift" prevents nothing; being one value does. There is no
+ * longer a spelling for a fingerprint without its provenance, for captures
+ * belonging to no fingerprint, or for a provenance describing a measurement
+ * that is not there — the three states `setFingerprint` plus N `addCapture`s
+ * could produce, which is why both of those setters are gone.
+ *
+ * @invariant a-fingerprint-cannot-be-held-without-saying-where-it-came-from
+ * @rung 8  illegal state unrepresentable — provenance is a required field of
+ *          the same object as the fingerprint, and `Provenance` is a total
+ *          union with no absent arm. A caller who read nothing still has to
+ *          write down an origin to construct one, and the honest answers for
+ *          the cases that have no conditions (`assembled`, `loaded`,
+ *          `unknown`) are arms of the union rather than an omission
+ * @why the numbers in this record end up as the `M593` line written into
+ *      `tpost<N>.g`. A measurement that cannot say what machine state it
+ *      describes is one an operator tunes a printer against on trust
+ */
+export type Measurement = {
+	readonly fingerprint: Fingerprint;
+	readonly captures: readonly CaptureRecord[];
+	readonly provenance: Provenance;
+};
+
 export type ToolResults = {
 	readonly tool: number;
-	readonly fingerprint: Fingerprint | null;
-	readonly captures: readonly CaptureRecord[];
+	readonly measurement: Measurement | null;
 	readonly sweep: SweepMatrix | null;
 	readonly candidates: readonly Candidate[];
 	readonly verified: readonly VerifiedCandidate[];
 	readonly applied: ShaperSpec | null;
 };
+
+/** The fingerprint, or null where nothing has been measured. Present because
+ *  the great majority of readers want exactly this, and writing the optional
+ *  chain at each of them is how a `?? null` eventually becomes a `!`. */
+export const fingerprintOf = (r: ToolResults): Fingerprint | null => r.measurement?.fingerprint ?? null;
+
+/** The captures, or none. Same reason as `fingerprintOf`. */
+export const capturesOf = (r: ToolResults): readonly CaptureRecord[] => r.measurement?.captures ?? [];
 
 /** One file per tool: a toolchanger tunes each head separately, and a shared file would make tool 3's session overwrite tool 0's. */
 export const RESULTS_PATH = (tool: number): string => `0:/sys/dwc-ng/shaping/tool${tool}.json`;
@@ -115,7 +178,7 @@ export function parentDirs(path: string): string[] {
 }
 
 export function emptyResults(tool: number): ToolResults {
-	return { tool, fingerprint: null, captures: [], sweep: null, candidates: [], verified: [], applied: null };
+	return { tool, measurement: null, sweep: null, candidates: [], verified: [], applied: null };
 }
 
 const NO_FIT_REASONS: readonly NoFit["reason"][] = ["short-window", "below-floor", "short-decay", "damping-out-of-range"];
@@ -198,6 +261,88 @@ function parseCaptures(raw: unknown): CaptureRecord[] | null {
 	return out;
 }
 
+/**
+ * The conditions half of a `measured` provenance, rebuilt field by field.
+ *
+ * Every number is required and every number is checked for the sign its
+ * meaning demands: a zero acceleration is not a machine, a zero distance is
+ * not a move, and a zero repeat count is not a measurement. A card file
+ * carrying any of them is describing a run that did not happen, and the whole
+ * point of recording conditions is that they can be COMPARED — a nonsense
+ * acceleration would supersede every real one it was checked against.
+ *
+ * `shaper` is `null` or a spec, and it goes through `parseSpec`, the same gate
+ * `applied` and every candidate uses. A hand-written shaper here cannot be a
+ * shape the ranking would throw on.
+ */
+function parseConditions(raw: unknown): Conditions | null {
+	if (!isPlainObject(raw)) return null;
+	if (!isFinitePositive(raw.accelMmPerS2) || !isFinitePositive(raw.speedMmPerS) || !isFinitePositive(raw.distMm)) return null;
+	if (!isIndex(raw.repeats) || raw.repeats === 0) return null;
+	if (raw.shaper === undefined) return null;
+	const shaper = raw.shaper === null ? null : parseSpec(raw.shaper);
+	if (raw.shaper !== null && shaper === null) return null;
+	return {
+		shaper,
+		accelMmPerS2: raw.accelMmPerS2,
+		speedMmPerS: raw.speedMmPerS,
+		distMm: raw.distMm,
+		repeats: raw.repeats,
+	};
+}
+
+/**
+ * Where a measurement came from, as the card spells it.
+ *
+ * Total over the union and REFUSING on an unrecognised kind rather than
+ * falling back to `unknown`, which is the one tempting mistake here. Falling
+ * back would mean a typo in the file — or a provenance written by a future
+ * build this one cannot read — silently becoming "this cannot be checked" over
+ * numbers that are then used anyway. The rest of this module refuses the whole
+ * file when a field is wrong, for exactly the reason `parseResults` states,
+ * and an origin is not a lesser field than a frequency.
+ *
+ * The `unknown` arm is still parsed, because it is a legitimate thing to have
+ * written: `assembled` and `unknown` are what an operator's own hand-gathered
+ * captures come back as, and #57 is explicit that those stay usable.
+ */
+function parseProvenance(raw: unknown): Provenance | null {
+	if (!isPlainObject(raw) || typeof raw.kind !== "string") return null;
+	switch (raw.kind) {
+		case "measured": {
+			if (typeof raw.at !== "string" || raw.at.length === 0) return null;
+			const under = parseConditions(raw.under);
+			if (under === null) return null;
+			return { kind: "measured", at: raw.at, under };
+		}
+		case "assembled":
+			if (!isIndex(raw.n)) return null;
+			return { kind: "assembled", n: raw.n };
+		case "loaded":
+			if (typeof raw.path !== "string" || raw.path.length === 0) return null;
+			return { kind: "loaded", path: raw.path };
+		case "unknown":
+			if (typeof raw.why !== "string" || raw.why.length === 0) return null;
+			return { kind: "unknown", why: raw.why };
+		default:
+			return null;
+	}
+}
+
+/** The three-in-one, refused whole: a fingerprint the fitter would not have
+ *  produced, a bad capture or an unreadable origin all mean this is not a
+ *  measurement, and there is no half of one worth keeping. */
+function parseMeasurement(raw: unknown): Measurement | null {
+	if (!isPlainObject(raw)) return null;
+	const fingerprint = reviveFingerprint(raw.fingerprint);
+	if (fingerprint === null) return null;
+	const captures = parseCaptures(raw.captures);
+	if (captures === null) return null;
+	const provenance = parseProvenance(raw.provenance);
+	if (provenance === null) return null;
+	return { fingerprint, captures, provenance };
+}
+
 function parseSweep(raw: unknown): SweepMatrix | null {
 	if (!isPlainObject(raw)) return null;
 	const speeds = numberArray(raw.speeds, (n) => Number.isFinite(n) && n > 0);
@@ -253,8 +398,18 @@ export function serializeResults(results: ToolResults): string {
 	return JSON.stringify({
 		version: RESULTS_VERSION,
 		tool: results.tool,
-		fingerprint: results.fingerprint,
-		captures: results.captures.map((c) => ({ file: c.file, axis: c.axis, dir: c.dir, rep: c.rep, fit: c.fit, tStop: c.tStop })),
+		// The whole measurement or nothing. Its three parts are written under
+		// one key because they are one value: a reader that found a
+		// fingerprint here without a provenance beside it would be reading a
+		// file this build cannot have produced.
+		measurement:
+			results.measurement === null
+				? null
+				: {
+						fingerprint: results.measurement.fingerprint,
+						captures: results.measurement.captures.map((c) => ({ file: c.file, axis: c.axis, dir: c.dir, rep: c.rep, fit: c.fit, tStop: c.tStop })),
+						provenance: results.measurement.provenance,
+					},
 		sweep:
 			results.sweep === null
 				? null
@@ -289,11 +444,10 @@ export function parseResults(text: string): ToolResults | null {
 	// A missing key is a refusal, not a default: every field this build writes
 	// is always written, so an absent one means the file came from somewhere
 	// else.
-	const fingerprint = raw.fingerprint === null ? null : reviveFingerprint(raw.fingerprint);
-	if (raw.fingerprint !== null && fingerprint === null) return null;
-
-	const captures = parseCaptures(raw.captures);
-	if (captures === null) return null;
+	const measurement = raw.measurement === null ? null : parseMeasurement(raw.measurement);
+	if (raw.measurement !== null && measurement === null) return null;
+	if (raw.measurement === undefined) return null;
+	const fingerprint = measurement?.fingerprint ?? null;
 
 	const sweep = raw.sweep === null ? null : parseSweep(raw.sweep);
 	if (raw.sweep !== null && sweep === null) return null;
@@ -309,5 +463,5 @@ export function parseResults(text: string): ToolResults | null {
 	if (raw.applied !== null && applied === null) return null;
 	if (raw.applied === undefined) return null;
 
-	return { tool: raw.tool, fingerprint, captures, sweep, candidates, verified, applied };
+	return { tool: raw.tool, measurement, sweep, candidates, verified, applied };
 }

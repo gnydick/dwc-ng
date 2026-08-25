@@ -30,7 +30,7 @@ import { toolMacroPath } from "./toolMacro.ts";
 import type { Fingerprint } from "./engine/fit.ts";
 import type { Caveat } from "./evidence/caveat.ts";
 import type { Refusal } from "./preconditions.ts";
-import type { Supersede } from "./evidence/evidence.ts";
+import type { Provenance, Supersede } from "./evidence/evidence.ts";
 import type { Answer, Inquiry } from "./evidence/inquiry.ts";
 import type { ShapingStep, StepBlock, StepNeed, StepSpec, StepStatus } from "./steps.ts";
 import type { MotionOutcome, MotionState } from "./motionRun.ts";
@@ -192,6 +192,42 @@ export function supersedeText(s: Supersede): string {
 		default: {
 			const unhandled: never = s;
 			throw new Error(`unknown supersede cause: ${String((unhandled as { kind: unknown }).kind)}`);
+		}
+	}
+}
+
+/**
+ * Where a measurement came from, said to somebody deciding whether to act on
+ * it.
+ *
+ * Total over `Provenance` with a `never` arm, for the reason every table in
+ * this file is: an arm added without a sentence would render as the empty
+ * string in an armed confirm, and an armed confirm with no words is a dialog
+ * that asks the operator to agree to nothing.
+ *
+ * Only the three unattributable arms are ever shown — `measured` reaches
+ * `verdictOf` as `sound` or `caveated` and never routes through here — but it
+ * gets a sentence anyway rather than a thrown error or an empty string,
+ * because a table that is total for three of four arms is a table someone will
+ * eventually call on the fourth.
+ *
+ * Each one names the ACTION, not just the state. "This cannot be checked" is
+ * information; "measure this tool to get a checkable one" is what the operator
+ * came for.
+ */
+export function provenanceText(p: Provenance): string {
+	switch (p.kind) {
+		case "measured":
+			return `measured ${p.at} at ${p.under.accelMmPerS2.toFixed(0)} mm/s², ${p.under.speedMmPerS.toFixed(0)} mm/s over ${p.under.distMm.toFixed(0)} mm${p.under.shaper === null ? ", shaping off" : ` through ${cmd.inputShaping(p.under.shaper)}`}`;
+		case "assembled":
+			return `${p.n === 1 ? "this is one capture" : `these are ${p.n} captures`} gathered from the card by hand, so nothing records the tool, the shaper or the acceleration they were taken under — the numbers are real, they just cannot be checked against the machine in front of you`;
+		case "loaded":
+			return `this came from ${p.path} rather than from a run on this machine, so nothing records the conditions it was taken under`;
+		case "unknown":
+			return `${p.why} — so this cannot be checked against the machine in front of you`;
+		default: {
+			const unhandled: never = p;
+			throw new Error(`unknown provenance: ${String((unhandled as { kind: unknown }).kind)}`);
 		}
 	}
 }
