@@ -27,7 +27,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { planProcedure, type SweepPlan, type VerifyPlan } from "../src/shaping/procedure.ts";
-import { parseResults, RESULTS_VERSION } from "../src/shaping/results.ts";
+import { RESULTS_VERSION } from "../src/shaping/results.ts";
+import { parseResults } from "../src/shaping/resultsCodec.ts";
 import { hz, mm, mmPerS } from "../src/shaping/engine/units.ts";
 import type { ShaperSpec } from "../src/shaping/engine/shapers.ts";
 import {
