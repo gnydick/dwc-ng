@@ -27,6 +27,7 @@
  */
 import type { ConnectorReads } from "@dwc-ng/connector";
 import type { Axis, Mode, NoFit } from "./engine/fit.ts";
+import type { CaptureSource } from "./copy.ts";
 
 /** Where RRF's `M956` writes its captures, and where a run leaves them. */
 export const ACCEL_DIR = "0:/sys/accelerometer";
@@ -189,6 +190,141 @@ export function byNewest<T extends { name: string; date?: string }>(entries: rea
 export function matchesQuery(name: string, query: string): boolean {
 	const q = query.trim().toLowerCase();
 	return q === "" || name.toLowerCase().includes(q);
+}
+
+/* ------------------------- whether a reference still has a file behind it */
+
+/**
+ * How far the card has got with `ACCEL_DIR`.
+ *
+ * Lives here rather than in the service that holds the signal because it is
+ * half of what `captureLiveness` is a function of. "We have not looked" is one
+ * of the answers a reading of the directory can give, and it has to be sayable
+ * or the other three become guesses.
+ */
+export type BoardListingState = "unread" | "reading" | "read" | "failed";
+
+/**
+ * Whether a `CaptureRef` still has bytes behind it.
+ *
+ * A four-armed union rather than a boolean, because a boolean would have to
+ * pick a side for the two cases that are not a yes or a no.
+ *
+ *  - `held` — an import. Its CSV is IN the ref, so it is readable whatever the
+ *    board's directory holds, and it was never in that directory to begin
+ *    with. Calling it `live` would be a claim about the SD card that is not
+ *    only unchecked but false.
+ *  - `unchecked` — a board file, and nobody has listed the directory this
+ *    session. NOT the same as `live`, and that conflation is the defect: a
+ *    tool's results file names twelve captures, the card draws twelve tidy
+ *    rows, and every one of them 404s when clicked because the operator
+ *    emptied `0:/sys/accelerometer` in between (Gabe, 2026-08-23).
+ *  - `live` — the listing was read and holds this name.
+ *  - `gone` — the listing was read and does not.
+ *
+ * `gone` is not a reason to drop the row. The fit stored beside it is a real
+ * measurement of a real move, computed from bytes that existed when it was
+ * taken; what is lost is the ability to DRAW it again. So the numbers stay and
+ * the row says what it no longer is.
+ *
+ * @invariant liveness-is-read-not-assumed
+ * @rung 7  totality — `captureLiveness` is the only producer, it is total over
+ *          the ref's two kinds and the listing's four states, and a row cannot
+ *          be constructed without one (cards/ShapingCards.tsx `DecayRow`
+ *          declares `live` non-optional). There is no default to fall back
+ *          onto and nothing to forget to ask
+ * @why the previous card asked nothing: a reference was rendered from its
+ *      stored fit alone, so a capture whose file had been deleted was pixel
+ *      for pixel a capture that was still there
+ */
+export type Liveness =
+	| { readonly kind: "held" }
+	| { readonly kind: "unchecked" }
+	| { readonly kind: "live" }
+	| { readonly kind: "gone" };
+
+/**
+ * The one reading of the listing that decides whether a reference is dead.
+ *
+ * Pure, and it takes the listing's STATE as well as its names because only
+ * ABSENCE needs the state. A name the listing holds is a file the board told
+ * us about; a name it does not hold means "deleted" only if the listing is a
+ * finished reading, and means "we have not looked" otherwise. Answering `gone`
+ * from an empty set would condemn every capture on the card the moment the
+ * board went unreachable — or during the very first read, while the set is
+ * legitimately empty.
+ *
+ * The order of those two tests is what makes a board row `live` BY
+ * CONSTRUCTION: those rows ARE the listing, so their names are in the set, and
+ * a re-list in flight cannot demote them to `unchecked` and flicker a column
+ * of dates into a column of words. A failed re-read is conservative the same
+ * way: what was there is still `live`, and what was not goes back to
+ * `unchecked` rather than keeping a verdict the failure cast doubt on.
+ */
+export function captureLiveness(ref: CaptureRef, state: BoardListingState, names: ReadonlySet<string>): Liveness {
+	if (ref.kind === "import") return { kind: "held" };
+	if (names.has(ref.file)) return { kind: "live" };
+	return state === "read" ? { kind: "gone" } : { kind: "unchecked" };
+}
+
+/* --------------------------------------- what re-reading the directory does */
+
+/**
+ * What Rescan is FOR, given the source on screen — as data, so the button's
+ * disabled state and the sentence beside it come from one value.
+ *
+ * Rescan re-lists `ACCEL_DIR` and does nothing else. That single act means
+ * three different things to the three sources, and the middle one is what the
+ * old `disabled={source() !== "board"}` missed:
+ *
+ *  - BOARD: the rows ARE the listing, so re-reading replaces them.
+ *  - TOOL: the rows come from `tool<N>.json`, so re-reading does not change
+ *    which rows there are — it changes whether each of them still has a file.
+ *    That is `Liveness` above, and it is exactly the question an operator who
+ *    has just emptied the directory is asking.
+ *  - IMPORTED: the CSVs came off the operator's own computer and were never in
+ *    `ACCEL_DIR`, so there is nothing in that directory to re-read on their
+ *    behalf. This is the only source Rescan genuinely cannot serve, and it now
+ *    says so instead of greying out in silence.
+ */
+export type Rescan =
+	| { readonly kind: "lists-the-rows" }
+	| { readonly kind: "checks-the-rows"; readonly tool: number; readonly checked: boolean }
+	| { readonly kind: "nothing-to-list" };
+
+/**
+ * Whether Rescan may be pressed, and why not — from one call, so the two
+ * cannot disagree. The same shape `stepReadiness` uses (shaping/steps.ts), for
+ * the same reason: a control disabled by one expression and explained by
+ * another is a control that can be disabled for a reason it does not give.
+ */
+export interface RescanReadiness {
+	/** Derived here and only here: enabled exactly when there is something to
+	 *  re-read for the source on screen. */
+	readonly enabled: boolean;
+	readonly rescan: Rescan;
+}
+
+/** Total over the three sources with a `never` arm: a fourth source stops
+ *  compilation here until someone has decided what Rescan means for it. */
+function rescanOf(source: CaptureSource, tool: number, state: BoardListingState): Rescan {
+	switch (source) {
+		case "board":
+			return { kind: "lists-the-rows" };
+		case "tool":
+			return { kind: "checks-the-rows", tool, checked: state === "read" };
+		case "imported":
+			return { kind: "nothing-to-list" };
+		default: {
+			const unhandled: never = source;
+			throw new Error(`unknown capture source: ${String(unhandled)}`);
+		}
+	}
+}
+
+export function rescanReadiness(source: CaptureSource, tool: number, state: BoardListingState): RescanReadiness {
+	const rescan = rescanOf(source, tool, state);
+	return { enabled: rescan.kind !== "nothing-to-list", rescan };
 }
 
 /**

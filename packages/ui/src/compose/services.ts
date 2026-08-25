@@ -67,7 +67,7 @@ import { candidateFor, shortlist } from "../shaping/engine/rank.ts";
 import { verifyAnalysis } from "../shaping/store.ts";
 import type { CardId } from "./defs.ts";
 import { useEngine } from "../shaping/useEngine.ts";
-import { ACCEL_DIR, boardRef, byNewest, captureNameParts, type CaptureRef, createCaptureLoader, type ImportedCapture, importedCount, importRef, isCaptureFile, MAX_BATCH, MAX_SWEEP, speedFamilies, type SweepFamily } from "../shaping/captures.ts";
+import { ACCEL_DIR, type BoardListingState, boardRef, byNewest, captureLiveness, captureNameParts, type CaptureRef, createCaptureLoader, type ImportedCapture, importedCount, importRef, isCaptureFile, type Liveness, MAX_BATCH, MAX_SWEEP, speedFamilies, type SweepFamily } from "../shaping/captures.ts";
 import { parseAccelAddr } from "../control/commands.ts";
 import { type FileListEntry, FileNotFoundError } from "@dwc-ng/connector";
 import { aggregate, type Axis, type Fingerprint, type Mode, type NoFit } from "../shaping/engine/fit.ts";
@@ -479,9 +479,25 @@ function shapingService(base: ServiceBaseCtx) {
 	 * the same one.
 	 */
 	const [board, setBoard] = createSignal<readonly FileListEntry[]>([]);
-	const [boardState, setBoardState] = createSignal<"unread" | "reading" | "read" | "failed">("unread");
+	const [boardState, setBoardState] = createSignal<BoardListingState>("unread");
 	const [boardError, setBoardError] = createSignal("");
 	let boardWanted = false;
+
+	/** The listing as a set of names, rebuilt once per listing rather than once
+	 *  per row asked about — the Decay card asks 259 times per render. */
+	const boardNames = createMemo((): ReadonlySet<string> => new Set(board().map(entry => entry.name)));
+
+	/**
+	 * Whether a capture reference still has a file behind it.
+	 *
+	 * HERE, beside the listing it is a reading of, and not in a card. Two cards
+	 * browse this directory (Decay and Sweep) off one `rr_filelist`, so an
+	 * existence check written in either of them would be the second answer to a
+	 * question that has one — and the one in the other card would go on saying
+	 * something else. The card cannot compute it differently because it is not
+	 * given the listing to compute it from; it is given the answer.
+	 */
+	const liveness = (ref: CaptureRef): Liveness => captureLiveness(ref, boardState(), boardNames());
 
 	const readBoard = (): void => {
 		if (boardState() === "reading") return;
@@ -1276,7 +1292,7 @@ function shapingService(base: ServiceBaseCtx) {
 		motion, beginMotion, cancelMotion, setFitted, rememberCapture,
 		results: (): ToolResults => resultsFor(tool()),
 		capturePick, setCapturePick, imports, addImport, loadCapture: loader.text,
-		board, boardState, boardError, wantBoard, refreshBoard,
+		board, boardState, boardError, wantBoard, refreshBoard, liveness,
 		runState, fitCaptures, saveMeasurement, clearRun, machineNow,
 		fits, families, fullStepFor, sweepState, buildSweep, saveSweep,
 		candidateIndex, setCandidateIndex,

@@ -25,8 +25,10 @@
  * on whether the machine may move.
  */
 import { ACCEL_DIR } from "./captures.ts";
+import { RESULTS_PATH } from "./results.ts";
 import { cmd } from "../control/commands.ts";
 import { toolMacroPath } from "./toolMacro.ts";
+import type { Liveness, Rescan } from "./captures.ts";
 import type { Fingerprint } from "./engine/fit.ts";
 import type { Caveat } from "./evidence/caveat.ts";
 import type { Refusal } from "./preconditions.ts";
@@ -465,6 +467,105 @@ export function captureSourceLabel(source: CaptureSource, tool: number): string 
 		default: {
 			const unhandled: never = source;
 			throw new Error(`unknown capture source: ${String(unhandled)}`);
+		}
+	}
+}
+
+/**
+ * What re-reading the capture directory would do for the rows on screen — the
+ * one sentence in the Decay card's reserved listing slot.
+ *
+ * A `never` arm and no default, like `refusalText`, and for the reason stated
+ * at the top of this file: a control that is disabled with no reason cannot be
+ * told from a control that is broken. Rescan was `disabled={source() !==
+ * "board"}` and said nothing, so on the Tool source it read as a bug — Gabe,
+ * 2026-08-23, having just emptied `0:/sys/accelerometer` and wanting the list
+ * in front of him to admit it.
+ *
+ * Always a sentence, including when the button IS enabled, so the slot is the
+ * same box in every state and its arrival moves nothing.
+ */
+export function rescanNoteText(r: Rescan): string {
+	switch (r.kind) {
+		case "lists-the-rows":
+			return `These rows are this card's listing of ${ACCEL_DIR}. Rescan reads the directory again.`;
+		case "checks-the-rows":
+			// Two sentences for one control, because the answer to "what would
+			// pressing this tell me" changes once it has been pressed. Before:
+			// nothing on screen is a claim about the SD card. After: the marks on
+			// the rows are, and they are what the operator is being pointed at.
+			return r.checked
+				? `Checked against ${ACCEL_DIR}: a row marked missing has no file left to redraw, only the numbers already recorded. Rescan checks again.`
+				: `T${r.tool}'s captures are named by ${RESULTS_PATH(r.tool)}. Rescan reads ${ACCEL_DIR} to see which of them are still on the card.`;
+		case "nothing-to-list":
+			// The only source Rescan cannot serve, and the sentence says what to
+			// do instead rather than merely refusing.
+			return `These CSVs came off this computer, not the card, so ${ACCEL_DIR} holds nothing to re-read for them. Import a file again to refresh it.`;
+		default: {
+			const unhandled: never = r;
+			throw new Error(`unknown rescan: ${String(unhandled)}`);
+		}
+	}
+}
+
+/**
+ * What the captures table's When column reads.
+ *
+ * ONE function over the date AND the liveness, because a file that is not
+ * there has no date and the two answers belong to one cell. A `gone` row's
+ * date was an em dash before — the same em dash a live tool row shows — which
+ * is precisely how a dead reference passed for a healthy one.
+ *
+ * `held`, `unchecked` and `live` all read the row's own date, and that is not
+ * three arms doing one thing by accident: an import has no board date, an
+ * unchecked row has no claim to make, and a live one has its listing's date.
+ * None of them is missing, so none of them says so.
+ */
+export function captureWhenText(when: string, live: Liveness): string {
+	switch (live.kind) {
+		case "held":
+		case "live":
+			return when;
+		case "unchecked":
+			// A tool row before anyone has listed the directory. It reads
+			// "unchecked" rather than the em dash a live row shows, because the em
+			// dash is what a healthy row looks like and this card has made no
+			// claim at all about this one. Board rows never reach here: the rows
+			// ARE the listing, so their liveness is settled by their existence.
+			return "unchecked";
+		case "gone":
+			return "missing";
+		default: {
+			const unhandled: never = live;
+			throw new Error(`unknown liveness: ${String(unhandled)}`);
+		}
+	}
+}
+
+/**
+ * What a reference's liveness means, in full, for the places with room to say
+ * it: the row's own tooltip and the verdict beside the chart when the operator
+ * picks a capture that cannot be drawn.
+ *
+ * Empty for the two states that are not news. A row whose bytes are in hand
+ * and a row whose file is on the card have nothing to add to their own name,
+ * and a slot that filled with a sentence saying so would be noise on 259 rows.
+ */
+export function livenessNote(live: Liveness, file: string): string {
+	switch (live.kind) {
+		case "held":
+		case "live":
+			return "";
+		case "unchecked":
+			return `${file} has not been checked against ${ACCEL_DIR} — press Rescan to see whether it is still on the card.`;
+		case "gone":
+			// Says what SURVIVES as well as what is lost. The fit beside this row
+			// is a real measurement of a real move and stays on screen; it is the
+			// redraw, and only the redraw, that the deletion took away.
+			return `${file} is no longer in ${ACCEL_DIR}. Its recorded numbers are all that is left of it — there is nothing to draw.`;
+		default: {
+			const unhandled: never = live;
+			throw new Error(`unknown liveness: ${String(unhandled)}`);
 		}
 	}
 }

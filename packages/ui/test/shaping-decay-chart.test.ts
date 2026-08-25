@@ -29,7 +29,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { decaySeries, fitNote, type DecayView } from "../src/charts/decayData.ts";
 import { handle, type FitResult } from "../src/shaping/worker.ts";
-import { boardRef, byNewest, type CaptureRef, captureNameParts, chosenCaptures, createCaptureLoader, familyView, importedCount, importRef, isCaptureFile, matchesQuery } from "../src/shaping/captures.ts";
+import { ACCEL_DIR, boardRef, byNewest, type CaptureRef, captureLiveness, captureNameParts, chosenCaptures, createCaptureLoader, familyView, importedCount, importRef, isCaptureFile, matchesQuery, rescanReadiness } from "../src/shaping/captures.ts";
+import { rescanNoteText } from "../src/shaping/copy.ts";
 import { aggregate, FIT_DEFAULTS, isMode, MAX_FIT_ZETA, MIN_CYCLES, type Axis, type Mode, type NoFit } from "../src/shaping/engine/fit.ts";
 import { hz } from "../src/shaping/engine/units.ts";
 
@@ -737,4 +738,136 @@ test("a batch where nothing fits produces a fingerprint of nulls, not zeros", ()
 	assert.equal(fingerprint.X, null);
 	assert.equal(fingerprint.Y, null);
 	assert.equal(fingerprint.n.X + fingerprint.n.Y, 0, "0 of 2 contributed");
+});
+
+/* ------------- whether a reference still has a file behind it (GitHub #59) */
+
+/**
+ * The second half of #59: a capture reference whose CSV has been deleted
+ * rendered exactly like one that was still there.
+ *
+ * Gabe emptied `0:/sys/accelerometer` on 2026-08-23 and T0's twelve rows
+ * carried on drawing their frequencies, their damping and their peaks — the
+ * numbers are in `tool0.json`, so nothing on the row needed the file — and
+ * 404'd one at a time as he clicked them. It survived a hard reload, because
+ * the results file survived it too.
+ *
+ * The fix is that liveness is READ rather than assumed, and the tests below
+ * are about the two ways an assumption could sneak back: answering `gone` from
+ * a directory nobody has read, and answering `live` from one whose read is
+ * still in flight.
+ */
+const held = (...n: string[]): ReadonlySet<string> => new Set(n);
+
+test("a capture the listing holds is live; one the listing does not hold is gone", () => {
+	const there = held("ring1_Xp0.csv", "ring1_Xm0.csv");
+	assert.deepEqual(captureLiveness(boardRef("ring1_Xp0.csv"), "read", there), { kind: "live" });
+	assert.deepEqual(captureLiveness(boardRef("ring1_Yp2.csv"), "read", there), { kind: "gone" });
+});
+
+test("a directory nobody has read yields unchecked — never gone, and never live", () => {
+	// The defect this exists to stop is the OPPOSITE of the reported one:
+	// condemning twelve perfectly good captures because the card had not
+	// looked. Absence of evidence is its own answer and has to be sayable.
+	for (const state of ["unread", "reading", "failed"] as const) {
+		const live = captureLiveness(boardRef("ring1_Xp0.csv"), state, held());
+		assert.deepEqual(live, { kind: "unchecked" }, `${state} must not decide anything`);
+	}
+	// And with a finished reading of an empty directory, the same file IS gone.
+	assert.deepEqual(captureLiveness(boardRef("ring1_Xp0.csv"), "read", held()), { kind: "gone" });
+});
+
+test("an import is held, whatever the board's directory says or does not say", () => {
+	// Its CSV is in the ref. It is readable with the board unplugged, and it
+	// was never in that directory — so calling it `live` would be a claim about
+	// an SD card that is not merely unchecked but false.
+	const ref = importRef(0, "ring1_Xp0.csv", "1,2,3");
+	for (const state of ["unread", "reading", "read", "failed"] as const) {
+		assert.deepEqual(captureLiveness(ref, state, held()), { kind: "held" });
+	}
+});
+
+test("a row that came OUT of the listing stays live while the listing is re-read", () => {
+	// The board source's rows ARE the listing, so a re-list in flight must not
+	// demote them: the When column would flicker a column of dates into a
+	// column of the word "unchecked" for as long as `rr_filelist` takes over
+	// 276 files, on the card whose one gesture is clicking down that list.
+	const there = held("ring1_Xp0.csv");
+	assert.deepEqual(captureLiveness(boardRef("ring1_Xp0.csv"), "reading", there), { kind: "live" });
+});
+
+test("a failed re-read withdraws the verdict rather than keeping it", () => {
+	// What the board told us about is still there; what it did not is back to
+	// unchecked, because a transfer that failed is not evidence of a deletion.
+	const there = held("ring1_Xp0.csv");
+	assert.deepEqual(captureLiveness(boardRef("ring1_Xp0.csv"), "failed", there), { kind: "live" });
+	assert.deepEqual(captureLiveness(boardRef("ring1_Ym2.csv"), "failed", there), { kind: "unchecked" });
+});
+
+/* ----------------------------- what Rescan is for, per source (GitHub #59) */
+
+test("Rescan lists the rows for the board source and CHECKS them for the tool source", () => {
+	// Both are things re-reading the directory does, and the second is the one
+	// `disabled={source() !== "board"}` denied: a tool row's file lives in the
+	// same directory, so re-listing it is exactly how that row learns whether
+	// it still has one.
+	const board = rescanReadiness("board", 0, "read");
+	assert.equal(board.enabled, true);
+	assert.equal(board.rescan.kind, "lists-the-rows");
+
+	const tool = rescanReadiness("tool", 3, "read");
+	assert.equal(tool.enabled, true);
+	assert.deepEqual(tool.rescan, { kind: "checks-the-rows", tool: 3, checked: true });
+	assert.deepEqual(rescanReadiness("tool", 0, "unread").rescan, { kind: "checks-the-rows", tool: 0, checked: false });
+});
+
+test("the one source Rescan cannot serve is imported, and it is refused with a reason", () => {
+	const imported = rescanReadiness("imported", 0, "read");
+	assert.equal(imported.enabled, false);
+	assert.deepEqual(imported.rescan, { kind: "nothing-to-list" });
+	// Refused as DATA, so the sentence is written from the same value the grey
+	// is — the shape `refusalText` established for exactly this.
+	const why = rescanNoteText(imported.rescan);
+	assert.ok(why.includes("this computer"), why);
+	assert.ok(why.includes(ACCEL_DIR), why);
+});
+
+test("enabled is derived from the reason, so a control cannot be grey for a reason it does not give", () => {
+	for (const source of ["tool", "board", "imported"] as const) {
+		for (const state of ["unread", "reading", "read", "failed"] as const) {
+			const r = rescanReadiness(source, 0, state);
+			assert.equal(r.enabled, r.rescan.kind !== "nothing-to-list", `${source}/${state}`);
+			assert.ok(rescanNoteText(r.rescan).length > 0, `${source}/${state} says nothing`);
+		}
+	}
+});
+
+/**
+ * BACKSTOPS on the card, in the shape the origin-gate test above uses.
+ *
+ * Both halves of #59 were ONE EXPRESSION each in the JSX — a `disabled` that
+ * named the source directly, and a row literal that never asked about the
+ * file — and nothing in a type stops either being written again.
+ */
+test("the card disables Rescan from the readiness, never from the source", () => {
+	const card = readFileSync(new URL("../src/cards/ShapingCards.tsx", import.meta.url), "utf8");
+	// Comments stripped: the doc beside the fix QUOTES the expression it
+	// replaced, which is worth keeping and is not a control.
+	const code = card.replace(/\/\*[\s\S]*?\*\//g, "");
+	assert.ok(
+		!/disabled=\{source\(\)\s*!==\s*"board"\}/.test(code),
+		"Rescan must not be greyed by naming a source — that is the inert-with-no-reason control #59 reported",
+	);
+	assert.ok(code.includes("rescanReadiness(source(), svc.tool(), svc.boardState())"), "one readiness for the control and its sentence");
+	assert.ok(code.includes("disabled={!rescan().enabled}"), "the grey comes from the readiness");
+	assert.ok(code.includes("rescanNoteText(rescan().rescan)"), "and the reason reaches the screen");
+});
+
+test("every row the card builds carries its liveness, from the service that holds the listing", () => {
+	const card = readFileSync(new URL("../src/cards/ShapingCards.tsx", import.meta.url), "utf8");
+	assert.match(card, /readonly live: Liveness;/, "a row cannot exist without the answer");
+	const asked = card.split(/\r?\n/).filter(line => /live: svc\.liveness\(/.test(line));
+	assert.equal(asked.length, 3, "all three sources ask — tool, board and imported");
+	assert.ok(card.includes("captureWhenText(row.when, row.live)"), "the When cell goes through the one decider");
+	assert.ok(card.includes('"shp-gone": row.live.kind === "gone"'), "and a dead row is marked as dead");
 });

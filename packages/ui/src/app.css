@@ -5126,6 +5126,18 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; appe
 .shp-c-sel { width: calc(7 * var(--u)); }
 .shp-c-when { width: calc(22 * var(--u)); }
 .shp-when { color: var(--silk-dim); font-size: calc(3.125 * var(--u)); }
+/* A capture whose CSV the card no longer holds (GitHub #59). Struck through
+   AND in the fault colour, because a mark that is only a colour is not a mark
+   for everyone — and the word "missing" stands in the When column beside it,
+   so the news is in text either way. Neither declaration takes layout space:
+   the row, the column track and the figures to the right are where they were,
+   which matters because the numbers are still true. The fit was computed from
+   bytes that existed; what died with the file is the ability to draw it. */
+.shp-gone { text-decoration: line-through; color: var(--fault); }
+/* Selection is the row's background (tr.shp-on), so a picked dead row keeps
+   the fault colour rather than reading as an ordinary accent. */
+.shp-gone[aria-pressed="true"] { color: var(--fault); }
+.shp-gone-when { color: var(--fault); }
 
 /* The attribution bar: which tool this measurement is about. */
 .shp-pick-n { width: calc(19 * var(--u)); text-align: center; font-variant-numeric: tabular-nums; }
@@ -5145,7 +5157,7 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; appe
    ζ 0.126 · Y 51.7 Hz ζ 0.076…", the idle hint carries a sentence, and a box
    that grew with the longer of them would change the card's floor with its
    state — the same defect as a row that moves, one step removed. */
-.shp-batch-note, .shp-sweep-note {
+.shp-batch-note, .shp-sweep-note, .shp-listing-note {
 	flex: 0 0 auto;
 	margin: 0;
 	height: calc(10 * var(--u));
@@ -5158,6 +5170,12 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; appe
    physics — which peak shaping can touch and which it cannot — and it is the
    sentence an operator reads before their first sweep. */
 .shp-sweep-note { height: calc(15 * var(--u)); }
+/* What Rescan would do for the source on screen, and what a row marked missing
+   means. It shares the batch note's geometry rather than restating it — one
+   declaration, one box — and only adds the gap to the table under it. Present
+   and two lines high in every state, so the explanation appearing when the
+   operator switches source does not move the table they are reading. */
+.shp-listing-note { margin-bottom: calc(2 * var(--u)); }
 
 
 /* ---------- Capture card (cards/ShapingCards.tsx · charts/mapData.ts) --------
