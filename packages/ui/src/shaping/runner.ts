@@ -42,6 +42,16 @@
  *      as the machine's "prior". Restoring to it leaves a baseline run with
  *      shaping switched off and a verify run with the unproven candidate still
  *      installed — under a screen that says the shaper is back as it was found
+ * @debt what actually holds the line today is a habit of this file — one
+ *       variable, assigned once, never reassigned — and `runPrior` is typed the
+ *       same as any other reading, so leg 2's fresh `Preconditions` is a
+ *       perfectly well-typed thing to pass. A second call site, or one edit
+ *       that "uses the reading we already have", compiles and produces exactly
+ *       the wrong restore with nothing to point at. Promote by giving the prior
+ *       its own branded type minted ONCE at run start from the opening reading,
+ *       and making `Procedure.plan` require that brand: a mid-run reading then
+ *       has no route to become a prior, so the mistake stops being expressible
+ *       rather than merely not currently written
  */
 import type { ConnectorReads, ConnectorWrites } from "@dwc-ng/connector";
 import type { ShapingConfig } from "../config/types.ts";

@@ -21,7 +21,7 @@ and invariant claim mentions 13 -> 23, so no mechanism was deleted and no
 claim was lost in the gap. From here the ratchets make a dropped rung visible
 in the diff that drops it.
 
-**Totals:** 125 invariants · 102 at rung 6 or above · 23 below rung 6 (ceiling 23).
+**Totals:** 141 invariants · 117 at rung 6 or above · 24 below rung 6 (ceiling 24).
 
 ## bed
 
@@ -94,6 +94,14 @@ in the diff that drops it.
 `packages/ui/src/charts/layerData.ts:18`
 
 ## compose
+
+### `compose/a-shaped-fingerprint-cannot-become-a-baseline` — rung 8
+
+**Mechanism.** illegal state unrepresentable — `saveMeasurement` narrows on `purpose.kind === "baseline"` and `saveVerified` on `"verify"`. Neither writer can be reached with the other's fingerprint, because the payload each needs exists only in its own arm: the verify arm is the only place a baseline-to-compare-against is spelled, and the baseline arm is the only thing `setMeasurement` will take
+
+**Why.** a baseline measured through a shaper ranks against modes that are not there, applies, and re-measures — nothing downstream can detect it and the output looks clean
+
+`packages/ui/src/compose/services.ts:326`
 
 ### `compose/additive-placement` — rung 7
 
@@ -187,7 +195,7 @@ in the diff that drops it.
 
 **Why.** the run this screen starts sends a 200 mm/s G1 with nobody's hand on the jog wheel. Two of them interleaved would each be re-checking the carriage against ITS plan's expected position and finding the other one's move — every step refused, the machine moving anyway, and two restores racing at the end
 
-`packages/ui/src/compose/services.ts:875`
+`packages/ui/src/compose/services.ts:1120`
 
 ### `compose/one-service-instance-per-screen` — rung 8
 
@@ -427,7 +435,15 @@ in the diff that drops it.
 
 **Why.** P is board.device, not a device number: on this toolchanger every accelerometer is on a CAN toolboard, so a bare index would silently address the mainboard instead — a capture from the wrong sensor looks like a real capture and would be fitted, ranked and applied. The mainboard exception follows reference/dwc (plugins/InputShaping/RecordMotionProfileDialog.vue:273-277), which maps canAddress 0 to "0" and everything else to `${canAddress}.0`; the wiki (reference/duet-gcode.md, M955 notes) likewise says "Use P0 for an accelerometer connected locally". DWC and the board win over a general reading of the bb.nn form
 
-`packages/ui/src/control/commands.ts:174`
+`packages/ui/src/control/commands.ts:202`
+
+### `control/an-arm-never-outlives-its-move` — rung 7
+
+**Mechanism.** sole-constructor type — this is the ONLY builder in this module that emits an M956, it takes the move's target and feed as REQUIRED arguments, and `gc` is the only assembly form here, so an M956 that this app can send without the move behind it is not a string any caller can obtain. Outside this file `gc` is a fenced pattern (test/shaping-motion-fence.test.ts) and `GcodeCommand` is a brand only these builders and `operatorTyped` mint, so there is no second producer to forget. The two lines then cross the wire as one `sendCode` — one rr_gcode request, one DSF POST — so there is no send boundary between them at which a transport can refuse the second half
+
+**Why.** RRF documents no way to CANCEL an armed M956 (reference/duet-gcode.md, M956: the parameters are P, S, X/Y/Z, A and F, and the notes describe no disarm). An A1 or A2 request is consumed by the next move and by nothing else, so an arm that loses its move sits on the board waiting, and the next move anyone makes — a jog, a homing macro, the start of a print — is recorded into the abandoned pass's file. Issue #43: the arm went out, the G1 behind it was rejected by the transport, and the run aborted with the board still armed. Fusing them is what makes that state unreachable, because there is no longer a second request to reject. reference/dwc reaches the same place from the other end: its InputShaping plugin puts M956 and its G1 in a single `doCode` string (RecordMotionProfileDialog.vue:555) and so never had the gap to close
+
+`packages/ui/src/control/commands.ts:580`
 
 ### `control/escape-disarms` — rung 6
 
@@ -847,7 +863,7 @@ in the diff that drops it.
 
 **Why.** RRF creates the file and then streams the samples into it off the CAN toolboard, so the directory entry exists long before its contents do. On 2026-08-23 a sweep took the name as proof, accepted pass 1 while the board was still writing it, and pass 2's M956 queued behind that write until the run died one capture in. A name proves a file was CREATED and says nothing about whether a capture FINISHED — and a half-written file fits to a confident, wrong frequency The budget comes off the WATCH, which got it from the same `CaptureTiming` that sized the M956. A flat budget was a false failure waiting for a longer recording: at 5,700 samples the file legitimately cannot exist for 4.2 s, and "no capture appeared" would have been reported for a run that was working.
 
-`packages/ui/src/shaping/procedure.ts:1505`
+`packages/ui/src/shaping/procedure.ts:1662`
 
 ### `shaping/a-filter-finds-rows-it-does-not-choose-them` — rung 6
 
@@ -855,7 +871,23 @@ in the diff that drops it.
 
 **Why.** reported by Gabe, 2026-08-23: pick a capture on the Decay card, click a name-family chip that excludes it, and the chart plus every fitted number beside it blanked — even though the selection itself was intact. The filter exists to FIND rows; what is on screen is what the operator deliberately chose, and it stays until they choose another
 
-`packages/ui/src/shaping/captures.ts:512`
+`packages/ui/src/shaping/captures.ts:648`
+
+### `shaping/a-fingerprint-cannot-be-held-without-saying-where-it-came-from` — rung 8
+
+**Mechanism.** illegal state unrepresentable — provenance is a required field of the same object as the fingerprint, and `Provenance` is a total union with no absent arm. A caller who read nothing still has to write down an origin to construct one, and the honest answers for the cases that have no conditions (`assembled`, `loaded`, `unknown`) are arms of the union rather than an omission
+
+**Why.** the numbers in this record end up as the `M593` line written into `tpost<N>.g`. A measurement that cannot say what machine state it describes is one an operator tunes a printer against on trust
+
+`packages/ui/src/shaping/results.ts:102`
+
+### `shaping/a-reported-rate-is-parsed-or-absent` — rung 7
+
+**Mechanism.** illegal state unrepresentable — the result is a discriminated union, not a number with a sentinel. A reply this build cannot read yields the `unread` arm carrying the raw text, so the card shows what the board actually said rather than a zero, a NaN, or a stale figure from the last reply that did parse
+
+**Why.** the resolution is not decoration beside the rate: an LIS3DH does 1344 Hz at 10-bit and 5376 Hz only at 8-bit, so "what rate did I get" is unanswerable without "at what resolution", and a reader that took only the first number would report a rate the operator could not reproduce
+
+`packages/ui/src/shaping/accelReport.ts:14`
 
 ### `shaping/a-run-is-planned-from-the-box-not-from-the-carriage` — rung 6
 
@@ -864,6 +896,14 @@ in the diff that drops it.
 **Why.** the map on the card is a promise about where the carriage will go. A second arithmetic for "where does this run start" — one for the drawing, one for the moving — is a promise that can be broken silently
 
 `packages/ui/src/shaping/runPlan.ts:20`
+
+### `shaping/a-verify-run-names-the-shaper-it-installs` — rung 8
+
+**Mechanism.** illegal state unrepresentable — `runPlans` takes this union, so a caller cannot ask for a verify without saying of what
+
+**Why.** a verify with no shaper is not a run that fails, it is a run that succeeds at the wrong thing: it re-measures the baseline and files the result as a verification of a candidate. The operator then reads a shaper as proved on hardware when nothing was installed for the measurement, which is the one claim this whole step exists to make
+
+`packages/ui/src/shaping/runPlan.ts:61`
 
 ### `shaping/capture-text-has-one-loader` — rung 6
 
@@ -935,6 +975,14 @@ in the diff that drops it.
 
 `packages/ui/src/shaping/engine/units.ts:4`
 
+### `shaping/engine/shortlist-is-dominated-free` — rung 6
+
+**Mechanism.** choke-point — the sole route from a full grid to what a card shows. A candidate survives only if nothing else is at least as good on BOTH axes, so no row on the list is beaten outright by another row on the same list
+
+**Why.** without it the list ranks on residual with a millisecond tie-break, and the widest shaper wins the residual contest outright — so the card fills with forty rows of one shaper. Measured on this machine 2026-08-24 (X 38.66, Y 50.05): the top 50 were all `zvddd` at ~44.7 ms while `zvdd` reached 0.0270 in 33.5 ms and never appeared. The operator cannot choose a trade the list never shows them
+
+`packages/ui/src/shaping/engine/rank.ts:95`
+
 ## shaping
 
 ### `shaping/every-leg-is-gated-on-its-own-fresh-reading` — rung 7
@@ -953,13 +1001,75 @@ in the diff that drops it.
 
 `packages/ui/src/shaping/copy.ts:10`
 
+## shaping/evidence
+
+### `shaping/evidence/a-product-cannot-be-consumed-by-a-step-it-is-not-valid-for` — rung 8
+
+**Mechanism.** illegal state unrepresentable — a consumer's parameter type is `Evidence<T>`, and the arms that hold no usable value hold no value at all. There is no boolean left in any signature to erase the distinction, so a step written by someone who read nothing must still narrow the union before it can reach a number
+
+**Why.** every finding in issue #68 is one sentence — evidence exists but is not valid for its consumer, and nothing could say so
+
+`packages/ui/src/shaping/evidence/evidence.ts:16`
+
+### `shaping/evidence/every-caveat-has-an-inquiry` — rung 7
+
+**Mechanism.** totality — `inquiryFor` switches on the caveat union with a `never` arm and no default. A finding added without saying what question it raises stops compilation, which is the point: a finding that leaves the operator nowhere to go is the failure this module exists to prevent, and it must not be possible to add one by accident
+
+**Why.** the screen already said what to DO next (#37) and now says what the readings MEAN. Neither one connects the two, and the gap between them is where the 2026-08-23 wrong conclusion was reached: the sweep's black band was a fact, the fingerprint was a fact, and nothing said "these two do not contradict each other, and here is the measurement that would settle it"
+
+`packages/ui/src/shaping/evidence/inquiry.ts:18`
+
+### `shaping/evidence/every-caveat-has-copy` — rung 7
+
+**Mechanism.** totality — `caveatText` (copy.ts) and `severityOf` below both switch on the discriminant with a `never` arm and no default, so a reason added here stops compilation in two places until someone has written its sentence AND decided whether shaping can act on it
+
+**Why.** the failure this whole layer exists to prevent is CONFIDENT WRONG ACTION. A caveat that rendered as the empty string would be worse than no caveat at all: the operator would read a clean card and act on it
+
+`packages/ui/src/shaping/evidence/caveat.ts:11`
+
+### `shaping/evidence/findings-cite-what-they-came-from` — rung 8
+
+**Mechanism.** illegal state unrepresentable — a `Caveat` has no free-text arm. Every reason is a record of the numbers it was derived from, and the sentence is written from those numbers by the copy table. A detector therefore CANNOT emit a claim it has no evidence for: there is no shape in the union to put one in
+
+**Why.** a caveat is a warning about a measurement, and a warning the operator cannot check is one they learn to scroll past. The 2026-08-23 wrong conclusion held for exactly as long as it did because the statement and the numbers that would have refuted it were never in the same place — a free-text arm here would let a detector reproduce that by hand
+
+`packages/ui/src/shaping/evidence/findings.ts:11`
+
+### `shaping/evidence/fingerprint-caveats-reach-everything-ranked-from-it` — rung 6
+
+**Mechanism.** choke-point — `candidateCaveats` is the sole producer of a ranked list's caveats, and the inheritance is an unfiltered loop over `fingerprint.caveats` with no predicate. There is no per-caveat judgement about what carries over, so there is none to get wrong
+
+**Why.** the ranking is arithmetic over the fingerprint: every candidate on the list is a consequence of that one measurement. If the fingerprint was taken through an active shaper, or at an acceleration the operator does not print at, every row inherits that and none of them says so — the operator reads a caveat on the fingerprint card, moves to the candidate card, and finds a clean list of numbers that are no better founded than the measurement they came from
+
+**Debt — promotion.** inheritance is unconditional because this function is written that way, not because a filtered version is unrepresentable. Promote by making a candidate list's caveats a value derived WITH the fingerprint's — one type carrying both, minted together — so a list whose caveats omit its source's cannot be constructed at all
+
+`packages/ui/src/shaping/evidence/findings.ts:267`
+
+### `shaping/evidence/the-walk-is-never-empty` — rung 7
+
+**Mechanism.** totality — every `ShapingStep` has a row in `STEP_QUESTION` (a `Record` over the closed union, so a step added without one is a compile error) and every stage contributes either a known line or an open question. A tool with nothing measured therefore still walks: five open questions and the first one live
+
+**Why.** the previous thread was a fold over caveats, and on a freshly wiped machine it rendered the em dash — the screen said "Next: Measure" and then nothing about why, which is the state this campaign exists to fix
+
+`packages/ui/src/shaping/evidence/walk.ts:21`
+
+### `shaping/evidence/verdict-is-derived-never-stored` — rung 7
+
+**Mechanism.** derive, don't duplicate — `verdictOf` is a pure function OF the caveat list and the provenance. A held product with an empty caveat list and a "caveated" verdict is not a state anything can build, because the verdict is not a field
+
+**Why.** a stored verdict is a second copy of what the caveats already say, and the two part company the moment a caveat is added, dropped or re-graded — the copy keeps reading clean after the thing it describes stopped being clean. That is the 2026-08-23 failure in miniature, at one field instead of eight booleans, and it would be invisible for the same reason: nothing looks wrong about a verdict that used to be true
+
+`packages/ui/src/shaping/evidence/evidence.ts:25`
+
+## shaping
+
 ### `shaping/family-count-is-the-family` — rung 6
 
 **Mechanism.** choke-point — the sole producer of the chips AND of the rows they filter to. `shown` is one of the very arrays in `families`/`rest` (same reference, not an equal copy) and a chip's number is that array's `length`, so there is no second expression that could count differently — no count is stored anywhere for one to drift from. The buckets are built by assigning each row exactly once, so their lengths sum to the input by construction rather than by agreement
 
 **Why.** reported by Gabe, 2026-08-23, driving the deployed build against his board: the `ring1_` chip said 60 files and produced 12. The label came from a raw prefix tally and the click came from a filter that subtracted the sub-families shown beside it — two expressions for one claim, the same shape `step-readiness-has-one-answer` exists to prevent. The same row also covered 141 of his 259 files, leaving 118 in no bucket at all @limit nothing stops a caller filtering the listing by prefix itself instead of asking; what is gone is the SECOND ANSWER, not the ability to write a third. Promote by making a row unrenderable except through a bucket
 
-`packages/ui/src/shaping/captures.ts:312`
+`packages/ui/src/shaping/captures.ts:448`
 
 ### `shaping/fits-are-dropped-only-by-a-reload` — rung 7
 
@@ -977,6 +1087,14 @@ in the diff that drops it.
 
 `packages/ui/src/shaping/fullStep.ts:17`
 
+### `shaping/liveness-is-read-not-assumed` — rung 7
+
+**Mechanism.** totality — `captureLiveness` is the only producer, it is total over the ref's two kinds and the listing's four states, and a row cannot be constructed without one (cards/ShapingCards.tsx `DecayRow` declares `live` non-optional). There is no default to fall back onto and nothing to forget to ask
+
+**Why.** the previous card asked nothing: a reference was rendered from its stored fit alone, so a capture whose file had been deleted was pixel for pixel a capture that was still there
+
+`packages/ui/src/shaping/captures.ts:230`
+
 ### `shaping/next-step-comes-from-the-readiness-it-shows` — rung 7
 
 **Mechanism.** derive, don't duplicate — `nextStep` is the ONLY producer of a `Workflow`, it calls `stepReadiness` exactly once per step, and the step it names as next is one of the very objects in `steps` (same reference, not an equal copy). No expression anywhere else decides "which step is next", because the pick is an index INTO that array and the array is built once, here. A caller cannot compute readiness a second time and get a different answer, because it has no reason to compute it at all — the answer arrives attached
@@ -993,7 +1111,15 @@ in the diff that drops it.
 
 **Debt — promotion.** the NUMBER is a reading of the wire format, not a measurement: RRF's source is not vendored here and its M956 docs state no bound. Promote by walking a real toolboard up until it refuses and pinning the value that came back, or by citing the firmware's own field width. Until then the claim is only that the UI refuses before the board does, which holds for any true bound at or below this one
 
-`packages/ui/src/shaping/procedure.ts:783`
+`packages/ui/src/shaping/procedure.ts:819`
+
+### `shaping/one-answer-to-which-line-is-the-shaper` — rung 6
+
+**Mechanism.** choke-point — `findShapingLine` and this share the "last non-comment M593 wins" rule in one module, and it is the only route by which the UI edits a tool macro. A second writer elsewhere could still disagree; there is none, and a test pins the pair against the same fixtures
+
+**Why.** reader and writer disagreeing does not throw — it shows the operator one line and edits another. A reader that skipped a commented-out `;M593` the writer replaced would report the macro's shaper correctly and then leave the file with the real setting untouched and a comment rewritten, so the screen and the file that RRF actually runs drift apart silently
+
+`packages/ui/src/shaping/toolMacro.ts:67`
 
 ### `shaping/one-capture-timing` — rung 8
 
@@ -1001,7 +1127,7 @@ in the diff that drops it.
 
 **Why.** the constant this replaced was 1500 ms of dwell beside a free-floating `samples` setting, and on 2026-08-23 a sweep recorded 7.5 s against it — every following pass landed inside the previous pass's file. The two numbers had no way to know about each other, and neither knew about the move
 
-`packages/ui/src/shaping/procedure.ts:827`
+`packages/ui/src/shaping/procedure.ts:863`
 
 ### `shaping/one-motion-field-table` — rung 6
 
@@ -1017,15 +1143,15 @@ in the diff that drops it.
 
 **Why.** the checks and the move must not be separable. A card that could assemble its own guard object would be free to omit the homed test, and an unhomed axis under a 200 mm/s G1 is a crash into the frame at full current — the failure this whole feature is built around
 
-`packages/ui/src/shaping/preconditions.ts:67`
+`packages/ui/src/shaping/preconditions.ts:78`
 
 ### `shaping/restore-is-structural` — rung 7
 
-**Mechanism.** sole-constructor type — this is a `#`-private field of a class whose only constructor is private and whose only producer is `plan`, which always computes it from `pre.priorShaping`. There is no setter, no optional argument and no code path that yields a Procedure with an empty or absent restore, so "was a restore computed?" is not a question a run can be in the wrong answer to. What the field holds is fixed at plan time: recomputing it later is not a thing the type offers. `run` sends it from a `finally`, and sends it BEFORE yielding `restored`, so the three ways a run can end early — a thrown send, a refused position check, and a consumer that abandons the generator with `break` or `.return()` — all put the shaper back; the last of those works because the awaits complete before execution suspends at that yield, whether or not anyone is still reading. Nothing outside this file can reach these commands to send them itself and skip the `finally`: `preview` renders them as plain strings for display and `sendCode` will not take one
+**Mechanism.** sole-constructor type — this is a `#`-private field of a class whose only constructor is private and whose only producer is `plan`, which always computes it from the `runPrior` its caller had to supply. There is no setter, no optional argument and no code path that yields a Procedure with an empty or absent restore, so "was a restore computed?" is not a question a run can be in the wrong answer to. What the field holds is fixed at plan time: recomputing it later is not a thing the type offers. `run` sends it from a `finally`, and sends it BEFORE yielding `restored`, so the three ways a run can end early — a thrown send, a refused position check, and a consumer that abandons the generator with `break` or `.return()` — all put the shaper back; the last of those works because the awaits complete before execution suspends at that yield, whether or not anyone is still reading. Nothing outside this file can reach these commands to send them itself and skip the `finally`: `preview` renders them as plain strings for display and `sendCode` will not take one
 
-**Why.** the machine's prior shaper is knowable only BEFORE the run changes it. A restore derived from live state after a verify pass would faithfully re-apply the candidate under test and leave the operator believing the machine was back to baseline — a wrong belief about a setting that changes every subsequent print
+**Why.** the machine's prior shaper is knowable only BEFORE the run changes it. A restore derived from live state after a verify pass would faithfully re-apply the candidate under test and leave the operator believing the machine was back to baseline — a wrong belief about a setting that changes every subsequent print @note `runPrior` is a PARAMETER and not `pre.priorShaping`, and the difference is a live bug in every multi-leg run. A Measure run is two legs (runPlan.ts, one ring per axis), each its own Procedure built from its own fresh `Preconditions.read` — and that read takes the shaper off the POLLED object model, which the run's own codes have been changing. Leg 1 states its shaper, the poll catches up during leg 1's several seconds of captures, and leg 2 reads that statement back as the thing to restore to: `none` after a baseline, so the operator's shaper is silently gone; the CANDIDATE after a verify leg, so an unproven shaper is left installed. Both end on "the machine's shaper is back as it was found" (copy.ts), because the restore was sent and sending it is all the screen can see. Making it an argument forces the caller to say WHICH reading it means, and a run has exactly one to give: the one from before it touched anything. @note the SHAPER is the whole of what this puts back, and the other thing a run touches — the accelerometer — is deliberately absent rather than forgotten (#43). RRF has no command that cancels an armed M956 (reference/duet-gcode.md, M956), so there is nothing this array could hold that would disarm one; a restore that "covers everything the run touched" cannot be written for the accelerometer, only for the shaper. What covers the accelerometer instead is `cmd.captureMove`: an arm and the move that consumes it are ONE command and one request, so a run cannot end with a pending capture on the board and there is no state left for a `finally` to undo. That is the stronger of the two mechanisms and the reason the weaker one is not attempted here — a cleanup built on a guess about what a second M956 does to a pending one would be a remediation nobody had verified, on a machine.
 
-`packages/ui/src/shaping/procedure.ts:273`
+`packages/ui/src/shaping/procedure.ts:300`
 
 ### `shaping/results-file-is-parsed-not-cast` — rung 6
 
@@ -1035,7 +1161,7 @@ in the diff that drops it.
 
 **Debt — promotion.** the path is a plain string, so a future writer could reach 0:/sys/dwc-ng/shaping/… without coming through the store (spec I7 is rung 6 for this reason). Promote by branding the path so only this module can produce one, tracked on GitHub #19.
 
-`packages/ui/src/shaping/results.ts:25`
+`packages/ui/src/shaping/resultsCodec.ts:42`
 
 ### `shaping/results-persist-through-one-writer` — rung 6
 
@@ -1053,7 +1179,7 @@ in the diff that drops it.
 
 **Why.** `samples / rate` is the whole recording. M955's S parameter PERSISTS on the board (reference/duet-gcode.md, M955 notes: "These configuration settings persist until they are changed"), so the rate in force is whatever somebody last set — 1375 Hz on Gabe's toolboard, but nothing in this UI put it there. A constant here would silently mis-size every capture on any machine configured differently, and the error is proportional: at half the assumed rate every recording is twice as long as planned and the dwell derived from it covers half of it
 
-`packages/ui/src/shaping/procedure.ts:635`
+`packages/ui/src/shaping/procedure.ts:691`
 
 ### `shaping/shaping-motion-only-via-procedure` — rung 7
 
@@ -1061,7 +1187,7 @@ in the diff that drops it.
 
 **Why.** this is the feature's whole safety story. The lab sends 200 mm/s moves with nobody watching the axis, and the difference between a capture and a crash into the frame is whether those four facts were true at the moment of planning. A second way to build a run is a second place to forget one of them
 
-`packages/ui/src/shaping/procedure.ts:226`
+`packages/ui/src/shaping/procedure.ts:253`
 
 ### `shaping/step-readiness-has-one-answer` — rung 6
 
@@ -1070,6 +1196,16 @@ in the diff that drops it.
 **Why.** the first version of this had the button's `disabled` on one expression and its caption on another; they agree until someone edits one of them, and the failure mode is a control that looks available and does nothing
 
 `packages/ui/src/shaping/steps.ts:12`
+
+### `shaping/the-shaper-to-restore-is-read-once-per-run` — rung 5
+
+**Mechanism.** required argument — `Procedure.plan` takes `runPrior` and will not compile without it, and this file holds exactly one, captured from the FIRST leg's reading and never reassigned. The two invariants above and here pull in opposite directions on purpose and both are right: what AUTHORISES a leg must be as fresh as possible, and what the run PUTS BACK must be as old as the run.
+
+**Why.** every leg's reading takes the shaper from the polled object model, and the run's own codes change it. Leg 1 states its shaper; the poll catches up during leg 1's captures; leg 2's fresh reading returns that statement as the machine's "prior". Restoring to it leaves a baseline run with shaping switched off and a verify run with the unproven candidate still installed — under a screen that says the shaper is back as it was found
+
+**Debt — promotion.** what actually holds the line today is a habit of this file — one variable, assigned once, never reassigned — and `runPrior` is typed the same as any other reading, so leg 2's fresh `Preconditions` is a perfectly well-typed thing to pass. A second call site, or one edit that "uses the reading we already have", compiles and produces exactly the wrong restore with nothing to point at. Promote by giving the prior its own branded type minted ONCE at run start from the opening reading, and making `Procedure.plan` require that brand: a mid-run reading then has no route to become a prior, so the mistake stops being expressible rather than merely not currently written
+
+`packages/ui/src/shaping/runner.ts:32`
 
 ### `shaping/verified-is-a-type` — rung 7
 

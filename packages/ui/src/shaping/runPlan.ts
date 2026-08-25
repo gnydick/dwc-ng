@@ -61,6 +61,11 @@ export const RUN_KINDS: readonly RunKind[] = ["measure", "sweep"];
  * @invariant a-verify-run-names-the-shaper-it-installs
  * @rung 8  illegal state unrepresentable — `runPlans` takes this union, so a
  *          caller cannot ask for a verify without saying of what
+ * @why a verify with no shaper is not a run that fails, it is a run that
+ *      succeeds at the wrong thing: it re-measures the baseline and files the
+ *      result as a verification of a candidate. The operator then reads a
+ *      shaper as proved on hardware when nothing was installed for the
+ *      measurement, which is the one claim this whole step exists to make
  */
 export type RunRequest =
 	| { readonly kind: "measure" }
