@@ -97,6 +97,12 @@ export function customCandidate(spec: Extract<ShaperSpec, { type: "custom" }>, f
  *          A candidate survives only if nothing else is at least as good on
  *          BOTH axes, so no row on the list is beaten outright by another row
  *          on the same list
+ * @why without it the list ranks on residual with a millisecond tie-break, and
+ *      the widest shaper wins the residual contest outright — so the card fills
+ *      with forty rows of one shaper. Measured on this machine 2026-08-24 (X
+ *      38.66, Y 50.05): the top 50 were all `zvddd` at ~44.7 ms while `zvdd`
+ *      reached 0.0270 in 33.5 ms and never appeared. The operator cannot choose
+ *      a trade the list never shows them
  */
 export function shortlist(all: readonly Candidate[], n: number, perType = 3): Candidate[] {
 	// Residual to 4 decimals and duration to a tenth of a millisecond, so

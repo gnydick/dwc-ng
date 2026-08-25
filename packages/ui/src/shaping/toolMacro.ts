@@ -70,6 +70,11 @@ export function findShapingLine(text: string): string | null {
  *          by which the UI edits a tool macro. A second writer elsewhere could
  *          still disagree; there is none, and a test pins the pair against the
  *          same fixtures
+ * @why reader and writer disagreeing does not throw — it shows the operator one
+ *      line and edits another. A reader that skipped a commented-out `;M593`
+ *      the writer replaced would report the macro's shaper correctly and then
+ *      leave the file with the real setting untouched and a comment rewritten,
+ *      so the screen and the file that RRF actually runs drift apart silently
  */
 export function replaceShapingLine(text: string, line: string): string {
 	const crlf = text.includes("\r\n");

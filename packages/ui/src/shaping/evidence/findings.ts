@@ -14,6 +14,11 @@
  *          sentence is written from those numbers by the copy table. A detector
  *          therefore CANNOT emit a claim it has no evidence for: there is no
  *          shape in the union to put one in
+ * @why a caveat is a warning about a measurement, and a warning the operator
+ *      cannot check is one they learn to scroll past. The 2026-08-23 wrong
+ *      conclusion held for exactly as long as it did because the statement and
+ *      the numbers that would have refuted it were never in the same place —
+ *      a free-text arm here would let a detector reproduce that by hand
  */
 import { type Caveat, severityOf } from "./caveat.ts";
 import { type Axis, type Fingerprint, isMode, MAX_FIT_ZETA, type Mode, type NoFit } from "../engine/fit.ts";
@@ -258,6 +263,24 @@ export function fingerprintCaveats(
  * caught. And it INHERITS: whatever limits the fingerprint limits everything
  * ranked from it, automatically, because a step that had to remember to check
  * is a step that will one day forget.
+ *
+ * @invariant fingerprint-caveats-reach-everything-ranked-from-it
+ * @rung 6  choke-point — `candidateCaveats` is the sole producer of a ranked
+ *          list's caveats, and the inheritance is an unfiltered loop over
+ *          `fingerprint.caveats` with no predicate. There is no per-caveat
+ *          judgement about what carries over, so there is none to get wrong
+ * @why the ranking is arithmetic over the fingerprint: every candidate on the
+ *      list is a consequence of that one measurement. If the fingerprint was
+ *      taken through an active shaper, or at an acceleration the operator does
+ *      not print at, every row inherits that and none of them says so — the
+ *      operator reads a caveat on the fingerprint card, moves to the candidate
+ *      card, and finds a clean list of numbers that are no better founded than
+ *      the measurement they came from
+ * @debt inheritance is unconditional because this function is written that way,
+ *       not because a filtered version is unrepresentable. Promote by making a
+ *       candidate list's caveats a value derived WITH the fingerprint's — one
+ *       type carrying both, minted together — so a list whose caveats omit its
+ *       source's cannot be constructed at all
  */
 /**
  * The shape this module needs off a candidate, without importing the branded

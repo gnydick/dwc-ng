@@ -27,6 +27,12 @@
  *          caveat list and the provenance. A held product with an empty caveat
  *          list and a "caveated" verdict is not a state anything can build,
  *          because the verdict is not a field
+ * @why a stored verdict is a second copy of what the caveats already say, and
+ *      the two part company the moment a caveat is added, dropped or re-graded
+ *      — the copy keeps reading clean after the thing it describes stopped
+ *      being clean. That is the 2026-08-23 failure in miniature, at one field
+ *      instead of eight booleans, and it would be invisible for the same
+ *      reason: nothing looks wrong about a verdict that used to be true
  */
 import { type Caveat, severityOf } from "./caveat.ts";
 import type { ShaperSpec } from "../engine/shapers.ts";
