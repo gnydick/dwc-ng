@@ -404,11 +404,32 @@ export function createConfigStore(options: { machineStore: Accessor<MachineStore
 	 * an edit that was never actually validated against ANY machine's axes,
 	 * is the crash. See test/config-cache-scope.test.ts's "an edit made before
 	 * identity resolves is discarded" for the pinned behaviour.
+	 *
+	 * @invariant claim-invalidated-on-reidentify
+	 * @rung 6  choke-point — this is the ONLY place `machineStore()` having
+	 *          changed is acted on, so it is also the one place a stale claim
+	 *          can be cleared the instant the machine it was checked against
+	 *          stops being current. `pendingClaimOverlay` and
+	 *          `meta.claimedProfile` are cleared here unconditionally, same as
+	 *          the machine half of `overlay` a few lines above — never
+	 *          re-attributed to the newly-current machine, never left
+	 *          pointing at the one that is no longer connected
+	 * @why a claim names the board it was checked against ("written for b.A")
+	 *      by testing it against WHICHEVER machine was current at load time.
+	 *      Spec §3 explicitly anticipates identity changing under a live
+	 *      session (a mainboard swap, an SD card moved to another board) — a
+	 *      claim raised against B and left standing after re-resolving to C
+	 *      would let Adopt commit A's machine half (envelope included) into
+	 *      config now keyed to C: the exact cross-machine leak this campaign
+	 *      exists to make unrepresentable, reached THROUGH the confirm action
+	 *      rather than around it
 	 */
 	const hydrateMachine = (handle: MachineStore | null): void => {
 		const machine = readMachineOverlay(handle);
 		const { person } = splitOverlay(overlay);
 		commit(joinOverlay(machine, person), meta.dirty);
+		pendingClaimOverlay = null;
+		setMeta("claimedProfile", null);
 	};
 
 	/**

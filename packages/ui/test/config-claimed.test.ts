@@ -175,6 +175,33 @@ test("an unidentified machine trusts the file in full and raises no claim", asyn
 	});
 });
 
+test("re-resolving to a different machine invalidates a pending claim", async () => {
+	// Spec §3 explicitly anticipates identity changing under a live session
+	// (a mainboard swap, an SD card moved to another board). A claim names
+	// the board it was checked against ("written for b.A") by testing the
+	// file against WHICHEVER machine was current at load time — if identity
+	// later moves on to a third board, that claim is checked against a
+	// machine that is no longer current, and Adopt must not be able to
+	// commit A's machine half into config now keyed to the new machine.
+	await runInRoot(async dispose => {
+		const [ms, setMs] = createSignal<MachineStore | null>(openMachineStore({ kind: "board", uniqueId: "B" }));
+		const store = createConfigStore({ machineStore: ms });
+		await store.loadFromMachine(fakeConnector(JSON.stringify({
+			version: 3, machineId: "b.A", overlay: { shaping: { envelope: { x: [0, 200], y: [0, 200] } } },
+		})));
+		assert.equal(store.meta.claimedProfile?.writtenFor, "b.A", "claimed while B was connected");
+
+		// Identity re-resolves to a THIRD board — not A (the claim's origin),
+		// not B (who held the stale claim).
+		setMs(openMachineStore({ kind: "board", uniqueId: "C" }));
+		assert.equal(store.meta.claimedProfile, null, "the claim named a board that is no longer connected");
+
+		store.adoptClaimedProfile();
+		assert.equal(store.config.shaping.envelope, null, "nothing to adopt — must not commit A's envelope onto C");
+		dispose();
+	});
+});
+
 // ---- the seam with Task 11's System card (machine-card.test.ts) ----
 //
 // The card never constructs a ClaimedProfile itself — it only renders one
