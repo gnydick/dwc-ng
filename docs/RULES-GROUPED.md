@@ -121,10 +121,13 @@ No wobble.
 | Date | Rule | Cites |
 |---|---|---|
 | 2026-08-26 | The full mock suite runs during development, and a user-facing change is not done until it has been exercised against it — a green unit suite is not UAT. | `CLAUDE.md` § Working rules (development environment) |
+| 2026-08-26 | A completion claim records the UAT: what was driven, against which scenario, what was observed. No note means the change is not done. | `CLAUDE.md` § Working rules (development environment) |
 
 **Evidence:** `docs/LEARNINGS.md` § 2026-08-26, and
 `docs/superpowers/2026-08-26-machine-identity-phase-1-final-review.md`, whose
 two Criticals were both found by running the real modules rather than by
 reading or by unit tests.
-**Enforcement:** none mechanical. `packages/mock-duet` exists and runs via
-`pnpm mock`; nothing checks that it was used.
+**Enforcement:** no automated check. The teeth are in the report: a completion
+claim without a UAT note fails the second rule on its face, which is
+reviewable by eye where "did you run the mock" is not. `packages/mock-duet`
+runs via `pnpm mock`.
