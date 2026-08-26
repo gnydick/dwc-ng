@@ -3,11 +3,12 @@
  * reads while you are not doing it.
  *
  * Node-testable without a DOM, which is the reason the pick lives in a pure
- * module at all: "why is the primary button pointing there" has to be
- * answerable without looking at the card. What these prove that a compiler
- * cannot is the ORDER — done is skipped, runnable beats blocked, registry
- * order breaks ties — and the identity that makes the region and the list one
- * answer rather than two.
+ * module at all: "why is this row's button disabled, and which one is next"
+ * has to be answerable without looking at the card. What these prove that a
+ * compiler cannot is the ORDER — done is skipped, runnable beats blocked,
+ * registry order breaks ties — and the identity that keeps `next` and its
+ * entry in `byStep` the same object (`next-step-comes-from-the-readiness-it-
+ * shows`, shaping/steps.ts) rather than two answers to one question.
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -20,9 +21,8 @@ import {
 	type StepSpec,
 	type StepStatus,
 } from "../src/shaping/steps.ts";
-import { allDoneAction, stepActionText, stepStatusText, type StepScope } from "../src/shaping/copy.ts";
+import { stepStatusText } from "../src/shaping/copy.ts";
 import { CARD_DEFS } from "../src/compose/defs.ts";
-import { measurePlans, plannedCaptureCount } from "../src/shaping/runPlan.ts";
 
 /**
  * The machine and the card at their best: nothing refuses, every card is on
@@ -140,16 +140,13 @@ test("all blocked: the reason shown is the FIRST step's, not the loudest", () =>
 	assert.equal(wf.next?.readiness.note, "add the Capture card to this screen");
 });
 
-test("all done: there is no next step, and the region says so instead of emptying", () => {
+test("all done: there is no next step, and every step reads done rather than blocked", () => {
 	const wf = nextStep(all({
 		fingerprint: true, sweep: true, candidates: true,
 		verified: true, applied: true,
 	}));
 	assert.equal(wf.next, null);
 	for (const s of wf.steps) assert.equal(s.status, "done", `${s.spec.step} should read done`);
-	const done = allDoneAction(3);
-	assert.match(done.label, /T3/);
-	assert.ok(done.note.length > 0, "the slot must still be filled");
 });
 
 test("a step running is neither blocked nor available", () => {
@@ -231,37 +228,3 @@ test("every state a step can reach has a chip, and no two chips are the same wid
 	}
 });
 
-/* ------------------------------------------------- what the action promises */
-
-const spec = (step: ShapingStep): StepSpec => SHAPING_STEPS.find(s => s.step === step)!;
-
-test("the primary action names the run's real size, from the plans themselves", () => {
-	// Not a restated formula: the number is counted off the very plans an armed
-	// confirm would execute, so the figure the operator consents to and the
-	// number of capture steps that get built cannot be two arithmetics.
-	const plans = measurePlans({ distMm: 60, speedMmS: 200, repeats: 3 }, { x: [50, 250], y: [50, 250] }, "t0_ring");
-	// Three repeats is what ships: out and back, on each of two axes.
-	assert.equal(plannedCaptureCount(plans), 12);
-	const scope: StepScope = { kind: "captures", n: plannedCaptureCount(plans) };
-	assert.equal(stepActionText(spec("measure"), 0, scope), "Measure T0 — 12 captures");
-});
-
-test("one of anything is not '1 captures'", () => {
-	assert.equal(stepActionText(spec("measure"), 1, { kind: "captures", n: 1 }), "Measure T1 — 1 capture");
-	assert.equal(stepActionText(spec("rank"), 1, { kind: "shapers", n: 1 }), "Rank T1 — 1 shaper");
-});
-
-test("with no number to give, it says less rather than inventing one", () => {
-	// The live case: there is no speed list until the Sweep card builds one, so
-	// a count here would be a figure this screen made up.
-	assert.equal(stepActionText(spec("sweep"), 0, { kind: "unknown" }), "Sweep T0");
-	assert.doesNotMatch(
-		stepActionText(spec("sweep"), 0, { kind: "unknown" }),
-		/capture|shaper|speed|\d+ /,
-		"no invented count",
-	);
-});
-
-test("a shaper-shaped action names the shaper", () => {
-	assert.equal(stepActionText(spec("apply"), 2, { kind: "shaper", name: "EI2 52.0 Hz" }), "Apply T2 — EI2 52.0 Hz");
-});

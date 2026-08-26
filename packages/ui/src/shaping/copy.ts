@@ -34,7 +34,7 @@ import type { Caveat } from "./evidence/caveat.ts";
 import type { Refusal } from "./preconditions.ts";
 import type { Provenance, Supersede } from "./evidence/evidence.ts";
 import type { Answer, Inquiry } from "./evidence/inquiry.ts";
-import type { ShapingStep, StepBlock, StepNeed, StepSpec, StepStatus } from "./steps.ts";
+import type { ShapingStep, StepBlock, StepNeed, StepStatus } from "./steps.ts";
 import type { MotionOutcome, MotionState } from "./motionRun.ts";
 import type { RunKind, RunRequest } from "./runPlan.ts";
 import type { BatchPurpose } from "../compose/services.ts";
@@ -298,62 +298,6 @@ export function stepStatusText(s: StepStatus): string {
 	}
 }
 
-/**
- * How big the thing the primary action would do actually is.
- *
- * `unknown` is not a failure arm and is not decoration either: the sweep has
- * no speed list to count until the card that builds one exists, and a button
- * reading "Sweep T0 — 9 speeds" against a plan nobody has written would be a
- * number this screen invented. Saying less is the honest answer, and it is why
- * this is a union rather than an optional count that would default to zero.
- */
-export type StepScope =
-	| { readonly kind: "captures"; readonly n: number }
-	| { readonly kind: "shapers"; readonly n: number }
-	| { readonly kind: "shaper"; readonly name: string }
-	| { readonly kind: "unknown" };
-
-/**
- * What the primary action will DO, named with the numbers the plan carries.
- *
- * "Measure T0 — 12 captures" rather than "Measure": the operator is about to
- * hand the machine twelve high-speed passes with nobody's hand on the jog
- * wheel, and the count is the difference between a button and an informed
- * consent. Every number here comes from the thing that would build the plan —
- * the configured repeats, the shaper table, the candidate on the card — never
- * from a constant written beside the sentence.
- */
-export function stepActionText(spec: StepSpec, tool: number, scope: StepScope): string {
-	const what = `${spec.label} T${tool}`;
-	switch (scope.kind) {
-		case "captures":
-			return `${what} — ${scope.n} ${scope.n === 1 ? "capture" : "captures"}`;
-		case "shapers":
-			return `${what} — ${scope.n} ${scope.n === 1 ? "shaper" : "shapers"}`;
-		case "shaper":
-			return `${what} — ${scope.name}`;
-		case "unknown":
-			return what;
-		default: {
-			const unhandled: never = scope;
-			throw new Error(`unknown step scope: ${String((unhandled as { kind: unknown }).kind)}`);
-		}
-	}
-}
-
-/**
- * The primary action when there is no next step, which happens exactly once
- * per tool: every step's product is on the card.
- *
- * It still fills the slot — a region that empties when the work finishes moves
- * everything under it on the one poll where the operator is looking hardest.
- */
-export function allDoneAction(tool: number): { readonly label: string; readonly note: string } {
-	return {
-		label: `T${tool} is tuned`,
-		note: "every step is done — any of them can be run again below",
-	};
-}
 
 /**
  * What a batch fingerprint run came to, in the sentence the Decay card shows.

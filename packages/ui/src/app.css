@@ -4338,7 +4338,7 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; appe
    put in a body gets the same treatment, once, here.
    Measured 2026-08-22: the status card's row floor moved 2 cells across the
    audit's 720 / 400 / 200 px probes without this, and 0 with it. */
-.shp-active, .shp-msg, .shp-warn, .shp-table, .shp-facts, .shp-next, .shp-steps, .shp-verified, .shp-line {
+.shp-active, .shp-msg, .shp-warn, .shp-table, .shp-facts, .shp-steps, .shp-verified, .shp-line {
 	flex: 0 0 auto;
 }
 
@@ -4575,80 +4575,14 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; appe
 .shp-macro-row td { font-size: calc(3.25 * var(--u)); }
 .shp-macro-row .shp-mono { font-size: calc(3.25 * var(--u)); }
 
-/* The entry point: what to do next, said once and prominently.
-
-   A FIXED SLOT, and that is the whole construction. The row is a declared
-   height and the sentence under it a declared line, so the region occupies the
-   same space whether it is holding "Measure T0 - 12 captures / ready" or
-   "Sweep T0 / set the motion envelope in Settings" or "T0 is tuned". Advancing
-   a step, or a refusal arriving mid-poll, changes text inside these boxes and
-   moves nothing below them - which matters here more than anywhere else on the
-   screen, because this is the region an operator is looking at when the
-   machine starts moving.
-
-   The rule under it is an inset shadow: a border would occupy layout space and
-   put a term in this card's floor that does not scale with --u. */
-.shp-next {
-	margin: 0 0 calc(2.5 * var(--u));
-	padding-bottom: calc(2 * var(--u));
-	box-shadow: inset 0 -1px 0 var(--hairline);
-}
-.shp-next-row {
-	display: flex;
-	align-items: center;
-	gap: calc(2 * var(--u));
-	min-height: calc(8.5 * var(--u));
-}
-/* Declared width, sized against the LONGEST label it can hold ("Measure T0 -
-   12 captures" at the shipped three repeats), never against the shortest: a
-   fixed chip measured on its short string is how the capture-source chips came
-   to ellipsis their own counts. Not uppercased, because the label carries a
-   figure and a tool name that read worse shouted - and mixed case is narrower,
-   which is what lets the whole sentence fit the slot. */
-.shp-next-go {
-	width: calc(62 * var(--u));
-	flex: 0 0 auto;
-	text-transform: none;
-	letter-spacing: 0.02em;
-	font-size: calc(3.75 * var(--u));
-	color: var(--silk);
-	overflow: hidden;
-	text-overflow: ellipsis;
-}
-.shp-next-go:not(:disabled) { color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
-/* One line, always occupied, nowrap: the reason a step cannot be taken is the
-   longest text on this card and must not be allowed to wrap the region taller.
-
-   It has to be a FLEX ITEM with a declared zero width to stay out of the
-   card's min-content WIDTH as well; see the note on the rule itself. Same
-   construction as .shp-step-note, one row below. */
-.shp-next-note { display: flex; }
-.shp-next-why {
-	/* A DECLARED width of zero plus grow, not `min-width: 0` alone. min-width
-	   removes a flex item's automatic minimum size but NOT its min-content
-	   CONTRIBUTION, so a nowrap sentence still votes its whole line into the
-	   card's minimum width. A definite width is used instead of the content's,
-	   and grow puts the row back. Same construction, same reason, as
-	   .shp-step-note below. */
-	flex: 1 1 auto;
-	width: 0;
-	min-width: 0;
-	margin: calc(0.5 * var(--u)) 0 0;
-	font: 400 calc(3.375 * var(--u))/calc(5 * var(--u)) var(--font-body);
-	color: var(--gold);
-	white-space: nowrap;
-	overflow: hidden;
-	text-overflow: ellipsis;
-}
-.shp-next-why.shp-next-ready { color: var(--ok); }
-
 /* The screen-level thread: what the readings MEAN.
 
-   Deliberately NOT built like .shp-next-why above. That one is a short step
-   note and is nowrap + ellipsis; a finding sentence is long and carries its
-   numbers at the END ("...a pass near 7.7 mm/s would bracket it"), so ellipsing
-   it would cut off exactly the part that tells the operator what to do. This
-   wraps instead, inside a box whose height is DECLARED rather than grown.
+   Deliberately NOT built like .shp-step-note (below): that one is a short
+   step note and is nowrap + ellipsis; a finding sentence is long and carries
+   its numbers at the END ("...a pass near 7.7 mm/s would bracket it"), so
+   ellipsing it would cut off exactly the part that tells the operator what to
+   do. This wraps instead, inside a box whose height is DECLARED rather than
+   grown.
 
    Three lines, always, whether it holds a sentence or the em dash. The card is
    watched while the machine works, so a finding arriving must not move the
@@ -4664,8 +4598,9 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; appe
 .shp-thread-note { display: flex; flex: 1 1 auto; min-width: 0; }
 .shp-thread-why {
 	/* Declared zero width plus grow, the same construction and the same
-	   measured reason as .shp-next-why: min-width alone leaves the sentence's
-	   min-content contribution voting on this card's minimum width. */
+	   measured reason as .shp-step-note (below): min-width alone leaves the
+	   sentence's min-content contribution voting on this card's minimum
+	   width. */
 	flex: 1 1 auto;
 	width: 0;
 	min-width: 0;
@@ -4700,8 +4635,8 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; appe
 	height: calc(27 * var(--u));
 	overflow: hidden;
 	/* Declared zero width plus grow, the same construction and the same
-	   measured reason as .shp-next-why: min-width alone leaves a long sentence
-	   voting its whole line into this card's minimum width. */
+	   measured reason as .shp-step-note (below): min-width alone leaves a
+	   long sentence voting its whole line into this card's minimum width. */
 	flex: 1 1 auto;
 	width: 0;
 	min-width: 0;

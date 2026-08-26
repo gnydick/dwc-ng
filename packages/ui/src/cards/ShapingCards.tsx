@@ -37,10 +37,10 @@ import { For, Match, Show, Switch, createEffect, createMemo, createSignal } from
 import { cmd } from "../control/commands.ts";
 import { copyText } from "../shell/copyText.ts";
 import { createArmed } from "../control/armed.ts";
-import { allDoneAction, armedRunText, armedSaveText, batchSummaryText, type CaptureSource, captureSourceLabel, captureWhenText, livenessNote, motionStateText, refusalText, rescanNoteText, runKindText, stepActionText, stepStatusText, sweepStateText, type StepScope } from "../shaping/copy.ts";
+import { armedRunText, armedSaveText, batchSummaryText, type CaptureSource, captureSourceLabel, captureWhenText, livenessNote, motionStateText, refusalText, rescanNoteText, runKindText, stepStatusText, sweepStateText } from "../shaping/copy.ts";
 import type { CardCtx } from "../compose/ctx.ts";
 import type { MacroRead } from "../compose/services.ts";
-import { nextStep, SHAPING_STEPS, type ShapingStep, type StepInputs, type StepSpec } from "../shaping/steps.ts";
+import { nextStep, SHAPING_STEPS, type StepInputs, type StepSpec } from "../shaping/steps.ts";
 import { walkThrough } from "../shaping/evidence/walk.ts";
 import { productsFor } from "../shaping/evidence/products.ts";
 import { reportText } from "../shaping/accelReport.ts";
@@ -56,7 +56,7 @@ import type { Shaping } from "../om/types.ts";
 import type { Artefact } from "../shaping/engine/artefact.ts";
 import { isMode, MIN_CYCLES, type Axis, type Fingerprint, type Mode, type NoFit } from "../shaping/engine/fit.ts";
 import { type Candidate, customCandidate } from "../shaping/engine/rank.ts";
-import { convolve, type Impulses, SHAPER_TYPES, type ShaperSpec, zv } from "../shaping/engine/shapers.ts";
+import { convolve, type Impulses, type ShaperSpec, zv } from "../shaping/engine/shapers.ts";
 import { seconds } from "../shaping/engine/units.ts";
 import { longestCapture, plannedSegments, type CaptureWindow, type Plan, type PlannedSegment } from "../shaping/procedure.ts";
 import { captureNameRange, defaultPrefix, envelopeText, plannedCaptureCount, RUN_KINDS, runOrigin, runPlans, safePrefix, type RunKind, type RunRequest } from "../shaping/runPlan.ts";
@@ -129,12 +129,6 @@ const shaperLine = (spec: ShaperSpec): string => cmd.inputShaping(spec);
 const specName = (spec: ShaperSpec): string => (spec.type === "custom" ? "custom" : spec.type.toUpperCase());
 const specF = (spec: ShaperSpec): string => (spec.type === "custom" ? NONE : `${spec.F.toFixed(1)}`);
 const specS = (spec: ShaperSpec): string => (spec.type === "custom" ? NONE : `${spec.S.toFixed(3)}`);
-
-/** A shaper in the fewest words that still identify it, for the primary
- *  action's label: the full M593 line neither fits a button nor gets read
- *  there, and the Apply card shows it in full a few centimetres away. */
-const shaperShort = (spec: ShaperSpec): string =>
-	spec.type === "custom" ? "custom shaper" : `${specName(spec)} ${specF(spec)} Hz`;
 
 /**
  * What limits this card's own reading, in one reserved slot.
@@ -258,14 +252,15 @@ function MacroLine(props: { tool: number; read: MacroRead }) {
  * otherwise cost four downloads on mount, against a board whose HTTP server
  * tolerates very few, to fill a line most sessions never look at.
  *
- * The next-step region and the step list REPORT; they do not decide. One
- * `nextStep` call per render produces every row's enabled state, its sentence,
- * its chip and which step is next — the prominent button holds the very object
- * its row does (shaping/steps.ts,
- * `next-step-comes-from-the-readiness-it-shows`), so the two cannot disagree.
- * Both buttons call whichever card offered to carry the step out. There is no
- * verdict invented here and no second implementation of a run — the firmware
- * and the planner are the authorities, and the doing cards own the doing.
+ * The step list REPORTS; it does not decide. One `nextStep` call per render
+ * produces every row's enabled state, its sentence, its chip and which step
+ * is next (shaping/steps.ts, `next-step-comes-from-the-readiness-it-shows`) —
+ * GIT_90 round 4 removed the prominent "do this next" button that used to
+ * read the same object beside this list (a redundant second `runStep` entry
+ * point; Gabe: "awkward navigation"), so each row's own button is now the
+ * only way this card starts a step. There is no verdict invented here and no
+ * second implementation of a run — the firmware and the planner are the
+ * authorities, and the doing cards own the doing.
  *
  * Five states, not two, and the pair that matters is `no card` versus `not
  * yet`: a Capture card the operator removed and a Capture card whose run
@@ -294,8 +289,6 @@ export function ShapingStatusBody(props: { ctx: CardCtx }) {
 	// one that makes everything else on screen wrong.
 	const message = (): string => svc.store.error() || svc.problem();
 
-	const cfg = (): ShapingConfig => props.ctx.config.config.shaping;
-
 	const inputsFor = (spec: StepSpec): StepInputs => ({
 		refusal: svc.gate(),
 		// Two different facts, and telling them apart is what this card gained:
@@ -313,11 +306,14 @@ export function ShapingStatusBody(props: { ctx: CardCtx }) {
 		products: products(),
 	});
 
-	// ONE readiness pass per render, for the whole card. The prominent button
-	// and the five rows read the same objects out of this — `workflow().next`
-	// is reference-identical to its row — so a primary action cannot point at a
-	// step the list beside it shows as blocked (shaping/steps.ts,
-	// `next-step-comes-from-the-readiness-it-shows`).
+	// ONE readiness pass per render, for the whole card: `nextStep` runs once
+	// and the five step rows below all read their entry out of the same
+	// `workflow()` call, rather than each recomputing readiness for its own
+	// step (shaping/steps.ts, `next-step-comes-from-the-readiness-it-shows` —
+	// that invariant used to also cover a prominent "do this next" button
+	// reading `workflow().next`; GIT_90 round 4 removed the button as a
+	// redundant second `runStep` entry point, so the five rows are this
+	// card's only remaining reader).
 	/** The five products, from the one pure derivation (evidence/products.ts).
 	 *  A memo per body rather than a field on the service: the service is eager
 	 *  and every screen pays for what it drags, while this is only ever read
@@ -366,92 +362,8 @@ export function ShapingStatusBody(props: { ctx: CardCtx }) {
 		return rows;
 	});
 
-	/**
-	 * How big the next action is, in the numbers the plan would carry.
-	 *
-	 * Honest or silent. Measure and Sweep count the captures their run will
-	 * ACTUALLY take, by building the very plans the Capture card would arm
-	 * (`shaping/runPlan.ts`) and counting them — not by a second arithmetic over
-	 * the same settings. Rank counts the shaper table it scores; Verify and Apply
-	 * name the shaper they are about.
-	 *
-	 * With no envelope there are no plans, so both say nothing rather than a
-	 * number this screen made up — which is also the state in which the step is
-	 * refused, so the button carries the reason instead.
-	 */
-	const runScope = (req: RunRequest): StepScope => {
-		const env = cfg().envelope;
-		if (env === null) return { kind: "unknown" };
-		const n = plannedCaptureCount(runPlans(req, cfg().defaults, env, defaultPrefix(req.kind, svc.tool())));
-		return n > 0 ? { kind: "captures", n } : { kind: "unknown" };
-	};
-
-	const scopeFor = (step: ShapingStep): StepScope => {
-		switch (step) {
-			case "measure":
-				return runScope({ kind: "measure" });
-			case "sweep":
-				return runScope({ kind: "sweep" });
-			case "rank":
-				return { kind: "shapers", n: SHAPER_TYPES.length };
-			case "verify": {
-				const pick = selected().candidates[svc.candidateIndex()];
-				return pick === undefined ? { kind: "unknown" } : { kind: "shaper", name: shaperShort(pick.spec) };
-			}
-			case "apply": {
-				const made = recommendation(selected());
-				return made === null ? { kind: "unknown" } : { kind: "shaper", name: shaperShort(made.spec) };
-			}
-			default: {
-				const unhandled: never = step;
-				throw new Error(`unknown shaping step: ${String(unhandled)}`);
-			}
-		}
-	};
-
-	/** The one thing to do, as three values that always come from one place:
-	 *  every arm sets all three, so an enabled button with a refusal beside it
-	 *  is not expressible here either. */
-	const primary = createMemo((): { label: string; note: string; enabled: boolean; step: ShapingStep | null } => {
-		const pick = workflow().next;
-		if (pick === null) return { ...allDoneAction(svc.tool()), enabled: false, step: null };
-		return {
-			label: stepActionText(pick.spec, svc.tool(), scopeFor(pick.spec.step)),
-			note: pick.readiness.note,
-			enabled: pick.readiness.enabled,
-			step: pick.spec.step,
-		};
-	});
-
 	return (
 		<>
-			{/* The entry point. A fixed slot: a caption, one prominent action and
-			    one sentence, present in every state including "nothing left to
-			    do", so advancing a step never moves the list under it. */}
-			<div class="shp-next">
-				<div class="shp-next-row">
-					<span class="shp-cap">Next</span>
-					<button
-						class="fb-tool shp-next-go"
-						disabled={!primary().enabled}
-						onClick={() => {
-							const step = primary().step;
-							if (step !== null) svc.runStep(step);
-						}}
-					>
-						{primary().label}
-					</button>
-				</div>
-				{/* The wrapper is not decoration: the sentence has to be a FLEX
-				    ITEM with a declared zero width to stay out of this card's
-				    min-content WIDTH. Measured — as a plain block it put the
-				    column floor at 171 cells against a 156-cell card, i.e. a card
-				    you could drag narrower than its own contents. Same
-				    construction as .shp-step-note; see app.css for the mechanism. */}
-				<div class="shp-next-note">
-					<p class="shp-next-why" classList={{ "shp-next-ready": primary().enabled }}>{primary().note}</p>
-				</div>
-			</div>
 			{/* The walk: where this session has got to, and the next question.
 			    Replaces the single worst-caveat line, which was a fold over
 			    CAVEATS and therefore silent on a machine that had measured

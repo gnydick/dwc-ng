@@ -550,7 +550,20 @@ export const CARD_DEFS = {
 		// four, which is most of why the net cost of an entire new control is
 		// two rows and not more: the picker adds 5u, the table gives back most
 		// of what it used to cost with several tools' rows open.
-		size: { colSpan: 156, rowSpan: 158 },
+		//
+		// 158 -> 139 for the removal of the "Next" region (GIT_90 fix round 4,
+		// Gabe: "awkward navigation" — a second, redundant `runStep` entry point
+		// beside the per-step list's own). Re-measured via contentRowSpan()
+		// against `shaping-measured`: row stop 139, unchanged across the
+		// 720 / 400 / 200 px probes, body worth 124 of it, no child moved.
+		// colStop held at 125 — the removed block never set the column floor,
+		// only the tools table did. The walk block is now the card's first
+		// child; nothing above the step list has height that varies with
+		// `workflow()`'s progress, so the list's own positions do not move as
+		// steps complete (verified live: identical row `top` offsets before and
+		// after a step's readiness text changed entirely, and before and after
+		// running one).
+		size: { colSpan: 156, rowSpan: 139 },
 	}),
 	/** The test motion: the box it may move in, the sensor, the moves it will
 	 *  make, and the armed control that makes them. */
