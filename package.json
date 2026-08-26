@@ -11,6 +11,8 @@
     "preview": "pnpm --filter @dwc-ng/ui preview",
     "mock": "pnpm --filter @dwc-ng/mock-duet start",
     "test": "pnpm -r --if-present test",
-    "typecheck": "pnpm -r --if-present typecheck"
+    "typecheck": "pnpm -r --if-present typecheck",
+    "register:check": "python scripts/register_check.py",
+    "register:check:fast": "python scripts/register_check.py --fast"
   }
 }
