@@ -669,11 +669,19 @@ function shapingService(base: ServiceBaseCtx) {
 	};
 
 	/**
-	 * Write a fitted batch against a tool. The tool is an ARGUMENT and there is
-	 * no default: `svc.tool()` is where the screen is looking, which is not the
-	 * same as what the operator meant to attribute a measurement to, and on a
-	 * four-head machine those two being confused is unrecoverable from the
-	 * file afterwards.
+	 * Write a fitted batch against a tool. The tool is an ARGUMENT rather than
+	 * read off `svc.tool()` in here — API shape, not a safety guard. Until
+	 * Gabe's ruling 5 (2026-08-26, "filter it too") this mattered for safety
+	 * too: the Decay card's save bar chose its attribution tool independently
+	 * of `svc.tool()`, so taking an explicit argument was what let a call site
+	 * pass the batch's OWN target instead of whatever the screen happened to
+	 * be showing. Ruling 5 removed that independence — every caller (Capture's
+	 * and Decay's save bars, `ShapingCards.tsx`) now derives `tool` from
+	 * `svc.tool()` itself, so the argument can no longer drift from it, by
+	 * construction of the callers rather than of this function. It stays an
+	 * argument regardless, because this and `saveVerified` are the two
+	 * writers, and a signature that read the signal internally would force
+	 * both of them, and any future caller, through it to get one.
 	 */
 	const saveMeasurement = async (tool: number): Promise<void> => {
 		const run = runState();
@@ -750,10 +758,12 @@ function shapingService(base: ServiceBaseCtx) {
 	 *    distance ÷ speed and nothing in a capture file records how far the
 	 *    carriage went. One setting, two readers, no third opinion.
 	 *
-	 * The tool is `tool()` at the moment of the call — the Sweep card carries
-	 * the tool picker itself, so the head this is attributed to is the one on
-	 * screen beside the button. Nothing is written to the card here; `saveSweep`
-	 * is the separate, explicit act, for the same reason `saveMeasurement` is.
+	 * The tool is `tool()` at the moment of the call — read fresh, not carried
+	 * in from an argument, so the head this is attributed to is always
+	 * whichever one the shaping-status card's picker currently shows (GIT_90
+	 * fix round 1 moved the picker there; the Sweep card had its own until
+	 * then). Nothing is written to the card here; `saveSweep` is the separate,
+	 * explicit act, for the same reason `saveMeasurement` is.
 	 */
 	const buildSweep = async (family: SweepFamily): Promise<void> => {
 		const state = sweepState().kind;

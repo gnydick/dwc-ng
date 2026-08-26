@@ -900,11 +900,16 @@ export function ShapingCaptureBody(props: { ctx: CardCtx }) {
 	/**
 	 * Write what the run measured against the tool it was run for.
 	 *
-	 * No tool picker, unlike the Decay card's save bar, and that is the safer
-	 * shape here rather than a shortcut: the run addressed `accelByTool[tool()]`
-	 * — this tool's own sensor — so the head these captures belong to is not a
-	 * choice anybody has to make. The Decay card offers the picker because a
-	 * batch there can be any twelve files off the card.
+	 * No attribution choice here, and there never was one to remove: the run
+	 * addressed `accelByTool[tool()]` — this tool's own sensor — so the head
+	 * these captures belong to is not a choice anybody has to make; `tool` is
+	 * `svc.tool()` and nothing else could have run the capture. This card used
+	 * to be the contrast for the Decay card's save bar, which chose its
+	 * attribution tool independently of `svc.tool()` because a batch there can
+	 * be any twelve files off the card. Gabe's ruling 5 (2026-08-26, "filter it
+	 * too") closed that gap — Decay's attribution is `svc.tool()` now too — so
+	 * both save bars derive their target the same way, and neither is drawn
+	 * here as the other's exception.
 	 */
 	const save = (): void => {
 		const tool = svc.tool();
