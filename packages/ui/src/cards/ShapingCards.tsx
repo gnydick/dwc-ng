@@ -8,6 +8,15 @@
  * being tuned — the failure a per-card signal would guarantee on a screen
  * whose whole point is following one measurement from capture to apply.
  *
+ * WHICH TOOL, specifically, is set from exactly one place: the picker in
+ * `ShapingStatusBody`. GIT_90 added the picker; fix round 1 (Gabe, 2026-08-26,
+ * "one picker for the entire screen so everything implicitly uses the chosen
+ * tool") removed the two other places that had grown their own route to the
+ * same signal — the Sweep card's own chip row, and the Decay card's
+ * independent attribution `<select>` — so `grep -rn "svc.setTool("` over this
+ * file returns exactly one call site. A future card that adds a second one is
+ * the regression this note exists to make easy to catch.
+ *
  * Everything the cards SHOW is derived, never stored twice: a fingerprint is
  * whatever the store parsed, a candidate's numbers are re-scored by the engine
  * against that fingerprint (shaping/results.ts), and every M593 string comes
@@ -483,11 +492,13 @@ export function ShapingStatusBody(props: { ctx: CardCtx }) {
 			    card whose job is to be watched while the machine works. Hidden by
 			    visibility, so it occupies its row either way. */}
 			<p class="shp-msg" classList={{ "shp-msg-on": message() !== "" }}>{message()}</p>
-			{/* THE tool picker: the only control on this screen that calls
-			    `svc.setTool`, so every other card's "which tool" question has
-			    exactly one place it could have been answered (GitHub #90). Reuses
-			    the Sweep card's chip markup (.shp-tool-pick / .shp-tool-chip) verbatim
-			    rather than inventing a second look for the same choice.
+			{/* THE tool picker: the ONLY control on the whole screen that calls
+			    `svc.setTool` (GitHub #90; verified by grep — see the fix-round-1
+			    note in the file header). Sweep used to carry an identical chip
+			    row of its own, writing the same signal; it was removed in GIT_90
+			    fix round 1 per Gabe's "one picker for the entire screen" — this is
+			    what that markup (`.shp-tool-pick` / `.shp-tool-chip`) looked like,
+			    now singular rather than duplicated.
 
 			    Disabled, not omitted, at one tool or none — the row's height comes
 			    from `.shp-active`'s declared min-height, not from how many chips are
@@ -1345,7 +1356,6 @@ export function ShapingDecayBody(props: { ctx: CardCtx }) {
 	 *  from here — a key naming no bucket reads as nothing lit. */
 	const [family, setFamily] = createSignal<string | null>(null);
 	const [selected, setSelected] = createSignal<ReadonlySet<string>>(new Set<string>());
-	const [target, setTarget] = createSignal<number | null>(null);
 	const [armed, setArmed] = createArmed<number>();
 
 	/** Switching TO the board is the act that asks for the listing — never a
@@ -1637,7 +1647,6 @@ export function ShapingDecayBody(props: { ctx: CardCtx }) {
 		svc.clearRun();
 	};
 
-	const tools = createMemo(() => props.ctx.om.om.tools.filter(t => t !== null));
 	/**
 	 * A fit that may be WRITTEN — not merely one that exists.
 	 *
@@ -1700,15 +1709,10 @@ export function ShapingDecayBody(props: { ctx: CardCtx }) {
 		return tool === null ? null : { tool };
 	});
 
-	const saveLabel = createMemo((): string => {
-		const tool = target();
-		if (arming() !== null) return "Confirm";
-		return tool === null ? "Save…" : `Save to T${tool}`;
-	});
+	const saveLabel = createMemo((): string => (arming() !== null ? "Confirm" : `Save to T${svc.tool()}`));
 
 	const save = (): void => {
-		const tool = target();
-		if (tool === null) return;
+		const tool = svc.tool();
 		if (armed() === tool) {
 			setArmed(null);
 			void svc.saveMeasurement(tool);
@@ -2009,11 +2013,19 @@ export function ShapingDecayBody(props: { ctx: CardCtx }) {
 			</table>
 			</div>
 			{/*
-			  The attribution bar. The tool is a deliberate choice with no default:
-			  `svc.tool()` is where the SCREEN is looking, which is not the same as
-			  what the operator meant to measure, and on a four-head machine those
-			  two being confused is unrecoverable from the file afterwards. Save
-			  arms first (control/armed.ts, so Escape backs out).
+			  The attribution bar. Attribution FOLLOWS the screen's shared tool
+			  (Gabe, 2026-08-26, GIT_90 fix round 1) — "filter it too" — reversing
+			  the deliberate independence this comment used to argue for: a select
+			  here used to let the operator view one tool while filing a batch
+			  under another, on the reasoning that `svc.tool()` was merely "where
+			  the screen is looking". That reasoning is exactly what "one picker
+			  for the entire screen so everything implicitly uses the chosen tool"
+			  rules out — a second place to name a tool was a second answer to the
+			  same question the picker exists to make singular. There is nothing
+			  left here that can go stale: `svc.tool()` is read fresh, never
+			  snapshotted into a local signal, so a tool switch elsewhere on the
+			  screen cannot leave this bar pointed at a tool the screen has moved
+			  on from. Save arms first (control/armed.ts, so Escape backs out).
 			*/}
 			<div class="shp-batch">
 				<button class="fb-tool shp-pick-n" disabled={rows().length === 0 || rows().length > MAX_BATCH} onClick={selectShown}>
@@ -2027,25 +2039,14 @@ export function ShapingDecayBody(props: { ctx: CardCtx }) {
 				>
 					Fit {chosen().length}
 				</button>
-				<label class="shp-target">
+				<span class="shp-target">
 					<span class="shp-cap">Tool</span>
-					<select
-						class="filament-pick"
-						aria-label="Tool to attribute this fingerprint to"
-						value={target() === null ? "" : String(target())}
-						onChange={e => {
-							setArmed(null);
-							setTarget(e.currentTarget.value === "" ? null : Number(e.currentTarget.value));
-						}}
-					>
-						<option value="">— choose —</option>
-						<For each={tools()}>{t => <option value={String(t.number)}>T{t.number}</option>}</For>
-					</select>
-				</label>
+					<span class="shp-mono">T{svc.tool()}</span>
+				</span>
 				<button
 					class="fb-tool shp-save"
 					classList={{ "shp-arming": armed() !== null }}
-					disabled={attributable() === null || target() === null}
+					disabled={attributable() === null}
 					onClick={save}
 				>
 					{saveLabel()}
@@ -2103,7 +2104,6 @@ export function ShapingDecayBody(props: { ctx: CardCtx }) {
  */
 export function ShapingSweepBody(props: { ctx: CardCtx }) {
 	const svc = props.ctx.service("shaping");
-	const tools = createMemo(() => props.ctx.om.om.tools.filter(t => t !== null));
 	const [pick, setPick] = createSignal<string>("");
 	const [armed, setArmed] = createArmed<number>();
 
@@ -2179,25 +2179,19 @@ export function ShapingSweepBody(props: { ctx: CardCtx }) {
 
 	return (
 		<>
-			{/* Which tool this sweep is about — the SHARED selection, so picking
-			    here moves every other card on the screen with it. Eight cards
-			    disagreeing about which head is being tuned is the failure the one
-			    service exists to prevent (compose/services.ts). */}
+			{/* Which tool this sweep is about — read, not picked, here. Until
+			    GIT_90 fix round 1 this card carried its OWN chip row writing
+			    `svc.setTool`, on the reasoning that the shared selection meant
+			    "two cards cannot disagree", which is true but was not the whole
+			    of what Gabe asked for — his words: "one picker for the entire
+			    screen so everything implicitly uses the chosen tool." A second
+			    control that reaches the same signal is still a second control,
+			    and the shaping-status card's picker is now the ONLY one. This
+			    stays a plain read of `svc.tool()`, never snapshotted, so it can
+			    never disagree with whatever the picker last set. */}
 			<div class="shp-sweep-bar">
 				<span class="shp-cap">Tool</span>
-				<div class="shp-tool-pick" role="group" aria-label="Tool being tuned">
-					<For each={tools()} fallback={<span class="shp-nil">no tools</span>}>
-						{t => (
-							<button
-								class="shp-pick shp-tool-chip"
-								aria-pressed={svc.tool() === t.number}
-								onClick={() => { setArmed(null); svc.setTool(t.number); }}
-							>
-								T{t.number}
-							</button>
-						)}
-					</For>
-				</div>
+				<span class="shp-mono">T{svc.tool()}</span>
 				<span class="shp-sweep-step" classList={{ "shp-warn-inline": !step().known }} title={stepText()}>
 					{stepText()}
 				</span>

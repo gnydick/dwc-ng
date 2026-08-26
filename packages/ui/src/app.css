@@ -5143,11 +5143,6 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; appe
 .shp-pick-n { width: calc(19 * var(--u)); text-align: center; font-variant-numeric: tabular-nums; }
 .shp-target { display: flex; align-items: center; gap: calc(1.5 * var(--u)); margin-left: auto; }
 .shp-target .shp-cap { width: calc(8 * var(--u)); flex: 0 0 auto; }
-/* A <select>'s min-content width is its LONGEST OPTION, so this needs the
-   explicit floor as well as the width — "— choose —" is wider than "T0". */
-/* 24u: "— choose —" plus the dropdown arrow is ~90px at the default unit,
-   and at 22u it rendered as "— choos". */
-.shp-target .filament-pick { width: calc(24 * var(--u)); min-width: calc(24 * var(--u)); }
 /* Fixed width, because the label switches between "Save to T2" and "Confirm"
    and a button that resizes as it arms moves the row it is in at the exact
    moment the operator is aiming at it. */
@@ -5420,8 +5415,8 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; appe
 }
 /* A <select>'s min-content width is its LONGEST OPTION, and the longest here is
    a family name off the operator's own board — `B_i1400_y8_5_f8_X · 2`. So the
-   width is declared AND floored, exactly as .shp-target .filament-pick is, and
-   the names that do not fit are the ones the text of the option ellipsises. */
+   width is declared AND floored, and the names that do not fit are the ones
+   the text of the option ellipsises. */
 .shp-family { flex: 1 1 auto; width: calc(40 * var(--u)); min-width: calc(30 * var(--u)); }
 /* The plot's box, declared here and not by the chart.
    60u because the heat map's own floor is 36u of data area plus 15.5u of
