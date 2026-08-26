@@ -187,3 +187,16 @@ them is `docs/RULES-GROUPED.md`.
   action leaving the working tree: `git remote -v` for a tracker, the
   configured host for a deploy, `rev-parse` for a branch. A document adapted
   from another project carries that project's identifiers.
+
+## Working rules (development environment)
+
+Adopted 2026-08-26 (Gabe, via `RULE:` intake).
+
+- **The full mock suite runs during development, and a user-facing change is
+  not done until it has been exercised against it.** Keep `pnpm mock` up while
+  building UI so any change can be clicked through without waiting for a
+  deploy to the printer, and drive the change against mock-duet before
+  reporting it complete. A green unit suite is not UAT: it exercises the units
+  you wrote a fixture for, not the wiring a person touches. Two defects reached
+  the real printer in one day with 1,500 tests passing, because nothing ran the
+  boot path end to end.

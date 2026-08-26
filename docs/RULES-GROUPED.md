@@ -51,6 +51,7 @@ from git blame rather than writing it by hand.
 
 - [Confirmation discipline — a local check is not a general one](#confirmation-discipline--a-local-check-is-not-a-general-one) 🟢
 - [Acting outside the working tree](#acting-outside-the-working-tree) 🟢
+- [Proving a change against something that behaves like the machine](#proving-a-change-against-something-that-behaves-like-the-machine) 🟢
 
 ---
 
@@ -97,3 +98,33 @@ named the project it had been adapted from; followed literally it filed four
 tickets into a stranger's repository and closed two of its issues. Repaired in
 `fa46ec5`, which also added the `git remote -v` check to that file.
 **Enforcement:** none mechanical.
+
+---
+
+## Proving a change against something that behaves like the machine 🟢
+
+**What binds these:** a test suite exercises the units someone wrote a fixture
+for; it does not exercise the wiring a person touches. This group holds the
+rules that close that gap by requiring a change to be driven against something
+that behaves like the real system before it is called done.
+
+Evidence, and why the bar is where it is: on 2026-08-26 two defects reached the
+owner's printer with the full suite green (1,530 tests, 0 failures). Both were
+ordering facts about the live boot path — a config load that never ran because
+an upstream guard returned first, and a canvas seed read before the value it
+needed existed. Neither could have been caught by more unit tests of the same
+shape, and both were falsified in minutes once the real modules were run in the
+real sequence.
+
+No wobble.
+
+| Date | Rule | Cites |
+|---|---|---|
+| 2026-08-26 | The full mock suite runs during development, and a user-facing change is not done until it has been exercised against it — a green unit suite is not UAT. | `CLAUDE.md` § Working rules (development environment) |
+
+**Evidence:** `docs/LEARNINGS.md` § 2026-08-26, and
+`docs/superpowers/2026-08-26-machine-identity-phase-1-final-review.md`, whose
+two Criticals were both found by running the real modules rather than by
+reading or by unit tests.
+**Enforcement:** none mechanical. `packages/mock-duet` exists and runs via
+`pnpm mock`; nothing checks that it was used.
