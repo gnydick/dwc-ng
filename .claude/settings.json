@@ -1,0 +1,43 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "shell": "bash",
+            "command": "python \"$CLAUDE_PROJECT_DIR/.claude/hooks/rule_capture.py\"",
+            "timeout": 30,
+            "statusMessage": "Checking for RULE: mark"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "shell": "bash",
+            "command": "python \"$CLAUDE_PROJECT_DIR/.claude/hooks/rule_nudge.py\"",
+            "timeout": 30,
+            "statusMessage": "Register nudge check"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "shell": "bash",
+            "command": "echo 'Governance: dictate a standing rule by starting the prompt with RULE: (captured to docs/rule-inbox.md). File it via /rule-intake, then python scripts/register_check.py --fast should be clean before committing -- no pre-commit hook enforces this yet. Register: docs/RULES-GROUPED.md.'",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
