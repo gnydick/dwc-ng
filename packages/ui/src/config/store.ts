@@ -897,6 +897,24 @@ export function createConfigStore(options: { machineStore: Accessor<MachineStore
 				// its own doc comment — so nothing loaded here survives that
 				// anyway). Dirty here is the general guard: leave everything as
 				// is, same as any other ordinary (non-migrating) dirty load below.
+				//
+				// Checked against GIT_86 Critical 1 (an origin-global `dirty`
+				// gating a machine-scoped load) and NOT the same defect, on
+				// purpose left as a plain `wasDirty` check rather than the
+				// empty-local-half bypass added below: `handle` is null here,
+				// so there is no per-machine local store to have a "the local
+				// half is empty, nothing to protect" case at all — `commit`
+				// below (unlike every branch below this one) takes `loaded`
+				// WHOLESALE, person half included, with no wasDirty-based split
+				// to protect it. `wasDirty` here can therefore only ever be
+				// describing this browser's own unsaved PERSON edits (or a
+				// previous, now-disconnected machine's — either way nothing a
+				// per-machine bypass could distinguish, since there is no
+				// machine store yet to check). Refusing is the ONLY protection
+				// this branch has for the person half, so it stays unqualified.
+				// Also: saveToMachine is a no-op while unidentified (I4), so
+				// even a wrongly-blocked load here can never propagate into a
+				// destructive write the way the identified branches' did.
 				if (wasDirty) return;
 				// Per spec §3, an unidentified machine has "no local machine cache
 				// at all: SD is its only store" — so the file is trusted in full,
@@ -933,20 +951,43 @@ export function createConfigStore(options: { machineStore: Accessor<MachineStore
 				fileVersion,
 			);
 
-			// The ONE carve-out in the dirty guard: a migration is not "an
-			// ordinary SD copy that might be stale", it is a one-time amnesty for
-			// a machine half that has never had a local copy to be stale AGAINST
-			// (spec §4) — so it proceeds regardless. Every other outcome (a
-			// matched or claimed v3 stamp) is an ordinary load, and gets the
-			// FULL original guard back: dirty means stop here, touching nothing,
-			// exactly as it did before this file's own `wasDirty` was introduced.
-			if (!stamped.migrated && wasDirty) return;
+			// `dirty` is restored from `dwc-ng.person` (Ruling 18), which is
+			// deliberately NOT machine-scoped — it is one flag describing BOTH
+			// halves at once, for whichever machine happened to be current when
+			// it was last set. Gating the MACHINE half's load on it, unqualified,
+			// is GIT_86 Critical 1: unsaved work done while pointed at machine A
+			// makes `wasDirty` true on the next boot pointed at machine B, and
+			// refusing B's own, correctly-stamped SD file on the strength of
+			// THAT leaves B's machine half at `{}` — which a later Save then
+			// uploads over B's intact config. `a5aa651` (the outage fix) carved
+			// out only `stamped.migrated` and never asked what else `dirty`
+			// could be true ABOUT; this is that same guard's second destructive
+			// instance, found by the postmortem's own named generator (local
+			// confirmation for general confirmation) firing again in the fix for
+			// the first.
+			//
+			// The guard's real job is protecting THIS machine's own local,
+			// unsaved copy of ITS machine half from an ordinary SD load — never
+			// a fact about the person half (which has its own protection below,
+			// unconditionally) and never a fact about a DIFFERENT machine's
+			// edits. `writeMachineOverlay` only ever writes to whichever machine
+			// is CURRENT at edit time (persistCache/hydrateMachine, above), so a
+			// machine whose local machine-half overlay is EMPTY has never had a
+			// local edit made against it on this browser, by construction —
+			// there is nothing for the guard to protect, and `wasDirty` in that
+			// case can only describe the person half or a different machine's
+			// session. A migration is exempted unconditionally regardless (spec
+			// §4's amnesty is a different question). Every other case — this
+			// machine's own local overlay already holds something — keeps the
+			// full original guard: dirty means stop here, touching nothing.
+			const noLocalMachineHalfToProtect = Object.keys(splitOverlay(overlay).machine).length === 0;
+			if (!stamped.migrated && wasDirty && !noLocalMachineHalfToProtect) return;
 
 			// The file's person section may be a DIFFERENT browser's — never this
-			// browser's own unsaved edits. Only reachable with wasDirty true from
-			// the migrated branch (every other branch already returned above), so
-			// this is "keep it" exactly there and "take the file's" everywhere
-			// else — the same as before this task in the non-migrated case.
+			// browser's own unsaved edits. "keep it" whenever wasDirty, "take
+			// the file's" otherwise — this now also covers the bypass above: a
+			// machine-half bypass never implies the person half is safe to
+			// overwrite too.
 			const person = wasDirty ? splitOverlay(overlay).person : filePerson;
 
 			if (stamped.migrated) {
@@ -967,10 +1008,18 @@ export function createConfigStore(options: { machineStore: Accessor<MachineStore
 				// The machine half is left UNCHANGED — never the claimed file's
 				// bytes, never reset to empty either (that would discard this
 				// machine's own already-hydrated local truth for no reason).
-				commit(joinOverlay(splitOverlay(overlay).machine, person), false);
+				// `wasDirty`, not a hardcoded false: the bypass above can now
+				// reach this branch WITH wasDirty true (empty local machine half,
+				// a claimed file, an unsaved PERSON edit) — `person` was just
+				// kept local in exactly that case, and the flag must say so, or
+				// a real unsaved person edit would read as already saved.
+				commit(joinOverlay(splitOverlay(overlay).machine, person), wasDirty);
 			} else {
 				noClaim();
-				commit(joinOverlay(stamped.overlay, person), false);
+				// `wasDirty`, not a hardcoded false — see the claimed branch's
+				// comment just above; this branch is the ordinary bypass path
+				// GIT_86 Critical 1 is about.
+				commit(joinOverlay(stamped.overlay, person), wasDirty);
 			}
 		},
 	};
