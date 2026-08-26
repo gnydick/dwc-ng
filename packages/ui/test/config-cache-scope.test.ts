@@ -169,6 +169,95 @@ test("a snapshot taken with no identified machine never carries a machine half, 
 	});
 });
 
+// --- GIT_86 finding I1: a miss on the CURRENT machine's own snapshot record
+// must leave that machine's live machine half untouched, never replace it
+// with `{}`. `{}` is not "nothing to restore" — it is "restore emptiness",
+// and committing it is what erased a live axis role beneath the very next
+// Save. See config/store.ts revert()'s own invariant. --------------------
+
+test("I1: reverting to a snapshot taken on a DIFFERENT machine does not erase this machine's own live machine half", () => {
+	withLocalStorage(() => {
+		const A = openMachineStore({ kind: "board", uniqueId: "A" });
+		const B = openMachineStore({ kind: "board", uniqueId: "B" });
+		createRoot(dispose => {
+			const [ms, setMs] = createSignal<MachineStore | null>(null);
+			const store = createConfigStore({ machineStore: ms });
+
+			setMs(A);
+			store.setAxisRole("U", "A's Z motor");
+			store.snapshot("on A");
+
+			setMs(B);
+			// B's OWN live setting, unrelated to any snapshot — this is the value
+			// finding I1 showed getting silently wiped.
+			store.setAxisRole("U", "B-role");
+			assert.equal(store.config.axisRoles.U, "B-role");
+
+			store.revert(0); // "on A" — not found in B's own snapshot record
+			assert.equal(store.config.axisRoles.U, "B-role", "B's own machine half must survive a miss, not be replaced with {}");
+
+			// And the erasure must not have been persisted to B's own storage
+			// either — the exact "next Save writes {} to the card" failure mode.
+			const raw = B.get("config");
+			const onDisk = raw === null ? {} : (JSON.parse(raw) as { overlay?: { axisRoles?: Record<string, string> } }).overlay ?? {};
+			assert.equal(onDisk.axisRoles?.U, "B-role", "B's cached machine half must not have been overwritten with emptiness");
+			dispose();
+		});
+	});
+});
+
+test("I1: revert() reports a partial restore via meta.revertNotice on a miss, and clears it on a hit", () => {
+	withLocalStorage(() => {
+		const A = openMachineStore({ kind: "board", uniqueId: "A" });
+		const B = openMachineStore({ kind: "board", uniqueId: "B" });
+		createRoot(dispose => {
+			const [ms, setMs] = createSignal<MachineStore | null>(null);
+			const store = createConfigStore({ machineStore: ms });
+
+			setMs(A);
+			store.setAxisRole("U", "A's Z motor");
+			store.snapshot("on A");
+			store.setAxisRole("U", "A's Z motor v2");
+			store.snapshot("on A v2");
+
+			assert.equal(store.meta.revertNotice, null, "nothing reverted yet this session");
+
+			setMs(B);
+			store.revert(0); // "on A" — a miss on B
+			assert.notEqual(store.meta.revertNotice, null, "a miss must be reported, not silent");
+			assert.match(store.meta.revertNotice ?? "", /on A/, "names the snapshot that was only partially restored");
+
+			setMs(A);
+			store.revert(0); // same machine that took it — a hit
+			assert.equal(store.meta.revertNotice, null, "a hit clears any earlier notice");
+			dispose();
+		});
+	});
+});
+
+test("I1: revertNotice does not survive a re-identify to a different machine", () => {
+	withLocalStorage(() => {
+		const A = openMachineStore({ kind: "board", uniqueId: "A" });
+		const B = openMachineStore({ kind: "board", uniqueId: "B" });
+		createRoot(dispose => {
+			const [ms, setMs] = createSignal<MachineStore | null>(null);
+			const store = createConfigStore({ machineStore: ms });
+
+			setMs(A);
+			store.setAxisRole("U", "A's Z motor");
+			store.snapshot("on A");
+
+			setMs(B);
+			store.revert(0); // a miss on B — sets the notice
+			assert.notEqual(store.meta.revertNotice, null);
+
+			setMs(A); // re-identify: the notice named a fact about B, which is no longer current
+			assert.equal(store.meta.revertNotice, null, "a stale notice must not follow identity to a new machine");
+			dispose();
+		});
+	});
+});
+
 // GIT_86 finding 3: createConfigStore's construction-time createComputed runs
 // hydrateMachine -> commit -> persistCache synchronously, so BOTH
 // writePersonCache and writeMachineOverlay (via MachineStore.set) can run

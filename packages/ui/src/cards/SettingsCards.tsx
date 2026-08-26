@@ -667,6 +667,15 @@ export function SavedVersionsBody() {
 					)}
 				</For>
 			</Show>
+			{/* Set by revert() (config/store.ts) when the restored snapshot has no
+			    machine half on record for THIS machine — a different machine, no
+			    machine identified, or an entry aged out of this machine's own
+			    cap. Only preferences were restored in that case; this is how the
+			    operator is told the restore was partial rather than it looking
+			    identical to a full one. */}
+			<Show when={app.config.meta.revertNotice}>
+				{text => <p class="hint unsaved">{text()}</p>}
+			</Show>
 		</>
 	);
 }

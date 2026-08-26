@@ -57,8 +57,19 @@ export interface ConfigStore {
 	 * A settings profile read off the SD card for a DIFFERENT machine than the
 	 * one currently identified — `null` when there is nothing claimed. See
 	 * `ClaimedProfile`'s own doc comment for what it does and does not expose.
+	 *
+	 * `revertNotice` is set by `revert()` (below) whenever the snapshot being
+	 * restored has no machine half on record for the CURRENTLY connected
+	 * machine — a different machine, no machine identified, or an entry that
+	 * aged out of this machine's own cap. Only the person half (theme, units,
+	 * habits) was applied in that case; this is how the operator is told the
+	 * restore was partial, rather than it looking indistinguishable from a
+	 * full one. `null` when the last revert restored both halves, or when
+	 * nothing has been reverted yet this session. Not restored from cache —
+	 * like `claimedProfile`, it is a fact about what just happened in THIS
+	 * session, not this browser's history.
 	 */
-	readonly meta: { readonly claimedProfile: ClaimedProfile | null };
+	readonly meta: { readonly claimedProfile: ClaimedProfile | null; readonly revertNotice: string | null };
 	/**
 	 * Apply a claimed profile's machine half and clear the claim. A no-op when
 	 * nothing is claimed. The ONLY place the private pending overlay (set by
@@ -288,7 +299,7 @@ export function createConfigStore(options: { machineStore: Accessor<MachineStore
 	const [config, setConfig] = createStore<UiConfig>(effective(overlay));
 	const [meta, setMeta] = createStore<{
 		dirty: boolean; snapshots: ConfigSnapshot[]; droppedMachineSections: readonly string[];
-		claimedProfile: ClaimedProfile | null;
+		claimedProfile: ClaimedProfile | null; revertNotice: string | null;
 	}>({
 		dirty: cached?.dirty ?? false,
 		// Restore the backup history too, so it survives a reload.
@@ -298,6 +309,9 @@ export function createConfigStore(options: { machineStore: Accessor<MachineStore
 		// downloaded, not about this browser's own history, and there is
 		// nothing claimed until loadFromMachine runs at least once.
 		claimedProfile: null,
+		// Same reasoning as claimedProfile: a fact about this session's own
+		// most recent revert, not this browser's history.
+		revertNotice: null,
 	});
 	/**
 	 * The claimed profile's ACTUAL machine-half values, pending Adopt.
@@ -413,7 +427,11 @@ export function createConfigStore(options: { machineStore: Accessor<MachineStore
 	 *          `meta.claimedProfile` are cleared here unconditionally, same as
 	 *          the machine half of `overlay` a few lines above — never
 	 *          re-attributed to the newly-current machine, never left
-	 *          pointing at the one that is no longer connected
+	 *          pointing at the one that is no longer connected. `revertNotice`
+	 *          is cleared here too, for the identical reason one level down:
+	 *          it names a fact about the machine that was current when the
+	 *          revert ran ("no machine settings on record HERE"), and that
+	 *          fact does not carry over to whichever machine is current now
 	 * @why a claim names the board it was checked against ("written for b.A")
 	 *      by testing it against WHICHEVER machine was current at load time.
 	 *      Spec §3 explicitly anticipates identity changing under a live
@@ -430,6 +448,7 @@ export function createConfigStore(options: { machineStore: Accessor<MachineStore
 		commit(joinOverlay(machine, person), meta.dirty);
 		pendingClaimOverlay = null;
 		setMeta("claimedProfile", null);
+		setMeta("revertNotice", null);
 	};
 
 	/**
@@ -737,8 +756,8 @@ export function createConfigStore(options: { machineStore: Accessor<MachineStore
 		},
 		/*
 		 * @invariant revert-machine-half-scoped-to-current-machine
-		 * @rung 6  choke-point — the machine half of a snapshot applies ONLY if
-		 *          it is found in the CURRENTLY connected machine's OWN
+		 * @rung 6  choke-point — the machine half of a snapshot is APPLIED only
+		 *          if it is found in the CURRENTLY connected machine's OWN
 		 *          "snapshots" key. Being found there IS the proof — the same
 		 *          way reading the SD file back over a live connection to
 		 *          board X proves it is board X's (migrateStorage.ts's header)
@@ -747,25 +766,57 @@ export function createConfigStore(options: { machineStore: Accessor<MachineStore
 		 *          id by construction (machineStore.ts's own rung-6/7 keying).
 		 *          A different machine, no machine identified, or the entry
 		 *          having aged out of that machine's own MAX_SNAPSHOTS cap all
-		 *          read as "nothing to restore" — `{}` — never a guess
+		 *          read as "not found here" — and "not found here" leaves the
+		 *          CURRENT machine half exactly as it is, untouched, the same
+		 *          way the claimed-not-adopted branch of loadFromMachine
+		 *          (above) leaves it untouched on a stamp mismatch. It is
+		 *          NEVER replaced with `{}`: `{}` is not "nothing to
+		 *          restore", it is "restore emptiness" — a positive,
+		 *          destructive act that this function used to commit and
+		 *          persistCache used to write straight to the card on the next
+		 *          Save. That was GIT_86 finding I1: reverting to a snapshot
+		 *          taken on machine A, while connected to machine B, erased
+		 *          B's own live machine half (axis roles, dock sensors,
+		 *          motion envelope, bed probe command) rather than leaving it
+		 *          alone. The person half (theme, units, habits) is restored
+		 *          regardless of the lookup outcome — `meta.snapshots` is
+		 *          person-scoped and origin-global by design, so it
+		 *          legitimately crosses machines; only the machine half needs
+		 *          this guard. A miss also sets `meta.revertNotice` (see
+		 *          ConfigStore's own doc comment on it), so a partial restore
+		 *          is told to the operator rather than looking identical to a
+		 *          full one.
 		 * @why snapshot() (above) is the sole writer of a machine's own
 		 *      "snapshots" key and never writes under an id taken on a
 		 *      different machine, so `.find(e => e.id === snap.id)` coming up
-		 *      empty on machine B is not a lookup miss to work around — it is
-		 *      the correct, safe answer for a snapshot machine B never took
+		 *      empty on machine B proves the snapshot was not taken on B — but
+		 *      that only tells you WHOSE machine half it isn't; it says
+		 *      nothing about what B's own machine half currently holds, and is
+		 *      no license to overwrite it
 		 */
 		revert(index) {
 			const snap = meta.snapshots[index];
 			if (snap === undefined) return;
 			const handle = machineStore();
-			const machineOverlay = handle !== null
-				? (parseMachineSnapshots(handle.get("snapshots")).find(e => e.id === snap.id)?.overlay ?? {})
-				: {};
+			const found = handle !== null
+				? parseMachineSnapshots(handle.get("snapshots")).find(e => e.id === snap.id)
+				: undefined;
 			// unwrap first: snapshots live in a Solid store, so snap.overlay is a
 			// proxy and structuredClone throws DataCloneError on it. (Node's
 			// server build of Solid hands back plain objects, which hid this —
 			// the tests now run with --conditions=browser so they can't again.)
-			commit(joinOverlay(machineOverlay, structuredClone(unwrap(snap.overlay))), true);
+			const person = structuredClone(unwrap(snap.overlay));
+			if (found !== undefined) {
+				setMeta("revertNotice", null);
+				commit(joinOverlay(found.overlay, person), true);
+				return;
+			}
+			// Not found on THIS machine's own record — leave its machine half
+			// exactly as it is (see this function's own invariant above) and
+			// say so, rather than silently restoring only half of what the
+			// operator asked for.
+			setMeta("revertNotice", `"${snap.label}": no machine record here, preferences only restored.`);
+			commit(joinOverlay(splitOverlay(overlay).machine, person), true);
 		},
 
 		/*
