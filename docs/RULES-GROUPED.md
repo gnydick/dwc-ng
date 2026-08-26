@@ -124,6 +124,7 @@ No wobble.
 | 2026-08-26 | A completion claim records the UAT: what was driven, against which scenario, what was observed. No note means the change is not done. | `CLAUDE.md` § Working rules (development environment) |
 | 2026-08-26 | A change to what the UI reads from or writes to the board updates `packages/mock-duet` in the SAME change. Mock parity is part of the work, not a follow-up ticket. | `CLAUDE.md` § Working rules (development environment) |
 | 2026-08-26 | Nothing deploys to the printer until Gabe has UAT'd it on the mock. A clean review is not permission to ship; the implementer's UAT is evidence, Gabe's is the gate. | `CLAUDE.md` § Working rules (development environment) |
+| 2026-08-26 | Every code-complete iteration is deployed to the mock for UAT — early and often, not gated on review being clean. Refines the row above: mock deploy is early, printer deploy still waits for Gabe. | `CLAUDE.md` § Working rules (development environment) |
 
 **Evidence:** `docs/LEARNINGS.md` § 2026-08-26, and
 `docs/superpowers/2026-08-26-machine-identity-phase-1-final-review.md`, whose

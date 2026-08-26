@@ -216,3 +216,11 @@ Adopted 2026-08-26 (Gabe, via `RULE:` intake).
   A clean review is not permission to ship. Deploying first and letting him
   find the defect on the machine is what happened on 2026-08-26, twice in one
   morning, and both times the mock could have shown it first.
+- **Every code-complete iteration is deployed to the mock for UAT.** Not only
+  the final one, and not gated on the review being clean: as soon as an
+  iteration is code complete, stand it up against `packages/mock-duet` and say
+  so, so Gabe can drive it while review and any fix rounds continue. This
+  refines the gate above rather than replacing it — the mock deploy happens
+  EARLY and often; the printer deploy still waits for Gabe's word. Batching UAT
+  to the end is how a wrong reading of a requirement survives three fix rounds
+  before anyone who knows the machine looks at it.
