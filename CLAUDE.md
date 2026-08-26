@@ -200,3 +200,12 @@ Adopted 2026-08-26 (Gabe, via `RULE:` intake).
   you wrote a fixture for, not the wiring a person touches. Two defects reached
   the real printer in one day with 1,500 tests passing, because nothing ran the
   boot path end to end.
+- **The mock moves with every iteration.** A change to what the UI reads from
+  or writes to the board — a new object-model key, a new file path, a config
+  version bump, a new endpoint — updates `packages/mock-duet` in the SAME
+  change, not later. Mock parity is part of the work, not a follow-up ticket.
+  The machine-identity campaign keyed everything off `boards[].uniqueId` and
+  never touched the mock, which still serves a machine with no `boards` at all;
+  the drift was found by the owner failing to use it, not by any review. A mock
+  a version behind cannot host the UAT the rules above require, so letting it
+  drift disables the rule that catches everything else.
