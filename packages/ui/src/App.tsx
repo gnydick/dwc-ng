@@ -1,6 +1,7 @@
 import { createEffect, onCleanup, onMount } from "solid-js";
 import { createOmStore } from "./om/store.ts";
 import { createConfigStore } from "./config/store.ts";
+import { createMachineSession } from "./config/machineSession.ts";
 import { DEFAULT_THERMAL_COLORS } from "./config/types.ts";
 import { createTemperatureHistory } from "./om/temperature.ts";
 import { createConnector } from "@dwc-ng/connector";
@@ -13,7 +14,12 @@ import "./app.css";
 
 export default function App(props: { backend: Backend }) {
 	const om = createOmStore();
-	const config = createConfigStore();
+	// Identity resolves about one poll after boot (machineSession.ts): `store()`
+	// is null until then, and createConfigStore is required to take that
+	// accessor rather than default to "no machine" quietly — see its own doc
+	// comment for why an optional/defaulted parameter here was the bug.
+	const machine = createMachineSession(om.om);
+	const config = createConfigStore({ machineStore: machine.store });
 	const temps = createTemperatureHistory(om);
 	// Boot from the persisted dev backend (Mock by default; "Real" targets the
 	// board via the dev proxy). In production this is always the same-origin

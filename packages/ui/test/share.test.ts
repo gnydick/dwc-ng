@@ -55,7 +55,7 @@ test("a card whose stored spec no longer parses refuses to export", () => {
 // ---- screen round trip with embedded custom cards + remap ----
 
 test("exportScreen embeds custom cards; import remaps to fresh ids", () => {
-	const source = createConfigStore();
+	const source = createConfigStore({ machineStore: () => null });
 	const cardId = source.addCustomCard("Spindle", SPINDLE_EXAMPLE_JSON) as CustomCardId;
 	const screenId = source.addScreen("CNC");
 	source.replaceAllScreenCards(screenId, {
@@ -75,7 +75,7 @@ test("exportScreen embeds custom cards; import remaps to fresh ids", () => {
 	assert.deepEqual(parsed.registryCards, ["Homing"]);
 
 	// Commit on a DIFFERENT install: fresh ids, remapped slots, working screen.
-	const target = createConfigStore();
+	const target = createConfigStore({ machineStore: () => null });
 	const idMap = new Map<string, string>();
 	for (const card of parsed.customCards) idMap.set(card.fileId, target.addCustomCard(card.name, card.specText));
 	const newScreen = target.addScreen(parsed.name);

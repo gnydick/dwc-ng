@@ -65,6 +65,36 @@ test("the envelope is the case that matters and behaves the same way", () => {
 	});
 });
 
+test("an edit made before identity resolves is discarded, not adopted by whichever machine answers first", () => {
+	// Pins config/store.ts's hydrateMachine doc comment: the join on identity
+	// arrival is a full reconstruction, so an edit made while store() was
+	// still null has nowhere to land — it must not be carried into the first
+	// machine that resolves, and it must not have been written to that
+	// machine's own storage either (see writeMachineOverlay's invariant: a
+	// commit always runs persistCache, and persistCache always writes
+	// WHATEVER the current machine half is, discarded or not).
+	withLocalStorage(() => {
+		const A = openMachineStore({ kind: "board", uniqueId: "A" });
+		createRoot(dispose => {
+			const [ms, setMs] = createSignal<MachineStore | null>(null);
+			const store = createConfigStore({ machineStore: ms });
+			store.setAxisRole("U", "a guess made with no machine known");
+			assert.equal(
+				store.config.axisRoles.U, "a guess made with no machine known",
+				"in-memory, before identity — the edit itself is not refused",
+			);
+
+			setMs(A);
+			assert.equal(store.config.axisRoles.U, undefined, "discarded the instant identity arrives, not adopted by A");
+
+			const raw = A.get("config");
+			const onDisk = raw === null ? {} : (JSON.parse(raw) as { overlay?: { axisRoles?: Record<string, string> } }).overlay ?? {};
+			assert.equal(onDisk.axisRoles?.U, undefined, "the discarded edit must not have been written to A's storage either");
+			dispose();
+		});
+	});
+});
+
 test("person edits are not lost when identity arrives", () => {
 	withLocalStorage(() => {
 		const A = openMachineStore({ kind: "board", uniqueId: "A" });

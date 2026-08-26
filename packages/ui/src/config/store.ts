@@ -192,15 +192,18 @@ export interface ConfigStore {
 
 /**
  * `machineStore` names WHICH machine's local cache the machine half of the
- * overlay reads from and writes to. Omitting it (every call site not yet
- * wired to identity resolution) is the same as passing `() => null` — the
- * store still works, it just never has anywhere machine-scoped to persist
- * to, which is the correct behaviour for "identity unknown" rather than a
- * degraded one (see the hydrateMachine computed below and
- * writeMachineOverlay's invariant).
+ * overlay reads from and writes to. REQUIRED, not optional-with-a-default:
+ * an optional parameter here was tried and is a defect, not a convenience —
+ * `Accessor<MachineStore | null>` already says "identity may be unknown"
+ * (pass `() => null` for that), so an omittable argument would let a real
+ * call site (App.tsx once did) forget identity entirely and have the
+ * compiler have nothing to say about it. A caller with no machine session
+ * yet must write `() => null` at the call site, which is also documentation:
+ * every test that does so is explicitly declaring "this test has no
+ * machine" rather than silently defaulting into it.
  */
-export function createConfigStore(options?: { machineStore?: Accessor<MachineStore | null> }): ConfigStore {
-	const machineStore: Accessor<MachineStore | null> = options?.machineStore ?? (() => null);
+export function createConfigStore(options: { machineStore: Accessor<MachineStore | null> }): ConfigStore {
+	const machineStore = options.machineStore;
 
 	// Seed from the PERSON cache only — AND restore its dirty flag, so unsaved
 	// edits made before a reload are still known to be unsaved and are not
@@ -288,6 +291,18 @@ export function createConfigStore(options?: { machineStore?: Accessor<MachineSto
 	 * overlay-writes-persist above). This is what makes "B must not inherit
 	 * A's machine state" true the instant identity changes, not merely on the
 	 * next edit.
+	 *
+	 * The join is a full reconstruction: whatever the CURRENT machine half of
+	 * `overlay` holds — including an edit made moments ago while `handle` was
+	 * still `null` — is discarded, not carried forward or merged in. That is
+	 * deliberate, not an oversight: an edit made with no machine known has no
+	 * machine to belong to, and adopting it the instant one shows up would
+	 * attribute it to whichever machine happens to answer first. That is
+	 * exactly the inherited-envelope hazard this whole campaign exists to
+	 * remove — an unset-envelope refusal is safe; a GUESSED one, sourced from
+	 * an edit that was never actually validated against ANY machine's axes,
+	 * is the crash. See test/config-cache-scope.test.ts's "an edit made before
+	 * identity resolves is discarded" for the pinned behaviour.
 	 */
 	const hydrateMachine = (handle: MachineStore | null): void => {
 		const machine = readMachineOverlay(handle);

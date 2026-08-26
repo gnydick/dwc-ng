@@ -130,7 +130,7 @@ test("a blank field is NaN, not zero — a missing edge is not the origin", () =
 // -------------------------------------------------------------- round trip
 
 test("envelope round-trip: set it, reload it from the overlay, same box", () => {
-	const store = createConfigStore();
+	const store = createConfigStore({ machineStore: () => null });
 	const typed = draft("0", "300", "10", "290");
 	store.setShaping({ envelope: draftEnvelope(typed) });
 	assert.deepEqual(store.config.shaping.envelope, { x: [0, 300], y: [10, 290] });
@@ -152,7 +152,7 @@ test("envelope round-trip: set it, reload it from the overlay, same box", () => 
 });
 
 test("negative bounds round-trip — an axis is allowed to run below zero", () => {
-	const store = createConfigStore();
+	const store = createConfigStore({ machineStore: () => null });
 	const typed = draft("-50", "50", "-10", "0");
 	store.setShaping({ envelope: draftEnvelope(typed) });
 	assert.deepEqual(store.config.shaping.envelope, { x: [-50, 50], y: [-10, 0] });
@@ -178,7 +178,7 @@ test("a refused range leaves the envelope null AND is reported by name", () => {
 		[draft("300", "0", "290", "10"), "X and Y refused"],
 	];
 	for (const [typed, lead] of cases) {
-		const store = createConfigStore();
+		const store = createConfigStore({ machineStore: () => null });
 		// Start from a GOOD box, so the test can see the refusal take it away.
 		store.setShaping({ envelope: draftEnvelope(draft("0", "200", "0", "200")) });
 		assert.notEqual(store.config.shaping.envelope, null);
@@ -195,7 +195,7 @@ test("a refused range leaves the envelope null AND is reported by name", () => {
 });
 
 test("an accepted box is reported as set, with its travel", () => {
-	const store = createConfigStore();
+	const store = createConfigStore({ machineStore: () => null });
 	store.setShaping({ envelope: draftEnvelope(draft("0", "300", "10", "290")) });
 	assert.equal(
 		envelopeStatusText(judgeDraft(null, store.config.shaping.envelope)),
@@ -204,7 +204,7 @@ test("an accepted box is reported as set, with its travel", () => {
 });
 
 test("the shipped state says so rather than saying nothing (I8)", () => {
-	const store = createConfigStore();
+	const store = createConfigStore({ machineStore: () => null });
 	assert.equal(store.config.shaping.envelope, null);
 	assert.equal(
 		envelopeStatusText(judgeDraft(null, store.config.shaping.envelope)),
@@ -219,7 +219,7 @@ test("the shipped state says so rather than saying nothing (I8)", () => {
 });
 
 test("reset returns the section to the shipped defaults, envelope back to null", () => {
-	const store = createConfigStore();
+	const store = createConfigStore({ machineStore: () => null });
 	store.setShaping({ envelope: draftEnvelope(draft("0", "300", "0", "300")), defaults: { distMm: 80 } });
 	store.setAccelAddr(0, "20.0");
 	store.resetSection("shaping");
@@ -235,7 +235,7 @@ test("reset returns the section to the shipped defaults, envelope back to null",
 
 test("a malformed accelerometer address is refused by the store AND reported", () => {
 	for (const bad of ["nonsense", "20", ".0", "20.", "20.0.0", " 20.0", "a.b", "-1.0"]) {
-		const store = createConfigStore();
+		const store = createConfigStore({ machineStore: () => null });
 		store.setAccelAddr(0, bad);
 		assert.equal(store.config.shaping.accelByTool[0], undefined,
 			`a bad address must never land: ${bad}`);
@@ -246,7 +246,7 @@ test("a malformed accelerometer address is refused by the store AND reported", (
 });
 
 test("a refused address does not quietly replace a working one", () => {
-	const store = createConfigStore();
+	const store = createConfigStore({ machineStore: () => null });
 	store.setAccelAddr(1, "21.0");
 	store.setAccelAddr(1, "twenty-one");
 	assert.equal(store.config.shaping.accelByTool[1], "21.0", "the mapping survives");
@@ -259,7 +259,7 @@ test("a refused address does not quietly replace a working one", () => {
 });
 
 test("a tool with no mapping, and a mapping with no sensor, both say so", () => {
-	const store = createConfigStore();
+	const store = createConfigStore({ machineStore: () => null });
 	assert.equal(accelStatusText(judgeAccel("", null, store.config.shaping.accelByTool[3], false)), "not mapped");
 
 	store.setAccelAddr(3, "23.0");
@@ -270,7 +270,7 @@ test("a tool with no mapping, and a mapping with no sensor, both say so", () => 
 });
 
 test("typing is not refusing: an uncommitted edit reads as pending", () => {
-	const store = createConfigStore();
+	const store = createConfigStore({ machineStore: () => null });
 	store.setAccelAddr(2, "22.0");
 	const stored = store.config.shaping.accelByTool[2];
 	// Mid-keystroke after a commit that succeeded.

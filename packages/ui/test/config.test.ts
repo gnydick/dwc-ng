@@ -7,13 +7,13 @@ import { createMockServer } from "../../mock-duet/src/server.ts";
 import { PollConnector } from "@dwc-ng/connector/testing";
 
 test("empty overlay means pure defaults", () => {
-	const store = createConfigStore();
+	const store = createConfigStore({ machineStore: () => null });
 	assert.deepEqual(store.config, DEFAULT_CONFIG);
 	assert.equal(store.dirty, false);
 });
 
 test("edits land in the effective config and mark it dirty", () => {
-	const store = createConfigStore();
+	const store = createConfigStore({ machineStore: () => null });
 	store.setAxisRole("U", "Z motor 1");
 	store.setDockSensor(0, { gpIn: 4 });
 	store.setCamera({ streamUrl: "http://printercams:8080/stream" });
@@ -29,7 +29,7 @@ test("resetSection(\"camera\") drops only the machine's streamUrl — the person
 	// camera (streamUrl) is machine-scoped; cameraPrefs (pinned) is person-
 	// scoped. A machine-section reset must not reach into the person half —
 	// that is exactly the boundary the whole split exists to hold.
-	const store = createConfigStore();
+	const store = createConfigStore({ machineStore: () => null });
 	store.setCamera({ streamUrl: "http://printercams:8080/stream" });
 	store.setCameraPrefs({ pinned: true });
 
@@ -40,7 +40,7 @@ test("resetSection(\"camera\") drops only the machine's streamUrl — the person
 });
 
 test("resetSection drops one section only; resetAll drops everything", () => {
-	const store = createConfigStore();
+	const store = createConfigStore({ machineStore: () => null });
 	store.setAxisRole("U", "Z motor 1");
 	store.setDockSensor(1, { gpIn: 5, inverted: true });
 	store.setSensorName("probe:0", "BLTouch");
@@ -55,14 +55,14 @@ test("resetSection drops one section only; resetAll drops everything", () => {
 });
 
 test("clearing the last key of a section equals never touching it", () => {
-	const store = createConfigStore();
+	const store = createConfigStore({ machineStore: () => null });
 	store.setAxisRole("C", "Tool coupler");
 	store.clearAxisRole("C");
 	assert.deepEqual(store.config, DEFAULT_CONFIG);
 });
 
 test("sensor names: set/clear round-trip, other names untouched", () => {
-	const store = createConfigStore();
+	const store = createConfigStore({ machineStore: () => null });
 	store.setSensorName("endstop:0", "Bed leveling switch");
 	store.setSensorName("probe:0", "BLTouch");
 	assert.equal(store.config.sensorNames["endstop:0"], "Bed leveling switch");
@@ -77,7 +77,7 @@ test("sensor names: set/clear round-trip, other names untouched", () => {
 });
 
 test("snapshot and revert restore an earlier overlay", () => {
-	const store = createConfigStore();
+	const store = createConfigStore({ machineStore: () => null });
 	store.setAxisRole("U", "Z motor 1");
 	store.snapshot("before experiment");
 
@@ -92,7 +92,7 @@ test("snapshot and revert restore an earlier overlay", () => {
 });
 
 test("snapshot history is capped", () => {
-	const store = createConfigStore();
+	const store = createConfigStore({ machineStore: () => null });
 	for (let i = 0; i < 14; i++) {
 		store.setAxisRole("X", `role ${i}`);
 		store.snapshot(`snap ${i}`);
@@ -104,7 +104,7 @@ test("snapshot history is capped", () => {
 // --- named backups (USER_AUDIT line 20) -------------------------------------
 
 test("snapshot trims, defaults a blank label, and caps an over-long one", () => {
-	const store = createConfigStore();
+	const store = createConfigStore({ machineStore: () => null });
 	store.snapshot("  pre-CNC experiment  ");
 	assert.equal(store.snapshots.at(-1)!.label, "pre-CNC experiment", "surrounding whitespace trimmed");
 
@@ -127,7 +127,7 @@ test("a named save labels the backup and still clears dirty", async () => {
 	const connector = new PollConnector({ baseUrl: `http://127.0.0.1:${port}`, autoPoll: false, retryDelayMs: 10 });
 	try {
 		await connector.connect();
-		const store = createConfigStore();
+		const store = createConfigStore({ machineStore: () => null });
 		store.setAxisRole("U", "Z motor 1");
 		await store.saveToMachine(connector, "toolchanger baseline");
 		assert.equal(store.snapshots.at(-1)!.label, "toolchanger baseline");
@@ -148,12 +148,12 @@ test("the backup name never reaches the SD payload", async () => {
 	try {
 		await connector.connect();
 
-		const plain = createConfigStore();
+		const plain = createConfigStore({ machineStore: () => null });
 		plain.setAxisRole("U", "Z motor 1");
 		await plain.saveToMachine(connector);
 		const unnamedBytes = await connector.download(CONFIG_FILE);
 
-		const named = createConfigStore();
+		const named = createConfigStore({ machineStore: () => null });
 		named.setAxisRole("U", "Z motor 1");
 		await named.saveToMachine(connector, "pre-CNC experiment");
 		const namedBytes = await connector.download(CONFIG_FILE);
@@ -173,7 +173,7 @@ test("save/load round-trip through the machine's SD card", async () => {
 	try {
 		await connector.connect();
 
-		const store = createConfigStore();
+		const store = createConfigStore({ machineStore: () => null });
 		store.setAxisRole("U", "Z motor 1");
 		store.setDockSensor(0, { gpIn: 4 });
 		await store.saveToMachine(connector);
@@ -181,7 +181,7 @@ test("save/load round-trip through the machine's SD card", async () => {
 		assert.equal(store.snapshots.at(-1)!.label, "saved", "every save snapshots first");
 
 		// A different session (fresh store) sees the same config
-		const other = createConfigStore();
+		const other = createConfigStore({ machineStore: () => null });
 		await other.loadFromMachine(connector);
 		assert.equal(other.config.axisRoles["U"], "Z motor 1");
 		assert.deepEqual(other.config.dockSensors["0"], { gpIn: 4 });
@@ -201,7 +201,7 @@ test("loading from a machine with no config file yields defaults", async () => {
 		// The mock seeds a config for the machine it emulates; a truly blank
 		// machine has none, so remove it to exercise the no-file path.
 		mock.machine.sd.delete("0:/sys/dwc-ng-config.json", false);
-		const store = createConfigStore();
+		const store = createConfigStore({ machineStore: () => null });
 		await store.loadFromMachine(connector); // no file on SD → not an error
 		assert.deepEqual(store.config, DEFAULT_CONFIG);
 	} finally {
@@ -217,7 +217,7 @@ test("a corrupt config file falls back to defaults instead of failing boot", asy
 	try {
 		await connector.connect();
 		await connector.upload("0:/sys/dwc-ng-config.json", "{not json at all");
-		const store = createConfigStore();
+		const store = createConfigStore({ machineStore: () => null });
 		await store.loadFromMachine(connector);
 		assert.deepEqual(store.config, DEFAULT_CONFIG);
 	} finally {
@@ -270,13 +270,13 @@ test("loadFromMachine does NOT overwrite unsaved local edits", async () => {
 		await connector.connect();
 
 		// A saved config on the SD card.
-		const onMachine = createConfigStore();
+		const onMachine = createConfigStore({ machineStore: () => null });
 		onMachine.setAxisRole("U", "from SD");
 		await onMachine.saveToMachine(connector);
 
 		// A different session with its OWN unsaved edit — then a connect.
 		ls.clear();
-		const local = createConfigStore();
+		const local = createConfigStore({ machineStore: () => null });
 		local.setAxisRole("V", "unsaved local");
 		assert.equal(local.dirty, true);
 		await local.loadFromMachine(connector);
@@ -300,13 +300,13 @@ test("a CLEAN session still adopts the SD config on connect", async () => {
 	const connector = new PollConnector({ baseUrl: `http://127.0.0.1:${port}`, autoPoll: false, retryDelayMs: 10 });
 	try {
 		await connector.connect();
-		const onMachine = createConfigStore();
+		const onMachine = createConfigStore({ machineStore: () => null });
 		onMachine.setAxisRole("U", "from SD");
 		await onMachine.saveToMachine(connector);
 
 		// Fresh, clean session (no unsaved edits) must pick the SD config up.
 		ls.clear();
-		const fresh = createConfigStore();
+		const fresh = createConfigStore({ machineStore: () => null });
 		assert.equal(fresh.dirty, false);
 		await fresh.loadFromMachine(connector);
 		assert.equal(fresh.config.axisRoles["U"], "from SD", "clean session adopts SD");
@@ -320,7 +320,7 @@ test("a CLEAN session still adopts the SD config on connect", async () => {
 // --- pinned commands ---
 
 test("addPin appends a disabled row and returns its id", () => {
-	const store = createConfigStore();
+	const store = createConfigStore({ machineStore: () => null });
 	const id = store.addPin("M204 P6000");
 	assert.equal(store.config.pins.length, 1);
 	assert.equal(store.config.pins[0]!.command, "M204 P6000");
@@ -330,7 +330,7 @@ test("addPin appends a disabled row and returns its id", () => {
 });
 
 test("updatePin edits command and enabled; removePin drops it", () => {
-	const store = createConfigStore();
+	const store = createConfigStore({ machineStore: () => null });
 	const id = store.addPin("M204 P6000");
 	store.updatePin(id, { enabled: true });
 	assert.equal(store.config.pins[0]!.enabled, true);
@@ -342,7 +342,7 @@ test("updatePin edits command and enabled; removePin drops it", () => {
 });
 
 test("setKeyedPin upserts by key — a fan re-pin replaces, never stacks", () => {
-	const store = createConfigStore();
+	const store = createConfigStore({ machineStore: () => null });
 	store.setKeyedPin("fan:0", "M106 P0 S0.30", true);
 	store.setKeyedPin("fan:0", "M106 P0 S0.80", true); // re-pin at a new value
 	const fanPins = store.config.pins.filter(p => p.key === "fan:0");
@@ -353,7 +353,7 @@ test("setKeyedPin upserts by key — a fan re-pin replaces, never stacks", () =>
 });
 
 test("keyed and keyless pins coexist without colliding", () => {
-	const store = createConfigStore();
+	const store = createConfigStore({ machineStore: () => null });
 	store.addPin("M204 P6000");            // keyless (Pinned commands card)
 	store.setKeyedPin("fan:0", "M106 P0 S0.5", true); // fan pin
 	assert.equal(store.config.pins.length, 2);
@@ -365,7 +365,7 @@ test("Save-to-machine backups (snapshots) survive a reload", () => {
 	const ls = new MemStore();
 	(globalThis as { localStorage?: unknown }).localStorage = ls;
 	try {
-		const store = createConfigStore();
+		const store = createConfigStore({ machineStore: () => null });
 		store.setAxisRole("U", "Z motor 1");
 		store.snapshot("v1");
 		store.setAxisRole("V", "Z motor 2");
@@ -373,7 +373,7 @@ test("Save-to-machine backups (snapshots) survive a reload", () => {
 		assert.equal(store.snapshots.length, 2);
 
 		// "Reload": a fresh store from the same localStorage.
-		const reloaded = createConfigStore();
+		const reloaded = createConfigStore({ machineStore: () => null });
 		assert.equal(reloaded.snapshots.length, 2, "the backup history came back, not an empty set");
 		assert.equal(reloaded.snapshots.at(-1)!.label, "v2");
 

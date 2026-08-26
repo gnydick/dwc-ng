@@ -422,12 +422,11 @@ export const CONFIG_FILE = "0:/sys/dwc-ng-config.json";
  * PersonConfig, splitOverlay). The machine half lives per-machine instead,
  * behind `openMachineStore` (config/machineStore.ts).
  *
- * "dwc-ng.config" — this constant's value before the machine/person split —
- * is now a LEGACY name: it used to carry the WHOLE overlay, including
- * machine-scoped bytes, origin-global (the exact bug this split exists to
- * fix). config/migrateStorage.ts is the only module allowed to mention that
- * string; it reads it once, splits what it finds, and removes it. Do not
- * resurrect the literal here.
+ * This constant's PRE-SPLIT value is now a legacy key name: it used to carry
+ * the WHOLE overlay, including machine-scoped bytes, origin-global (the
+ * exact bug this split exists to fix). Only config/migrateStorage.ts is
+ * allowed to spell that pre-split name; it reads it once, splits what it
+ * finds, and removes it. Do not resurrect the old literal here.
  */
 export const CONFIG_CACHE_KEY = "dwc-ng.person";
 /** Bump when the overlay schema changes incompatibly. */

@@ -24,7 +24,7 @@ test("a mis-typed screens section can no longer wedge the shell", async () => {
 		{ screens: { hidden: 42, renames: [], custom: null, layouts: "y" } },
 	]) {
 		const connector = { download: async () => payload(hostile) } as unknown as Connector;
-		const store = createConfigStore();
+		const store = createConfigStore({ machineStore: () => null });
 		await store.loadFromMachine(connector);
 		assert.deepEqual(store.config.screens, DEFAULT_CONFIG.screens);
 		// The full path the white-screen took: screenList must survive.

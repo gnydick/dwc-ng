@@ -42,7 +42,7 @@ test("a hostile SD config file cannot pollute Object.prototype", async () => {
 	});
 	assert.match(hostile, /__proto__/, "the hostile key must survive serialization");
 	const connector = { download: async () => hostile } as unknown as Connector;
-	const store = createConfigStore();
+	const store = createConfigStore({ machineStore: () => null });
 	await store.loadFromMachine(connector);
 	assert.equal(store.config.axisRoles["X"], "ok", "legitimate keys still load");
 	assertUnpolluted("pollutedCfg");
@@ -102,6 +102,6 @@ test("orientation state parse drops prototype-reaching panel ids", () => {
 
 test("defaults remain intact after everything above", () => {
 	// A polluted prototype would surface as phantom keys on a fresh store.
-	const store = createConfigStore();
+	const store = createConfigStore({ machineStore: () => null });
 	assert.deepEqual(store.config, DEFAULT_CONFIG);
 });
