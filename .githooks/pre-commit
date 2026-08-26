@@ -1,0 +1,31 @@
+#!/usr/bin/env sh
+#
+# Local gate for the design-decision register.
+#
+# Tracked in the repo (unlike .git/hooks, which is not) and activated per clone
+# with `pnpm hooks:install`, which sets core.hooksPath to this directory. That
+# indirection is the point: a hook nobody can see in the tree is a hook nobody
+# maintains, and one that installs itself silently is worse.
+#
+# Runs the FAST checks only. The full set (`pnpm register:check`) runs with the
+# suite via `pnpm test`. Fast mode is what a commit can afford; the difference
+# is the group/circle scan, which reads the whole register.
+#
+# To bypass for a genuine emergency: `git commit --no-verify`. If you find
+# yourself doing that twice, the checker is wrong — fix the checker.
+set -e
+
+# Only gate commits that touch governance surfaces. A register violation cannot
+# be introduced by a commit that does not touch the register, its citation
+# targets, or the inbox — and a hook that runs on every commit regardless is a
+# hook people disable.
+if git diff --cached --name-only | grep -qE '^(docs/RULES-GROUPED\.md|docs/rule-inbox\.md|CLAUDE\.md|docs/LEARNINGS\.md|scripts/register_check\.py)$'; then
+	printf 'register_check (fast): '
+	if ! python scripts/register_check.py --fast; then
+		echo ''
+		echo 'Commit blocked: the design-decision register does not check out.'
+		echo 'Fix the register or the durable home it cites, then commit again.'
+		echo 'See docs/RULES-GROUPED.md § Maintaining this file (the contract).'
+		exit 1
+	fi
+fi

@@ -10,9 +10,10 @@
     "ship": "pnpm --filter @dwc-ng/deploy start",
     "preview": "pnpm --filter @dwc-ng/ui preview",
     "mock": "pnpm --filter @dwc-ng/mock-duet start",
-    "test": "pnpm -r --if-present test",
+    "test": "pnpm -r --if-present test && python scripts/register_check.py",
     "typecheck": "pnpm -r --if-present typecheck",
     "register:check": "python scripts/register_check.py",
-    "register:check:fast": "python scripts/register_check.py --fast"
+    "register:check:fast": "python scripts/register_check.py --fast",
+    "hooks:install": "git config core.hooksPath .githooks"
   }
 }
