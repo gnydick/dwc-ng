@@ -27,6 +27,27 @@ export function identityKey(id: MachineId): string | null {
 }
 
 /**
+ * Label/value split for the identity row rendered as a house `.field` (a
+ * bold `.field-label` plus a plain-value sibling — SystemCards.tsx). Every
+ * other card in this repo follows that pattern with the label holding ONLY
+ * the label; `describeMachineId` (config/machineId.ts) instead returns one
+ * prose string ("board X") because that reads correctly inline inside
+ * `claimedProfileText`'s claim sentence, so it stays as-is for that caller
+ * and this function exists to give the card row its own two pieces instead
+ * of reshaping that shared string.
+ */
+export function identityRow(id: MachineId): { label: string; value: string } {
+	switch (id.kind) {
+		case "board":
+			return { label: "Board", value: id.uniqueId };
+		case "mac":
+			return { label: "MAC", value: `${id.mac} (this board reports no uniqueId)` };
+		case "unidentified":
+			return { label: "Not identified", value: id.why };
+	}
+}
+
+/**
  * What this identity's proof actually is, and — for the MAC fallback only —
  * what changes the day this board starts reporting a uniqueId: a NEW
  * identity and a NEW storage key, so today's settings do not just follow

@@ -12,9 +12,10 @@
  */
 import { Show } from "solid-js";
 import { useApp } from "../shell/context.ts";
-import { describeMachineId, isIdentified } from "../config/machineId.ts";
+import { isIdentified } from "../config/machineId.ts";
 import {
-	claimedProfileText, droppedSectionsText, identityKey, identitySourceNote, type ClaimedProfile,
+	claimedProfileText, droppedSectionsText, identityKey, identityRow, identitySourceNote,
+	type ClaimedProfile,
 } from "./machineIdentityText.ts";
 
 /**
@@ -33,11 +34,18 @@ export function MachineIdentityBody(props: {
 }) {
 	const app = useApp();
 	const id = () => app.machineId();
+	const row = () => identityRow(id());
 	return (
 		<>
-			<p class="field-label">{describeMachineId(id())}</p>
+			<div class="field">
+				<span class="field-label">{row().label}</span>
+				<span>{row().value}</span>
+			</div>
 			<Show when={isIdentified(id())}>
-				<p class="hint">Storage key: {identityKey(id())}</p>
+				<div class="field">
+					<span class="field-label">Storage key</span>
+					<span>{identityKey(id())}</span>
+				</div>
 			</Show>
 			<Show when={identitySourceNote(id())}>
 				{note => <p class="hint">{note()}</p>}

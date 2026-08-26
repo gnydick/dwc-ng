@@ -9,7 +9,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { describeMachineId, type MachineId } from "../src/config/machineId.ts";
 import {
-	claimedProfileText, droppedSectionsText, identityKey, identitySourceNote,
+	claimedProfileText, droppedSectionsText, identityKey, identityRow, identitySourceNote,
 } from "../src/cards/machineIdentityText.ts";
 import { CARD_DEFS } from "../src/compose/defs.ts";
 import { SYSTEM_COMPOSITION } from "../src/compose/screens.ts";
@@ -48,6 +48,33 @@ test("a MAC-derived identity says the fallback was used", () => {
 	const note = identitySourceNote(id);
 	assert.match(note ?? "", /fallback/i);
 	assert.match(note ?? "", /new identity/i, "says what changes if this board later gains a uniqueId");
+});
+
+// ---- identity row: label/value split for the house .field row ----
+// (the identity row must be a genuine .field row — bold label, plain value,
+// no colon — not describeMachineId's one prose string; see SystemCards.tsx)
+
+test("an unidentified machine's identity row carries no board/mac prose in its label", () => {
+	const id: MachineId = { kind: "unidentified", why: "no board uniqueId and no network interface MAC" };
+	const row = identityRow(id);
+	assert.equal(row.label, "Not identified");
+	assert.equal(row.value, "no board uniqueId and no network interface MAC");
+	assert.doesNotMatch(row.label, /:/, "label must not carry a colon — no other card does");
+});
+
+test("a board-derived identity row splits label from the bare uniqueId", () => {
+	const id: MachineId = { kind: "board", uniqueId: "0xDEADBEEF" };
+	const row = identityRow(id);
+	assert.equal(row.label, "Board");
+	assert.equal(row.value, "0xDEADBEEF", "value is the bare id, not label+value glued together");
+});
+
+test("a MAC-derived identity row splits label from the fallback explanation", () => {
+	const id: MachineId = { kind: "mac", mac: "AA:BB:CC:DD:EE:FF" };
+	const row = identityRow(id);
+	assert.equal(row.label, "MAC");
+	assert.match(row.value, /^AA:BB:CC:DD:EE:FF/);
+	assert.match(row.value, /no uniqueId/);
 });
 
 // ---- claimed profile ----
