@@ -131,6 +131,7 @@ export default function CardLab() {
 		// above: the lab has no machine of its own, so it shows the one the
 		// surrounding app is actually connected to.
 		machineId: outer.machineId,
+		configLoaded: outer.configLoaded,
 	};
 	const connected = (): boolean => true;
 	// The bench renders ONE card, so that card is the whole composition. A step

@@ -88,6 +88,26 @@ export function ComposedScreen(props: { screenId: string }) {
 	// the one identity App.tsx resolves — never a second resolution.
 	const machineStore = createMemo<MachineStore | null>(() => machineStoreFor(app.machineId()));
 
+	// GIT_86 Critical 2: identity resolving (machineStore() going non-null)
+	// happens INSIDE connector.connect()'s fullSync, strictly before
+	// config.loadFromMachine ever runs (App.tsx chains it after connect()
+	// resolves) — so a canvas constructed the instant identity resolves reads
+	// `savedScreenLayout` against a machine half that is still `{}`, seeds
+	// itself empty, and settle-writes that emptiness before the real SD
+	// layout ever arrives. Gating this `<Show>`'s key on `configLoaded` TOO —
+	// not identity alone — makes the seed's precondition (the config's
+	// machine half is the one that just came off the SD card, or there
+	// genuinely was none) true by construction: before the first load
+	// attempt settles, this always reads as UNIDENTIFIED_CANVAS regardless of
+	// identity, so the canvas binds through the already-correct, non-
+	// persisting `nullCanvasKeys` for the WHOLE pre-load window, and remounts
+	// into the real, persisting branch exactly once — the instant identity
+	// AND a settled load are both true — never one further remount than the
+	// sentinel-to-store swap this file already documents.
+	const canvasIdentity = createMemo<MachineStore | typeof UNIDENTIFIED_CANVAS>(() =>
+		app.configLoaded() ? (machineStore() ?? UNIDENTIFIED_CANVAS) : UNIDENTIFIED_CANVAS,
+	);
+
 	return (
 		<Show
 			// UNIDENTIFIED_CANVAS, never `null`/`undefined`: an unidentified
@@ -97,7 +117,7 @@ export function ComposedScreen(props: { screenId: string }) {
 			// branches render the exact same cards, including the
 			// machine-identity card whose whole job is explaining this very
 			// state; only the CanvasKeys they persist through differ.
-			when={machineStore() ?? UNIDENTIFIED_CANVAS}
+			when={canvasIdentity()}
 			keyed
 		>
 			{resolved => {

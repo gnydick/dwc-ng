@@ -49,6 +49,7 @@ export function CardStudio(props: {
 		connector: createStubConnector(() => undefined),
 		backend: app.backend,
 		machineId: props.ctx.machineId,
+		configLoaded: props.ctx.configLoaded,
 	};
 
 	const initialForm = ((): { form: FormState; json: string; mode: "form" | "json" } => {

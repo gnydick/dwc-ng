@@ -23,6 +23,21 @@ export interface AppServices {
 	 * exactly the transition the System identity card exists to show.
 	 */
 	machineId: Accessor<MachineId>;
+	/**
+	 * True once the FIRST `config.loadFromMachine` attempt for this boot has
+	 * SETTLED — resolved (a real file, no file at all, or a claim) or
+	 * rejected (a connect/download failure App.tsx already swallows) alike.
+	 * False for the whole window between boot and that settlement, covering
+	 * BOTH "identity has not resolved yet" AND "identity resolved but the SD
+	 * download is still in flight" — the second half of that window is
+	 * exactly where GIT_86 Critical 2 lived: `machineStore()` can go non-null
+	 * before `loadFromMachine` has had a chance to run at all (identity
+	 * resolves inside `connector.connect()`'s fullSync; the load is chained
+	 * AFTER `connect()` resolves — App.tsx), so a consumer keying off identity
+	 * ALONE can construct against a machine half that still reads as `{}`
+	 * and never gets another chance to look again.
+	 */
+	configLoaded: Accessor<boolean>;
 }
 
 export const AppContext = createContext<AppServices>();
