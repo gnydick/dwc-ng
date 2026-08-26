@@ -14,6 +14,7 @@ import {
 	type SlotRect, type ThermalColors, type UiConfig, type UserScreenId,
 } from "./types.ts";
 import type { MachineStore } from "./machineStore.ts";
+import { migrateLegacySnapshots, migratePersonCacheToV3, readAndClearLegacyPersonCache } from "./migrateStorage.ts";
 
 /**
  * What a caller may change about the shaping section. `envelope` is declared
@@ -44,6 +45,15 @@ export interface ConfigStore {
 	 */
 	markLayoutDirty(): void;
 	readonly snapshots: readonly ConfigSnapshot[];
+	/**
+	 * Machine sections the v2 → v3 migration found in the legacy
+	 * (origin-global) cache and could not carry forward — set once at
+	 * construction, from whatever config/migrateStorage.ts's
+	 * migratePersonCacheToV3 reported. Empty when there was nothing to
+	 * migrate. Task 11's card renders this so an upgrade that drops
+	 * machine-scoped settings says so, rather than silently forgetting them.
+	 */
+	readonly droppedMachineSections: readonly string[];
 
 	setAxisRole(letter: string, role: string): void;
 	clearAxisRole(letter: string): void;
@@ -171,11 +181,29 @@ export interface ConfigStore {
 	 */
 	resetAll(): void;
 
-	/** Take a backup of the current overlay. The label is trimmed, capped at
-	 *  MAX_LABEL_LEN and defaulted when blank — here, so every caller is
-	 *  covered. */
+	/**
+	 * Take a backup of the current overlay. The label is trimmed, capped at
+	 * MAX_LABEL_LEN and defaulted when blank — here, so every caller is
+	 * covered.
+	 *
+	 * The MACHINE half of this backup (Ruling 17) is kept only if a machine
+	 * is currently identified, and only behind THAT machine's own store —
+	 * never here, and never in the origin-global cache this store also
+	 * writes. With no machine identified, the machine half is not recorded
+	 * anywhere: there is nothing to attribute it to, and guessing is exactly
+	 * the hazard this split exists to remove.
+	 */
 	snapshot(label: string): void;
-	/** Restore the overlay from a snapshot (the snapshot itself is kept). */
+	/**
+	 * Restore the overlay from a snapshot (the snapshot itself is kept).
+	 *
+	 * The PERSON half always applies. The MACHINE half applies only if the
+	 * CURRENTLY connected machine is the one that took the snapshot — reading
+	 * it back out of that machine's own store is what proves it, the same way
+	 * the SD file proves itself on download. Reverting on a different machine
+	 * (or with none identified) restores the person half only; the machine
+	 * half is silently left as-is rather than guessed at.
+	 */
 	revert(index: number): void;
 
 	/**
@@ -211,13 +239,22 @@ export function createConfigStore(options: { machineStore: Accessor<MachineStore
 	// NOT seeded here: it depends on `machineStore`, which the hydrateMachine
 	// computed below reads and applies synchronously, before this function
 	// returns, whatever `machineStore` resolves to at construction time.
-	const cached = loadPersonCache();
+	// machineStore() is read here ONCE, synchronously, for the one-shot v2
+	// migration below (readAndClearLegacyPersonCache runs at most once per
+	// browser) — never subscribed to. In the real app this is always `null`
+	// (identity resolves about a poll after boot, well after this line), so a
+	// legacy snapshot's machine half is, in practice, always unattributable
+	// and dropped exactly like the live overlay's; a caller that already has
+	// a resolved MachineStore at construction (tests; a future re-ordering)
+	// gets attribution instead. See migrateLegacyPersonCache's own doc.
+	const cached = loadPersonCache(machineStore());
 	let overlay: ConfigOverlay = joinOverlay({}, cached?.person ?? {});
 	const [config, setConfig] = createStore<UiConfig>(effective(overlay));
-	const [meta, setMeta] = createStore<{ dirty: boolean; snapshots: ConfigSnapshot[] }>({
+	const [meta, setMeta] = createStore<{ dirty: boolean; snapshots: ConfigSnapshot[]; droppedMachineSections: readonly string[] }>({
 		dirty: cached?.dirty ?? false,
 		// Restore the backup history too, so it survives a reload.
 		snapshots: cached?.snapshots ?? [],
+		droppedMachineSections: cached?.droppedMachineSections ?? [],
 	});
 
 	/**
@@ -372,6 +409,7 @@ export function createConfigStore(options: { machineStore: Accessor<MachineStore
 			markDirty(true);
 		},
 		get snapshots() { return meta.snapshots; },
+		get droppedMachineSections() { return meta.droppedMachineSections; },
 
 		setAxisRole(letter, role) {
 			apply(draft => { (draft.axisRoles ??= {})[letter] = role; });
@@ -555,7 +593,7 @@ export function createConfigStore(options: { machineStore: Accessor<MachineStore
 		 * @rung 6  choke-point — the one place a ConfigSnapshot is appended, so
 		 *          trim / default-when-blank / cap and the MAX_SNAPSHOTS eviction
 		 *          are applied to every backup that exists. revert() only READS
-		 *          the array; saveToMachine takes its backup by calling this
+		 *          the arrays; saveToMachine takes its backup by calling this
 		 * @why a blank name renders as an unlabelled row in Saved versions, and
 		 *      the operator reverts by reading those names — ten rows of "saved"
 		 *      is the state this replaced. Uncapped, one pasted paragraph makes
@@ -571,22 +609,61 @@ export function createConfigStore(options: { machineStore: Accessor<MachineStore
 			// future caller inherits the guarantee without having to know it
 			// exists — see MAX_LABEL_LEN.
 			const clean = label.trim().slice(0, MAX_LABEL_LEN) || DEFAULT_SNAPSHOT_LABEL;
+			// Split exactly like the live overlay (Ruling 17, types.ts splitOverlay)
+			// — the person half is all that ever reaches meta.snapshots, which is
+			// what makes it safe for writePersonCache to persist wholesale into
+			// the origin-global cache below.
+			const { machine, person } = splitOverlay(overlay);
+			const id = mintSnapshotId();
 			setMeta("snapshots", snapshots => {
-				const next = [...snapshots, { takenAt: Date.now(), label: clean, overlay: structuredClone(overlay) }];
+				const next = [...snapshots, { id, takenAt: Date.now(), label: clean, overlay: structuredClone(person) }];
 				return next.slice(-MAX_SNAPSHOTS);
 			});
+			// The machine half goes behind whichever machine is CURRENTLY
+			// connected, in that machine's own store — never here, and never
+			// under `id` alone without one. No machine identified means nothing
+			// to attribute it to, so nothing is written: exactly writeMachineOverlay's
+			// own null-skip, applied to snapshots instead of the live overlay.
+			const handle = machineStore();
+			if (handle !== null) {
+				const existing = parseMachineSnapshots(handle.get("snapshots"));
+				writeMachineSnapshots(handle, [...existing, { id, overlay: structuredClone(machine) }].slice(-MAX_SNAPSHOTS));
+			}
 			// Persist the new backup immediately — the whole point is that it
 			// outlives the session that took it.
 			persistCache();
 		},
+		/*
+		 * @invariant revert-machine-half-scoped-to-current-machine
+		 * @rung 6  choke-point — the machine half of a snapshot applies ONLY if
+		 *          it is found in the CURRENTLY connected machine's OWN
+		 *          "snapshots" key. Being found there IS the proof — the same
+		 *          way reading the SD file back over a live connection to
+		 *          board X proves it is board X's (migrateStorage.ts's header)
+		 *          — so no separate stamp/claimed check is needed here: a
+		 *          different machine's store cannot produce another machine's
+		 *          id by construction (machineStore.ts's own rung-6/7 keying).
+		 *          A different machine, no machine identified, or the entry
+		 *          having aged out of that machine's own MAX_SNAPSHOTS cap all
+		 *          read as "nothing to restore" — `{}` — never a guess
+		 * @why snapshot() (above) is the sole writer of a machine's own
+		 *      "snapshots" key and never writes under an id taken on a
+		 *      different machine, so `.find(e => e.id === snap.id)` coming up
+		 *      empty on machine B is not a lookup miss to work around — it is
+		 *      the correct, safe answer for a snapshot machine B never took
+		 */
 		revert(index) {
 			const snap = meta.snapshots[index];
 			if (snap === undefined) return;
+			const handle = machineStore();
+			const machineOverlay = handle !== null
+				? (parseMachineSnapshots(handle.get("snapshots")).find(e => e.id === snap.id)?.overlay ?? {})
+				: {};
 			// unwrap first: snapshots live in a Solid store, so snap.overlay is a
 			// proxy and structuredClone throws DataCloneError on it. (Node's
 			// server build of Solid hands back plain objects, which hid this —
 			// the tests now run with --conditions=browser so they can't again.)
-			commit(structuredClone(unwrap(snap.overlay)), true);
+			commit(joinOverlay(machineOverlay, structuredClone(unwrap(snap.overlay))), true);
 		},
 
 		/*
@@ -701,17 +778,78 @@ function prune(value: ConfigOverlay): ConfigOverlay | undefined {
  * the SD card, and the work vanished with no warning (the "import doesn't work
  * after reload" report).
  */
-/** Snapshots (the Save-to-machine backup history) rebuilt from untrusted cache
- *  JSON: each entry needs a time, a label, and an overlay that re-passes the
- *  same parse boundary as the live one. Anything malformed drops. */
+/**
+ * Snapshots (the Save-to-machine backup history) rebuilt from untrusted cache
+ * JSON: each entry needs an id, a time, a label, and an overlay that re-passes
+ * the same parse boundary as the live one. Anything malformed drops.
+ *
+ * @invariant snapshot-cache-is-person-only
+ * @rung 6  choke-point — `splitOverlay(...).person` (not a bare parseOverlay)
+ *          is deliberate, not redundant: this is the sole reader of the
+ *          origin-global person cache's snapshot list, and it runs every
+ *          entry's overlay through splitOverlay before returning, so even a
+ *          hand-edited file, or one written by a build that had this wrong,
+ *          cannot smuggle a machine-scoped byte out through it. `snapshot()`
+ *          below is the sole writer and already produces a person-only
+ *          overlay; this is what makes that true of the untrusted read path
+ *          too, not merely of the one writer that behaves today
+ * @why a snapshot used to clone the WHOLE joined overlay into this same
+ *      record (Ruling 17) — reverting to one taken on machine A while pointed
+ *      at machine B restored A's axis roles and envelope onto B, the exact
+ *      inherited-envelope hazard this campaign exists to remove
+ */
 function parseSnapshots(raw: unknown): ConfigSnapshot[] {
 	if (!Array.isArray(raw)) return [];
 	const out: ConfigSnapshot[] = [];
 	for (const entry of raw) {
-		if (!isPlainObject(entry) || typeof entry.takenAt !== "number" || typeof entry.label !== "string") continue;
-		out.push({ takenAt: entry.takenAt, label: entry.label, overlay: parseOverlay(isPlainObject(entry.overlay) ? entry.overlay : {}) });
+		if (!isPlainObject(entry) || typeof entry.id !== "string" || typeof entry.takenAt !== "number" || typeof entry.label !== "string") continue;
+		const overlay = splitOverlay(parseOverlay(isPlainObject(entry.overlay) ? entry.overlay : {})).person;
+		out.push({ id: entry.id, takenAt: entry.takenAt, label: entry.label, overlay });
 	}
 	return out.slice(-MAX_SNAPSHOTS);
+}
+
+/** Snapshot ids need no namespace guarantee (they key nothing else) — just
+ *  uniqueness, and stability as the join key between a person-scoped record
+ *  (dwc-ng.person) and its machine-scoped half (whichever machine's own
+ *  "snapshots" key holds it — see parseMachineSnapshots/writeMachineSnapshots). */
+function mintSnapshotId(): string {
+	return `s-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+}
+
+/** One machine's own record of the machine half of every snapshot IT has
+ *  taken (see MachineStore's "snapshots" key, config/machineStore.ts). */
+interface MachineSnapshotEntry {
+	id: string;
+	overlay: DeepPartial<MachineConfig>;
+}
+
+/**
+ * Read back a machine's own "snapshots" key. `splitOverlay(parseOverlay(...))`
+ * — not a bare cast — for the same reason parseSnapshots uses it: even a
+ * hand-edited machine store must not be able to smuggle a person-scoped field
+ * out through a machine-scoped read.
+ */
+function parseMachineSnapshots(raw: string | null): MachineSnapshotEntry[] {
+	if (raw === null) return [];
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(raw);
+	} catch {
+		return [];
+	}
+	if (!isPlainObject(parsed) || !Array.isArray(parsed.snapshots)) return [];
+	const out: MachineSnapshotEntry[] = [];
+	for (const entry of parsed.snapshots) {
+		if (!isPlainObject(entry) || typeof entry.id !== "string") continue;
+		const overlay = splitOverlay(parseOverlay(isPlainObject(entry.overlay) ? entry.overlay : {})).machine;
+		out.push({ id: entry.id, overlay });
+	}
+	return out;
+}
+
+function writeMachineSnapshots(handle: MachineStore, entries: readonly MachineSnapshotEntry[]): void {
+	handle.set("snapshots", JSON.stringify({ version: CONFIG_VERSION, snapshots: entries }));
 }
 
 /**
@@ -727,36 +865,114 @@ function parseCacheRecord(raw: string | null): ConfigOverlay {
 }
 
 /**
+ * The one-shot v2 → v3 backfill of the pre-split, origin-global legacy cache
+ * (spec §4, campaign #76 phase 1 task 8; see migrateStorage.ts for the exact
+ * key name — only that module may spell it). That legacy cache predates
+ * Task 6/7's split and, like the live overlay it once carried, proves nothing
+ * about which machine wrote its machine-scoped bytes — Ruling 17 applies the
+ * identical rule to its snapshots. `machineNow` is whatever config/store.ts's
+ * `createConfigStore` already knows at construction (almost always `null` in
+ * the real app — see its call site); a machine half is kept only when it is
+ * non-null, and dropped otherwise, exactly like the live overlay's.
+ *
+ * Returns `null` when there was nothing to migrate — the common case on every
+ * boot after the first, since readAndClearLegacyPersonCache removes the key
+ * on the one read that finds it.
+ */
+function migrateLegacyPersonCache(machineNow: MachineStore | null): {
+	person: DeepPartial<PersonConfig>; dirty: boolean; snapshots: ConfigSnapshot[]; droppedMachineSections: string[];
+} | null {
+	const raw = readAndClearLegacyPersonCache();
+	if (raw === null) return null;
+
+	const { person, droppedMachineSections } = migratePersonCacheToV3(raw);
+	let dirty = false;
+	let rawSnapshots: unknown = [];
+	try {
+		const parsed = JSON.parse(raw) as { dirty?: unknown; snapshots?: unknown };
+		dirty = parsed.dirty === true;
+		rawSnapshots = parsed.snapshots;
+	} catch {
+		// keep defaults
+	}
+
+	const migrated = migrateLegacySnapshots(rawSnapshots);
+	const snapshots: ConfigSnapshot[] = migrated.map(e => ({ id: e.id, takenAt: e.takenAt, label: e.label, overlay: e.person }));
+	const attributable = migrated.filter(e => Object.keys(e.machine).length > 0);
+	if (machineNow !== null && attributable.length > 0) {
+		writeMachineSnapshots(machineNow, [
+			...parseMachineSnapshots(machineNow.get("snapshots")),
+			...attributable.map(e => ({ id: e.id, overlay: e.machine })),
+		].slice(-MAX_SNAPSHOTS));
+	}
+
+	return { person: splitOverlay(person).person, dirty, snapshots, droppedMachineSections };
+}
+
+/**
  * The PERSON half only. `dwc-ng.person` never hands a machine-scoped byte
  * back to a caller: this is the sole reader, and it runs the stored overlay
  * through `splitOverlay` before returning, so even a record written before
  * this split existed (or hand-edited) cannot smuggle a machine section out
  * through it.
+ *
+ * Also runs the one-shot legacy migration (migrateLegacyPersonCache) BEFORE
+ * reading the current cache, and merges the two with `current` winning on
+ * conflict — `dwc-ng.person` only exists at all once Task 7's code has run at
+ * least once, so anything already in it postdates whatever the legacy key
+ * carried and must not be clobbered by an older record.
  */
-function loadPersonCache(): { person: DeepPartial<PersonConfig>; dirty: boolean; snapshots: ConfigSnapshot[] } | null {
+function loadPersonCache(machineNow: MachineStore | null): {
+	person: DeepPartial<PersonConfig>; dirty: boolean; snapshots: ConfigSnapshot[]; droppedMachineSections: string[];
+} | null {
 	if (typeof localStorage === "undefined") return null;
+
+	const legacy = migrateLegacyPersonCache(machineNow);
+
 	const raw = localStorage.getItem(CONFIG_CACHE_KEY);
-	if (raw === null) return null;
-	const { person } = splitOverlay(parseCacheRecord(raw));
-	// dirty is a hint, not safety-critical — a garbled flag defaults to clean,
-	// which at worst lets SD win, never destroys unsaved work silently.
-	let dirty = false;
-	let snapshots: ConfigSnapshot[] = [];
-	try {
-		const parsed = JSON.parse(raw) as { dirty?: unknown; snapshots?: unknown };
-		dirty = parsed.dirty === true;
-		// The backup history persists here (not on the SD card, and not in a
-		// machine's own cache) — that is what stops a reload from clearing it.
-		// Each snapshot carries a WHOLE overlay clone taken at snapshot() time
-		// (see its invariant), machine sections included — a revert only makes
-		// sense against the machine it was taken on, which the operator is
-		// expected to be connected to when they use it (phase 1 does not gate
-		// revert on machine identity).
-		snapshots = parseSnapshots(parsed.snapshots);
-	} catch {
-		// keep defaults
+	let current: { person: DeepPartial<PersonConfig>; dirty: boolean; snapshots: ConfigSnapshot[] } | null = null;
+	if (raw !== null) {
+		const { person } = splitOverlay(parseCacheRecord(raw));
+		// dirty is a hint, not safety-critical — a garbled flag defaults to
+		// clean, which at worst lets SD win, never destroys unsaved work
+		// silently.
+		let dirty = false;
+		let snapshots: ConfigSnapshot[] = [];
+		try {
+			const parsed = JSON.parse(raw) as { dirty?: unknown; snapshots?: unknown };
+			dirty = parsed.dirty === true;
+			// The backup history (person halves only — see ConfigSnapshot and
+			// snapshot()) persists here, not on the SD card and not in a
+			// machine's own cache, which is what stops a reload from clearing
+			// it.
+			snapshots = parseSnapshots(parsed.snapshots);
+		} catch {
+			// keep defaults
+		}
+		current = { person, dirty, snapshots };
 	}
-	return { person, dirty, snapshots };
+
+	if (legacy === null) return current === null ? null : { ...current, droppedMachineSections: [] };
+	if (current === null) {
+		// Nothing to merge against. Persist immediately: the legacy key is
+		// already gone (readAndClearLegacyPersonCache removed it on read), so
+		// if this boot never reaches a save, the migrated data must already be
+		// on disk or it is lost with nothing left to retry from.
+		writePersonCache(legacy.person, legacy.dirty, legacy.snapshots);
+		return legacy;
+	}
+
+	const merged = {
+		person: mergeInto(structuredClone(legacy.person) as Record<string, unknown>, current.person as Record<string, unknown>) as DeepPartial<PersonConfig>,
+		dirty: legacy.dirty || current.dirty,
+		// Legacy (older) entries first; slice(-MAX_SNAPSHOTS) drops the
+		// oldest first if the combined count exceeds the cap, same as every
+		// other eviction in this file.
+		snapshots: [...legacy.snapshots, ...current.snapshots].slice(-MAX_SNAPSHOTS),
+		droppedMachineSections: legacy.droppedMachineSections,
+	};
+	writePersonCache(merged.person, merged.dirty, merged.snapshots);
+	return merged;
 }
 
 function writePersonCache(person: DeepPartial<PersonConfig>, dirty: boolean, snapshots: readonly ConfigSnapshot[]): void {

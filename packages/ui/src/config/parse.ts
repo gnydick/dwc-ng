@@ -376,6 +376,10 @@ export function parseOverlayPayload(text: string): ConfigOverlay | null {
 	}
 	if (!isPlainObject(parsed) || !isPlainObject(parsed.overlay)) return null;
 	if (parsed.version === CONFIG_VERSION) return parseOverlay(parsed.overlay);
+	// v2 → v3 is not a shape change to the overlay itself (config/types.ts
+	// CONFIG_VERSION) — it is a change to WHERE the halves live, which is a
+	// storage-layout concern handled in config/migrateStorage.ts, not here.
+	if (parsed.version === 2) return parseOverlay(parsed.overlay);
 	if (parsed.version === 1) return parseOverlay(migrateOverlayColumns(parsed.overlay));
 	// Foreign or from a future build: defaults, never a guess.
 	return null;

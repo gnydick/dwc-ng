@@ -23,8 +23,10 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { createConfigStore } from "../src/config/store.ts";
+import { openMachineStore } from "../src/config/machineStore.ts";
 import { parseOverlayPayload } from "../src/config/parse.ts";
 import { CONFIG_VERSION } from "../src/config/types.ts";
+import { withLocalStorage } from "./helpers/localStorage.ts";
 import { CARD_DEFS, cardTitleOf } from "../src/compose/defs.ts";
 import { BUILTIN_SCREENS, SETTINGS_COMPOSITION } from "../src/compose/screens.ts";
 import {
@@ -130,25 +132,33 @@ test("a blank field is NaN, not zero — a missing edge is not the origin", () =
 // -------------------------------------------------------------- round trip
 
 test("envelope round-trip: set it, reload it from the overlay, same box", () => {
-	const store = createConfigStore({ machineStore: () => null });
-	const typed = draft("0", "300", "10", "290");
-	store.setShaping({ envelope: draftEnvelope(typed) });
-	assert.deepEqual(store.config.shaping.envelope, { x: [0, 300], y: [10, 290] });
+	// shaping is machine-scoped (Ruling 17, campaign #76 phase 1 task 8): an
+	// identified machine is what makes its snapshot half attributable, and so
+	// restorable on revert. See test/config-cache-scope.test.ts for the
+	// cross-machine case this split exists to close.
+	withLocalStorage(() => {
+		const machine = openMachineStore({ kind: "board", uniqueId: "envelope-roundtrip" });
+		const store = createConfigStore({ machineStore: () => machine });
+		const typed = draft("0", "300", "10", "290");
+		store.setShaping({ envelope: draftEnvelope(typed) });
+		assert.deepEqual(store.config.shaping.envelope, { x: [0, 300], y: [10, 290] });
 
-	// Out to the file the machine keeps, and back in through the parse
-	// boundary — the same payload rr_upload writes and rr_download returns.
-	store.snapshot("round trip");
-	const saved = store.snapshots[0]!.overlay;
-	const payload = JSON.stringify({ version: CONFIG_VERSION, overlay: saved });
-	assert.deepEqual(parseOverlayPayload(payload)?.shaping?.envelope, { x: [0, 300], y: [10, 290] });
+		// Out to the file the machine keeps, and back in through the parse
+		// boundary — the same shape rr_upload writes and rr_download returns
+		// (config.shaping IS the shaping section of that overlay; saveToMachine
+		// puts it there unchanged — see config/store.ts).
+		const payload = JSON.stringify({ version: CONFIG_VERSION, overlay: { shaping: store.config.shaping } });
+		assert.deepEqual(parseOverlayPayload(payload)?.shaping?.envelope, { x: [0, 300], y: [10, 290] });
 
-	// And restoring it puts the SAME box back, not an approximation of one.
-	store.setShaping({ envelope: null });
-	assert.equal(store.config.shaping.envelope, null);
-	store.revert(0);
-	assert.deepEqual(store.config.shaping.envelope, { x: [0, 300], y: [10, 290] });
-	// The fields the card would show are the fields that were typed.
-	assert.ok(sameDraft(draftOf(store.config.shaping.envelope), typed));
+		// And restoring it puts the SAME box back, not an approximation of one.
+		store.snapshot("round trip");
+		store.setShaping({ envelope: null });
+		assert.equal(store.config.shaping.envelope, null);
+		store.revert(0);
+		assert.deepEqual(store.config.shaping.envelope, { x: [0, 300], y: [10, 290] });
+		// The fields the card would show are the fields that were typed.
+		assert.ok(sameDraft(draftOf(store.config.shaping.envelope), typed));
+	});
 });
 
 test("negative bounds round-trip — an axis is allowed to run below zero", () => {

@@ -77,18 +77,29 @@ test("sensor names: set/clear round-trip, other names untouched", () => {
 });
 
 test("snapshot and revert restore an earlier overlay", () => {
-	const store = createConfigStore({ machineStore: () => null });
-	store.setAxisRole("U", "Z motor 1");
-	store.snapshot("before experiment");
+	// axisRoles is machine-scoped (Ruling 17: a snapshot's machine half lives
+	// behind whichever machine took it, never in the person cache alone) — an
+	// identified machine is what makes it attributable and so restorable on
+	// revert. See test/config-cache-scope.test.ts for the cross-machine case.
+	const ls = new MemStore();
+	(globalThis as { localStorage?: unknown }).localStorage = ls;
+	try {
+		const machine = openMachineStore({ kind: "board", uniqueId: "snap-revert" });
+		const store = createConfigStore({ machineStore: () => machine });
+		store.setAxisRole("U", "Z motor 1");
+		store.snapshot("before experiment");
 
-	store.setAxisRole("U", "something wrong");
-	store.setCameraPrefs({ pinned: true });
-	assert.equal(store.config.axisRoles["U"], "something wrong");
+		store.setAxisRole("U", "something wrong");
+		store.setCameraPrefs({ pinned: true });
+		assert.equal(store.config.axisRoles["U"], "something wrong");
 
-	store.revert(0);
-	assert.equal(store.config.axisRoles["U"], "Z motor 1");
-	assert.equal(store.config.cameraPrefs.pinned, false);
-	assert.equal(store.snapshots.length, 1, "reverting keeps the snapshot");
+		store.revert(0);
+		assert.equal(store.config.axisRoles["U"], "Z motor 1");
+		assert.equal(store.config.cameraPrefs.pinned, false);
+		assert.equal(store.snapshots.length, 1, "reverting keeps the snapshot");
+	} finally {
+		delete (globalThis as { localStorage?: unknown }).localStorage;
+	}
 });
 
 test("snapshot history is capped", () => {
@@ -365,15 +376,19 @@ test("Save-to-machine backups (snapshots) survive a reload", () => {
 	const ls = new MemStore();
 	(globalThis as { localStorage?: unknown }).localStorage = ls;
 	try {
-		const store = createConfigStore({ machineStore: () => null });
+		// Same machine identity across both stores — a real reload of the same
+		// browser pointed at the same board (see the "unsaved edits survive a
+		// reload" test above for the identical pattern).
+		const machine = openMachineStore({ kind: "board", uniqueId: "snap-reload" });
+		const store = createConfigStore({ machineStore: () => machine });
 		store.setAxisRole("U", "Z motor 1");
 		store.snapshot("v1");
 		store.setAxisRole("V", "Z motor 2");
 		store.snapshot("v2");
 		assert.equal(store.snapshots.length, 2);
 
-		// "Reload": a fresh store from the same localStorage.
-		const reloaded = createConfigStore({ machineStore: () => null });
+		// "Reload": a fresh store from the same localStorage AND machine.
+		const reloaded = createConfigStore({ machineStore: () => machine });
 		assert.equal(reloaded.snapshots.length, 2, "the backup history came back, not an empty set");
 		assert.equal(reloaded.snapshots.at(-1)!.label, "v2");
 

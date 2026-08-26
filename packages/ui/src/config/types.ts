@@ -323,9 +323,29 @@ export type DeepPartial<T> = {
 export type ConfigOverlay = DeepPartial<UiConfig>;
 
 export interface ConfigSnapshot {
+	/**
+	 * Stable id, minted once at snapshot() time. It is the join key between
+	 * this record (person-scoped, lives in the origin-global cache) and the
+	 * corresponding machine-scoped record living behind whichever machine's
+	 * own MachineStore took it (config/store.ts snapshot()/revert()) — see
+	 * `overlay` below for why the two halves cannot travel together.
+	 */
+	id: string;
 	takenAt: number;
 	label: string;
-	overlay: ConfigOverlay;
+	/**
+	 * PERSON HALF ONLY (Ruling 17, campaign #76 phase 1 task 8). A snapshot
+	 * used to clone the WHOLE joined overlay — machine sections included —
+	 * into this same record, which lives in the origin-global person cache
+	 * (dwc-ng.person): a snapshot taken on machine A and reverted while
+	 * pointed at machine B restored A's axis roles and envelope onto B, the
+	 * exact inherited-envelope hazard this campaign exists to remove. The
+	 * machine half is now stored separately, behind the machine that took
+	 * it (see config/store.ts's writeMachineSnapshots/parseMachineSnapshots),
+	 * and `id` is what reunites the two halves — only when revert() runs on
+	 * the SAME machine that took them.
+	 */
+	overlay: DeepPartial<PersonConfig>;
 }
 
 /**
@@ -429,8 +449,14 @@ export const CONFIG_FILE = "0:/sys/dwc-ng-config.json";
  * finds, and removes it. Do not resurrect the old literal here.
  */
 export const CONFIG_CACHE_KEY = "dwc-ng.person";
-/** Bump when the overlay schema changes incompatibly. */
-export const CONFIG_VERSION = 2;
+/**
+ * Bump when the overlay schema changes incompatibly. 2 → 3 (campaign #76
+ * phase 1 task 8) is not a shape change to the overlay itself — parseOverlay
+ * reads a v2 and a v3 overlay identically — it marks that STORAGE LAYOUT is
+ * now split (machine half behind MachineStore, person half here), which is
+ * why config/migrateStorage.ts exists rather than a new parse arm alone.
+ */
+export const CONFIG_VERSION = 3;
 export const MAX_SNAPSHOTS = 10;
 /**
  * Longest a backup label may be. Labels reach localStorage (persistCache) and

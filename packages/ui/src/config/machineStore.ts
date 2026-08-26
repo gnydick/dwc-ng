@@ -30,7 +30,7 @@ export const MACHINE_KEY_PREFIX = "dwc-ng.m.";
  * decision about scope, and it should have to be made here, in front of the
  * spec's key table, rather than by typing a new string at a call site.
  */
-export type MachineKeyName = "config" | "drafts" | "cmdHistory" | "console" | "canvas";
+export type MachineKeyName = "config" | "drafts" | "cmdHistory" | "console" | "canvas" | "snapshots";
 
 export interface MachineStore {
 	readonly id: IdentifiedMachine;

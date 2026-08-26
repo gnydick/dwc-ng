@@ -108,3 +108,63 @@ test("person edits are not lost when identity arrives", () => {
 		});
 	});
 });
+
+// --- Ruling 17: a snapshot's machine half is scoped exactly like the live
+// overlay's — see config/store.ts snapshot()/revert() and ConfigSnapshot's
+// own doc comment (config/types.ts). ---------------------------------------
+
+test("reverting a snapshot taken on machine A does not carry its machine half onto machine B", () => {
+	withLocalStorage(() => {
+		const A = openMachineStore({ kind: "board", uniqueId: "A" });
+		const B = openMachineStore({ kind: "board", uniqueId: "B" });
+		createRoot(dispose => {
+			const [ms, setMs] = createSignal<MachineStore | null>(null);
+			const store = createConfigStore({ machineStore: ms });
+			setMs(A);
+			store.setAxisRole("U", "A's Z motor");
+			store.snapshot("on A");
+			store.setAxisRole("U", "changed after the snapshot");
+
+			setMs(B);
+			assert.equal(store.config.axisRoles.U, undefined, "B starts clean (hydrateMachine already covers this)");
+
+			store.revert(0);
+			assert.equal(store.config.axisRoles.U, undefined, "A's axis role must not appear on B — the exact hazard Ruling 17 closes");
+			dispose();
+		});
+	});
+});
+
+test("reverting on the SAME machine that took the snapshot restores its machine half", () => {
+	withLocalStorage(() => {
+		const A = openMachineStore({ kind: "board", uniqueId: "A" });
+		createRoot(dispose => {
+			const [ms] = createSignal<MachineStore | null>(A);
+			const store = createConfigStore({ machineStore: ms });
+			store.setAxisRole("U", "A's Z motor");
+			store.snapshot("on A");
+			store.setAxisRole("U", "changed after the snapshot");
+
+			store.revert(0);
+			assert.equal(store.config.axisRoles.U, "A's Z motor", "same machine — the entry is found in A's own store, which is the proof");
+			dispose();
+		});
+	});
+});
+
+test("a snapshot taken with no identified machine never carries a machine half, even on a later revert", () => {
+	withLocalStorage(() => {
+		const A = openMachineStore({ kind: "board", uniqueId: "A" });
+		createRoot(dispose => {
+			const [ms, setMs] = createSignal<MachineStore | null>(null);
+			const store = createConfigStore({ machineStore: ms });
+			store.setAxisRole("U", "guessed with no machine known");
+			store.snapshot("no machine identified");
+
+			setMs(A); // hydrateMachine discards the pre-identity edit — unrelated to this snapshot
+			store.revert(0);
+			assert.equal(store.config.axisRoles.U, undefined, "nothing was ever attributed to any machine — never guess on revert either");
+			dispose();
+		});
+	});
+});
