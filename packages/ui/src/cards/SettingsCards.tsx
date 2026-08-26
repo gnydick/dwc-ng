@@ -26,6 +26,7 @@ import { groundOf, theme } from "../shell/theme.ts";
 import { nearestCollision, isHexColor } from "../util/colorDistance.ts";
 import { sensorRows } from "../om/sensorRows.ts";
 import { captureScreenGeometry } from "../compose/screens.ts";
+import { machineStoreFor } from "../config/machineStore.ts";
 import { formatTimestamp } from "../files/format.ts";
 
 export function AxisRolesBody() {
@@ -666,6 +667,15 @@ export function SavedVersionsBody() {
 					)}
 				</For>
 			</Show>
+			{/* Set by revert() (config/store.ts) when the restored snapshot has no
+			    machine half on record for THIS machine — a different machine, no
+			    machine identified, or an entry aged out of this machine's own
+			    cap. Only preferences were restored in that case; this is how the
+			    operator is told the restore was partial rather than it looking
+			    identical to a full one. */}
+			<Show when={app.config.meta.revertNotice}>
+				{text => <p class="hint unsaved">{text()}</p>}
+			</Show>
 		</>
 	);
 }
@@ -694,7 +704,7 @@ export function ConfigSaveBody() {
 		// the SD copy carries screens AND layouts (they seed any new browser).
 		// Deliberately at SAVE time, not at arm time: geometry changed while the
 		// name field was open still belongs in this save.
-		captureScreenGeometry(app.config);
+		captureScreenGeometry(app.config, machineStoreFor(app.machineId()));
 		// A blank name is not an error — snapshot() falls back to "saved", so
 		// the prompt can never block a save.
 		void app.config.saveToMachine(app.connector, label()).catch((err: unknown) => {

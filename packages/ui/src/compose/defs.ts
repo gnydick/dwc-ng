@@ -176,7 +176,7 @@ export const CARD_DEFS = {
 		ariaLabel: "Camera",
 		class: "cam-panel",
 		size: { colSpan: 104, rowSpan: 75 },
-		visibleWhen: ctx => ctx.config.config.camera.pinned,
+		visibleWhen: ctx => ctx.config.config.cameraPrefs.pinned,
 	}),
 	/** Per-object cancel (M486) — already content-only, zero props. Always
 	 *  shown: with no objects it says the job didn't specify any, rather than
@@ -348,6 +348,20 @@ export const CARD_DEFS = {
 		ariaLabel: "Macro editor",
 		class: "editor-card",
 		size: { colSpan: 182, rowSpan: 150 },
+	}),
+	/**
+	 * Which machine the UI thinks it is talking to — identity, its source
+	 * (board uniqueId vs the MAC fallback), and any settings the operator
+	 * should know about (a profile claimed from another board's SD card, or
+	 * sections re-read from this board's card after an upgrade). See
+	 * cards/SystemCards.tsx and docs/superpowers/specs/
+	 * 2026-08-24-machine-profile-design.md §3.
+	 */
+	"machine-identity": defineCard({
+		title: "This machine",
+		ariaLabel: "Machine identity",
+		tip: "boards · network.interfaces",
+		size: { colSpan: 312, rowSpan: 56 },
 	}),
 	/** System file listing (0:/sys) — sys files are invoked by the firmware,
 	 *  so there is deliberately no Run here. */

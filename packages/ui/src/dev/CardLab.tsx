@@ -3,10 +3,10 @@ import { createStore, produce, reconcile } from "solid-js/store";
 import { AppContext, type AppServices, useApp } from "../shell/context.ts";
 import { createTemperatureHistory } from "../om/temperature.ts";
 import type { OmStore, ConnectionState } from "../om/store.ts";
-import type { ConsoleLine } from "../om/consoleLog.ts";
+import { capLines, type ConsoleLine } from "../om/consoleLog.ts";
 import type { ObjectModel } from "../om/types.ts";
 import { PanelCanvas } from "../shell/PanelCanvas.tsx";
-import { createPanelCanvas } from "../shell/panelCanvas.ts";
+import { createPanelCanvas, devCanvasKeys } from "../shell/panelCanvas.ts";
 import { CARD_DEFS, allCardIds, type CardId } from "../compose/defs.ts";
 import { RegistryCard, cardTitleOf } from "../compose/RegistryCard.tsx";
 import { preloadLazyBodies } from "../compose/cards.tsx";
@@ -94,7 +94,18 @@ export default function CardLab() {
 		emulated: false, transport: null, boardType: "Card Lab",
 	};
 	const omStore: OmStore = {
-		om: model, setOm: setModel, connection, console: consoleLines, events: {},
+		om: model, setOm: setModel, connection, console: consoleLines,
+		// No real machine behind the lab (Ruling 2) — there is nothing to
+		// persist a hydrate FROM, and no second machine to ever swap to, so
+		// this stays the plain prepend a real store only does on its FIRST
+		// hydrate; a card that calls this (there are none today) still sees
+		// the same merge semantics.
+		hydrateConsole: (loaded, _store) => setConsoleLines(produce(lines => {
+			const merged = capLines([...loaded, ...lines]);
+			lines.length = 0;
+			lines.push(...merged);
+		})),
+		events: {},
 	};
 
 	// The stub echoes G-code and answers every read emptily. A scenario may also
@@ -116,6 +127,11 @@ export default function CardLab() {
 		},
 		temps: createTemperatureHistory(omStore),
 		backend: outer.backend,
+		// The real session's identity, same reasoning as reusing outer.config
+		// above: the lab has no machine of its own, so it shows the one the
+		// surrounding app is actually connected to.
+		machineId: outer.machineId,
+		configLoaded: outer.configLoaded,
 	};
 	const connected = (): boolean => true;
 	// The bench renders ONE card, so that card is the whole composition. A step
@@ -132,7 +148,7 @@ export default function CardLab() {
 	// card defaults to (0,0) at its registry natural size; only the featured
 	// card counts for collisions (they all overlap by design).
 	const canvas = createPanelCanvas(
-		"dwc-ng.canvas.cardlab",
+		devCanvasKeys("dwc-ng.canvas.cardlab"),
 		allCardIds().map(id => ({ id, col: 0, row: 0, ...CARD_DEFS[id].size })),
 		id => id === featured(),
 		// Device-only geometry: no markLayoutDirty.

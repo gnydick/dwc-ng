@@ -1,6 +1,8 @@
-import { createEffect, onCleanup, onMount } from "solid-js";
+import { createEffect, createSignal, onCleanup, onMount } from "solid-js";
 import { createOmStore } from "./om/store.ts";
+import { loadConsole } from "./om/consoleLog.ts";
 import { createConfigStore } from "./config/store.ts";
+import { createMachineSession } from "./config/machineSession.ts";
 import { DEFAULT_THERMAL_COLORS } from "./config/types.ts";
 import { createTemperatureHistory } from "./om/temperature.ts";
 import { createConnector } from "@dwc-ng/connector";
@@ -12,9 +14,38 @@ import Shell from "./shell/Shell.tsx";
 import "./app.css";
 
 export default function App(props: { backend: Backend }) {
-	const om = createOmStore();
-	const config = createConfigStore();
+	// `machine` is read (via machineStore()) eagerly at persistSoon's SCHEDULE
+	// time, and later only through the value it captured then (scheduledFor) —
+	// never synchronously during createOmStore's own construction, and never
+	// again by name once captured. See om/store.ts's own doc comments (Ruling
+	// 23) for why eager-not-lazy. Either way, `machine` is only ever read from
+	// code that runs after a connector event fires (a reply arriving), which
+	// cannot happen before this function's synchronous body — including the
+	// assignment below — has finished running. That ordering is what makes
+	// this declare-then-assign safe.
+	let machine!: ReturnType<typeof createMachineSession>;
+	const om = createOmStore({ machineStore: () => machine.store() });
+	// Identity resolves about one poll after boot (machineSession.ts): `store()`
+	// is null until then, and createConfigStore is required to take that
+	// accessor rather than default to "no machine" quietly — see its own doc
+	// comment for why an optional/defaulted parameter here was the bug.
+	machine = createMachineSession(om.om);
+	const config = createConfigStore({ machineStore: machine.store });
 	const temps = createTemperatureHistory(om);
+
+	// The console's own boot-time load (om/store.ts used to do this eagerly,
+	// unconditionally, from an origin-global key). It now waits for identity —
+	// and re-fires on a machine SWAP, which folds that (different) machine's
+	// own saved history in too rather than leaving the previous machine's
+	// bytes on screen forever. hydrateConsole never discards what's already
+	// live, marks a swap with a boundary line (Ruling 22), and (Ruling 23)
+	// flushes and rebinds ongoing persistence to `store` itself -- passed
+	// whole, not just its id, since that is what future writes bind to.
+	createEffect(() => {
+		const store = machine.store();
+		if (store === null) return;
+		om.hydrateConsole(loadConsole(store), store);
+	});
 	// Boot from the persisted dev backend (Mock by default; "Real" targets the
 	// board via the dev proxy). In production this is always the same-origin
 	// backend ("", empty password) served by the machine itself. The transport
@@ -65,10 +96,25 @@ export default function App(props: { backend: Backend }) {
 		}
 	});
 
+	// GIT_86 Critical 2: a consumer that binds to real machine-scoped storage
+	// (the canvas, ComposedScreen.tsx) the instant identity resolves — rather
+	// than once this settles — can construct against a config store whose
+	// machine half is still `{}`, seed itself from that emptiness, and
+	// persist the coded defaults before `loadFromMachine` below ever gets to
+	// fill it in. `configLoaded` names the FULL pre-load window (identity
+	// unresolved OR resolved-but-still-downloading) as one boolean, so such a
+	// consumer can gate on "has the first load attempt settled" directly
+	// instead of approximating it from identity alone. `.finally`, not
+	// `.then`/`.catch` separately: it must flip on EVERY outcome — a real
+	// file, no file at all (FileNotFoundError, caught inside loadFromMachine
+	// itself), a claim, or a connect/download failure (caught by the
+	// `.catch` below, which already covers that case for the status chip).
+	const [configLoaded, setConfigLoaded] = createSignal(false);
 	onMount(() => {
 		void connector.connect()
 			.then(() => config.loadFromMachine(connector))
-			.catch(() => undefined); // status chip + Connect button cover failures
+			.catch(() => undefined) // status chip + Connect button cover failures
+			.finally(() => setConfigLoaded(true));
 	});
 	onCleanup(() => void connector.disconnect());
 
@@ -83,7 +129,7 @@ export default function App(props: { backend: Backend }) {
 	onCleanup(stopPins);
 
 	return (
-		<AppContext.Provider value={{ om, config, connector, temps, backend: props.backend }}>
+		<AppContext.Provider value={{ om, config, connector, temps, backend: props.backend, machineId: machine.id, configLoaded }}>
 			<Shell />
 		</AppContext.Provider>
 	);

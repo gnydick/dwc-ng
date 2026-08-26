@@ -34,6 +34,14 @@ export interface DockSensorRef {
 export interface CameraConfig {
 	/** MJPEG/stream URL; "" = no camera configured. */
 	streamUrl: string;
+}
+
+/**
+ * Whether the camera panel is shown. Split out of CameraConfig: the stream
+ * URL is a fact about this machine's wiring, but pinning it is a viewing
+ * habit — the same person pins it on every machine they run.
+ */
+export interface CameraPrefsConfig {
 	/** Show the camera panel — each view places/sizes it independently. */
 	pinned: boolean;
 }
@@ -135,15 +143,21 @@ export interface PinnedCommand {
  * or layout — is overlay data here, and reset drops it. Custom screens live
  * entirely here under minted "u-"-prefixed ids (the prefix keeps them out of
  * the built-in/lab route namespace by construction).
+ *
+ * Split machine/person (spec §4): `layouts` is a fact about this machine's
+ * screen geometry (built-in id → full composition override), so it lives in
+ * MachineConfig. `custom`, `renames` and `hidden` are the operator's own
+ * screens and naming/visibility preferences, carried in PersonConfig. This is
+ * the one section that spans both halves — see `splitOverlay`.
  */
-export interface ScreensConfig {
+export type ScreenLayouts = Record<string, Record<string, SlotRect>>;
+
+export interface ScreenPrefs {
 	custom: Record<UserScreenId, CustomScreen>;
 	/** Built-in id → display-name override. A rename never touches identity. */
 	renames: Record<string, string>;
 	/** Built-in ids removed from the nav (still recoverable — it's overlay). */
 	hidden: string[];
-	/** Built-in id → full composition override (membership + geometry). */
-	layouts: Record<string, Record<string, SlotRect>>;
 }
 
 /** The three colours a heater reading takes as it warms. */
@@ -237,7 +251,12 @@ export interface ShapingConfig {
 	readonly accelByTool: Readonly<Record<number, string>>;
 }
 
-export interface UiConfig {
+/**
+ * Everything a config section describes about THIS MACHINE — meaningless, or
+ * actively dangerous, carried to a different printer. Task 7 stores this half
+ * keyed by machine identity so it can never be inherited across machines.
+ */
+export interface MachineConfig {
 	/** Axis letter → human role label ("U" → "Z motor 1"). RRF has no
 	 * notion of axis roles; this is per-machine UI metadata. */
 	axisRoles: Record<string, string>;
@@ -246,8 +265,6 @@ export interface UiConfig {
 	 * two SHIPPED lines are confusable. A user override is warned about at
 	 * ΔE < 25 but never blocked — see util/colorDistance.ts. */
 	heaterColors: Record<string, string>;
-	/** Colours for the cold/warm/hot temperature readings. */
-	thermalColors: ThermalColors;
 	/** Tool number (as string key) → dock presence sensor. The sensor knows
 	 * docked/away, never "mounted" — label accordingly. */
 	dockSensors: Record<string, DockSensorRef>;
@@ -257,12 +274,7 @@ export interface UiConfig {
 	 * indices; this replaces the auto-generated label on the Machine view's
 	 * Sensors card wherever set. */
 	sensorNames: Record<string, string>;
-	macros: MacrosConfig;
 	bed: BedConfig;
-	screens: ScreensConfig;
-	/** User-authored cards, keyed by minted "c-" ids (the prefix keeps them
-	 *  out of the registry CardId namespace by construction). */
-	cards: Record<CustomCardId, CustomCardDef>;
 	/** Commands re-sent on an interval to override a running job — fan speed
 	 *  pins (keyed "fan:<n>") and arbitrary user rows. See PinnedCommand. */
 	pins: PinnedCommand[];
@@ -270,7 +282,37 @@ export interface UiConfig {
 	 *  ShapingConfig), the capture-run defaults, and the per-tool
 	 *  accelerometer address. */
 	shaping: ShapingConfig;
+	/** Built-in screen layout overrides — geometry belongs to the machine that
+	 *  renders it (see ScreenLayouts). */
+	screens: { layouts: ScreenLayouts };
 }
+
+/**
+ * Everything a config section describes about the PERSON operating the UI —
+ * the same on every machine they use. Task 7 stores this half unkeyed, so it
+ * follows the operator rather than the printer.
+ */
+export interface PersonConfig {
+	/** Colours for the cold/warm/hot temperature readings. */
+	thermalColors: ThermalColors;
+	/** Whether the camera panel is pinned — a viewing habit, not a fact about
+	 *  the camera itself (see CameraPrefsConfig). */
+	cameraPrefs: CameraPrefsConfig;
+	macros: MacrosConfig;
+	/** User-created screens and naming/visibility overrides — see ScreenPrefs. */
+	screens: ScreenPrefs;
+	/** User-authored cards, keyed by minted "c-" ids (the prefix keeps them
+	 *  out of the registry CardId namespace by construction). */
+	cards: Record<CustomCardId, CustomCardDef>;
+}
+
+/**
+ * Effective config = machine half + person half. Unchanged for readers: every
+ * existing `config().axisRoles`, `config().thermalColors`, etc. still resolves
+ * — the split lives in how the two halves are produced and stored, not in how
+ * they're read.
+ */
+export type UiConfig = MachineConfig & PersonConfig;
 
 export type DeepPartial<T> = {
 	// Arrays stay arrays: mapping string[] through the object arm would admit
@@ -281,23 +323,91 @@ export type DeepPartial<T> = {
 export type ConfigOverlay = DeepPartial<UiConfig>;
 
 export interface ConfigSnapshot {
+	/**
+	 * Stable id, minted once at snapshot() time. It is the join key between
+	 * this record (person-scoped, lives in the origin-global cache) and the
+	 * corresponding machine-scoped record living behind whichever machine's
+	 * own MachineStore took it (config/store.ts snapshot()/revert()) — see
+	 * `overlay` below for why the two halves cannot travel together.
+	 */
+	id: string;
 	takenAt: number;
 	label: string;
-	overlay: ConfigOverlay;
+	/**
+	 * PERSON HALF ONLY (Ruling 17, campaign #76 phase 1 task 8). A snapshot
+	 * used to clone the WHOLE joined overlay — machine sections included —
+	 * into this same record, which lives in the origin-global person cache
+	 * (dwc-ng.person): a snapshot taken on machine A and reverted while
+	 * pointed at machine B restored A's axis roles and envelope onto B, the
+	 * exact inherited-envelope hazard this campaign exists to remove. The
+	 * machine half is now stored separately, behind the machine that took
+	 * it (see config/store.ts's writeMachineSnapshots/parseMachineSnapshots),
+	 * and `id` is what reunites the two halves — only when revert() runs on
+	 * the SAME machine that took them.
+	 */
+	overlay: DeepPartial<PersonConfig>;
 }
 
-export const DEFAULT_CONFIG: UiConfig = {
+/**
+ * @invariant config-section-scope
+ * @rung 6  choke-point — MACHINE_SECTIONS, PERSON_SECTIONS and SPLIT_SECTIONS
+ *          partition keyof UiConfig, and test/config-scope.test.ts fails if
+ *          their union is not exactly Object.keys(DEFAULT_CONFIG). A new
+ *          section cannot be added without being given a scope
+ * @why an unscoped section defaults to whichever half the code happens to
+ *      write, and the half it must not default into is the machine one: that
+ *      is how an envelope crosses machines
+ */
+// Widened to `readonly (keyof X)[]` rather than left as the `as const` tuple
+// TS would otherwise infer: a fixed-length readonly tuple concatenates with
+// another tuple (via spread) into a wider fixed-length tuple, which cannot be
+// cast to `string[]` (TS2352 — readonly tuple, not overlapping a mutable
+// array). Widening here is what lets callers spread-and-cast freely.
+export const MACHINE_SECTIONS: readonly (keyof MachineConfig)[] = [
+	"axisRoles", "heaterColors", "dockSensors", "camera", "sensorNames", "bed", "pins", "shaping",
+] as const satisfies readonly (keyof MachineConfig)[];
+export const PERSON_SECTIONS: readonly (keyof PersonConfig)[] = [
+	"thermalColors", "cameraPrefs", "macros", "cards",
+] as const satisfies readonly (keyof PersonConfig)[];
+/** The one section that spans both halves — layouts machine, the rest person. */
+export const SPLIT_SECTIONS = ["screens"] as const;
+
+/**
+ * Divide an overlay along the machine/person line (spec §4). `screens` is
+ * handled per leaf rather than by whole-section assignment: `layouts` goes to
+ * the machine half, everything else to the person half.
+ */
+export function splitOverlay(o: ConfigOverlay): { machine: DeepPartial<MachineConfig>; person: DeepPartial<PersonConfig> } {
+	const machine: Record<string, unknown> = {};
+	const person: Record<string, unknown> = {};
+	for (const k of MACHINE_SECTIONS) if (k in o) machine[k] = o[k];
+	for (const k of PERSON_SECTIONS) if (k in o) person[k] = o[k];
+	const screens = o.screens;
+	if (screens !== undefined) {
+		const { layouts, ...rest } = screens;
+		if (layouts !== undefined) machine.screens = { layouts };
+		if (Object.keys(rest).length > 0) person.screens = rest;
+	}
+	return { machine: machine as DeepPartial<MachineConfig>, person: person as DeepPartial<PersonConfig> };
+}
+
+/** Recombine the two halves into one overlay. The inverse of `splitOverlay`. */
+export function joinOverlay(machine: DeepPartial<MachineConfig>, person: DeepPartial<PersonConfig>): ConfigOverlay {
+	const { screens: mScreens, ...m } = machine as Record<string, unknown> & { screens?: object };
+	const { screens: pScreens, ...p } = person as Record<string, unknown> & { screens?: object };
+	const screens = { ...(pScreens ?? {}), ...(mScreens ?? {}) };
+	const out = { ...m, ...p } as Record<string, unknown>;
+	if (Object.keys(screens).length > 0) out.screens = screens;
+	return out as ConfigOverlay;
+}
+
+export const DEFAULT_MACHINE_CONFIG: MachineConfig = {
 	axisRoles: {},
 	heaterColors: {},
-	thermalColors: DEFAULT_THERMAL_COLORS,
 	dockSensors: {},
-	camera: { streamUrl: "", pinned: false },
+	camera: { streamUrl: "" },
 	sensorNames: {},
-	// Off by default: a fresh install asks before firing a macro at the machine.
-	macros: { autoConfirmRun: false },
 	bed: { probePointCommand: 'M98 P"0:/macros/dwc-ng/reprobe.g" X{x} Y{y}' },
-	screens: { custom: {}, renames: {}, hidden: [], layouts: {} },
-	cards: {},
 	pins: [],
 	// envelope: null is the invariant, not an omission — see ShapingConfig.
 	shaping: {
@@ -305,14 +415,48 @@ export const DEFAULT_CONFIG: UiConfig = {
 		defaults: { distMm: 60, speedMmS: 200, repeats: 3 },
 		accelByTool: {},
 	},
+	screens: { layouts: {} },
+};
+
+export const DEFAULT_PERSON_CONFIG: PersonConfig = {
+	thermalColors: DEFAULT_THERMAL_COLORS,
+	cameraPrefs: { pinned: false },
+	// Off by default: a fresh install asks before firing a macro at the machine.
+	macros: { autoConfirmRun: false },
+	screens: { custom: {}, renames: {}, hidden: [] },
+	cards: {},
+};
+
+export const DEFAULT_CONFIG: UiConfig = {
+	...DEFAULT_MACHINE_CONFIG,
+	...DEFAULT_PERSON_CONFIG,
+	screens: { ...DEFAULT_MACHINE_CONFIG.screens, ...DEFAULT_PERSON_CONFIG.screens },
 };
 
 /** Where the overlay lives on the machine's SD card. */
 export const CONFIG_FILE = "0:/sys/dwc-ng-config.json";
-/** localStorage cache key (fast boot before the SD read lands). */
-export const CONFIG_CACHE_KEY = "dwc-ng.config";
-/** Bump when the overlay schema changes incompatibly. */
-export const CONFIG_VERSION = 2;
+/**
+ * localStorage cache key for the PERSON half only (fast boot before the SD
+ * read lands) — the operator's own settings, unkeyed by machine, so they
+ * follow the person across printers rather than the printer (see
+ * PersonConfig, splitOverlay). The machine half lives per-machine instead,
+ * behind `openMachineStore` (config/machineStore.ts).
+ *
+ * This constant's PRE-SPLIT value is now a legacy key name: it used to carry
+ * the WHOLE overlay, including machine-scoped bytes, origin-global (the
+ * exact bug this split exists to fix). Only config/migrateStorage.ts is
+ * allowed to spell that pre-split name; it reads it once, splits what it
+ * finds, and removes it. Do not resurrect the old literal here.
+ */
+export const CONFIG_CACHE_KEY = "dwc-ng.person";
+/**
+ * Bump when the overlay schema changes incompatibly. 2 → 3 (campaign #76
+ * phase 1 task 8) is not a shape change to the overlay itself — parseOverlay
+ * reads a v2 and a v3 overlay identically — it marks that STORAGE LAYOUT is
+ * now split (machine half behind MachineStore, person half here), which is
+ * why config/migrateStorage.ts exists rather than a new parse arm alone.
+ */
+export const CONFIG_VERSION = 3;
 export const MAX_SNAPSHOTS = 10;
 /**
  * Longest a backup label may be. Labels reach localStorage (persistCache) and

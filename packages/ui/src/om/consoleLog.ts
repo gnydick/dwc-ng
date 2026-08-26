@@ -2,13 +2,15 @@
  * Console history + its persistence.
  *
  * Gabe's macros emit messages (M118) that are the point of running them, so the
- * log is real data, not decoration: it survives a reload. Kept in localStorage
- * rather than the config overlay — the overlay persists to the machine's SD,
- * and a chat log has no business being uploaded to a printer.
+ * log is real data, not decoration: it survives a reload. Kept in the caller's
+ * machine's store (config/machineStore.ts) rather than the config overlay —
+ * the overlay persists to the machine's SD, and a chat log has no business
+ * being uploaded to a printer, nor read back for a different one.
  *
  * The pure helpers are separated from storage so they're testable and so a
  * corrupt/blocked store can never break boot.
  */
+import type { MachineStore } from "../config/machineStore.ts";
 
 export interface ConsoleLine {
 	/** Wall-clock time the reply arrived (client-side). */
@@ -70,8 +72,6 @@ export function appendCapped(lines: ConsoleLine[], line: ConsoleLine): void {
 	if (lines.length > CONSOLE_LIMIT) lines.splice(0, lines.length - CONSOLE_LIMIT);
 }
 
-const STORAGE_KEY = "dwc-ng.console";
-
 /** Keep only the newest `limit` lines. */
 export function capLines(lines: ConsoleLine[], limit: number = CONSOLE_LIMIT): ConsoleLine[] {
 	return lines.length > limit ? lines.slice(lines.length - limit) : lines;
@@ -98,21 +98,21 @@ export function serializeConsole(lines: ConsoleLine[]): string {
 	return JSON.stringify(capLines(lines));
 }
 
-/** Restore the log; a blocked or corrupt store just starts empty. */
-export function loadConsole(): ConsoleLine[] {
-	if (typeof localStorage === "undefined") return [];
+/** Restore the log from `store`'s machine; a blocked or corrupt store just
+ *  starts empty. */
+export function loadConsole(store: MachineStore): ConsoleLine[] {
 	try {
-		return parseConsole(localStorage.getItem(STORAGE_KEY));
+		return parseConsole(store.get("console"));
 	} catch {
 		return [];
 	}
 }
 
-/** Persist the log. Never throws — a full/blocked quota must not break the UI. */
-export function saveConsole(lines: ConsoleLine[]): void {
-	if (typeof localStorage === "undefined") return;
+/** Persist the log to `store`'s machine. Never throws — a full/blocked quota
+ *  must not break the UI. */
+export function saveConsole(store: MachineStore, lines: ConsoleLine[]): void {
 	try {
-		localStorage.setItem(STORAGE_KEY, serializeConsole(lines));
+		store.set("console", serializeConsole(lines));
 	} catch {
 		// Private mode / quota exceeded: the log just won't survive a reload.
 	}

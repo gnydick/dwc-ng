@@ -251,6 +251,29 @@ export interface Board {
 	readonly accelerometer: Accelerometer | null;
 }
 
+/** reference/objectmodel/src/network/NetworkInterface.ts */
+export interface NetworkInterface {
+	/**
+	 * null on an interface that has none — the vendored type declares it
+	 * `string | null` (reference/objectmodel/src/network/NetworkInterface.ts:38),
+	 * and the real board serves a disabled wifi radio alongside the ethernet.
+	 * Machine identity's MAC fallback must therefore look for the first
+	 * interface CARRYING one, never interfaces[0].
+	 */
+	readonly mac: string | null;
+	readonly type?: string;
+	readonly state?: string | null;
+	readonly actualIP?: string | null;
+}
+
+/** reference/objectmodel/src/network/index.ts (Network) */
+export interface Network {
+	readonly interfaces: (NetworkInterface | null)[];
+	/** M550 — an operator renames this. Display, never a key. */
+	readonly hostname?: string;
+	readonly name?: string;
+}
+
 /** reference/objectmodel/src/job/Build.ts (BuildObject) */
 export interface BuildObject {
 	cancelled: boolean;
@@ -364,6 +387,7 @@ export interface KnownModel {
 	heat: Heat;
 	job: Job;
 	move: Move;
+	network: Network;
 	sensors: Sensors;
 	state: MachineState;
 	tools: (Tool | null)[];
@@ -388,6 +412,7 @@ export function emptyModel(): ObjectModel {
 			shaping: { type: "none", frequency: 0, damping: 0, amplitudes: [], delays: [] },
 			travelAcceleration: null,
 		},
+		network: { interfaces: [] },
 		sensors: { gpIn: [], endstops: [], filamentMonitors: [], probes: [] },
 		state: { status: "disconnected", currentTool: -1, machineMode: "FFF", displayMessage: "", upTime: 0, messageBox: null, atxPower: null },
 		tools: [],
@@ -565,6 +590,26 @@ export function conformModelKey(key: string, value: unknown): { ok: true; value:
 				// Parsed, not waved through, exactly like currentMove's numbers: a
 				// string here would reach a toFixed() in the shaping cards.
 				travelAcceleration: numberOrNull(value.travelAcceleration),
+			} };
+		}
+		// network is gated because machine IDENTITY is read out of it
+		// (config/machineId.ts): a wholesale `onModelKey("network", ...)`
+		// replacement is shaped here before resolveMachineId ever sees it.
+		// This gate does NOT cover every route identity can be read through,
+		// and must not be read as "an ungated subtree cannot carry a key" —
+		// `onModelPatch` (om/store.ts's every-tick d99fn live projection)
+		// deep-merges a board's raw JSON patch straight into the store with NO
+		// gate at all, network included. The real enforcement against THAT
+		// route is resolveMachineId's own `?? []` guards (config/machineId.ts),
+		// which treat a malformed/absent `network.interfaces` as a live input
+		// rather than a state this gate has already ruled out. Re-routing
+		// onModelPatch through per-key conforming would close that gap
+		// properly; it is a larger phase-2 change, out of scope here.
+		case "network": {
+			if (!isObject(value)) return { ok: false };
+			return { ok: true, value: {
+				...value,
+				interfaces: arrayOr(value.interfaces, []).map(e => (isObject(e) ? e : null)),
 			} };
 		}
 		case "sensors": {

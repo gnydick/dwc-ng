@@ -105,8 +105,14 @@ function parseCamera(raw: unknown): ConfigOverlay["camera"] {
 	if (!isPlainObject(raw)) return undefined;
 	const out: NonNullable<ConfigOverlay["camera"]> = {};
 	if (typeof raw.streamUrl === "string") out.streamUrl = raw.streamUrl;
-	if (typeof raw.pinned === "boolean") out.pinned = raw.pinned;
 	return Object.keys(out).length > 0 ? out : undefined;
+}
+
+/** Whether the camera panel is pinned — a viewing habit, parsed separately
+ *  from the camera's own streamUrl (see CameraPrefsConfig). */
+function parseCameraPrefs(raw: unknown): ConfigOverlay["cameraPrefs"] {
+	if (!isPlainObject(raw) || typeof raw.pinned !== "boolean") return undefined;
+	return { pinned: raw.pinned };
 }
 
 function parseMacros(raw: unknown): ConfigOverlay["macros"] {
@@ -297,6 +303,7 @@ export function parseOverlay(raw: unknown): ConfigOverlay {
 		thermalColors: parseThermalColors(raw.thermalColors),
 		dockSensors: parseDockSensors(raw.dockSensors),
 		camera: parseCamera(raw.camera),
+		cameraPrefs: parseCameraPrefs(raw.cameraPrefs),
 		sensorNames: stringRecord(raw.sensorNames),
 		macros: parseMacros(raw.macros),
 		bed: parseBed(raw.bed),
@@ -369,6 +376,10 @@ export function parseOverlayPayload(text: string): ConfigOverlay | null {
 	}
 	if (!isPlainObject(parsed) || !isPlainObject(parsed.overlay)) return null;
 	if (parsed.version === CONFIG_VERSION) return parseOverlay(parsed.overlay);
+	// v2 → v3 is not a shape change to the overlay itself (config/types.ts
+	// CONFIG_VERSION) — it is a change to WHERE the halves live, which is a
+	// storage-layout concern handled in config/migrateStorage.ts, not here.
+	if (parsed.version === 2) return parseOverlay(parsed.overlay);
 	if (parsed.version === 1) return parseOverlay(migrateOverlayColumns(parsed.overlay));
 	// Foreign or from a future build: defaults, never a guess.
 	return null;

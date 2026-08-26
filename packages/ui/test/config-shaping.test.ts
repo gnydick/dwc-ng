@@ -22,7 +22,7 @@ test("the shipped defaults leave the envelope unset", () => {
 	assert.equal(DEFAULT_CONFIG.shaping.envelope, null, "no guessed box, ever (I8)");
 	assert.deepEqual(DEFAULT_CONFIG.shaping.defaults, { distMm: 60, speedMmS: 200, repeats: 3 });
 	assert.deepEqual(DEFAULT_CONFIG.shaping.accelByTool, {});
-	const store = createConfigStore();
+	const store = createConfigStore({ machineStore: () => null });
 	assert.equal(store.config.shaping.envelope, null);
 });
 
@@ -56,7 +56,7 @@ test("a malformed envelope drops to unset — never to a partial or repaired box
 		assert.deepEqual(overlay, { shaping: { defaults: { distMm: 80 } } },
 			`envelope must drop whole: ${JSON.stringify(envelope)}`);
 	}
-	const store = createConfigStore();
+	const store = createConfigStore({ machineStore: () => null });
 	assert.equal(store.config.shaping.envelope, null);
 });
 
@@ -91,7 +91,7 @@ test("motion defaults fall back per field, not as a block", () => {
 	});
 	assert.deepEqual(overlay, { shaping: { defaults: { speedMmS: 250 } } });
 
-	const store = createConfigStore();
+	const store = createConfigStore({ machineStore: () => null });
 	store.setShaping({ defaults: { distMm: Number.NaN, speedMmS: 250 } });
 	assert.deepEqual(store.config.shaping.defaults,
 		{ ...DEFAULT_CONFIG.shaping.defaults, speedMmS: 250 });
@@ -134,7 +134,7 @@ test("accelByTool keeps only board.slot addresses under whole-number tool keys",
 });
 
 test("the store's own setters pass the same gate as the SD file", () => {
-	const store = createConfigStore();
+	const store = createConfigStore({ machineStore: () => null });
 	store.setShaping({ envelope: { x: [0, 300], y: [10, 290] } });
 	assert.deepEqual(store.config.shaping.envelope, box);
 	assert.equal(store.dirty, true);
@@ -157,7 +157,7 @@ test("the store's own setters pass the same gate as the SD file", () => {
 });
 
 test("resetSection returns the envelope to unset and leaves other sections alone", () => {
-	const store = createConfigStore();
+	const store = createConfigStore({ machineStore: () => null });
 	store.setShaping({ envelope: { x: [0, 300], y: [10, 290] }, defaults: { distMm: 80 } });
 	store.setAccelAddr(0, "0.0");
 	store.setAxisRole("U", "Z motor 1");
@@ -185,7 +185,7 @@ test("hostile keys in the shaping section reach no prototype", () => {
 	assert.equal(({} as Record<string, unknown>)["polluted"], undefined);
 	assert.equal(Object.getPrototypeOf(overlay.shaping?.accelByTool ?? {}), Object.prototype);
 
-	const store = createConfigStore();
+	const store = createConfigStore({ machineStore: () => null });
 	assert.equal(({} as Record<string, unknown>)["polluted"], undefined);
 	assert.equal(store.config.shaping.envelope, null);
 });

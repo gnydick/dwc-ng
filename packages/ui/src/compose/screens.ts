@@ -4,18 +4,22 @@
  * The nav rail, the hash router, and the renderer ALL derive from this one
  * list (I9): a screen that isn't here cannot be routed to or shown, and the
  * ROUTES/NAV/Switch triple hand-sync this replaced cannot drift because it
- * no longer exists. Built-in ids double as the layout storage identity
- * ("dwc-ng.canvas.<id>" — the historic keys, so saved layouts keep working).
+ * no longer exists. Built-in ids double as the layout storage identity — a
+ * screen's canvas record is `machineCanvasKeys(store, id)` on whichever
+ * machine it was laid out on (GIT_86; the historic origin-global per-screen
+ * canvas keys are retired, not migrated — see the campaign's Task 8
+ * precedent: those bytes carried no proof of which machine wrote them).
  *
  * Slot rects are the fitted defaults the per-view *.panelDefaults.ts files
  * carried before the conversion. User screens (overlay entries with minted
  * stable ids) join this list in phase A7b.
  */
 import { parseComposition, slotsOf, toSlotRect, type Composition, type CustomCardId } from "./composition.ts";
-import { canvasStorageKey, readCanvasOrientation, readCanvasState, writeCanvasState } from "../shell/panelCanvas.ts";
+import { readCanvasOrientation, readCanvasState, writeCanvasState, type CanvasState } from "../shell/panelCanvas.ts";
 import type { OrientationState } from "../shell/panelOrientation.ts";
 import { LAB_ROUTE } from "../shell/router.ts";
-import type { SlotRect, UiConfig, UserScreenId } from "../config/types.ts";
+import { isUserScreenId, type SlotRect, type UiConfig, type UserScreenId } from "../config/types.ts";
+import type { MachineStore } from "../config/machineStore.ts";
 
 export interface ScreenDef {
 	/** Display name — a LABEL, never an identity (I10: renames can't orphan). */
@@ -112,14 +116,19 @@ export const MACROS_COMPOSITION: Composition = {
 	camera: { col: 0, row: 225, colSpan: 104, rowSpan: 75 },
 };
 
-/** System: 0:/sys listing + editor, firmware update, the OM inspector. */
+/**
+ * System: which machine this is, then 0:/sys listing + editor, firmware
+ * update, the OM inspector. Identity leads the screen — it is the one card
+ * whose whole point is to be seen, not sought.
+ */
 export const SYSTEM_COMPOSITION: Composition = {
-	"system-files": { col: 0, row: 0, colSpan: 104, rowSpan: 120 },
-	"system-editor": { col: 104, row: 0, colSpan: 208, rowSpan: 120 },
-	firmware: { col: 0, row: 120, colSpan: 156, rowSpan: 112 },
-	"object-model": { col: 156, row: 120, colSpan: 156, rowSpan: 112 },
-	console: { col: 0, row: 232, colSpan: 312, rowSpan: 75 },
-	camera: { col: 0, row: 307, colSpan: 104, rowSpan: 75 },
+	"machine-identity": { col: 0, row: 0, colSpan: 312, rowSpan: 56 },
+	"system-files": { col: 0, row: 56, colSpan: 104, rowSpan: 120 },
+	"system-editor": { col: 104, row: 56, colSpan: 208, rowSpan: 120 },
+	firmware: { col: 0, row: 176, colSpan: 156, rowSpan: 112 },
+	"object-model": { col: 156, row: 176, colSpan: 156, rowSpan: 112 },
+	console: { col: 0, row: 288, colSpan: 312, rowSpan: 75 },
+	camera: { col: 0, row: 363, colSpan: 104, rowSpan: 75 },
 };
 
 /** Bed maintenance: the height map, which map is in use, tramming, and
@@ -136,42 +145,63 @@ export const BED_COMPOSITION: Composition = {
 /**
  * Shaping: the input-shaping lab, in the order the operator works through it.
  *
- * Two columns, and the pairing across them is deliberate rather than a way of
- * filling space: what you are measuring sits beside what it produced. Status
- * next to Capture (the session and the run that feeds it), Decay next to Sweep
- * (one stop, then every speed), Candidates next to Custom (the ranked list and
- * the train you build yourself), Verify next to Apply (what the machine
- * measured and the line it earns). Every rowSpan matches the card's own
- * registry default (compose/defs.ts), so a fresh screen is each card fitted to
- * its content — and that is a claim test/composition.test.ts now checks, because
- * it had quietly stopped being true: Decay grew 75 -> 189 for its chart and
- * nobody moved the two cards under it.
+ * THREE columns, not two (GIT_86 — "the reset layout is just really bad", "i
+ * have 3 columns with random sizing"). The two-column default above wasted a
+ * third 156-wide column the owner's own hand-arranged layout used (his saved
+ * screen ran cols 0 / 156 / 312), and packed the remaining two so unevenly
+ * that pairing "what you measure beside what it produced" no longer read as
+ * a design — it read as arbitrary. Every rowSpan below is unchanged from the
+ * card's own registry size (compose/defs.ts CARD_DEFS) — that size IS the
+ * measured floor (contentRowSpan() in the Card Lab against the
+ * `shaping-measured` scenario, per-card comments there) and is pinned by
+ * test/composition.test.ts's "every Shaping card is placed at its own
+ * registry size" — so nothing here was re-guessed, only re-FLOWN. Re-run
+ * 2026-08-26 (Card Lab "Audit every card" against `shaping-measured`) as a
+ * spot check: seven of eight cards measured AT OR BELOW their registry span
+ * that instant (Apply matched exactly; Decay/Candidates/Custom/Verify came
+ * in well under, because a card's registry size is a floor checked across
+ * several states, not a reading of any one of them). Status and Capture
+ * measured a little over (188 vs 156, 147 vs 140) with this scenario's
+ * per-tool disclosures rendered open — status's own registry comment says
+ * exactly that: the floor is measured with every tpost row COLLAPSED, on
+ * purpose, because reserving space for a disclosure most sessions open once
+ * is worse than letting the body scroll while it's open. Not a regression,
+ * the documented exception firing as designed; see task-17-report.md for the
+ * full per-card table.
+ *
+ * COLUMN ASSIGNMENT is chosen, not measured, and the choice is this: put the
+ * FIRST card of each column in workflow order — status, capture, decay are
+ * steps 1, 2, 3, so the top of the screen reads left-to-right in the exact
+ * order an operator starts the procedure — then let each column's own
+ * remaining cards continue forward through the same procedure top to bottom
+ * (col 0: status(1) -> candidates(5) -> apply(8); col 1: capture(2) ->
+ * custom(6) -> verify(7); col 2: decay(3) -> sweep(4)). Every column is
+ * therefore internally monotonic in workflow order — scanning down any one
+ * of them always moves forward, never back — even though the three columns
+ * don't reach the same step at the same row. Decay and Sweep keep the
+ * original design's pairing (one stop, then every speed) by sharing a
+ * column instead of sitting side by side, which is also what makes column 2
+ * the tallest: Decay's chart (189) is not squeezed to balance the others.
+ *
+ * BALANCE: col 0 status+candidates+apply = 156+75+50 = 281. col 1
+ * capture+custom+verify = 140+71+62 = 273. col 2 decay+sweep = 189+118 =
+ * 307. Range 34 rows (12% of the 287 average) over 3 columns of 2-3 cards
+ * each, with the chart column allowed to run long on purpose — tighter
+ * would mean either shrinking Decay below its content or breaking the
+ * workflow-order property above.
  */
 export const SHAPING_COMPOSITION: Composition = {
-	// status 77 -> 138 when it gained the five-step workflow list, the per-tool
-	// tpost disclosure and the reserved message line, and 138 -> 156 when it
-	// gained the next-step region; the rest of the left column follows it down.
 	"shaping-status": { col: 0, row: 0, colSpan: 156, rowSpan: 156 },
-	// Capture 66 -> 140 when it gained the run control, the motion editor and the
-	// XY map (D3). The whole right column follows it down by 74.
+	"shaping-candidates": { col: 0, row: 156, colSpan: 156, rowSpan: 75 },
+	"shaping-apply": { col: 0, row: 231, colSpan: 156, rowSpan: 50 },
 	"shaping-capture": { col: 156, row: 0, colSpan: 156, rowSpan: 140 },
-	// Decay 75 -> 189: it grew for the chart (E1) and the board browser, and the
-	// screen was never re-flowed for it — the card was placed at less than half
-	// the height its own content declares. Everything below it in the left
-	// column moves down by the same 114.
-	"shaping-decay": { col: 0, row: 156, colSpan: 156, rowSpan: 189 },
-	// Sweep 39 -> 118 for the heat map (E2); the right column follows it down
-	// by 79. The card is the same ID, so a saved layout keeps whatever the
-	// operator dragged it to — this is the DEFAULT placement only.
-	"shaping-sweep": { col: 156, row: 140, colSpan: 156, rowSpan: 118 },
-	"shaping-candidates": { col: 0, row: 345, colSpan: 156, rowSpan: 75 },
-	"shaping-custom": { col: 156, row: 258, colSpan: 156, rowSpan: 71 },
-	"shaping-verify": { col: 0, row: 420, colSpan: 156, rowSpan: 62 },
-	"shaping-apply": { col: 156, row: 329, colSpan: 156, rowSpan: 50 },
-	// The left column is still the taller of the two (ends at 482, against the
-	// right column's 379); the full-width strip clears both.
-	console: { col: 0, row: 482, colSpan: 312, rowSpan: 75 },
-	camera: { col: 0, row: 557, colSpan: 104, rowSpan: 75 },
+	"shaping-custom": { col: 156, row: 140, colSpan: 156, rowSpan: 71 },
+	"shaping-verify": { col: 156, row: 211, colSpan: 156, rowSpan: 62 },
+	"shaping-decay": { col: 312, row: 0, colSpan: 156, rowSpan: 189 },
+	"shaping-sweep": { col: 312, row: 189, colSpan: 156, rowSpan: 118 },
+	// Column 2 (decay+sweep) is the tallest at 307; the strip clears all three.
+	console: { col: 0, row: 307, colSpan: 468, rowSpan: 75 },
+	camera: { col: 0, row: 382, colSpan: 104, rowSpan: 75 },
 };
 
 /** Settings: config-overlay editors + the save card (the former save-bar). */
@@ -286,6 +316,35 @@ export function resolveScreen(config: UiConfig, id: string): ScreenEntry | null 
 	return screenList(config).find(s => s.id === id) ?? null;
 }
 
+/**
+ * The RAW rects the operator has actually SAVED for a screen — a built-in's
+ * `screens.layouts[id]` override, or a custom screen's own `cards` — kept
+ * separate from `composition` (screenList/resolveScreen), which for a
+ * built-in with ANY override IS that override wholesale, not a merge with
+ * the coded default.
+ *
+ * Used ONLY to seed createPanelCanvas's `seedFromOverlay` (GIT_86 task 16):
+ * an upgrading machine's machine-scoped canvas key starts genuinely empty
+ * (origin-global bytes carry no proof of which machine wrote them and are
+ * never migrated), and without a seed a card the operator saved to the SD
+ * card is indistinguishable there from one nobody ever placed. Null when the
+ * screen has never been customised at all — there is nothing to seed with,
+ * and an empty canvas then behaves exactly like a first-ever browser's.
+ */
+export function savedScreenLayout(config: UiConfig, screenId: string): CanvasState | null {
+	const customCards = new Set(Object.keys(config.cards));
+	const raw = isUserScreenId(screenId)
+		? config.screens.custom[screenId]?.cards
+		: config.screens.layouts[screenId];
+	if (raw === undefined) return null;
+	const parsed = parseComposition(raw, customCards);
+	const state: CanvasState = {};
+	for (const [id, slot] of slotsOf(parsed)) {
+		state[id] = { col: slot.col, row: slot.row, colSpan: slot.colSpan, rowSpan: slot.rowSpan };
+	}
+	return Object.keys(state).length > 0 ? state : null;
+}
+
 /** Where an imported screen should land, and what it displaces. */
 export interface ScreenImportPlan {
 	/** Screen to write the composition into; null means mint a new one. */
@@ -358,7 +417,7 @@ export interface LayoutStore {
  * Both stores are therefore written here, together, or not at all. Callers
  * do not get to write one.
  */
-export function replaceScreenLayout(store: LayoutStore, screenId: string, rects: Record<string, SlotRect>): void {
+export function replaceScreenLayout(store: LayoutStore, machineStore: MachineStore, screenId: string, rects: Record<string, SlotRect>): void {
 	store.replaceAllScreenCards(screenId, rects);
 	// Orientation rides IN the slot but is stored beside the geometry, so it
 	// is split out here rather than at every call site.
@@ -366,7 +425,7 @@ export function replaceScreenLayout(store: LayoutStore, screenId: string, rects:
 	for (const [id, rect] of Object.entries(rects)) {
 		if (rect.orientation !== undefined) orientations[id] = rect.orientation;
 	}
-	writeCanvasState(canvasStorageKey(screenId), rects, orientations);
+	writeCanvasState(machineStore, screenId, rects, orientations);
 }
 
 /** The orientations an imported/replacement layout carries. */
@@ -378,12 +437,20 @@ export function orientationsOf(rects: Record<string, SlotRect>): OrientationStat
 	return out;
 }
 
-export function captureScreenGeometry(store: LayoutStore): void {
+/**
+ * `machineStore` is `null` when no machine is currently identified — the
+ * per-browser canvas store this reads is itself now machine-scoped, so with
+ * no machine there is nothing to read FROM, and this is a no-op rather than
+ * a guess at whose layout is on screen. Same precedent as config/store.ts's
+ * machine-half writes: identity unknown means skip, never adopt whatever
+ * happens to be lying around.
+ */
+export function captureScreenGeometry(store: LayoutStore, machineStore: MachineStore | null): void {
+	if (machineStore === null) return;
 	for (const entry of screenList(store.config)) {
-		const key = canvasStorageKey(entry.id);
-		const stored = readCanvasState(key);
+		const stored = readCanvasState(machineStore, entry.id);
 		if (stored === null) continue; // nothing local — the overlay copy stands
-		const orientations = readCanvasOrientation(key);
+		const orientations = readCanvasOrientation(machineStore, entry.id);
 		const cards: Record<string, SlotRect> = {};
 		for (const [id, slot] of slotsOf(entry.def.composition)) {
 			const orientation = orientations[id] ?? slot.orientation;

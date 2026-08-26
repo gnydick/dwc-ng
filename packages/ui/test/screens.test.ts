@@ -6,7 +6,7 @@ import { BUILTIN_SCREENS, screenList, resolveScreen } from "../src/compose/scree
 // ---- config store screen operations ----
 
 test("addScreen mints a u- prefixed id and the screen appears with empty cards", () => {
-	const store = createConfigStore();
+	const store = createConfigStore({ machineStore: () => null });
 	const id = store.addScreen("CNC Router");
 	assert.ok(id.startsWith("u-"), "minted ids live in the u- namespace (I11)");
 	const entry = resolveScreen(store.config, id);
@@ -16,7 +16,7 @@ test("addScreen mints a u- prefixed id and the screen appears with empty cards",
 });
 
 test("renameScreen renames a builtin via overlay and a custom in place — ids never change (I10)", () => {
-	const store = createConfigStore();
+	const store = createConfigStore({ machineStore: () => null });
 	store.renameScreen("machine", "Printer");
 	assert.equal(resolveScreen(store.config, "machine")!.def.name, "Printer");
 	// the id still resolves — the rename touched only the label
@@ -28,7 +28,7 @@ test("renameScreen renames a builtin via overlay and a custom in place — ids n
 });
 
 test("setScreenHidden removes a builtin from the list and back", () => {
-	const store = createConfigStore();
+	const store = createConfigStore({ machineStore: () => null });
 	store.setScreenHidden("bed", true);
 	assert.equal(resolveScreen(store.config, "bed"), null);
 	assert.ok(!screenList(store.config).some(s => s.id === "bed"));
@@ -37,14 +37,14 @@ test("setScreenHidden removes a builtin from the list and back", () => {
 });
 
 test("the screen list is never empty even with every builtin hidden", () => {
-	const store = createConfigStore();
+	const store = createConfigStore({ machineStore: () => null });
 	for (const id of Object.keys(BUILTIN_SCREENS)) store.setScreenHidden(id, true);
 	const list = screenList(store.config);
 	assert.ok(list.length >= 1, "the shell always has a screen to land on");
 });
 
 test("replaceAllScreenCards overrides a builtin's composition; garbage falls back", () => {
-	const store = createConfigStore();
+	const store = createConfigStore({ machineStore: () => null });
 	store.replaceAllScreenCards("machine", { position: { col: 0, row: 0, colSpan: 24, rowSpan: 95 } });
 	const overridden = resolveScreen(store.config, "machine")!.def.composition;
 	assert.deepEqual(Object.keys(overridden), ["position"]);
@@ -62,7 +62,7 @@ test("replaceAllScreenCards overrides a builtin's composition; garbage falls bac
 test("removeScreen deletes a custom screen; resetAll undoes renames and hides", () => {
 	// resetSection("screens") no longer COMPILES (audit M7): the section holds
 	// creations, and the type excludes it. Overrides reset through resetAll.
-	const store = createConfigStore();
+	const store = createConfigStore({ machineStore: () => null });
 	const id = store.addScreen("Scratch");
 	store.removeScreen(id);
 	assert.equal(resolveScreen(store.config, id), null);

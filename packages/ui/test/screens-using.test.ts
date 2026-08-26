@@ -10,13 +10,13 @@ const RECT = { col: 0, row: 0, colSpan: 24, rowSpan: 40 };
 // ---- screensUsing: the blast-radius data behind the plan ----
 
 test("screensUsing: unplaced card is on no screen", () => {
-	const store = createConfigStore();
+	const store = createConfigStore({ machineStore: () => null });
 	const id = store.addCustomCard("Spindle", SPINDLE_EXAMPLE_JSON);
 	assert.deepEqual(screensUsing(store.config, id), []);
 });
 
 test("screensUsing finds a card on a builtin via the layouts overlay, rename applied", () => {
-	const store = createConfigStore();
+	const store = createConfigStore({ machineStore: () => null });
 	const id = store.addCustomCard("Spindle", SPINDLE_EXAMPLE_JSON);
 	store.setScreenCard("machine", id, RECT);
 	store.renameScreen("machine", "Printer");
@@ -26,7 +26,7 @@ test("screensUsing finds a card on a builtin via the layouts overlay, rename app
 });
 
 test("screensUsing reports hidden builtins — the card is still placed on them", () => {
-	const store = createConfigStore();
+	const store = createConfigStore({ machineStore: () => null });
 	const id = store.addCustomCard("Spindle", SPINDLE_EXAMPLE_JSON);
 	store.setScreenCard("bed", id, RECT);
 	store.setScreenHidden("bed", true);
@@ -36,7 +36,7 @@ test("screensUsing reports hidden builtins — the card is still placed on them"
 });
 
 test("screensUsing finds a card on a custom screen", () => {
-	const store = createConfigStore();
+	const store = createConfigStore({ machineStore: () => null });
 	const cardId = store.addCustomCard("Spindle", SPINDLE_EXAMPLE_JSON);
 	const screenId = store.addScreen("CNC bench");
 	store.setScreenCard(screenId, cardId, RECT);
@@ -46,7 +46,7 @@ test("screensUsing finds a card on a custom screen", () => {
 });
 
 test("screensUsing: removing the placement removes the usage", () => {
-	const store = createConfigStore();
+	const store = createConfigStore({ machineStore: () => null });
 	const id = store.addCustomCard("Spindle", SPINDLE_EXAMPLE_JSON);
 	store.setScreenCard("machine", id, RECT);
 	store.setScreenCard("machine", id, null);
@@ -56,7 +56,7 @@ test("screensUsing: removing the placement removes the usage", () => {
 // ---- planCardDelete: the sole producer builds id, uses, and message TOGETHER ----
 
 test("planCardDelete: unused card — plan says so and still names the id it deletes", () => {
-	const store = createConfigStore();
+	const store = createConfigStore({ machineStore: () => null });
 	const id = store.addCustomCard("Spindle", SPINDLE_EXAMPLE_JSON);
 	const plan = planCardDelete(store.config, id);
 	assert.equal(plan.id, id);
@@ -65,7 +65,7 @@ test("planCardDelete: unused card — plan says so and still names the id it del
 });
 
 test("planCardDelete: message lists every use, hidden flagged, from the same uses array", () => {
-	const store = createConfigStore();
+	const store = createConfigStore({ machineStore: () => null });
 	const id = store.addCustomCard("Spindle", SPINDLE_EXAMPLE_JSON);
 	store.setScreenCard("machine", id, RECT);
 	const screenId = store.addScreen("CNC bench");
@@ -82,7 +82,7 @@ test("planCardDelete: message lists every use, hidden flagged, from the same use
 // ---- isOrphanSlot: the lab's featured-fallback condition ----
 
 test("isOrphanSlot: registry ids never orphan; custom ids orphan when their def is gone", () => {
-	const store = createConfigStore();
+	const store = createConfigStore({ machineStore: () => null });
 	assert.equal(isOrphanSlot("position", store.config), false);
 	const id = store.addCustomCard("Spindle", SPINDLE_EXAMPLE_JSON);
 	assert.equal(isOrphanSlot(id, store.config), false);

@@ -46,7 +46,7 @@ test("garbage, unknown types, and injection-shaped specs are named errors, never
 // ---- custom cards in config + compositions ----
 
 test("addCustomCard mints c- ids; the spec text round-trips exactly", () => {
-	const store = createConfigStore();
+	const store = createConfigStore({ machineStore: () => null });
 	const id = store.addCustomCard("Spindle", SPINDLE_EXAMPLE_JSON);
 	assert.ok(isCustomCardId(id), "minted ids live in the c- namespace");
 	assert.equal(store.config.cards[id]!.spec, SPINDLE_EXAMPLE_JSON, "opaque text — prune/merge never touch it");
@@ -64,7 +64,7 @@ test("compositions keep c- slots only while the card definition exists", () => {
 });
 
 test("a custom card lands on a screen via the same addCard path and survives resolveScreen", () => {
-	const store = createConfigStore();
+	const store = createConfigStore({ machineStore: () => null });
 	const cardId = store.addCustomCard("Spindle", SPINDLE_EXAMPLE_JSON) as CustomCardId;
 	const screenId = store.addScreen("CNC");
 	const composition = addCard({}, cardId);
@@ -106,7 +106,7 @@ test("power-vocabulary specs refuse to lift (edited as JSON, never approximated)
 
 test("Reset everything drops overrides but KEEPS custom cards and screens", async () => {
 	const { BUILTIN_SCREENS } = await import("../src/compose/screens.ts");
-	const store = createConfigStore();
+	const store = createConfigStore({ machineStore: () => null });
 	const cardId = store.addCustomCard("Spindle", SPINDLE_EXAMPLE_JSON);
 	const screenId = store.addScreen("CNC");
 	store.replaceAllScreenCards(screenId, { [cardId]: { col: 0, row: 0, colSpan: 12, rowSpan: 40 } });

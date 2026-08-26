@@ -1,6 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { appendCapped, capLines, parseConsole, serializeConsole, classifyReply, CONSOLE_LIMIT, type ConsoleLine } from "../src/om/consoleLog.ts";
+import { appendCapped, capLines, loadConsole, parseConsole, saveConsole, serializeConsole, classifyReply, CONSOLE_LIMIT, type ConsoleLine } from "../src/om/consoleLog.ts";
+import { openMachineStore } from "../src/config/machineStore.ts";
+import type { IdentifiedMachine } from "../src/config/machineId.ts";
+import { withLocalStorage } from "./helpers/localStorage.ts";
+
+const MACHINE_A: IdentifiedMachine = { kind: "board", uniqueId: "MACHINE-A" };
+const MACHINE_B: IdentifiedMachine = { kind: "board", uniqueId: "MACHINE-B" };
 
 const line = (n: number) => ({ receivedAt: 1000 + n, text: `msg ${n}` });
 
@@ -74,4 +80,14 @@ test("appendCapped mutates in place — produce() hands it a draft to write", ()
 	const same = lines;
 	appendCapped(lines, line(1));
 	assert.equal(same.length, 1, "the caller's array is the one that grew");
+});
+
+test("console lines do not cross machines", () => {
+	withLocalStorage(() => {
+		const a = openMachineStore(MACHINE_A);
+		const b = openMachineStore(MACHINE_B);
+		saveConsole(a, [{ receivedAt: 1, text: "A's reply" }]);
+		assert.deepEqual(loadConsole(b), [], "machine B never talked to this board");
+		assert.equal(loadConsole(a).length, 1);
+	});
 });

@@ -150,6 +150,96 @@ test("mergeCanvas falls back to defaults when storage is corrupt, empty, or the 
 	assert.deepEqual(mergeCanvas(42, defaults), defaultCanvas(defaults));
 });
 
+// b9bdcbf's "wholly empty store uses the composed defaults verbatim" branch
+// lived here and was REVERTED (GIT_86 task 16): its premise — that
+// `defaults` (slotsOf(composition())) is already a coherent, complete
+// arrangement whenever the canvas is empty — is false the moment the
+// operator's saved overlay covers only SOME of the composition's cards. A
+// card the composition gained since the operator last saved (e.g. a newly
+// coded card) is then part of `defaults` too, and returning `defaults`
+// verbatim placed it with NO collision check at all, straight through
+// wherever the operator's own card actually was. Real, reproduced case: a
+// saved 7-card shaping layout, a coded composition that had grown to 10,
+// and the 3 new coded cards landing verbatim on top of the operator's
+// dragged cards.
+//
+// The correct fix is SEEDING, tested below: when the canvas store has no
+// record at all for a screen, seed it from the config overlay's saved
+// rects (createPanelCanvas's `seedFromOverlay`, compose/screens.ts's
+// savedScreenLayout) and let growToDefaults run exactly as it always did.
+// A seeded id is STORED (honoured verbatim, overlaps included); an id
+// `defaults` has that the seed doesn't is still ADDED — placed by
+// slideDownToFree same as any other newcomer, so it can never land on a
+// card the operator actually placed.
+
+test("createPanelCanvas seeds an empty canvas from a SUBSET overlay: user-placed cards keep their saved rects, a coded-only card lands clear (GIT_86 task 16)", async () => {
+	const { createPanelCanvas, devCanvasKeys } = await import("../src/shell/panelCanvas.ts");
+	const rectOf = (canvas: { styleFor: (id: string) => Record<string, string> }, id: string) => {
+		const s = canvas.styleFor(id);
+		const [col, colSpan] = s["grid-column"]!.split(" / span ");
+		const [row, rowSpan] = s["grid-row"]!.split(" / span ");
+		return { col: parseInt(col!) - 1, row: parseInt(row!) - 1, colSpan: parseInt(colSpan!), rowSpan: parseInt(rowSpan!) };
+	};
+	// `defaults` stands in for slotsOf(composition()): every card actually on
+	// the screen, including "apply" — a coded-only card the operator's saved
+	// layout predates, coded straight through where the operator actually put
+	// "decay". Models the real repro: shaping-apply's coded col 156/row 329
+	// landing straight through the operator's dragged shaping-decay.
+	const defaults = [
+		{ id: "status", col: 0, row: 0, colSpan: 12, rowSpan: 20 },
+		{ id: "decay", col: 0, row: 20, colSpan: 12, rowSpan: 10 }, // coded default — NOT where the operator put it
+		{ id: "custom", col: 12, row: 0, colSpan: 12, rowSpan: 26 },
+		{ id: "apply", col: 3, row: 45, colSpan: 6, rowSpan: 8 }, // coded-only; overlaps decay's SAVED spot below
+	];
+	// The operator's saved SD-card overlay: status/decay/custom only, never
+	// "apply" — decay was dragged well past its coded row 20.
+	const seed = {
+		status: rect(0, 0, 12, 20),
+		decay: rect(0, 40, 12, 30),
+		custom: rect(12, 0, 12, 26),
+	};
+	const canvas = createPanelCanvas(devCanvasKeys("dwc-ng.canvas.test-seed-subset"), defaults, undefined, undefined, undefined, seed);
+	assert.deepEqual(rectOf(canvas, "status"), seed.status, "user-placed card kept exactly");
+	assert.deepEqual(rectOf(canvas, "decay"), seed.decay, "user-placed card kept exactly, NOT its coded default");
+	assert.deepEqual(rectOf(canvas, "custom"), seed.custom, "user-placed card kept exactly");
+	const apply = rectOf(canvas, "apply");
+	assert.equal(rectsOverlap(apply, seed.decay), false, "the coded-only card must not land on the operator's saved card");
+	assert.deepEqual(apply, rect(3, 70, 6, 8), "slid straight down (column kept) clear of decay's saved rect");
+});
+
+test("createPanelCanvas seeds an empty canvas from a FULL overlay: an intentional overlap (hidden card sharing cells with a visible one) survives untouched (GIT_86 task 16)", async () => {
+	const { createPanelCanvas, devCanvasKeys } = await import("../src/shell/panelCanvas.ts");
+	const rectOf = (canvas: { styleFor: (id: string) => Record<string, string> }, id: string) => {
+		const s = canvas.styleFor(id);
+		const [col, colSpan] = s["grid-column"]!.split(" / span ");
+		const [row, rowSpan] = s["grid-row"]!.split(" / span ");
+		return { col: parseInt(col!) - 1, row: parseInt(row!) - 1, colSpan: parseInt(colSpan!), rowSpan: parseInt(rowSpan!) };
+	};
+	// Modeled on CONTROL_COMPOSITION's atx/filament/fans: a hidden-but-placed
+	// card sharing cells with a visible one, legal because visibleWhen keeps
+	// it off-screen. The overlay covers EVERY card this time (captureScreenGeometry
+	// writes the whole composition on save, hidden cards included).
+	const defaults = [
+		{ id: "visible-a", col: 0, row: 0, colSpan: 12, rowSpan: 20 },
+		{ id: "visible-b", col: 12, row: 0, colSpan: 12, rowSpan: 20 },
+		{ id: "hidden-c", col: 0, row: 0, colSpan: 6, rowSpan: 6 }, // overlaps visible-a on purpose
+	];
+	const seed = {
+		"visible-a": rect(0, 0, 12, 20),
+		"visible-b": rect(12, 0, 12, 20),
+		"hidden-c": rect(0, 0, 6, 6),
+	};
+	const canvas = createPanelCanvas(devCanvasKeys("dwc-ng.canvas.test-seed-full-overlap"), defaults, undefined, undefined, undefined, seed);
+	assert.deepEqual(rectOf(canvas, "visible-a"), seed["visible-a"]);
+	assert.deepEqual(rectOf(canvas, "visible-b"), seed["visible-b"]);
+	assert.deepEqual(rectOf(canvas, "hidden-c"), seed["hidden-c"], "the hidden card keeps its designed, overlapping spot");
+	assert.equal(
+		rectsOverlap(rectOf(canvas, "hidden-c"), rectOf(canvas, "visible-a")),
+		true,
+		"the intentional overlap must survive — it is not corruption to repair",
+	);
+});
+
 test("mergeCanvas keeps a valid stored rect for a known id, clamped", () => {
 	const defaults = [{ id: "a", col: 0, row: 0, colSpan: 4, rowSpan: 4 }];
 	// col: 0 isolates the "colSpan itself exceeds GRID_COLS" clamp path from the
@@ -369,8 +459,8 @@ test("serializeCanvas round-trips through parseStoredCanvas and mergeCanvas", ()
 // ---- audit H6: slot adoption obeys the collision contract like a drag ----
 
 test("ensureSlot never persists an overlap - a colliding adoption is re-placed", async () => {
-	const { createPanelCanvas, findFreePosition } = await import("../src/shell/panelCanvas.ts");
-	const canvas = createPanelCanvas("dwc-ng.canvas.test-h6", [
+	const { createPanelCanvas, devCanvasKeys, findFreePosition } = await import("../src/shell/panelCanvas.ts");
+	const canvas = createPanelCanvas(devCanvasKeys("dwc-ng.canvas.test-h6"), [
 		{ id: "a", ...rect(0, 0, 12, 40) },
 	]);
 	// Adopt a slot whose requested rect sits exactly on top of "a" - the
@@ -459,8 +549,8 @@ const posOf = (canvas: { styleFor: (id: string) => Record<string, string> }, id:
 };
 
 test("hiding a card then showing it restores its exact position", async () => {
-	const { createPanelCanvas } = await import("../src/shell/panelCanvas.ts");
-	const canvas = createPanelCanvas("dwc-ng.canvas.test-hide-restore", [
+	const { createPanelCanvas, devCanvasKeys } = await import("../src/shell/panelCanvas.ts");
+	const canvas = createPanelCanvas(devCanvasKeys("dwc-ng.canvas.test-hide-restore"), [
 		{ id: "a", ...rect(0, 0, 12, 40) },
 		{ id: "b", ...rect(12, 0, 12, 40) },
 	]);
@@ -472,8 +562,8 @@ test("hiding a card then showing it restores its exact position", async () => {
 });
 
 test("showing a hidden card slides DOWN when its old spot is now taken", async () => {
-	const { createPanelCanvas } = await import("../src/shell/panelCanvas.ts");
-	const canvas = createPanelCanvas("dwc-ng.canvas.test-hide-slide", [
+	const { createPanelCanvas, devCanvasKeys } = await import("../src/shell/panelCanvas.ts");
+	const canvas = createPanelCanvas(devCanvasKeys("dwc-ng.canvas.test-hide-slide"), [
 		{ id: "a", ...rect(0, 0, 12, 40) },
 	]);
 	canvas.removeSlot("a"); // hide a (remembered at 0,0 spanning rows 0..39)
@@ -493,18 +583,137 @@ test("a remembered position survives a reload (persisted, card off the screen)",
 	}
 	(globalThis as { localStorage?: unknown }).localStorage = new MemStore();
 	try {
-		const { createPanelCanvas } = await import("../src/shell/panelCanvas.ts");
+		const { createPanelCanvas, devCanvasKeys } = await import("../src/shell/panelCanvas.ts");
 		const key = "dwc-ng.canvas.test-parked-persist";
-		const c1 = createPanelCanvas(key, [
+		const c1 = createPanelCanvas(devCanvasKeys(key), [
 			{ id: "a", ...rect(0, 0, 12, 40) },
 			{ id: "b", ...rect(12, 0, 12, 40) },
 		]);
 		c1.removeSlot("b"); // hide — remembered rect persists to localStorage
 		// "Reload": a fresh controller from the same key, with b NOT in defaults
 		// (it's hidden, so it isn't in the composition any more).
-		const c2 = createPanelCanvas(key, [{ id: "a", ...rect(0, 0, 12, 40) }]);
+		const c2 = createPanelCanvas(devCanvasKeys(key), [{ id: "a", ...rect(0, 0, 12, 40) }]);
 		c2.ensureSlot("b", rect(0, 200, 12, 40)); // show b again
 		assert.deepEqual(posOf(c2, "b"), { col: 12, row: 0 }, "restored from the persisted parked store");
+	} finally {
+		delete (globalThis as { localStorage?: unknown }).localStorage;
+	}
+});
+
+// --- GIT_86 finding 1: an unidentified machine must still render cards ------
+//
+// ComposedScreen.tsx cannot be mounted here — this repo has no jsdom/happy-dom
+// (there is no `document`, `<For>`/`<Show>`/`<Portal>` all need one), so the
+// fix's actual JSX (the identity card rendering, the compose drawer hiding
+// while unidentified, the ONE clean remount `<Show keyed>` performs) is
+// UNTESTED at this level and stays that way until this repo gets a DOM. What
+// IS reachable, and what these tests drive directly, is the exact mechanism
+// ComposedScreen now relies on: `nullCanvasKeys()` standing in for
+// `machineCanvasKeys()` while `machineStore()` is null, and createPanelCanvas
+// behaving identically either way except for where (if anywhere) it persists.
+
+test("nullCanvasKeys answers get/set/remove in memory and touches no real storage", async () => {
+	class MemStore {
+		private m = new Map<string, string>();
+		getItem(k: string) { return this.m.has(k) ? this.m.get(k)! : null; }
+		setItem(k: string, v: string) { this.m.set(k, String(v)); }
+		removeItem(k: string) { this.m.delete(k); }
+		get size() { return this.m.size; }
+	}
+	const mem = new MemStore();
+	(globalThis as { localStorage?: unknown }).localStorage = mem;
+	try {
+		const { nullCanvasKeys } = await import("../src/shell/panelCanvas.ts");
+		const keys = nullCanvasKeys();
+		assert.equal(keys.get("layout"), null, "nothing set yet");
+		keys.set("layout", "probe-value");
+		assert.equal(keys.get("layout"), "probe-value", "answers back what it was just told");
+		assert.equal(mem.size, 0, "the in-memory keys never reached real storage");
+		keys.remove("layout");
+		assert.equal(keys.get("layout"), null, "remove works in memory too");
+	} finally {
+		delete (globalThis as { localStorage?: unknown }).localStorage;
+	}
+});
+
+test("createPanelCanvas seeded with nullCanvasKeys renders the coded defaults — an unidentified screen is not blank", async () => {
+	const { createPanelCanvas, nullCanvasKeys } = await import("../src/shell/panelCanvas.ts");
+	const defaults = [
+		{ id: "machine-identity", ...rect(0, 0, 12, 10) },
+		{ id: "other-card", ...rect(12, 0, 12, 10) },
+	];
+	// Exactly what ComposedScreen builds while `machineStore()` is null: no
+	// machine-scoped seed either, since savedScreenLayout naturally answers
+	// null when there is no identified machine to read an overlay for.
+	const canvas = createPanelCanvas(nullCanvasKeys(), defaults);
+	assert.deepEqual(posOf(canvas, "machine-identity"), { col: 0, row: 0 },
+		"the identity card — the one card whose job is explaining THIS state — renders at its coded spot");
+	assert.deepEqual(posOf(canvas, "other-card"), { col: 12, row: 0 }, "every other card renders too");
+});
+
+test("a drag made while unidentified lives only in memory and never reaches real storage", async () => {
+	class MemStore {
+		private m = new Map<string, string>();
+		getItem(k: string) { return this.m.has(k) ? this.m.get(k)! : null; }
+		setItem(k: string, v: string) { this.m.set(k, String(v)); }
+		removeItem(k: string) { this.m.delete(k); }
+		get size() { return this.m.size; }
+	}
+	const mem = new MemStore();
+	(globalThis as { localStorage?: unknown }).localStorage = mem;
+	try {
+		const { createPanelCanvas, nullCanvasKeys } = await import("../src/shell/panelCanvas.ts");
+		const canvas = createPanelCanvas(nullCanvasKeys(), [
+			{ id: "a", ...rect(0, 0, 12, 40) },
+			{ id: "b", ...rect(12, 0, 12, 40) },
+		]);
+		canvas.removeSlot("b"); // the same "hide" write path a real canvas persists
+		assert.equal(mem.size, 0, "hiding a card while unidentified must not create a real storage record");
+		canvas.ensureSlot("b", rect(0, 100, 12, 40));
+		assert.deepEqual(posOf(canvas, "b"), { col: 12, row: 0 }, "still remembered for the life of THIS render");
+		assert.equal(mem.size, 0, "showing it again is still an in-memory-only round trip");
+	} finally {
+		delete (globalThis as { localStorage?: unknown }).localStorage;
+	}
+});
+
+test("identity resolving is a clean swap: the in-memory canvas is discarded, the machine's own saved layout takes over — never a blank frame in between", async () => {
+	class MemStore {
+		private m = new Map<string, string>();
+		getItem(k: string) { return this.m.has(k) ? this.m.get(k)! : null; }
+		setItem(k: string, v: string) { this.m.set(k, String(v)); }
+		removeItem(k: string) { this.m.delete(k); }
+	}
+	(globalThis as { localStorage?: unknown }).localStorage = new MemStore();
+	try {
+		const { createPanelCanvas, nullCanvasKeys, machineCanvasKeys, serializeCanvas } = await import("../src/shell/panelCanvas.ts");
+		const { openMachineStore } = await import("../src/config/machineStore.ts");
+		const defaults = [
+			{ id: "machine-identity", ...rect(0, 0, 12, 10) },
+			{ id: "other-card", ...rect(12, 0, 12, 10) },
+		];
+
+		// BEFORE: unidentified. Cards render at their coded defaults — this is
+		// the render finding 1 says must exist and previously did not.
+		const before = createPanelCanvas(nullCanvasKeys(), defaults);
+		assert.deepEqual(posOf(before, "other-card"), { col: 12, row: 0 });
+		// The operator drags a card around while waiting for identity to land.
+		before.ensureSlot("other-card", rect(0, 200, 12, 10));
+
+		// Meanwhile, a DIFFERENT layout is already saved on the SD card for the
+		// real machine this board turns out to be — from a previous session.
+		const store = openMachineStore({ kind: "board", uniqueId: "finding1-swap-test" });
+		const savedKeys = machineCanvasKeys(store, "test-screen");
+		savedKeys.set("layout", serializeCanvas({ "machine-identity": rect(0, 0, 12, 10), "other-card": rect(30, 30, 12, 10) }));
+
+		// AFTER: identity lands. ComposedScreen's keyed `<Show>` tears down the
+		// null-object branch and mounts a fresh createPanelCanvas against the
+		// real store — modeled here as a second, independent call, since the
+		// component itself cannot be mounted (no DOM in this suite).
+		const after = createPanelCanvas(machineCanvasKeys(store, "test-screen"), defaults);
+		assert.deepEqual(posOf(after, "other-card"), { col: 30, row: 30 },
+			"the machine's own saved layout wins outright — the drag made before identity resolved left no trace");
+		assert.deepEqual(posOf(after, "machine-identity"), { col: 0, row: 0 });
 	} finally {
 		delete (globalThis as { localStorage?: unknown }).localStorage;
 	}
