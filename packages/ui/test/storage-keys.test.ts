@@ -32,8 +32,22 @@ import { tmpdir } from "node:os";
 
 const SRC = fileURLToPath(new URL("../src/", import.meta.url));
 
-/** Names spec §4 puts on the machine side. Person keys are unrestricted. */
-const MACHINE_SCOPED = ["dwc-ng.config", "dwc-ng.drafts", "dwc-ng.cmdHistory", "dwc-ng.console", "dwc-ng.canvas."];
+/**
+ * Names spec §4 puts on the machine side. Person keys are unrestricted.
+ *
+ * The first five are RETIRED literals from before openMachineStore's single-
+ * prefix scheme (Task 4/GIT_84) — nobody is at risk of retyping a flat
+ * `"dwc-ng.config"` by accident any more, so they stay here mostly as a
+ * record of what the migration must still name to retire them.
+ * `dwc-ng.m.` (MACHINE_KEY_PREFIX, config/machineStore.ts) is the one that
+ * actually matters from here on: every current and future machine-scoped key
+ * is built on it, so a future module writing
+ * `"dwc-ng.m." + segment + ".something"` as an unbroken literal must be
+ * caught here too (GIT_86 finding 4 — this list previously guarded only the
+ * names nobody would retype, and said nothing about the prefix everything
+ * new is keyed on).
+ */
+const MACHINE_SCOPED = ["dwc-ng.config", "dwc-ng.drafts", "dwc-ng.cmdHistory", "dwc-ng.console", "dwc-ng.canvas.", "dwc-ng.m."];
 
 /**
  * The door itself, plus the migration that must name the old keys to retire
