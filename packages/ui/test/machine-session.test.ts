@@ -51,6 +51,27 @@ test("the store handle is stable while the id is unchanged", () => {
 	});
 });
 
+test("the store handle is stable when a second board joins and the main board doesn't change", () => {
+	// A tool/expansion board coming online CAN-side changes boards.length,
+	// which mainBoard()'s .find() reads while walking the array — so the id
+	// memo body DOES re-execute here (unlike the mcuTemp-only mutation
+	// above) and would mint a fresh MachineId object if not for the memo's
+	// content-equals comparator. This is the one case whose outcome
+	// actually depends on that comparator.
+	createRoot(dispose => {
+		const om = createOmStore();
+		const session = createMachineSession(om.om);
+		om.events.onModelKey?.("boards", [{ canAddress: 0, uniqueId: "LIVE-1", accelerometer: null }]);
+		const first = session.store();
+		om.events.onModelKey?.("boards", [
+			{ canAddress: 0, uniqueId: "LIVE-1", accelerometer: null },
+			{ canAddress: 5, uniqueId: "TOOL-1", accelerometer: null },
+		]);
+		assert.equal(session.store(), first, "same main board, same handle, despite the array growing");
+		dispose();
+	});
+});
+
 test("a mainboard swap re-keys rather than carrying settings over", () => {
 	createRoot(dispose => {
 		const om = createOmStore();
