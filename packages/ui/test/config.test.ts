@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createConfigStore } from "../src/config/store.ts";
 import { CONFIG_FILE, DEFAULT_CONFIG, MAX_LABEL_LEN } from "../src/config/types.ts";
+import { openMachineStore } from "../src/config/machineStore.ts";
 import { createMockServer } from "../../mock-duet/src/server.ts";
 import { PollConnector } from "@dwc-ng/connector/testing";
 
@@ -239,12 +240,19 @@ test("unsaved edits survive a reload — the cache carries them AND their dirty 
 	const ls = new MemStore();
 	(globalThis as { localStorage?: unknown }).localStorage = ls;
 	try {
-		const store = createConfigStore();
+		// axisRoles is machine-scoped: since Task 7, surviving a reload requires
+		// an identified machine — an edit made with none is NOT expected to
+		// survive (see test/config-cache-scope.test.ts). Both stores here share
+		// the SAME machine identity, which is what a real reload of the same
+		// browser pointed at the same board would too.
+		const machine = openMachineStore({ kind: "board", uniqueId: "reload-test" });
+		const store = createConfigStore({ machineStore: () => machine });
 		store.setAxisRole("U", "Z motor 1");
 		assert.equal(store.dirty, true);
 
-		// "Reload": a brand-new store built from the same localStorage.
-		const reloaded = createConfigStore();
+		// "Reload": a brand-new store built from the same localStorage AND the
+		// same machine identity.
+		const reloaded = createConfigStore({ machineStore: () => machine });
 		assert.equal(reloaded.config.axisRoles["U"], "Z motor 1", "the edit came back");
 		assert.equal(reloaded.dirty, true, "and it is still known to be unsaved");
 	} finally {

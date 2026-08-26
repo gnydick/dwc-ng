@@ -415,8 +415,21 @@ export const DEFAULT_CONFIG: UiConfig = {
 
 /** Where the overlay lives on the machine's SD card. */
 export const CONFIG_FILE = "0:/sys/dwc-ng-config.json";
-/** localStorage cache key (fast boot before the SD read lands). */
-export const CONFIG_CACHE_KEY = "dwc-ng.config";
+/**
+ * localStorage cache key for the PERSON half only (fast boot before the SD
+ * read lands) — the operator's own settings, unkeyed by machine, so they
+ * follow the person across printers rather than the printer (see
+ * PersonConfig, splitOverlay). The machine half lives per-machine instead,
+ * behind `openMachineStore` (config/machineStore.ts).
+ *
+ * "dwc-ng.config" — this constant's value before the machine/person split —
+ * is now a LEGACY name: it used to carry the WHOLE overlay, including
+ * machine-scoped bytes, origin-global (the exact bug this split exists to
+ * fix). config/migrateStorage.ts is the only module allowed to mention that
+ * string; it reads it once, splits what it finds, and removes it. Do not
+ * resurrect the literal here.
+ */
+export const CONFIG_CACHE_KEY = "dwc-ng.person";
 /** Bump when the overlay schema changes incompatibly. */
 export const CONFIG_VERSION = 2;
 export const MAX_SNAPSHOTS = 10;

@@ -1,4 +1,5 @@
 import { createStore, reconcile, unwrap } from "solid-js/store";
+import { createComputed, untrack, type Accessor } from "solid-js";
 import type { Connector } from "@dwc-ng/connector";
 import { FileNotFoundError } from "@dwc-ng/connector";
 import { isPlainObject, safeEntries } from "@dwc-ng/connector";
@@ -6,11 +7,13 @@ import { asEnvelope, isAccelAddr, parseOverlay, parseOverlayPayload, parseShapin
 import {
 	CONFIG_CACHE_KEY, CONFIG_FILE, CONFIG_VERSION, DEFAULT_CONFIG, MAX_SNAPSHOTS,
 	MAX_LABEL_LEN, DEFAULT_SNAPSHOT_LABEL,
-	isUserScreenId,
+	isUserScreenId, joinOverlay, splitOverlay,
 	type CameraConfig, type CameraPrefsConfig, type ConfigOverlay, type ConfigSnapshot, type CustomCardId,
-	type DockSensorRef, type BedConfig, type Envelope, type MacrosConfig, type ShapingDefaults,
+	type DeepPartial, type DockSensorRef, type BedConfig, type Envelope, type MachineConfig, type MacrosConfig,
+	type PersonConfig, type ShapingDefaults,
 	type SlotRect, type ThermalColors, type UiConfig, type UserScreenId,
 } from "./types.ts";
+import type { MachineStore } from "./machineStore.ts";
 
 /**
  * What a caller may change about the shaping section. `envelope` is declared
@@ -187,12 +190,26 @@ export interface ConfigStore {
 	loadFromMachine(connector: Connector): Promise<void>;
 }
 
-export function createConfigStore(): ConfigStore {
-	// Seed from the cache — AND restore its dirty flag, so unsaved edits made
-	// before a reload are still known to be unsaved and are not overwritten from
-	// the SD card on the next connect.
-	const cached = loadCache();
-	let overlay: ConfigOverlay = cached?.overlay ?? {};
+/**
+ * `machineStore` names WHICH machine's local cache the machine half of the
+ * overlay reads from and writes to. Omitting it (every call site not yet
+ * wired to identity resolution) is the same as passing `() => null` — the
+ * store still works, it just never has anywhere machine-scoped to persist
+ * to, which is the correct behaviour for "identity unknown" rather than a
+ * degraded one (see the hydrateMachine computed below and
+ * writeMachineOverlay's invariant).
+ */
+export function createConfigStore(options?: { machineStore?: Accessor<MachineStore | null> }): ConfigStore {
+	const machineStore: Accessor<MachineStore | null> = options?.machineStore ?? (() => null);
+
+	// Seed from the PERSON cache only — AND restore its dirty flag, so unsaved
+	// edits made before a reload are still known to be unsaved and are not
+	// overwritten from the SD card on the next connect. The machine half is
+	// NOT seeded here: it depends on `machineStore`, which the hydrateMachine
+	// computed below reads and applies synchronously, before this function
+	// returns, whatever `machineStore` resolves to at construction time.
+	const cached = loadPersonCache();
+	let overlay: ConfigOverlay = joinOverlay({}, cached?.person ?? {});
 	const [config, setConfig] = createStore<UiConfig>(effective(overlay));
 	const [meta, setMeta] = createStore<{ dirty: boolean; snapshots: ConfigSnapshot[] }>({
 		dirty: cached?.dirty ?? false,
@@ -202,17 +219,30 @@ export function createConfigStore(): ConfigStore {
 
 	/**
 	 * @invariant whole-cache-write
-	 * @rung 6  choke-point — the single call to writeCache, taking all three
-	 *          pieces of state together, inside a closure nothing outside can
-	 *          reach
-	 * @why the three are one fact about "what the user has unsaved". Persisting
-	 *      two and dropping the third is the dropped-snapshots bug: the overlay
-	 *      survived a reload while the history it belonged to did not, so revert
-	 *      offered nothing to revert to
-	 * @debt promote by making writeCache take one CacheRecord value assembled in
-	 *       one place, so a second call site physically cannot pass a subset.
+	 * @rung 6  choke-point — the single call to persistCache splits ONE
+	 *          `overlay`/`meta` snapshot into its two halves rather than
+	 *          reading them twice, so the person record and (when a machine is
+	 *          identified) the machine record always describe the SAME edit —
+	 *          never one a step ahead of the other. writeMachineOverlay is
+	 *          itself the sole writer of the machine half (see its own
+	 *          invariant below); this function is the only thing that calls it
+	 * @why the three pieces (overlay, dirty, snapshots) are one fact about
+	 *      "what the user has unsaved". Persisting two and dropping the third
+	 *      is the dropped-snapshots bug: the overlay survived a reload while
+	 *      the history it belonged to did not, so revert offered nothing to
+	 *      revert to. Task 7 splits `overlay` itself across two records; a
+	 *      second, independently-timed write path to either one would
+	 *      reintroduce the same class of bug
+	 * @debt promote by making persistCache take one CacheRecord value assembled
+	 *       in one place, so a second call site physically cannot pass a subset.
 	 */
-	const persistCache = (): void => writeCache(overlay, meta.dirty, meta.snapshots);
+	const persistCache = (): void => {
+		const { machine, person } = splitOverlay(overlay);
+		writePersonCache(person, meta.dirty, meta.snapshots);
+		// Skipped ENTIRELY — not written as `{}` — when no machine is
+		// identified. See writeMachineOverlay's own invariant.
+		writeMachineOverlay(machineStore(), machine);
+	};
 
 	/**
 	 * @invariant overlay-writes-persist
@@ -235,8 +265,10 @@ export function createConfigStore(): ConfigStore {
 	 * The ONE place `overlay` is assigned. Everything that must happen with it —
 	 * re-derive the effective config, set the unsaved flag, cache — happens
 	 * here, so a new writer gets all four by having nowhere else to go. The
-	 * three callers differ only in the flag: an edit and a revert are unsaved
-	 * work, a load from the card is not.
+	 * callers differ only in the flag: an edit and a revert are unsaved work; a
+	 * load from the card marks it saved; a machine-identity hydration (below)
+	 * passes the CURRENT flag through unchanged, since re-deriving from a
+	 * newly-known (or newly-lost) machine handle is not itself an edit.
 	 */
 	const commit = (next: ConfigOverlay, dirty: boolean): void => {
 		overlay = next;
@@ -247,6 +279,54 @@ export function createConfigStore(): ConfigStore {
 		// caching here is what makes any of them survive a reload.
 		persistCache();
 	};
+
+	/**
+	 * Re-derive the machine half for a (possibly new) machine handle: read the
+	 * handle's own persisted overlay (or take `{}` when there is no handle),
+	 * join it against the person half of whatever `overlay` currently holds,
+	 * and commit that — through `commit`, never a second assignment site (see
+	 * overlay-writes-persist above). This is what makes "B must not inherit
+	 * A's machine state" true the instant identity changes, not merely on the
+	 * next edit.
+	 */
+	const hydrateMachine = (handle: MachineStore | null): void => {
+		const machine = readMachineOverlay(handle);
+		const { person } = splitOverlay(overlay);
+		commit(joinOverlay(machine, person), meta.dirty);
+	};
+
+	/**
+	 * Calls hydrateMachine every time `machineStore()` changes (identity
+	 * resolving, or a future re-resolution).
+	 *
+	 * `createComputed`, NOT `createEffect`, and this is load-bearing, not a
+	 * style choice: in this repo's solid-js (1.9.14), a `createEffect`'s very
+	 * first run — and every later re-run, since it is not `pure` — is deferred
+	 * past the caller's own synchronous code whenever it is created inside a
+	 * still-open batch, which is every `createRoot` with no render loop (i.e.
+	 * every construction site in this test suite and in a plain factory
+	 * function called with no ambient root at all). Verified against
+	 * node_modules/solid-js/dist/solid.js's Effects/Updates queues with a
+	 * standalone repro: a `createEffect` inside such a root never ran at all
+	 * before the root's callback returned, while `createComputed` ran
+	 * synchronously on both creation and every signal write. A caller that
+	 * switches machine and immediately reads its own config back (exactly what
+	 * every test here does, and what any real caller reasonably would) must
+	 * see the NEW machine's state in that same synchronous turn, not the
+	 * previous one — the deferred form would leak the previous machine's
+	 * config for the rest of the caller's turn, which is the exact class of
+	 * bug this store exists to prevent.
+	 *
+	 * `untrack` wraps the call to hydrateMachine, past the one tracked read
+	 * (`machineStore()`): hydrateMachine's own `commit` writes `config` and
+	 * `meta`, and letting those writes register as dependencies of THIS
+	 * computation would make it re-run on every unrelated edit for no reason,
+	 * and risks a self-referential update loop.
+	 */
+	createComputed(() => {
+		const handle = machineStore();
+		untrack(() => hydrateMachine(handle));
+	});
 
 	/**
 	 * The flag alone, for the two things that change whether work is saved
@@ -619,13 +699,30 @@ function parseSnapshots(raw: unknown): ConfigSnapshot[] {
 	return out.slice(-MAX_SNAPSHOTS);
 }
 
-function loadCache(): { overlay: ConfigOverlay; dirty: boolean; snapshots: ConfigSnapshot[] } | null {
+/**
+ * Both the person cache and a machine's own "config" key store the identical
+ * `{version, overlay}` envelope the SD file uses — parseOverlayPayload already
+ * knows that shape, drops mis-typed leaves, and handles the v1 migration and
+ * any corruption. This just adapts "no record yet" (`null`) to "never
+ * customized" (`{}`), so the two callers below don't each repeat that check.
+ */
+function parseCacheRecord(raw: string | null): ConfigOverlay {
+	if (raw === null) return {};
+	return parseOverlayPayload(raw) ?? {};
+}
+
+/**
+ * The PERSON half only. `dwc-ng.person` never hands a machine-scoped byte
+ * back to a caller: this is the sole reader, and it runs the stored overlay
+ * through `splitOverlay` before returning, so even a record written before
+ * this split existed (or hand-edited) cannot smuggle a machine section out
+ * through it.
+ */
+function loadPersonCache(): { person: DeepPartial<PersonConfig>; dirty: boolean; snapshots: ConfigSnapshot[] } | null {
 	if (typeof localStorage === "undefined") return null;
 	const raw = localStorage.getItem(CONFIG_CACHE_KEY);
 	if (raw === null) return null;
-	// The real parse boundary (config/parse.ts): mis-typed leaves are dropped,
-	// so a bad cached overlay can no longer crash every boot.
-	const overlay = parseOverlayPayload(raw) ?? {};
+	const { person } = splitOverlay(parseCacheRecord(raw));
 	// dirty is a hint, not safety-critical — a garbled flag defaults to clean,
 	// which at worst lets SD win, never destroys unsaved work silently.
 	let dirty = false;
@@ -633,16 +730,58 @@ function loadCache(): { overlay: ConfigOverlay; dirty: boolean; snapshots: Confi
 	try {
 		const parsed = JSON.parse(raw) as { dirty?: unknown; snapshots?: unknown };
 		dirty = parsed.dirty === true;
-		// The backup history persists here (not on the SD card) — that is what
-		// stops a reload from clearing it.
+		// The backup history persists here (not on the SD card, and not in a
+		// machine's own cache) — that is what stops a reload from clearing it.
+		// Each snapshot carries a WHOLE overlay clone taken at snapshot() time
+		// (see its invariant), machine sections included — a revert only makes
+		// sense against the machine it was taken on, which the operator is
+		// expected to be connected to when they use it (phase 1 does not gate
+		// revert on machine identity).
 		snapshots = parseSnapshots(parsed.snapshots);
 	} catch {
 		// keep defaults
 	}
-	return { overlay, dirty, snapshots };
+	return { person, dirty, snapshots };
 }
 
-function writeCache(overlay: ConfigOverlay, dirty: boolean, snapshots: readonly ConfigSnapshot[]): void {
+function writePersonCache(person: DeepPartial<PersonConfig>, dirty: boolean, snapshots: readonly ConfigSnapshot[]): void {
 	if (typeof localStorage === "undefined") return;
-	localStorage.setItem(CONFIG_CACHE_KEY, JSON.stringify({ version: CONFIG_VERSION, overlay, dirty, snapshots }));
+	localStorage.setItem(CONFIG_CACHE_KEY, JSON.stringify({ version: CONFIG_VERSION, overlay: person, dirty, snapshots }));
+}
+
+/**
+ * The MACHINE half only, read back out of the given handle's own "config"
+ * key. `handle === null` (no identified machine) reads as "never
+ * customized" — `{}` — exactly like a never-written key would; there is no
+ * separate "identity unknown" state for a caller to mishandle.
+ */
+function readMachineOverlay(handle: MachineStore | null): DeepPartial<MachineConfig> {
+	if (handle === null) return {};
+	return splitOverlay(parseCacheRecord(handle.get("config"))).machine;
+}
+
+/**
+ * @invariant no-machine-write-without-identity
+ * @rung 6  choke-point — this is the ONLY function that writes a machine-
+ *          scoped byte to storage (persistCache's sole call to it), and the
+ *          gate is a plain runtime branch: `handle === null` returns before
+ *          touching storage at all. It inherits real strength from
+ *          machineStore.ts's own rung 6/7 work rather than standing alone —
+ *          `handle` can only ever be a `MachineStore`, and `openMachineStore`
+ *          can only mint one from an `IdentifiedMachine` — so this branch is
+ *          the LAST place an unidentified machine is kept out, not the only
+ *          one
+ * @why identity resolves about one poll after boot (machineSession.ts). An
+ *      edit made in that window must not survive anywhere, or the very first
+ *      write after connecting to a machine could land under a stale
+ *      resolution, or vanish into a key nobody ever reads back — either way
+ *      it is the cross-machine leak this whole campaign exists to close
+ * @debt this function's contract depends on its caller never fabricating a
+ *       `MachineStore` for the wrong machine — nothing here re-checks that a
+ *       `handle`'s `id` matches "the current machine" beyond what
+ *       machineSession.ts already guarantees by construction.
+ */
+function writeMachineOverlay(handle: MachineStore | null, machine: DeepPartial<MachineConfig>): void {
+	if (handle === null) return;
+	handle.set("config", JSON.stringify({ version: CONFIG_VERSION, overlay: machine }));
 }
