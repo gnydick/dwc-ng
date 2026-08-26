@@ -24,6 +24,20 @@ test("edits land in the effective config and mark it dirty", () => {
 	assert.equal(store.dirty, true);
 });
 
+test("resetSection(\"camera\") drops only the machine's streamUrl — the person's pin stands", () => {
+	// camera (streamUrl) is machine-scoped; cameraPrefs (pinned) is person-
+	// scoped. A machine-section reset must not reach into the person half —
+	// that is exactly the boundary the whole split exists to hold.
+	const store = createConfigStore();
+	store.setCamera({ streamUrl: "http://printercams:8080/stream" });
+	store.setCameraPrefs({ pinned: true });
+
+	store.resetSection("camera");
+
+	assert.equal(store.config.camera.streamUrl, "", "camera section reverted to default");
+	assert.equal(store.config.cameraPrefs.pinned, true, "the pin is untouched by a machine-section reset");
+});
+
 test("resetSection drops one section only; resetAll drops everything", () => {
 	const store = createConfigStore();
 	store.setAxisRole("U", "Z motor 1");
