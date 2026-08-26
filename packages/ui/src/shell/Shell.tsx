@@ -155,9 +155,9 @@ export default function Shell() {
 						<Show when={import.meta.env.DEV}><BackendToggle /></Show>
 						<button
 							class="ghost-btn"
-							aria-pressed={app.config.config.camera.pinned}
+							aria-pressed={app.config.config.cameraPrefs.pinned}
 							title="Show the camera panel (each view places it independently)"
-							onClick={() => app.config.setCamera({ pinned: !app.config.config.camera.pinned })}
+							onClick={() => app.config.setCameraPrefs({ pinned: !app.config.config.cameraPrefs.pinned })}
 						>
 							Camera
 						</button>

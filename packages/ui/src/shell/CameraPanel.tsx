@@ -118,6 +118,6 @@ export function CameraBody() {
 export function CameraHideAction() {
 	const app = useApp();
 	return (
-		<button class="card-act" title="Hide camera" aria-label="Hide camera" onClick={() => app.config.setCamera({ pinned: false })}>✕</button>
+		<button class="card-act" title="Hide camera" aria-label="Hide camera" onClick={() => app.config.setCameraPrefs({ pinned: false })}>✕</button>
 	);
 }

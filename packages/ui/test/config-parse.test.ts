@@ -36,7 +36,8 @@ test("mis-typed leaves drop; well-typed siblings survive", () => {
 	const overlay = parseOverlay({
 		axisRoles: { X: 5, Y: "gantry" },
 		dockSensors: { "0": { gpIn: "four" }, "1": { gpIn: 7, inverted: true }, "2": { gpIn: 3, inverted: "yes" } },
-		camera: { streamUrl: 9, pinned: true },
+		camera: { streamUrl: 9 },
+		cameraPrefs: { pinned: true },
 		sensorNames: "junk",
 		macros: { autoConfirmRun: "true" },
 		bed: { probePointCommand: null },
@@ -44,7 +45,7 @@ test("mis-typed leaves drop; well-typed siblings survive", () => {
 	assert.deepEqual(overlay, {
 		axisRoles: { Y: "gantry" },
 		dockSensors: { "1": { gpIn: 7, inverted: true }, "2": { gpIn: 3 } },
-		camera: { pinned: true },
+		cameraPrefs: { pinned: true },
 	});
 });
 
@@ -102,7 +103,8 @@ test("asSlotRect demands exactly four finite numbers", () => {
 test("a good overlay round-trips the boundary unchanged", () => {
 	const overlay = {
 		axisRoles: { U: "Z motor 1" },
-		camera: { streamUrl: "http://printercams:8080/stream", pinned: true },
+		camera: { streamUrl: "http://printercams:8080/stream" },
+		cameraPrefs: { pinned: true },
 		screens: { hidden: ["bed"], renames: { machine: "Mill" } },
 		cards: { "c-abc": { name: "Spindle", spec: '{"inputs":{},"nodes":[]}' } },
 	};

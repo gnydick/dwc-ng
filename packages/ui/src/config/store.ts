@@ -7,7 +7,7 @@ import {
 	CONFIG_CACHE_KEY, CONFIG_FILE, CONFIG_VERSION, DEFAULT_CONFIG, MAX_SNAPSHOTS,
 	MAX_LABEL_LEN, DEFAULT_SNAPSHOT_LABEL,
 	isUserScreenId,
-	type CameraConfig, type ConfigOverlay, type ConfigSnapshot, type CustomCardId,
+	type CameraConfig, type CameraPrefsConfig, type ConfigOverlay, type ConfigSnapshot, type CustomCardId,
 	type DockSensorRef, type BedConfig, type Envelope, type MacrosConfig, type ShapingDefaults,
 	type SlotRect, type ThermalColors, type UiConfig, type UserScreenId,
 } from "./types.ts";
@@ -52,6 +52,9 @@ export interface ConfigStore {
 	setDockSensor(toolNumber: number, ref: DockSensorRef): void;
 	clearDockSensor(toolNumber: number): void;
 	setCamera(patch: Partial<CameraConfig>): void;
+	/** Toggle the camera panel pin — a viewing habit, distinct from the
+	 *  camera's own streamUrl (see CameraPrefsConfig). */
+	setCameraPrefs(patch: Partial<CameraPrefsConfig>): void;
 	setSensorName(key: string, name: string): void;
 	clearSensorName(key: string): void;
 	setMacros(patch: Partial<MacrosConfig>): void;
@@ -298,6 +301,9 @@ export function createConfigStore(): ConfigStore {
 		},
 		setCamera(patch) {
 			apply(draft => { draft.camera = { ...draft.camera, ...patch }; });
+		},
+		setCameraPrefs(patch) {
+			apply(draft => { draft.cameraPrefs = { ...draft.cameraPrefs, ...patch }; });
 		},
 		setSensorName(key, name) {
 			apply(draft => { (draft.sensorNames ??= {})[key] = name; });

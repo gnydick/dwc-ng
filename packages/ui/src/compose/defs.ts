@@ -176,7 +176,7 @@ export const CARD_DEFS = {
 		ariaLabel: "Camera",
 		class: "cam-panel",
 		size: { colSpan: 104, rowSpan: 75 },
-		visibleWhen: ctx => ctx.config.config.camera.pinned,
+		visibleWhen: ctx => ctx.config.config.cameraPrefs.pinned,
 	}),
 	/** Per-object cancel (M486) — already content-only, zero props. Always
 	 *  shown: with no objects it says the job didn't specify any, rather than

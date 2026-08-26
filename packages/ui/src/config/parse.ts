@@ -105,8 +105,14 @@ function parseCamera(raw: unknown): ConfigOverlay["camera"] {
 	if (!isPlainObject(raw)) return undefined;
 	const out: NonNullable<ConfigOverlay["camera"]> = {};
 	if (typeof raw.streamUrl === "string") out.streamUrl = raw.streamUrl;
-	if (typeof raw.pinned === "boolean") out.pinned = raw.pinned;
 	return Object.keys(out).length > 0 ? out : undefined;
+}
+
+/** Whether the camera panel is pinned — a viewing habit, parsed separately
+ *  from the camera's own streamUrl (see CameraPrefsConfig). */
+function parseCameraPrefs(raw: unknown): ConfigOverlay["cameraPrefs"] {
+	if (!isPlainObject(raw) || typeof raw.pinned !== "boolean") return undefined;
+	return { pinned: raw.pinned };
 }
 
 function parseMacros(raw: unknown): ConfigOverlay["macros"] {
@@ -297,6 +303,7 @@ export function parseOverlay(raw: unknown): ConfigOverlay {
 		thermalColors: parseThermalColors(raw.thermalColors),
 		dockSensors: parseDockSensors(raw.dockSensors),
 		camera: parseCamera(raw.camera),
+		cameraPrefs: parseCameraPrefs(raw.cameraPrefs),
 		sensorNames: stringRecord(raw.sensorNames),
 		macros: parseMacros(raw.macros),
 		bed: parseBed(raw.bed),

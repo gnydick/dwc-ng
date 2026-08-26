@@ -20,7 +20,7 @@ test("edits land in the effective config and mark it dirty", () => {
 	assert.equal(store.config.axisRoles["U"], "Z motor 1");
 	assert.deepEqual(store.config.dockSensors["0"], { gpIn: 4 });
 	assert.equal(store.config.camera.streamUrl, "http://printercams:8080/stream");
-	assert.equal(store.config.camera.pinned, false, "untouched fields stay default");
+	assert.equal(store.config.cameraPrefs.pinned, false, "untouched fields stay default");
 	assert.equal(store.dirty, true);
 });
 
@@ -67,12 +67,12 @@ test("snapshot and revert restore an earlier overlay", () => {
 	store.snapshot("before experiment");
 
 	store.setAxisRole("U", "something wrong");
-	store.setCamera({ pinned: true });
+	store.setCameraPrefs({ pinned: true });
 	assert.equal(store.config.axisRoles["U"], "something wrong");
 
 	store.revert(0);
 	assert.equal(store.config.axisRoles["U"], "Z motor 1");
-	assert.equal(store.config.camera.pinned, false);
+	assert.equal(store.config.cameraPrefs.pinned, false);
 	assert.equal(store.snapshots.length, 1, "reverting keeps the snapshot");
 });
 
