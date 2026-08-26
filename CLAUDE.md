@@ -209,3 +209,10 @@ Adopted 2026-08-26 (Gabe, via `RULE:` intake).
   the drift was found by the owner failing to use it, not by any review. A mock
   a version behind cannot host the UAT the rules above require, so letting it
   drift disables the rule that catches everything else.
+- **Nothing deploys to the printer until Gabe has UAT'd it on the mock.** The
+  implementer's UAT (above) is evidence that the change works; Gabe's is the
+  gate that lets it reach hardware. So the sequence is: work lands → review
+  clean → mock stood up and handed to Gabe → **he** drives it → he says deploy.
+  A clean review is not permission to ship. Deploying first and letting him
+  find the defect on the machine is what happened on 2026-08-26, twice in one
+  morning, and both times the mock could have shown it first.
