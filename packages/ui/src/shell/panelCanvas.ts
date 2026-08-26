@@ -1020,29 +1020,6 @@ export function growToDefaults(
 	const record = typeof stored === "object" && stored !== null
 		? stored as Record<string, unknown>
 		: {};
-	// No default has ANY valid stored rect: an upgrading machine (the
-	// machine-scoped canvas store starts empty by policy — origin-global
-	// canvas bytes carry no proof of which machine wrote them and are never
-	// migrated, GIT_86) or a genuinely first-ever browser. Either way there
-	// is nothing stored to grow against, so `defaults` — which for a real
-	// screen is already the composed layout (coded defaults + the user's
-	// saved config overlay restored from the SD card), not the bare coded
-	// layout — IS the complete, coherent arrangement to use, verbatim.
-	//
-	// The `added` pass below exists to site a FEW newly-added cards against
-	// an already-populated layout; run on every id at once it re-sites each
-	// one independently against whatever the loop has placed so far, which
-	// is order-dependent and, for a real composition, destructive: it
-	// collapses deliberate overlaps (a hidden-but-placed card such as
-	// CONTROL_COMPOSITION's atx/filament/fans sharing cells with a visible
-	// one — legal because visibleWhen keeps it off-screen) and a two-column
-	// arrangement into whatever slideDownToFree happens to find free. `grew`
-	// is false here for the same reason it is false for any card falling
-	// back to its default: adopting a default is placement, not growth, and
-	// must not gate a reflow.
-	if (defaults.length > 0 && !defaults.some(d => isPanelRect(record[d.id]))) {
-		return { state: fallback, grew: false };
-	}
 	const state: CanvasState = {};
 	let grew = false;
 	// Ids the composition has GAINED since this canvas was saved. Their coded
@@ -1368,11 +1345,49 @@ export function createPanelCanvas(
 	 * anyone having to clear localStorage.
 	 */
 	bench?: boolean,
+	/**
+	 * The config overlay's saved rects for THIS screen (GIT_86 task 16),
+	 * consulted ONLY when the canvas store has no record at all for it — a
+	 * genuinely empty key, not merely one missing an id `defaults` names.
+	 * That is exactly the upgrading-machine case: the machine-scoped canvas
+	 * store starts empty by policy (origin-global bytes carry no proof of
+	 * which machine wrote them and are never migrated), so without this a
+	 * card the operator actually placed on the SD card would be
+	 * indistinguishable from one nobody ever placed, and growToDefaults'
+	 * `added` pass would re-site it — which is exactly what b9bdcbf's
+	 * verbatim-defaults branch tried and failed to prevent (it also
+	 * protected coded-only cards that were never the operator's to protect).
+	 *
+	 * Seeding instead of returning this verbatim keeps growToDefaults' own
+	 * contract intact: an id present here is STORED (honoured exactly,
+	 * overlaps and all), an id absent from it but present in `defaults` is
+	 * still ADDED (slid clear via slideDownToFree) — so a coded-only card can
+	 * never land on top of one the operator actually placed, whether or not
+	 * the operator has ever opened this browser before.
+	 *
+	 * Read exactly once, at construction, and used only to pick WHICH value
+	 * feeds the same `mergeCanvas`/`growToDefaults` call this already made —
+	 * never as a second writer. The settle-write below persists whatever that
+	 * call returns exactly as it always has, so a seeded load behaves for
+	 * every purpose (including "does this mark the layout dirty") like any
+	 * other repaired canvas, not like a save.
+	 */
+	seedFromOverlay?: CanvasState | null,
 ): PanelCanvasController {
+	const storedRaw = parseStoredCanvas(keys.get("layout"));
+	// "No record at all" — nothing was ever persisted under this key, or it
+	// parsed to an object with zero entries. NOT "no entry for every default
+	// id": that finer-grained question is growToDefaults' own to answer, per
+	// id, via its ordinary stored-vs-added split — this seed only stands in
+	// for storage that was never written, so a canvas holding even one real
+	// entry is left alone rather than second-guessed.
+	const isWhollyEmpty = storedRaw === null
+		|| (typeof storedRaw === "object" && Object.keys(storedRaw as object).length === 0);
+	const effectiveStored = isWhollyEmpty && seedFromOverlay != null ? seedFromOverlay : storedRaw;
 	const [state, setState] = createSignal(
 		bench === true
-			? benchOrigin(growToDefaults(parseStoredCanvas(keys.get("layout")), defaults).state)
-			: mergeCanvas(parseStoredCanvas(keys.get("layout")), defaults),
+			? benchOrigin(growToDefaults(storedRaw, defaults).state)
+			: mergeCanvas(effectiveStored, defaults),
 	);
 	// Settle a redesign repair once rather than recomputing it on every load.
 	// Deliberately NOT persist(): that fires onLayoutChange -> markLayoutDirty,

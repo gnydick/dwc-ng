@@ -27,7 +27,7 @@ import { CARD_DEFS, allCardIds, parseCardId, type CardId } from "./defs.ts";
 import { RegistryCard, cardTitleOf } from "./RegistryCard.tsx";
 import { addCard, compositionRects, customCardIds, isCustomCardId, slotsOf, type Composition, type CustomCardId, type SlotId } from "./composition.ts";
 import { createServicePool } from "./services.ts";
-import { orientationsOf, planScreenImport, replaceScreenLayout, resolveScreen, screenList, type ScreenEntry } from "./screens.ts";
+import { orientationsOf, planScreenImport, replaceScreenLayout, resolveScreen, savedScreenLayout, screenList, type ScreenEntry } from "./screens.ts";
 import { CustomCard } from "./CustomCard.tsx";
 import { CardStudio } from "./CardStudio.tsx";
 import { ImportReview } from "./ImportReview.tsx";
@@ -126,6 +126,12 @@ export function ComposedScreen(props: { screenId: string }) {
 					// save time (captureScreenGeometry), so without this the button
 					// stays greyed out and the layout can never leave this browser.
 					() => app.config.markLayoutDirty(),
+					undefined,
+					// Seeds a canvas store with no record at all (GIT_86 task 16) from
+					// what the operator actually saved to the SD card, so a card they
+					// placed is honoured exactly and a coded-only card can never land
+					// on top of it - see createPanelCanvas's seedFromOverlay doc.
+					untrack(() => savedScreenLayout(app.config.config, props.screenId)),
 				);
 
 				// Composition edits → canvas slots. Adding a card adopts its

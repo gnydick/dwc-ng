@@ -15,10 +15,10 @@
  * stable ids) join this list in phase A7b.
  */
 import { parseComposition, slotsOf, toSlotRect, type Composition, type CustomCardId } from "./composition.ts";
-import { readCanvasOrientation, readCanvasState, writeCanvasState } from "../shell/panelCanvas.ts";
+import { readCanvasOrientation, readCanvasState, writeCanvasState, type CanvasState } from "../shell/panelCanvas.ts";
 import type { OrientationState } from "../shell/panelOrientation.ts";
 import { LAB_ROUTE } from "../shell/router.ts";
-import type { SlotRect, UiConfig, UserScreenId } from "../config/types.ts";
+import { isUserScreenId, type SlotRect, type UiConfig, type UserScreenId } from "../config/types.ts";
 import type { MachineStore } from "../config/machineStore.ts";
 
 export interface ScreenDef {
@@ -293,6 +293,35 @@ export function screenList(config: UiConfig): ScreenEntry[] {
  */
 export function resolveScreen(config: UiConfig, id: string): ScreenEntry | null {
 	return screenList(config).find(s => s.id === id) ?? null;
+}
+
+/**
+ * The RAW rects the operator has actually SAVED for a screen — a built-in's
+ * `screens.layouts[id]` override, or a custom screen's own `cards` — kept
+ * separate from `composition` (screenList/resolveScreen), which for a
+ * built-in with ANY override IS that override wholesale, not a merge with
+ * the coded default.
+ *
+ * Used ONLY to seed createPanelCanvas's `seedFromOverlay` (GIT_86 task 16):
+ * an upgrading machine's machine-scoped canvas key starts genuinely empty
+ * (origin-global bytes carry no proof of which machine wrote them and are
+ * never migrated), and without a seed a card the operator saved to the SD
+ * card is indistinguishable there from one nobody ever placed. Null when the
+ * screen has never been customised at all — there is nothing to seed with,
+ * and an empty canvas then behaves exactly like a first-ever browser's.
+ */
+export function savedScreenLayout(config: UiConfig, screenId: string): CanvasState | null {
+	const customCards = new Set(Object.keys(config.cards));
+	const raw = isUserScreenId(screenId)
+		? config.screens.custom[screenId]?.cards
+		: config.screens.layouts[screenId];
+	if (raw === undefined) return null;
+	const parsed = parseComposition(raw, customCards);
+	const state: CanvasState = {};
+	for (const [id, slot] of slotsOf(parsed)) {
+		state[id] = { col: slot.col, row: slot.row, colSpan: slot.colSpan, rowSpan: slot.rowSpan };
+	}
+	return Object.keys(state).length > 0 ? state : null;
 }
 
 /** Where an imported screen should land, and what it displaces. */

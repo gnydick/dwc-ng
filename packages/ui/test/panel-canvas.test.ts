@@ -150,39 +150,93 @@ test("mergeCanvas falls back to defaults when storage is corrupt, empty, or the 
 	assert.deepEqual(mergeCanvas(42, defaults), defaultCanvas(defaults));
 });
 
-test("mergeCanvas on a wholly empty store uses a two-column, overlap-carrying composition VERBATIM (GIT_86)", () => {
-	// Regression for the machine-identity upgrade: the machine-scoped canvas
-	// store starts empty for every upgrading browser (origin-global canvas
-	// bytes are deliberately never migrated — they carry no proof of which
-	// machine wrote them). `defaults` here stands in for what a real screen
-	// actually passes to createPanelCanvas: slotsOf(composition()), i.e. the
-	// user's OWN saved layout as restored from the SD config overlay — not
-	// the bare coded layout. It is already a complete, coherent arrangement,
-	// modeled here on CONTROL_COMPOSITION's shape (compose/screens.ts): two
-	// side-by-side columns plus a hidden-but-placed card ("hidden-overlap",
-	// think atx/filament/fans) that intentionally shares cells with a
-	// visible one because visibleWhen keeps it off-screen.
+// b9bdcbf's "wholly empty store uses the composed defaults verbatim" branch
+// lived here and was REVERTED (GIT_86 task 16): its premise — that
+// `defaults` (slotsOf(composition())) is already a coherent, complete
+// arrangement whenever the canvas is empty — is false the moment the
+// operator's saved overlay covers only SOME of the composition's cards. A
+// card the composition gained since the operator last saved (e.g. a newly
+// coded card) is then part of `defaults` too, and returning `defaults`
+// verbatim placed it with NO collision check at all, straight through
+// wherever the operator's own card actually was. Real, reproduced case: a
+// saved 7-card shaping layout, a coded composition that had grown to 10,
+// and the 3 new coded cards landing verbatim on top of the operator's
+// dragged cards.
+//
+// The correct fix is SEEDING, tested below: when the canvas store has no
+// record at all for a screen, seed it from the config overlay's saved
+// rects (createPanelCanvas's `seedFromOverlay`, compose/screens.ts's
+// savedScreenLayout) and let growToDefaults run exactly as it always did.
+// A seeded id is STORED (honoured verbatim, overlaps included); an id
+// `defaults` has that the seed doesn't is still ADDED — placed by
+// slideDownToFree same as any other newcomer, so it can never land on a
+// card the operator actually placed.
+
+test("createPanelCanvas seeds an empty canvas from a SUBSET overlay: user-placed cards keep their saved rects, a coded-only card lands clear (GIT_86 task 16)", async () => {
+	const { createPanelCanvas, devCanvasKeys } = await import("../src/shell/panelCanvas.ts");
+	const rectOf = (canvas: { styleFor: (id: string) => Record<string, string> }, id: string) => {
+		const s = canvas.styleFor(id);
+		const [col, colSpan] = s["grid-column"]!.split(" / span ");
+		const [row, rowSpan] = s["grid-row"]!.split(" / span ");
+		return { col: parseInt(col!) - 1, row: parseInt(row!) - 1, colSpan: parseInt(colSpan!), rowSpan: parseInt(rowSpan!) };
+	};
+	// `defaults` stands in for slotsOf(composition()): every card actually on
+	// the screen, including "apply" — a coded-only card the operator's saved
+	// layout predates, coded straight through where the operator actually put
+	// "decay". Models the real repro: shaping-apply's coded col 156/row 329
+	// landing straight through the operator's dragged shaping-decay.
 	const defaults = [
-		{ id: "left-a", col: 0, row: 0, colSpan: 12, rowSpan: 20 },
-		{ id: "left-b", col: 0, row: 20, colSpan: 12, rowSpan: 20 },
-		{ id: "right-a", col: 12, row: 0, colSpan: 12, rowSpan: 30 },
-		// Overlaps right-a on purpose - a hidden card sharing right-a's cells.
-		{ id: "hidden-overlap", col: 12, row: 10, colSpan: 12, rowSpan: 10 },
+		{ id: "status", col: 0, row: 0, colSpan: 12, rowSpan: 20 },
+		{ id: "decay", col: 0, row: 20, colSpan: 12, rowSpan: 10 }, // coded default — NOT where the operator put it
+		{ id: "custom", col: 12, row: 0, colSpan: 12, rowSpan: 26 },
+		{ id: "apply", col: 3, row: 45, colSpan: 6, rowSpan: 8 }, // coded-only; overlaps decay's SAVED spot below
 	];
-	const merged = mergeCanvas(null, defaults);
-	// Every card must land EXACTLY on its default coordinates - not merely
-	// render, not merely avoid new collisions. growToDefaults' `added` pass
-	// (slideDownToFree, run per-id against whatever the loop has placed so
-	// far) would re-site each card independently and is order-dependent: it
-	// happens to leave the three non-overlapping cards alone here but slides
-	// hidden-overlap down and clear of right-a, at row 30 instead of its
-	// coded row 10 - collapsing the intentional overlap.
-	assert.deepEqual(merged, defaultCanvas(defaults), "empty store: defaults used verbatim, nothing re-sited");
-	assert.deepEqual(merged["hidden-overlap"], rect(12, 10, 12, 10), "hidden card keeps its designed, overlapping spot");
+	// The operator's saved SD-card overlay: status/decay/custom only, never
+	// "apply" — decay was dragged well past its coded row 20.
+	const seed = {
+		status: rect(0, 0, 12, 20),
+		decay: rect(0, 40, 12, 30),
+		custom: rect(12, 0, 12, 26),
+	};
+	const canvas = createPanelCanvas(devCanvasKeys("dwc-ng.canvas.test-seed-subset"), defaults, undefined, undefined, undefined, seed);
+	assert.deepEqual(rectOf(canvas, "status"), seed.status, "user-placed card kept exactly");
+	assert.deepEqual(rectOf(canvas, "decay"), seed.decay, "user-placed card kept exactly, NOT its coded default");
+	assert.deepEqual(rectOf(canvas, "custom"), seed.custom, "user-placed card kept exactly");
+	const apply = rectOf(canvas, "apply");
+	assert.equal(rectsOverlap(apply, seed.decay), false, "the coded-only card must not land on the operator's saved card");
+	assert.deepEqual(apply, rect(3, 70, 6, 8), "slid straight down (column kept) clear of decay's saved rect");
+});
+
+test("createPanelCanvas seeds an empty canvas from a FULL overlay: an intentional overlap (hidden card sharing cells with a visible one) survives untouched (GIT_86 task 16)", async () => {
+	const { createPanelCanvas, devCanvasKeys } = await import("../src/shell/panelCanvas.ts");
+	const rectOf = (canvas: { styleFor: (id: string) => Record<string, string> }, id: string) => {
+		const s = canvas.styleFor(id);
+		const [col, colSpan] = s["grid-column"]!.split(" / span ");
+		const [row, rowSpan] = s["grid-row"]!.split(" / span ");
+		return { col: parseInt(col!) - 1, row: parseInt(row!) - 1, colSpan: parseInt(colSpan!), rowSpan: parseInt(rowSpan!) };
+	};
+	// Modeled on CONTROL_COMPOSITION's atx/filament/fans: a hidden-but-placed
+	// card sharing cells with a visible one, legal because visibleWhen keeps
+	// it off-screen. The overlay covers EVERY card this time (captureScreenGeometry
+	// writes the whole composition on save, hidden cards included).
+	const defaults = [
+		{ id: "visible-a", col: 0, row: 0, colSpan: 12, rowSpan: 20 },
+		{ id: "visible-b", col: 12, row: 0, colSpan: 12, rowSpan: 20 },
+		{ id: "hidden-c", col: 0, row: 0, colSpan: 6, rowSpan: 6 }, // overlaps visible-a on purpose
+	];
+	const seed = {
+		"visible-a": rect(0, 0, 12, 20),
+		"visible-b": rect(12, 0, 12, 20),
+		"hidden-c": rect(0, 0, 6, 6),
+	};
+	const canvas = createPanelCanvas(devCanvasKeys("dwc-ng.canvas.test-seed-full-overlap"), defaults, undefined, undefined, undefined, seed);
+	assert.deepEqual(rectOf(canvas, "visible-a"), seed["visible-a"]);
+	assert.deepEqual(rectOf(canvas, "visible-b"), seed["visible-b"]);
+	assert.deepEqual(rectOf(canvas, "hidden-c"), seed["hidden-c"], "the hidden card keeps its designed, overlapping spot");
 	assert.equal(
-		rectsOverlap(merged["hidden-overlap"]!, merged["right-a"]!),
+		rectsOverlap(rectOf(canvas, "hidden-c"), rectOf(canvas, "visible-a")),
 		true,
-		"the intentional overlap must survive - it is not corruption to repair",
+		"the intentional overlap must survive — it is not corruption to repair",
 	);
 });
 
