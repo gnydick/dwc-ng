@@ -150,6 +150,42 @@ test("mergeCanvas falls back to defaults when storage is corrupt, empty, or the 
 	assert.deepEqual(mergeCanvas(42, defaults), defaultCanvas(defaults));
 });
 
+test("mergeCanvas on a wholly empty store uses a two-column, overlap-carrying composition VERBATIM (GIT_86)", () => {
+	// Regression for the machine-identity upgrade: the machine-scoped canvas
+	// store starts empty for every upgrading browser (origin-global canvas
+	// bytes are deliberately never migrated — they carry no proof of which
+	// machine wrote them). `defaults` here stands in for what a real screen
+	// actually passes to createPanelCanvas: slotsOf(composition()), i.e. the
+	// user's OWN saved layout as restored from the SD config overlay — not
+	// the bare coded layout. It is already a complete, coherent arrangement,
+	// modeled here on CONTROL_COMPOSITION's shape (compose/screens.ts): two
+	// side-by-side columns plus a hidden-but-placed card ("hidden-overlap",
+	// think atx/filament/fans) that intentionally shares cells with a
+	// visible one because visibleWhen keeps it off-screen.
+	const defaults = [
+		{ id: "left-a", col: 0, row: 0, colSpan: 12, rowSpan: 20 },
+		{ id: "left-b", col: 0, row: 20, colSpan: 12, rowSpan: 20 },
+		{ id: "right-a", col: 12, row: 0, colSpan: 12, rowSpan: 30 },
+		// Overlaps right-a on purpose - a hidden card sharing right-a's cells.
+		{ id: "hidden-overlap", col: 12, row: 10, colSpan: 12, rowSpan: 10 },
+	];
+	const merged = mergeCanvas(null, defaults);
+	// Every card must land EXACTLY on its default coordinates - not merely
+	// render, not merely avoid new collisions. growToDefaults' `added` pass
+	// (slideDownToFree, run per-id against whatever the loop has placed so
+	// far) would re-site each card independently and is order-dependent: it
+	// happens to leave the three non-overlapping cards alone here but slides
+	// hidden-overlap down and clear of right-a, at row 30 instead of its
+	// coded row 10 - collapsing the intentional overlap.
+	assert.deepEqual(merged, defaultCanvas(defaults), "empty store: defaults used verbatim, nothing re-sited");
+	assert.deepEqual(merged["hidden-overlap"], rect(12, 10, 12, 10), "hidden card keeps its designed, overlapping spot");
+	assert.equal(
+		rectsOverlap(merged["hidden-overlap"]!, merged["right-a"]!),
+		true,
+		"the intentional overlap must survive - it is not corruption to repair",
+	);
+});
+
 test("mergeCanvas keeps a valid stored rect for a known id, clamped", () => {
 	const defaults = [{ id: "a", col: 0, row: 0, colSpan: 4, rowSpan: 4 }];
 	// col: 0 isolates the "colSpan itself exceeds GRID_COLS" clamp path from the

@@ -1020,6 +1020,29 @@ export function growToDefaults(
 	const record = typeof stored === "object" && stored !== null
 		? stored as Record<string, unknown>
 		: {};
+	// No default has ANY valid stored rect: an upgrading machine (the
+	// machine-scoped canvas store starts empty by policy — origin-global
+	// canvas bytes carry no proof of which machine wrote them and are never
+	// migrated, GIT_86) or a genuinely first-ever browser. Either way there
+	// is nothing stored to grow against, so `defaults` — which for a real
+	// screen is already the composed layout (coded defaults + the user's
+	// saved config overlay restored from the SD card), not the bare coded
+	// layout — IS the complete, coherent arrangement to use, verbatim.
+	//
+	// The `added` pass below exists to site a FEW newly-added cards against
+	// an already-populated layout; run on every id at once it re-sites each
+	// one independently against whatever the loop has placed so far, which
+	// is order-dependent and, for a real composition, destructive: it
+	// collapses deliberate overlaps (a hidden-but-placed card such as
+	// CONTROL_COMPOSITION's atx/filament/fans sharing cells with a visible
+	// one — legal because visibleWhen keeps it off-screen) and a two-column
+	// arrangement into whatever slideDownToFree happens to find free. `grew`
+	// is false here for the same reason it is false for any card falling
+	// back to its default: adopting a default is placement, not growth, and
+	// must not gate a reflow.
+	if (defaults.length > 0 && !defaults.some(d => isPanelRect(record[d.id]))) {
+		return { state: fallback, grew: false };
+	}
 	const state: CanvasState = {};
 	let grew = false;
 	// Ids the composition has GAINED since this canvas was saved. Their coded
