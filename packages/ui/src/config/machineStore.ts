@@ -39,8 +39,20 @@ export interface MachineStore {
 	remove(name: MachineKeyName, suffix?: string): void;
 }
 
-/** Dots delimit the key's levels, so a suffix from user config may not contain one. */
-const safeSuffix = (s: string): string => s.replace(/[.\s]/g, "-");
+/**
+ * Dots delimit the key's levels, so a suffix from user config may not contain
+ * one unescaped. Fixed-width hex escaping (`-XXXX`, the char's UTF-16 code
+ * unit) rather than a bare substitution: substituting "." and "-" both to "-"
+ * is NOT injective — "a.b" and "a-b" collide on "a-b", and escaping "-" to
+ * "--" before the substitution still collides one level deeper ("a--b" and
+ * "a.-.b" both land on "a----b", since the escape char and the substitution
+ * target are the same character). Every "-" in the output is provably the
+ * start of a 5-char escape sequence (never a leftover literal), which is what
+ * makes decoding unambiguous and therefore the encoding injective: distinct
+ * suffixes cannot land on the same key.
+ */
+const safeSuffix = (s: string): string =>
+	s.replace(/[-.\s]/g, c => `-${c.charCodeAt(0).toString(16).padStart(4, "0")}`);
 
 export function openMachineStore(id: IdentifiedMachine): MachineStore {
 	const base = `${MACHINE_KEY_PREFIX}${machineKeySegment(id)}`;

@@ -51,6 +51,32 @@ test("a suffix cannot climb out of its level", () => {
 	});
 });
 
+test("suffixes that only differ by dot-vs-dash do not collide", () => {
+	// A one-line sanitizer that substitutes both "." and "-" to "-" collapses
+	// "a.b" and "a-b" onto the identical key; a later write under one would
+	// silently clobber the other's value with no error.
+	withLocalStorage(() => {
+		const s = openMachineStore(A);
+		s.set("canvas", "dot", "a.b");
+		s.set("canvas", "dash", "a-b");
+		assert.equal(s.get("canvas", "a.b"), "dot");
+		assert.equal(s.get("canvas", "a-b"), "dash");
+	});
+});
+
+test("escaping the dash before substituting still isn't enough — a deeper pair must not collide either", () => {
+	// A fix that escapes "-" to "--" and THEN substitutes "." to "-" still
+	// collapses "a--b" and "a.-.b" onto "a----b", because the escape
+	// character and the substitution target are the same character.
+	withLocalStorage(() => {
+		const s = openMachineStore(A);
+		s.set("canvas", "dashes", "a--b");
+		s.set("canvas", "dotdash", "a.-.b");
+		assert.equal(s.get("canvas", "a--b"), "dashes");
+		assert.equal(s.get("canvas", "a.-.b"), "dotdash");
+	});
+});
+
 test("remove clears only that machine's value", () => {
 	withLocalStorage(() => {
 		openMachineStore(A).set("console", "a");
