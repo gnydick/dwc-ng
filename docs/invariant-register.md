@@ -21,7 +21,7 @@ and invariant claim mentions 13 -> 23, so no mechanism was deleted and no
 claim was lost in the gap. From here the ratchets make a dropped rung visible
 in the diff that drops it.
 
-**Totals:** 154 invariants · 130 at rung 6 or above · 24 below rung 6 (ceiling 24).
+**Totals:** 155 invariants · 131 at rung 6 or above · 24 below rung 6 (ceiling 24).
 
 ## bed
 
@@ -101,7 +101,7 @@ in the diff that drops it.
 
 **Why.** a baseline measured through a shaper ranks against modes that are not there, applies, and re-measures — nothing downstream can detect it and the output looks clean
 
-`packages/ui/src/compose/services.ts:326`
+`packages/ui/src/compose/services.ts:327`
 
 ### `compose/additive-placement` — rung 7
 
@@ -195,7 +195,7 @@ in the diff that drops it.
 
 **Why.** the run this screen starts sends a 200 mm/s G1 with nobody's hand on the jog wheel. Two of them interleaved would each be re-checking the carriage against ITS plan's expected position and finding the other one's move — every step refused, the machine moving anyway, and two restores racing at the end
 
-`packages/ui/src/compose/services.ts:1120`
+`packages/ui/src/compose/services.ts:1174`
 
 ### `compose/one-service-instance-per-screen` — rung 8
 
@@ -240,6 +240,14 @@ in the diff that drops it.
 **Why.** services hold polls, resources and effects against a board whose HTTP server tolerates very few connections. A service outliving its screen keeps fetching for a view nobody is looking at, and the cost lands on the live poll everyone IS looking at. What must NOT die with the screen is what the operator was doing — the open file and selection — which is why that lives in browserMemory instead
 
 `packages/ui/src/compose/services.ts:40`
+
+### `compose/tool-change-disarms` — rung 6
+
+**Mechanism.** choke point — `setTool` is the sole route to a tool change a card can reach (it is the only member of `SERVICES.shaping`'s returned object that writes `tool`; `setToolNow` itself is a closure-local `const`, never returned, so no card can call it directly — a TypeScript compile error, not a convention), and it now calls `disarmAll()` (control/armed.ts) UNCONDITIONALLY, every time, on every caller — there is no `next !== tool()` guard to word around. `disarmAll` iterates the same `disarmers` Set `createArmed` is the ONLY way to join (test/armed.test.ts walks src for a bypass), so a card that arms via `createArmed` — which is every two-step control in this codebase, by that same walk — is disarmed by construction of calling it, not by a comparison someone remembered to write. Falsified in test/tool-change-disarms.test.ts: arm, call the REAL `svc.setTool`, assert disarmed — including the same-tool case, which a conditional disarm would have missed.
+
+**Why.** before this, an arm payload carrying its OWN tool (`{ kind: "save", tool }`) was how a stale arm was DETECTED — `save()` compared `armed().tool` against `svc.tool()` on every click. The review that closed GIT_90 round 2 traced every such comparison and found no reachable mis-save, but the mismatch was still REPRESENTABLE: two copies of "which tool" existed in the running code, and only careful reading kept them from disagreeing. Gabe, invoking cant-break-by-design: "it shouldn't be possible to mismatch tool identification in the same active code." Removing the second copy (the arm payloads no longer carry a tool at all — ShapingCards.tsx's Decay/Sweep/Capture save arms) and disarming on every tool change makes a stale arm impossible to CLICK rather than merely unprofitable to click: by the time a second click could fire a write, the control has already reverted to unarmed.
+
+`packages/ui/src/compose/services.ts:840`
 
 ## config
 

@@ -632,10 +632,18 @@ export function ShapingStatusBody(props: { ctx: CardCtx }) {
  * a single value. A card with two independent arms can sit with both live, and
  * then the next Enter or Space is one of two different things depending on
  * where focus happens to be.
+ *
+ * NEITHER variant carries a tool. `run` never did (`RunKind` is measure /
+ * sweep / verify, not a head); `save` did until GIT_90 round 3 — see
+ * `tool-change-disarms` (compose/services.ts, beside `setTool`). `save()`
+ * below reads `svc.tool()` at fire time instead, and `svc.setTool` disarms
+ * this whole slot on every tool change, so there is no second copy of "which
+ * tool" left in this file to compare against and no way to fire this arm
+ * for a tool other than the one on screen at the moment of the click.
  */
 type CaptureArm =
 	| { readonly kind: "run"; readonly run: RunKind }
-	| { readonly kind: "save"; readonly tool: number };
+	| { readonly kind: "save" };
 
 /**
  * The card that moves the machine.
@@ -912,13 +920,17 @@ export function ShapingCaptureBody(props: { ctx: CardCtx }) {
 	 * here as the other's exception.
 	 */
 	const save = (): void => {
-		const tool = svc.tool();
 		const now = armed();
-		if (now === null || now.kind !== "save" || now.tool !== tool) {
-			setArmed({ kind: "save", tool });
+		if (now === null || now.kind !== "save") {
+			setArmed({ kind: "save" });
 			return;
 		}
 		setArmed(null);
+		// Read fresh, at fire time — never carried in the arm (tool-change-
+		// disarms, compose/services.ts). A tool switch between arming and this
+		// click already cleared `armed` via `svc.setTool`, so reaching here at
+		// all means `svc.tool()` is still the tool the operator armed for.
+		const tool = svc.tool();
 		// Two writers, and which one is not a choice made here: the batch says
 		// what it is. A verify batch has no route to `saveMeasurement` and a
 		// baseline has none to `saveVerified` (compose/services.ts,
@@ -962,12 +974,15 @@ export function ShapingCaptureBody(props: { ctx: CardCtx }) {
 		const arm = armed();
 		if (arm !== null && arm.kind === "save") {
 			// What is about to be written depends on what the batch IS — a
-			// verify adds a comparison and leaves the fingerprint alone.
+			// verify adds a comparison and leaves the fingerprint alone. The
+			// tool is `svc.tool()`, read here rather than off `arm` — the arm
+			// no longer carries one (tool-change-disarms, compose/services.ts).
 			const run = svc.runState();
+			const tool = svc.tool();
 			return armedSaveText(
 				run.kind === "fitted" ? run.purpose : { kind: "baseline" },
-				arm.tool,
-				RESULTS_PATH(arm.tool),
+				tool,
+				RESULTS_PATH(tool),
 			);
 		}
 		if (arm !== null) {
@@ -1361,7 +1376,10 @@ export function ShapingDecayBody(props: { ctx: CardCtx }) {
 	 *  from here — a key naming no bucket reads as nothing lit. */
 	const [family, setFamily] = createSignal<string | null>(null);
 	const [selected, setSelected] = createSignal<ReadonlySet<string>>(new Set<string>());
-	const [armed, setArmed] = createArmed<number>();
+	// `true`, not a tool number: the target is `svc.tool()`, read fresh at fire
+	// time (tool-change-disarms, compose/services.ts) — carrying a copy here
+	// is the exact duplicate that invariant exists to make unrepresentable.
+	const [armed, setArmed] = createArmed<true>();
 
 	/** Switching TO the board is the act that asks for the listing — never a
 	 *  render, and never on mount. 276 entries is several `rr_filelist` pages
@@ -1701,29 +1719,24 @@ export function ShapingDecayBody(props: { ctx: CardCtx }) {
 	});
 
 	/**
-	 * The armed tool, WRAPPED — because T0 is a number and `<Show when={0}>` is
-	 * a fallback.
-	 *
-	 * The button read "Confirm" while the line under it went on showing the
-	 * batch report, for the default tool and no other: `armed()` of 0 is falsy,
-	 * so the confirm sentence — the one that names the file about to be written
-	 * — never appeared for T0. An object is truthy whatever number it carries.
+	 * `armed()` is `true | null`, not a tool number, so there is no "T0 is
+	 * falsy" trap left to word around — this USED to wrap a `{tool}` object for
+	 * exactly that reason, back when the arm carried the tool at all. It no
+	 * longer does (tool-change-disarms, compose/services.ts): the target is
+	 * `svc.tool()`, read fresh below and in the confirm sentence, and
+	 * `svc.setTool` clears this arm outright on any tool change — reaching
+	 * `save()`'s fire branch at all already means `svc.tool()` is still the
+	 * tool this arm was made for.
 	 */
-	const arming = createMemo((): { tool: number } | null => {
-		const tool = armed();
-		return tool === null ? null : { tool };
-	});
-
-	const saveLabel = createMemo((): string => (arming() !== null ? "Confirm" : `Save to T${svc.tool()}`));
+	const saveLabel = createMemo((): string => (armed() !== null ? "Confirm" : `Save to T${svc.tool()}`));
 
 	const save = (): void => {
-		const tool = svc.tool();
-		if (armed() === tool) {
-			setArmed(null);
-			void svc.saveMeasurement(tool);
+		if (armed() === null) {
+			setArmed(true);
 			return;
 		}
-		setArmed(tool);
+		setArmed(null);
+		void svc.saveMeasurement(svc.tool());
 	};
 
 	const onFiles = (event: Event & { currentTarget: HTMLInputElement }): void => {
@@ -2058,8 +2071,8 @@ export function ShapingDecayBody(props: { ctx: CardCtx }) {
 				</button>
 			</div>
 			<p class="shp-batch-note" classList={{ "shp-warn-inline": svc.runState().kind === "failed" }}>
-				<Show when={arming()} fallback={batchReport()}>
-					{a => <>Confirm: write T{a().tool}&apos;s fingerprint to {RESULTS_PATH(a().tool)}. Escape cancels.</>}
+				<Show when={armed() !== null} fallback={batchReport()}>
+					<>Confirm: write T{svc.tool()}&apos;s fingerprint to {RESULTS_PATH(svc.tool())}. Escape cancels.</>
 				</Show>
 			</p>
 		</>
@@ -2110,7 +2123,10 @@ export function ShapingDecayBody(props: { ctx: CardCtx }) {
 export function ShapingSweepBody(props: { ctx: CardCtx }) {
 	const svc = props.ctx.service("shaping");
 	const [pick, setPick] = createSignal<string>("");
-	const [armed, setArmed] = createArmed<number>();
+	// `true`, not a tool number: the target is `svc.tool()`, read fresh at fire
+	// time (tool-change-disarms, compose/services.ts) — same reasoning as
+	// Decay's save bar, which carried the identical defect until GIT_90 round 3.
+	const [armed, setArmed] = createArmed<true>();
 
 	const sweep = (): SweepMatrix | null => svc.results().sweep;
 
@@ -2164,22 +2180,17 @@ export function ShapingSweepBody(props: { ctx: CardCtx }) {
 		];
 	});
 
-	/** The armed tool, wrapped: T0 is 0 and `<Show when={0}>` renders the
-	 *  fallback, so the confirm sentence would never appear for the default
-	 *  tool. Same defect the Decay card's save bar had. */
-	const arming = createMemo((): { tool: number } | null => {
-		const tool = armed();
-		return tool === null ? null : { tool };
-	});
-
+	/** `armed()` is `true | null` — no tool-shaped value to wrap against the
+	 *  "T0 is falsy" trap this card and Decay's save bar both used to have.
+	 *  `svc.saveSweep()` reads `svc.tool()` itself; `svc.setTool` disarms this
+	 *  slot on any tool change (tool-change-disarms, compose/services.ts). */
 	const save = (): void => {
-		const n = svc.tool();
-		if (armed() === n) {
-			setArmed(null);
-			void svc.saveSweep();
+		if (armed() === null) {
+			setArmed(true);
 			return;
 		}
-		setArmed(n);
+		setArmed(null);
+		void svc.saveSweep();
 	};
 
 	return (
@@ -2260,8 +2271,8 @@ export function ShapingSweepBody(props: { ctx: CardCtx }) {
 			    the operator reading a black band is looking at this chart. */}
 			<CardCaveat evidence={productsFor(svc.results(), svc.machineNow(), sp => cmd.inputShaping(sp as never)).sweep} />
 			<p class="shp-sweep-note" classList={{ "shp-warn-inline": svc.sweepState().kind === "failed" }}>
-				<Show when={arming()} fallback={sweepStateText(svc.sweepState())}>
-					{a => <>Confirm: write T{a().tool}&apos;s results, this sweep included, to {RESULTS_PATH(a().tool)}. Escape cancels.</>}
+				<Show when={armed() !== null} fallback={sweepStateText(svc.sweepState())}>
+					<>Confirm: write T{svc.tool()}&apos;s results, this sweep included, to {RESULTS_PATH(svc.tool())}. Escape cancels.</>
 				</Show>
 			</p>
 		</>

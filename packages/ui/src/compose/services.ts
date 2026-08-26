@@ -69,6 +69,7 @@ import type { CardId } from "./defs.ts";
 import { useEngine } from "../shaping/useEngine.ts";
 import { ACCEL_DIR, type BoardListingState, boardRef, byNewest, captureLiveness, captureNameParts, type CaptureRef, createCaptureLoader, type ImportedCapture, importedCount, importRef, isCaptureFile, type Liveness, MAX_BATCH, MAX_SWEEP, speedFamilies, type SweepFamily } from "../shaping/captures.ts";
 import { parseAccelAddr } from "../control/commands.ts";
+import { disarmAll } from "../control/armed.ts";
 import { type FileListEntry, FileNotFoundError } from "@dwc-ng/connector";
 import { aggregate, type Axis, type Fingerprint, type Mode, type NoFit } from "../shaping/engine/fit.ts";
 import { type FullStep, fullStepPerMm } from "../shaping/fullStep.ts";
@@ -832,12 +833,47 @@ function shapingService(base: ServiceBaseCtx) {
 		}
 	};
 
-	/** Changing tool changes which captures exist, so the selections reset with
-	 *  it — a stale one would select a different capture, not no capture. */
+	/**
+	 * Changing tool changes which captures exist, so the selections reset with
+	 * it — a stale one would select a different capture, not no capture.
+	 *
+	 * @invariant tool-change-disarms
+	 * @rung 6  choke point — `setTool` is the sole route to a tool change a
+	 *          card can reach (it is the only member of `SERVICES.shaping`'s
+	 *          returned object that writes `tool`; `setToolNow` itself is a
+	 *          closure-local `const`, never returned, so no card can call it
+	 *          directly — a TypeScript compile error, not a convention), and
+	 *          it now calls `disarmAll()` (control/armed.ts) UNCONDITIONALLY,
+	 *          every time, on every caller — there is no `next !== tool()`
+	 *          guard to word around. `disarmAll` iterates the same `disarmers`
+	 *          Set `createArmed` is the ONLY way to join (test/armed.test.ts
+	 *          walks src for a bypass), so a card that arms via `createArmed`
+	 *          — which is every two-step control in this codebase, by that
+	 *          same walk — is disarmed by construction of calling it, not by
+	 *          a comparison someone remembered to write. Falsified in
+	 *          test/tool-change-disarms.test.ts: arm, call the REAL
+	 *          `svc.setTool`, assert disarmed — including the same-tool case,
+	 *          which a conditional disarm would have missed.
+	 * @why before this, an arm payload carrying its OWN tool (`{ kind:
+	 *      "save", tool }`) was how a stale arm was DETECTED — `save()`
+	 *      compared `armed().tool` against `svc.tool()` on every click. The
+	 *      review that closed GIT_90 round 2 traced every such comparison and
+	 *      found no reachable mis-save, but the mismatch was still
+	 *      REPRESENTABLE: two copies of "which tool" existed in the running
+	 *      code, and only careful reading kept them from disagreeing. Gabe,
+	 *      invoking cant-break-by-design: "it shouldn't be possible to
+	 *      mismatch tool identification in the same active code." Removing
+	 *      the second copy (the arm payloads no longer carry a tool at all —
+	 *      ShapingCards.tsx's Decay/Sweep/Capture save arms) and disarming on
+	 *      every tool change makes a stale arm impossible to CLICK rather
+	 *      than merely unprofitable to click: by the time a second click
+	 *      could fire a write, the control has already reverted to unarmed.
+	 */
 	const setTool = (next: number): void => {
 		setToolNow(next);
 		setCapturePick(null);
 		setCandidateIndex(0);
+		disarmAll();
 	};
 
 	/**

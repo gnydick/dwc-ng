@@ -34,6 +34,22 @@ import { createSignal, onCleanup, type Accessor } from "solid-js";
  */
 const disarmers = new Set<() => void>();
 
+/**
+ * Disarm every currently-mounted armed control — the same effect Escape has,
+ * callable from code rather than a keypress.
+ *
+ * Escape is one caller. `compose/services.ts`'s `setTool` is the other (see
+ * `tool-change-disarms` there): switching the Shaping screen's shared tool
+ * calls this too, so a control armed for one tool cannot survive into
+ * another's click. Both callers share this ONE loop over `disarmers` rather
+ * than each walking the set themselves, for the reason the set is a module
+ * singleton at all — two loops are two chances to disagree about what
+ * "disarmed" means.
+ */
+export function disarmAll(): void {
+	for (const disarm of disarmers) disarm();
+}
+
 let listening = false;
 function listenOnce(): void {
 	// Guarded for node:test, where these modules are imported without a DOM.
@@ -43,7 +59,7 @@ function listenOnce(): void {
 	// leave the rest of the page armed.
 	window.addEventListener("keydown", e => {
 		if (e.key !== "Escape") return;
-		for (const disarm of disarmers) disarm();
+		disarmAll();
 	}, { capture: true });
 }
 
