@@ -17,6 +17,7 @@ import {
 	parseOrientationState, serializeOrientationState, toggledOrientation,
 } from "./panelOrientation.ts";
 import { safeEntries } from "@dwc-ng/connector";
+import type { MachineKeyName, MachineStore } from "../config/machineStore.ts";
 
 /**
  * Horizontal granularity, and the same argument the rows already won.
@@ -1182,6 +1183,70 @@ function removeStorage(key: string): void {
 	}
 }
 
+/**
+ * What a canvas persists: the layout itself, plus the three records that
+ * ride alongside it under the historic `<key>.parked` / `.orientation` /
+ * `.nolabels` siblings — hidden cards' remembered spots, per-card content
+ * direction, and which cards have their label column off. One interface
+ * with two producers, deliberately: `machineCanvasKeys` is the ONLY one
+ * backed by a real machine's store (config/machineStore.ts's closed
+ * MachineKeyName union), so a screen's saved layout can never be read back
+ * under the wrong machine. `devCanvasKeys` is the Card Lab's own carve-out —
+ * a bench with no machine behind it (Ruling 2, storage-keys.test.ts) that
+ * was never machine-scoped and stays that way, isolated under its own fixed
+ * key rather than pretending to be a `MachineStore`.
+ */
+export type CanvasKeyKind = "layout" | "parked" | "orientation" | "labels";
+
+export interface CanvasKeys {
+	get(kind: CanvasKeyKind): string | null;
+	set(kind: CanvasKeyKind, value: string): void;
+	remove(kind: CanvasKeyKind): void;
+}
+
+/**
+ * The real door: a screen's canvas, keyed by the caller's OWN machine and
+ * this screen's id. `canvas`/`canvasParked`/`canvasOrientation`/
+ * `canvasLabels` are four independent records rather than one record whose
+ * suffix encodes both the screen id and which of the four this is — see
+ * config/machineStore.ts's MachineKeyName doc for why folding them into one
+ * suffix string is the ambiguity safeSuffix exists to rule out, one level up.
+ */
+export function machineCanvasKeys(store: MachineStore, screenId: string): CanvasKeys {
+	const name = (kind: CanvasKeyKind): MachineKeyName => (
+		kind === "layout" ? "canvas"
+		: kind === "parked" ? "canvasParked"
+		: kind === "orientation" ? "canvasOrientation"
+		: "canvasLabels"
+	);
+	return {
+		get: kind => store.get(name(kind), screenId),
+		set: (kind, value) => store.set(name(kind), value, screenId),
+		remove: kind => store.remove(name(kind), screenId),
+	};
+}
+
+/**
+ * The Card Lab's own carve-out (dev/CardLab.tsx, allowlisted in
+ * storage-keys.test.ts): a fixed, origin-global key with no machine behind
+ * it. `baseKey` is a literal the caller writes out in full (never built from
+ * a shared prefix here), so this function itself carries no
+ * machine-scoped-looking literal for the lint to ever need to know about.
+ */
+export function devCanvasKeys(baseKey: string): CanvasKeys {
+	const key = (kind: CanvasKeyKind): string => (
+		kind === "layout" ? baseKey
+		: kind === "parked" ? `${baseKey}.parked`
+		: kind === "orientation" ? `${baseKey}.orientation`
+		: `${baseKey}.nolabels`
+	);
+	return {
+		get: kind => readStorage(key(kind)),
+		set: (kind, value) => writeStorage(key(kind), value),
+		remove: kind => removeStorage(key(kind)),
+	};
+}
+
 export interface PanelCanvasController {
 	styleFor: (id: string) => Record<string, string>;
 	startMove: (id: string, event: PointerEvent) => void;
@@ -1240,8 +1305,9 @@ export interface PanelCanvasController {
 
 /**
  * Per-view grid canvas controller. Call once per view; pass the result to
- * every <Panel> in it. Position/size persist to
- * localStorage["<storageKey>"] and survive reload.
+ * every <Panel> in it. Position/size persist through `keys` (CanvasKeys —
+ * machineCanvasKeys for a real screen, devCanvasKeys for the Card Lab bench)
+ * and survive reload.
  *
  * `isActive`, when given, excludes currently-not-rendered panels (e.g. a
  * `<Show>`-gated Camera or Fans panel, or Jobs' conditional Active-job/
@@ -1251,7 +1317,7 @@ export interface PanelCanvasController {
  * moving into the space it would otherwise occupy.
  */
 export function createPanelCanvas(
-	storageKey: string,
+	keys: CanvasKeys,
 	defaults: PanelDefault[],
 	isActive?: (id: string) => boolean,
 	/**
@@ -1282,24 +1348,23 @@ export function createPanelCanvas(
 ): PanelCanvasController {
 	const [state, setState] = createSignal(
 		bench === true
-			? benchOrigin(growToDefaults(parseStoredCanvas(readStorage(storageKey)), defaults).state)
-			: mergeCanvas(parseStoredCanvas(readStorage(storageKey)), defaults),
+			? benchOrigin(growToDefaults(parseStoredCanvas(keys.get("layout")), defaults).state)
+			: mergeCanvas(parseStoredCanvas(keys.get("layout")), defaults),
 	);
 	// Settle a redesign repair once rather than recomputing it on every load.
 	// Deliberately NOT persist(): that fires onLayoutChange -> markLayoutDirty,
 	// and a repair is not a user edit — nor is mutating the config store during
 	// signal initialisation safe. Correctness never depends on this landing:
 	// growToDefaults + reflow are deterministic and idempotent, so a browser
-	// where writeStorage no-ops (private mode, quota) rebuilds the identical
+	// where the write no-ops (private mode, quota) rebuilds the identical
 	// layout every time.
-	writeStorage(storageKey, serializeCanvas(state()));
+	keys.set("layout", serializeCanvas(state()));
 
-	const orientationStorageKey = `${storageKey}.orientation`;
 	// Stored wins (this browser's own toggles); otherwise seed from the
 	// composition, which is how orientation reaches a browser that has never
 	// seen this screen — the same tiering geometry uses.
 	const [orientationState, setOrientationState] = createSignal(((): OrientationState => {
-		const stored = parseOrientationState(readStorage(orientationStorageKey));
+		const stored = parseOrientationState(keys.get("orientation"));
 		if (Object.keys(stored).length > 0) return stored;
 		const seeded: OrientationState = {};
 		for (const d of defaults) {
@@ -1312,8 +1377,7 @@ export function createPanelCanvas(
 	// Persisted (same format as the canvas) so it survives a reload while the
 	// card is off the screen — a hidden card is not in the composition, so
 	// nothing else remembers where it was.
-	const parkedKey = `${storageKey}.parked`;
-	const [parked, setParked] = createSignal<CanvasState>(sanitizeCanvas(parseStoredCanvas(readStorage(parkedKey))));
+	const [parked, setParked] = createSignal<CanvasState>(sanitizeCanvas(parseStoredCanvas(keys.get("parked"))));
 
 	/**
 	 * Cards picked up together. Deliberately NOT persisted: a selection is a
@@ -1343,22 +1407,21 @@ export function createPanelCanvas(
 	}
 	const persistParked = (next: CanvasState): void => {
 		setParked(next);
-		writeStorage(parkedKey, serializeCanvas(next));
+		keys.set("parked", serializeCanvas(next));
 	};
 
 	const persist = (next: CanvasState): void => {
 		setState(next);
-		writeStorage(storageKey, serializeCanvas(next));
+		keys.set("layout", serializeCanvas(next));
 		onLayoutChange?.();
 	};
 
 	// Hidden labels, stored as the EXCEPTION set rather than a value per card:
 	// labels are on unless a slot says otherwise, so a card added later is
 	// labelled by default and an empty store means "everything as shipped".
-	const labelsStorageKey = `${storageKey}.nolabels`;
 	const [hiddenLabels, setHiddenLabels] = createSignal<ReadonlySet<string>>(((): ReadonlySet<string> => {
 		try {
-			const raw = readStorage(labelsStorageKey);
+			const raw = keys.get("labels");
 			const parsed: unknown = raw === null ? null : JSON.parse(raw);
 			return new Set(Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === "string") : []);
 		} catch {
@@ -1370,7 +1433,7 @@ export function createPanelCanvas(
 		const next = new Set(hiddenLabels());
 		if (!next.delete(id)) next.add(id);
 		setHiddenLabels(next);
-		writeStorage(labelsStorageKey, JSON.stringify([...next]));
+		keys.set("labels", JSON.stringify([...next]));
 	};
 
 	const orientationFor = (id: string): Orientation => orientationState()[id] ?? "vertical";
@@ -1378,7 +1441,7 @@ export function createPanelCanvas(
 	const toggleOrientation = (id: string): void => {
 		const next: OrientationState = { ...orientationState(), [id]: toggledOrientation(orientationFor(id)) };
 		setOrientationState(next);
-		writeStorage(orientationStorageKey, serializeOrientationState(next));
+		keys.set("orientation", serializeOrientationState(next));
 	};
 
 	/** state(), minus any currently-inactive panel other than the one being dragged/resized. */
@@ -1787,13 +1850,13 @@ export function createPanelCanvas(
 	};
 
 	const reset = (): void => {
-		removeStorage(storageKey);
+		keys.remove("layout");
 		setState(defaultCanvas(defaults));
-		removeStorage(orientationStorageKey);
+		keys.remove("orientation");
 		setOrientationState({});
 		// Reset is "back to the default layout" — remembered hidden spots are
 		// part of the deviation it clears.
-		removeStorage(parkedKey);
+		keys.remove("parked");
 		setParked({});
 	};
 
@@ -1807,8 +1870,8 @@ export function createPanelCanvas(
 		// the replaced layout's, and it does not lose its own either.
 		const next = orientations ?? {};
 		setOrientationState(next);
-		if (Object.keys(next).length === 0) removeStorage(orientationStorageKey);
-		else writeStorage(orientationStorageKey, serializeOrientationState(next));
+		if (Object.keys(next).length === 0) keys.remove("orientation");
+		else keys.set("orientation", serializeOrientationState(next));
 	};
 
 	const resetSlot = (id: string): void => {
@@ -1823,7 +1886,7 @@ export function createPanelCanvas(
 		const nextOrientation = { ...orientationState() };
 		delete nextOrientation[id];
 		setOrientationState(nextOrientation);
-		writeStorage(orientationStorageKey, serializeOrientationState(nextOrientation));
+		keys.set("orientation", serializeOrientationState(nextOrientation));
 	};
 
 	return {
@@ -1839,13 +1902,13 @@ export function createPanelCanvas(
  * Save-to-machine snapshots every screen's current local geometry into the
  * config overlay). Same parse + migrations the controller uses; null when
  * nothing (usable) is stored.
+ *
+ * `canvasStorageKey` (a bare string template) is gone — a screen's canvas
+ * bytes belong to whichever machine they were laid out on, so the ONLY way
+ * to name a screen's canvas record now is `machineCanvasKeys(store,
+ * screenId)`, built by the caller and threaded through these three
+ * functions rather than assembled here from a raw key.
  */
-/**
- * The canvas storage key for a screen. ONE definition — it was being built
- * from the same template at two call sites, which is the duplication that
- * lets the two copies of a layout drift apart in the first place.
- */
-export const canvasStorageKey = (screenId: string): string => `dwc-ng.canvas.${screenId}`;
 
 /**
  * Overwrite a screen's remembered geometry, mounted or not.
@@ -1854,27 +1917,28 @@ export const canvasStorageKey = (screenId: string): string => `dwc-ng.canvas.${s
  * which writes this AND the config overlay together. A layout written to only
  * one of the two stores is the bug this exists to prevent.
  */
-export function writeCanvasState(storageKey: string, rects: CanvasState, orientations?: OrientationState): void {
-	writeStorage(storageKey, serializeCanvas(sanitizeCanvas(rects)));
+export function writeCanvasState(store: MachineStore, screenId: string, rects: CanvasState, orientations?: OrientationState): void {
+	const keys = machineCanvasKeys(store, screenId);
+	keys.set("layout", serializeCanvas(sanitizeCanvas(rects)));
 	// Parked spots describe the layout being REPLACED — a hidden card's
 	// remembered position from the old layout would drop it somewhere
 	// arbitrary in the new one.
-	removeStorage(`${storageKey}.parked`);
+	keys.remove("parked");
 	// Orientation, by contrast, belongs to the incoming layout and arrives
 	// WITH it (it is part of the slot). Deleting it unconditionally is what
 	// made an import reset every card's direction.
 	const next = orientations ?? {};
-	if (Object.keys(next).length === 0) removeStorage(`${storageKey}.orientation`);
-	else writeStorage(`${storageKey}.orientation`, serializeOrientationState(next));
+	if (Object.keys(next).length === 0) keys.remove("orientation");
+	else keys.set("orientation", serializeOrientationState(next));
 }
 
 /** A screen's stored orientations, for capture into the config overlay. */
-export function readCanvasOrientation(storageKey: string): OrientationState {
-	return parseOrientationState(readStorage(`${storageKey}.orientation`));
+export function readCanvasOrientation(store: MachineStore, screenId: string): OrientationState {
+	return parseOrientationState(machineCanvasKeys(store, screenId).get("orientation"));
 }
 
-export function readCanvasState(storageKey: string): CanvasState | null {
-	const parsed = parseStoredCanvas(readStorage(storageKey));
+export function readCanvasState(store: MachineStore, screenId: string): CanvasState | null {
+	const parsed = parseStoredCanvas(machineCanvasKeys(store, screenId).get("layout"));
 	if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return null;
 	const out: CanvasState = {};
 	for (const [id, rect] of safeEntries(parsed as Record<string, unknown>)) {

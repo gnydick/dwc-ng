@@ -2,7 +2,9 @@ import { For, Show, createEffect, createSignal } from "solid-js";
 import { useApp } from "./context.ts";
 import { operatorTyped } from "../control/commands.ts";
 import { classifyReply } from "../om/consoleLog.ts";
-import { loadCommandHistory, pushCommand, saveCommandHistory } from "../om/commandHistory.ts";
+import { capHistory, loadCommandHistory, pushCommand, saveCommandHistory } from "../om/commandHistory.ts";
+import { machineKeySegment } from "../config/machineId.ts";
+import { machineStoreFor } from "../config/machineStore.ts";
 
 /**
  * Console as a regular panel — no more global docked/floating toggle.
@@ -65,7 +67,25 @@ function ConsoleForm() {
 	// Recall state. `history` is oldest→newest; `cursor` is null while editing a
 	// fresh line, otherwise a valid index into `history`. `draft` holds the
 	// in-progress line so ↓ back past the newest entry restores what was typed.
-	let history = loadCommandHistory();
+	//
+	// This card mounts at boot (console drawer on every view), which is BEFORE
+	// identity resolves — so history starts empty rather than blocking on it.
+	// The effect below hydrates as soon as identity is known, prepending the
+	// machine's own saved history onto anything typed in the gap (its FIRST
+	// run happens synchronously at creation, so a machine already identified
+	// by mount time hydrates immediately, with no separate seed path to keep
+	// in sync). Same shape as the console's own hydrateConsole and for the
+	// same reason: overwriting would lose live input to a merely-late load.
+	let history: string[] = [];
+	let hydratedFor: string | null = null;
+	createEffect(() => {
+		const store = machineStoreFor(app.machineId());
+		if (store === null) return;
+		const key = machineKeySegment(store.id);
+		if (key === hydratedFor) return;
+		hydratedFor = key;
+		history = capHistory([...loadCommandHistory(store), ...history]);
+	});
 	let cursor: number | null = null;
 	let draft = "";
 
@@ -82,7 +102,8 @@ function ConsoleForm() {
 		const value = code().trim();
 		if (value === "") return;
 		history = pushCommand(history, value);
-		saveCommandHistory(history);
+		const store = machineStoreFor(app.machineId());
+		if (store !== null) saveCommandHistory(store, history);
 		cursor = null;
 		draft = "";
 		setCode("");

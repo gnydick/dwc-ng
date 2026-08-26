@@ -1,5 +1,6 @@
 import { createEffect, onCleanup, onMount } from "solid-js";
 import { createOmStore } from "./om/store.ts";
+import { loadConsole } from "./om/consoleLog.ts";
 import { createConfigStore } from "./config/store.ts";
 import { createMachineSession } from "./config/machineSession.ts";
 import { DEFAULT_THERMAL_COLORS } from "./config/types.ts";
@@ -13,14 +14,32 @@ import Shell from "./shell/Shell.tsx";
 import "./app.css";
 
 export default function App(props: { backend: Backend }) {
-	const om = createOmStore();
+	// `machine` is read only from inside a deferred timeout (om/store.ts's
+	// persistSoon), never synchronously during createOmStore's own
+	// construction — see createOmStore's doc comment. That is what makes this
+	// declare-then-assign safe: by the time anything actually CALLS
+	// `machine.store()`, the assignment below has already run.
+	let machine!: ReturnType<typeof createMachineSession>;
+	const om = createOmStore({ machineStore: () => machine.store() });
 	// Identity resolves about one poll after boot (machineSession.ts): `store()`
 	// is null until then, and createConfigStore is required to take that
 	// accessor rather than default to "no machine" quietly — see its own doc
 	// comment for why an optional/defaulted parameter here was the bug.
-	const machine = createMachineSession(om.om);
+	machine = createMachineSession(om.om);
 	const config = createConfigStore({ machineStore: machine.store });
 	const temps = createTemperatureHistory(om);
+
+	// The console's own boot-time load (om/store.ts used to do this eagerly,
+	// unconditionally, from an origin-global key). It now waits for identity —
+	// and re-fires on a machine SWAP, which folds that (different) machine's
+	// own saved history in too rather than leaving the previous machine's
+	// bytes on screen forever. hydrateConsole prepends rather than replacing,
+	// so replies that arrived live before this fires are never discarded.
+	createEffect(() => {
+		const store = machine.store();
+		if (store === null) return;
+		om.hydrateConsole(loadConsole(store));
+	});
 	// Boot from the persisted dev backend (Mock by default; "Real" targets the
 	// board via the dev proxy). In production this is always the same-origin
 	// backend ("", empty password) served by the machine itself. The transport

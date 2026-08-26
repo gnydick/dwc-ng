@@ -2,6 +2,7 @@ import { createEffect, createSignal, onCleanup, Show, untrack } from "solid-js";
 import { useApp } from "../shell/context.ts";
 import { languageFor, type EditorLang } from "./lang.ts";
 import type { EditorHandle } from "./setup.ts";
+import { machineStoreFor, type MachineStore } from "../config/machineStore.ts";
 import {
 	beginSession,
 	checkpoint,
@@ -79,6 +80,16 @@ export function FileEditorBody(props: {
 	let handle: EditorHandle | null = null;
 	let generation = 0;
 
+	// Resolved fresh at each use, never captured once: identity can still be
+	// unknown when this card first mounts (App.tsx wires the connector before
+	// the first poll resolves it), and a machine can — in principle — change
+	// under a long-lived tab. Drafts follow the machine-half precedent
+	// (config/store.ts): while unidentified there is nothing to attribute a
+	// draft to, so persistence is skipped rather than guessed at. The in-memory
+	// session still works for this mount; it just won't survive a reload until
+	// a machine is known.
+	const draftStore = (): MachineStore | null => machineStoreFor(app.machineId());
+
 	const [dirty, setDirty] = createSignal(false);
 	const [status, setStatus] = createSignal<Status>("loading");
 	const [message, setMessage] = createSignal("");
@@ -103,7 +114,12 @@ export function FileEditorBody(props: {
 		const next = checkpoint(held, handle.getDoc());
 		if (next === held) return held;
 		setSession(next);
-		if (!saveSession(next)) {
+		// No machine identified yet: nothing to persist against, and nothing to
+		// warn about — this is a transient boot-time state, not a capacity
+		// problem, so the "too large" notice stays reserved for an actual
+		// saveSession failure.
+		const store = draftStore();
+		if (store !== null && !saveSession(store, next)) {
 			setNotice("This file is too large to keep a draft of — your edits will be lost on reload.");
 		}
 		return next;
@@ -123,7 +139,8 @@ export function FileEditorBody(props: {
 		try {
 			const [mod, text] = await Promise.all([import("./setup.ts"), app.connector.download(path)]);
 			if (gen !== generation) return; // superseded by a newer load
-			const stored = loadSession(path);
+			const store = draftStore();
+			const stored = store === null ? null : loadSession(store, path);
 			const active = stored ?? beginSession(path, text);
 			// A draft is never discarded for having gone stale — it is the
 			// operator's work, and they are the only one who gets to drop it. But
@@ -198,7 +215,8 @@ export function FileEditorBody(props: {
 			// back past a save. Only Close erases a session.
 			const next = markSaved(held, text);
 			setSession(next);
-			saveSession(next);
+			const store = draftStore();
+			if (store !== null) saveSession(store, next);
 			handle.setDoc(text); // new clean baseline in the view
 			setStatus("ready");
 			setMessage("Saved");
@@ -220,7 +238,8 @@ export function FileEditorBody(props: {
 			// is one ◀ away from being undone.
 			const next = markSaved(held, text);
 			setSession(next);
-			saveSession(next);
+			const store = draftStore();
+			if (store !== null) saveSession(store, next);
 			handle.setDoc(text);
 			setMessage("Reverted to the saved copy");
 			setNotice("");
@@ -234,7 +253,8 @@ export function FileEditorBody(props: {
 	 * makes "history survives a save, not a close" structural.
 	 */
 	const close = (): void => {
-		closeSession(props.path);
+		const store = draftStore();
+		if (store !== null) closeSession(store, props.path);
 		setSession(null);
 		props.onClose?.();
 	};
@@ -245,7 +265,8 @@ export function FileEditorBody(props: {
 		const next = stepTo(held, held.at + delta);
 		if (next === held) return;
 		setSession(next);
-		saveSession(next);
+		const store = draftStore();
+		if (store !== null) saveSession(store, next);
 		handle.replaceDoc(currentText(next));
 		setMessage("");
 	};

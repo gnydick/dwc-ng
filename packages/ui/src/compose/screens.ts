@@ -4,18 +4,22 @@
  * The nav rail, the hash router, and the renderer ALL derive from this one
  * list (I9): a screen that isn't here cannot be routed to or shown, and the
  * ROUTES/NAV/Switch triple hand-sync this replaced cannot drift because it
- * no longer exists. Built-in ids double as the layout storage identity
- * ("dwc-ng.canvas.<id>" — the historic keys, so saved layouts keep working).
+ * no longer exists. Built-in ids double as the layout storage identity — a
+ * screen's canvas record is `machineCanvasKeys(store, id)` on whichever
+ * machine it was laid out on (GIT_86; the historic origin-global per-screen
+ * canvas keys are retired, not migrated — see the campaign's Task 8
+ * precedent: those bytes carried no proof of which machine wrote them).
  *
  * Slot rects are the fitted defaults the per-view *.panelDefaults.ts files
  * carried before the conversion. User screens (overlay entries with minted
  * stable ids) join this list in phase A7b.
  */
 import { parseComposition, slotsOf, toSlotRect, type Composition, type CustomCardId } from "./composition.ts";
-import { canvasStorageKey, readCanvasOrientation, readCanvasState, writeCanvasState } from "../shell/panelCanvas.ts";
+import { readCanvasOrientation, readCanvasState, writeCanvasState } from "../shell/panelCanvas.ts";
 import type { OrientationState } from "../shell/panelOrientation.ts";
 import { LAB_ROUTE } from "../shell/router.ts";
 import type { SlotRect, UiConfig, UserScreenId } from "../config/types.ts";
+import type { MachineStore } from "../config/machineStore.ts";
 
 export interface ScreenDef {
 	/** Display name — a LABEL, never an identity (I10: renames can't orphan). */
@@ -363,7 +367,7 @@ export interface LayoutStore {
  * Both stores are therefore written here, together, or not at all. Callers
  * do not get to write one.
  */
-export function replaceScreenLayout(store: LayoutStore, screenId: string, rects: Record<string, SlotRect>): void {
+export function replaceScreenLayout(store: LayoutStore, machineStore: MachineStore, screenId: string, rects: Record<string, SlotRect>): void {
 	store.replaceAllScreenCards(screenId, rects);
 	// Orientation rides IN the slot but is stored beside the geometry, so it
 	// is split out here rather than at every call site.
@@ -371,7 +375,7 @@ export function replaceScreenLayout(store: LayoutStore, screenId: string, rects:
 	for (const [id, rect] of Object.entries(rects)) {
 		if (rect.orientation !== undefined) orientations[id] = rect.orientation;
 	}
-	writeCanvasState(canvasStorageKey(screenId), rects, orientations);
+	writeCanvasState(machineStore, screenId, rects, orientations);
 }
 
 /** The orientations an imported/replacement layout carries. */
@@ -383,12 +387,20 @@ export function orientationsOf(rects: Record<string, SlotRect>): OrientationStat
 	return out;
 }
 
-export function captureScreenGeometry(store: LayoutStore): void {
+/**
+ * `machineStore` is `null` when no machine is currently identified — the
+ * per-browser canvas store this reads is itself now machine-scoped, so with
+ * no machine there is nothing to read FROM, and this is a no-op rather than
+ * a guess at whose layout is on screen. Same precedent as config/store.ts's
+ * machine-half writes: identity unknown means skip, never adopt whatever
+ * happens to be lying around.
+ */
+export function captureScreenGeometry(store: LayoutStore, machineStore: MachineStore | null): void {
+	if (machineStore === null) return;
 	for (const entry of screenList(store.config)) {
-		const key = canvasStorageKey(entry.id);
-		const stored = readCanvasState(key);
+		const stored = readCanvasState(machineStore, entry.id);
 		if (stored === null) continue; // nothing local — the overlay copy stands
-		const orientations = readCanvasOrientation(key);
+		const orientations = readCanvasOrientation(machineStore, entry.id);
 		const cards: Record<string, SlotRect> = {};
 		for (const [id, slot] of slotsOf(entry.def.composition)) {
 			const orientation = orientations[id] ?? slot.orientation;

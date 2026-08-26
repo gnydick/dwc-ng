@@ -21,7 +21,7 @@
  *       localStorage access is typed against; that needs a storage facade the
  *       person-scoped keys also go through, which is out of phase 1's scope.
  */
-import { machineKeySegment, type IdentifiedMachine } from "./machineId.ts";
+import { isIdentified, machineKeySegment, type IdentifiedMachine, type MachineId } from "./machineId.ts";
 
 export const MACHINE_KEY_PREFIX = "dwc-ng.m.";
 
@@ -29,8 +29,22 @@ export const MACHINE_KEY_PREFIX = "dwc-ng.m.";
  * Every machine-scoped value in the app. Closed on purpose: adding a name is a
  * decision about scope, and it should have to be made here, in front of the
  * spec's key table, rather than by typing a new string at a call site.
+ *
+ * `canvasParked` / `canvasOrientation` / `canvasLabels` are the canvas's own
+ * derived siblings (Task 10) — a hidden card's remembered spot, a screen's
+ * per-card content direction, and which cards have their label column
+ * hidden. Each is suffixed by the same screen id as `canvas` itself, so they
+ * are four independent records per screen rather than one record encoding
+ * four meanings in its suffix string — deliberately, since a suffix is
+ * escaped as ONE opaque value (see safeSuffix below): concatenating a
+ * screen id with a hand-rolled marker (e.g. `${screenId}.parked`) would
+ * reintroduce, one level up, the exact ambiguity safeSuffix exists to rule
+ * out for the screen id itself (a screen id ending in ".parked" would land
+ * on the same key as a different screen's parked record).
  */
-export type MachineKeyName = "config" | "drafts" | "cmdHistory" | "console" | "canvas" | "snapshots";
+export type MachineKeyName =
+	| "config" | "drafts" | "cmdHistory" | "console" | "canvas"
+	| "canvasParked" | "canvasOrientation" | "canvasLabels" | "snapshots";
 
 export interface MachineStore {
 	readonly id: IdentifiedMachine;
@@ -65,4 +79,17 @@ export function openMachineStore(id: IdentifiedMachine): MachineStore {
 		set: (name, value, suffix) => ls()?.setItem(keyFor(name, suffix), value),
 		remove: (name, suffix) => ls()?.removeItem(keyFor(name, suffix)),
 	};
+}
+
+/**
+ * `openMachineStore`, gated on whether there is anyone to open it for.
+ * Everywhere a consumer holds a `MachineId` (a screen, a card, the console)
+ * rather than the `Accessor<MachineStore | null>` App.tsx builds once, this
+ * is how it gets a handle — the SAME choke point, not a second one: it never
+ * resolves identity itself, only turns an already-resolved one into a store.
+ * `machineSession.ts`'s own `store` memo calls this too, so the
+ * identified-or-null branch is written once rather than at every call site.
+ */
+export function machineStoreFor(id: MachineId): MachineStore | null {
+	return isIdentified(id) ? openMachineStore(id) : null;
 }

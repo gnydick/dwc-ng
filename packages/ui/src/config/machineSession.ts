@@ -8,8 +8,8 @@
  */
 import { createMemo, type Accessor } from "solid-js";
 import type { ObjectModel } from "../om/types.ts";
-import { isIdentified, resolveMachineId, type MachineId } from "./machineId.ts";
-import { openMachineStore, type MachineStore } from "./machineStore.ts";
+import { resolveMachineId, type MachineId } from "./machineId.ts";
+import { machineStoreFor, type MachineStore } from "./machineStore.ts";
 
 export function createMachineSession(om: ObjectModel): {
 	readonly id: Accessor<MachineId>;
@@ -23,10 +23,7 @@ export function createMachineSession(om: ObjectModel): {
 	);
 	// Keyed off the memo, so a poll that changes mcuTemp does not mint a new
 	// handle and re-run every consumer's hydrate effect.
-	const store = createMemo<MachineStore | null>(() => {
-		const current = id();
-		return isIdentified(current) ? openMachineStore(current) : null;
-	});
+	const store = createMemo<MachineStore | null>(() => machineStoreFor(id()));
 	return { id, store };
 }
 

@@ -1,6 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { pushCommand, parseHistory, serializeHistory, COMMAND_LIMIT } from "../src/om/commandHistory.ts";
+import { pushCommand, parseHistory, serializeHistory, loadCommandHistory, saveCommandHistory, capHistory, COMMAND_LIMIT } from "../src/om/commandHistory.ts";
+import { openMachineStore } from "../src/config/machineStore.ts";
+import type { IdentifiedMachine } from "../src/config/machineId.ts";
+import { withLocalStorage } from "./helpers/localStorage.ts";
+
+const MACHINE_A: IdentifiedMachine = { kind: "board", uniqueId: "MACHINE-A" };
+const MACHINE_B: IdentifiedMachine = { kind: "board", uniqueId: "MACHINE-B" };
 
 test("pushCommand appends oldest to newest", () => {
 	let h: string[] = [];
@@ -43,4 +49,27 @@ test("serialize/parse round-trips and serialize caps", () => {
 	assert.deepEqual(parseHistory(serializeHistory(h)), h);
 	const big = Array.from({ length: COMMAND_LIMIT + 10 }, (_v, i) => `G${i}`);
 	assert.equal(parseHistory(serializeHistory(big)).length, COMMAND_LIMIT);
+});
+
+test("capHistory keeps the newest `limit`, same shape as consoleLog's capLines", () => {
+	const big = Array.from({ length: COMMAND_LIMIT + 10 }, (_v, i) => `G${i}`);
+	const capped = capHistory(big);
+	assert.equal(capped.length, COMMAND_LIMIT);
+	assert.equal(capped[0], "G10", "oldest ten dropped");
+	assert.equal(capped.at(-1), `G${COMMAND_LIMIT + 9}`);
+});
+
+test("capHistory leaves a short history untouched", () => {
+	const h = ["G28", "M114"];
+	assert.deepEqual(capHistory(h, 10), h);
+});
+
+test("command history does not cross machines", () => {
+	withLocalStorage(() => {
+		const a = openMachineStore(MACHINE_A);
+		const b = openMachineStore(MACHINE_B);
+		saveCommandHistory(a, ["G28", "M114"]);
+		assert.deepEqual(loadCommandHistory(b), [], "machine B never saw these commands");
+		assert.deepEqual(loadCommandHistory(a), ["G28", "M114"]);
+	});
 });

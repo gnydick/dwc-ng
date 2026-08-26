@@ -52,17 +52,7 @@ function walk(dir: string, out: string[] = []): string[] {
 	return out;
 }
 
-test("no machine-scoped storage key literal lives outside config/machineStore.ts", {
-	skip:
-		"Task 10 moves the last keys through openMachineStore(); current offenders: " +
-		"config/types.ts (dwc-ng.config), editor/drafts.ts (dwc-ng.drafts), " +
-		"om/commandHistory.ts (dwc-ng.cmdHistory), om/consoleLog.ts (dwc-ng.console), " +
-		"compose/screens.ts (a prose comment naming dwc-ng.canvas.<id> that Task 10 " +
-		"rewrites once the canvas keys move), and shell/panelCanvas.ts (canvasStorageKey() " +
-		"mints dwc-ng.canvas.<id> via a template literal — a real second door, called " +
-		"from compose/screens.ts and shell/ComposedScreen.tsx, that Task 10 must route " +
-		"through openMachineStore() rather than leave standing).",
-}, () => {
+test("no machine-scoped storage key literal lives outside config/machineStore.ts", () => {
 	const offenders: string[] = [];
 	for (const file of walk(SRC)) {
 		const rel = file.slice(SRC.length).replace(/\\/g, "/");

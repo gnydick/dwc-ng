@@ -1,7 +1,7 @@
 /**
  * Edit sessions (editor/drafts.ts): the unsaved text and the checkpoint history
  * behind the editor's ◀ ▶ stepper, plus the storage that carries both across a
- * reload.
+ * reload — now keyed by which machine the file was opened on (GIT_86).
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -18,16 +18,12 @@ import {
 	saveSession,
 	stepTo,
 } from "../src/editor/drafts.ts";
+import { openMachineStore } from "../src/config/machineStore.ts";
+import type { IdentifiedMachine } from "../src/config/machineId.ts";
+import { withLocalStorage } from "./helpers/localStorage.ts";
 
-class MemStore {
-	private m = new Map<string, string>();
-	getItem(k: string): string | null { return this.m.has(k) ? this.m.get(k)! : null; }
-	setItem(k: string, v: string): void { this.m.set(k, v); }
-	removeItem(k: string): void { this.m.delete(k); }
-	clear(): void { this.m.clear(); }
-}
-const ls = new MemStore();
-(globalThis as { localStorage?: unknown }).localStorage = ls;
+const MACHINE_A: IdentifiedMachine = { kind: "board", uniqueId: "MACHINE-A" };
+const MACHINE_B: IdentifiedMachine = { kind: "board", uniqueId: "MACHINE-B" };
 
 const CFG = "0:/sys/config.g";
 
@@ -150,75 +146,97 @@ test("a board copy that moved under the draft is detectable", () => {
 // ---- storage ----
 
 test("a session survives a reload, and CLOSING is what erases it", () => {
-	ls.clear();
-	let s = beginSession(CFG, "a");
-	s = checkpoint(s, "ab");
-	assert.equal(saveSession(s), true);
+	withLocalStorage(() => {
+		const store = openMachineStore(MACHINE_A);
+		let s = beginSession(CFG, "a");
+		s = checkpoint(s, "ab");
+		assert.equal(saveSession(store, s), true);
 
-	const back = loadSession(CFG);
-	assert.notEqual(back, null);
-	assert.equal(currentText(back!), "ab", "the unsaved text came back");
-	assert.equal(isDirty(back!), true);
+		const back = loadSession(store, CFG);
+		assert.notEqual(back, null);
+		assert.equal(currentText(back!), "ab", "the unsaved text came back");
+		assert.equal(isDirty(back!), true);
 
-	// Saving to the board must NOT flush it.
-	assert.equal(saveSession(markSaved(s, "ab")), true);
-	assert.notEqual(loadSession(CFG), null, "a save left the session in place");
+		// Saving to the board must NOT flush it.
+		assert.equal(saveSession(store, markSaved(s, "ab")), true);
+		assert.notEqual(loadSession(store, CFG), null, "a save left the session in place");
 
-	closeSession(CFG);
-	assert.equal(loadSession(CFG), null, "closing flushed it");
+		closeSession(store, CFG);
+		assert.equal(loadSession(store, CFG), null, "closing flushed it");
+	});
+});
+
+test("drafts do not cross machines", () => {
+	withLocalStorage(() => {
+		const a = openMachineStore(MACHINE_A);
+		const b = openMachineStore(MACHINE_B);
+		saveSession(a, checkpoint(beginSession(CFG, "a"), "ab"));
+		assert.equal(loadSession(b, CFG), null, "machine B has no draft for a file it never opened here");
+		assert.notEqual(loadSession(a, CFG), null, "machine A still has its own");
+	});
 });
 
 test("a stored record filed under a DIFFERENT path is refused", () => {
 	// The one failure here that destroys data: restoring config.g's text into an
 	// editor open on homeall.g would write it over homeall.g on the next Save.
-	ls.clear();
-	ls.setItem(
-		"dwc-ng.drafts",
-		JSON.stringify({ "0:/sys/homeall.g": { path: CFG, baseline: "a", entries: ["a", "ab"], at: 1 } }),
-	);
-	assert.equal(loadSession("0:/sys/homeall.g"), null);
-	assert.equal(loadSession(CFG), null, "nor is it reachable under the path it claims");
+	withLocalStorage(() => {
+		const store = openMachineStore(MACHINE_A);
+		store.set(
+			"drafts",
+			JSON.stringify({ "0:/sys/homeall.g": { path: CFG, baseline: "a", entries: ["a", "ab"], at: 1 } }),
+		);
+		assert.equal(loadSession(store, "0:/sys/homeall.g"), null);
+		assert.equal(loadSession(store, CFG), null, "nor is it reachable under the path it claims");
+	});
 });
 
 test("malformed or hostile storage yields no session, never a throw", () => {
-	ls.clear();
-	ls.setItem("dwc-ng.drafts", "{not json");
-	assert.equal(loadSession(CFG), null);
+	withLocalStorage(() => {
+		const store = openMachineStore(MACHINE_A);
+		store.set("drafts", "{not json");
+		assert.equal(loadSession(store, CFG), null);
 
-	const bad = {
-		"0:/a": { path: "0:/a", baseline: "x", entries: [], at: 0 },            // empty history
-		"0:/b": { path: "0:/b", baseline: "x", entries: ["x"], at: 4 },         // index off the end
-		"0:/c": { path: "0:/c", baseline: 7, entries: ["x"], at: 0 },           // baseline not text
-		"0:/d": { path: "0:/d", baseline: "x", entries: ["x", 9], at: 0 },      // a non-string revision
-		"0:/e": { path: "0:/e", baseline: "x", entries: ["x", "xy"], at: 1 },   // the one good record
-	};
-	ls.setItem("dwc-ng.drafts", JSON.stringify(bad));
-	for (const path of ["0:/a", "0:/b", "0:/c", "0:/d"]) {
-		assert.equal(loadSession(path), null, `${path} should not revive`);
-	}
-	assert.equal(currentText(loadSession("0:/e")!), "xy", "a good record beside bad ones still loads");
+		const bad = {
+			"0:/a": { path: "0:/a", baseline: "x", entries: [], at: 0 },            // empty history
+			"0:/b": { path: "0:/b", baseline: "x", entries: ["x"], at: 4 },         // index off the end
+			"0:/c": { path: "0:/c", baseline: 7, entries: ["x"], at: 0 },           // baseline not text
+			"0:/d": { path: "0:/d", baseline: "x", entries: ["x", 9], at: 0 },      // a non-string revision
+			"0:/e": { path: "0:/e", baseline: "x", entries: ["x", "xy"], at: 1 },   // the one good record
+		};
+		store.set("drafts", JSON.stringify(bad));
+		for (const path of ["0:/a", "0:/b", "0:/c", "0:/d"]) {
+			assert.equal(loadSession(store, path), null, `${path} should not revive`);
+		}
+		assert.equal(currentText(loadSession(store, "0:/e")!), "xy", "a good record beside bad ones still loads");
+	});
 });
 
 test("a prototype-reaching key cannot pollute the store", () => {
-	ls.clear();
-	ls.setItem("dwc-ng.drafts", JSON.stringify({ "__proto__": { path: "__proto__", baseline: "x", entries: ["x"], at: 0 } }));
-	loadSession(CFG);
-	assert.equal(({} as Record<string, unknown>)["baseline"], undefined);
+	withLocalStorage(() => {
+		const store = openMachineStore(MACHINE_A);
+		store.set("drafts", JSON.stringify({ "__proto__": { path: "__proto__", baseline: "x", entries: ["x"], at: 0 } }));
+		loadSession(store, CFG);
+		assert.equal(({} as Record<string, unknown>)["baseline"], undefined);
+	});
 });
 
 test("the number of remembered files is capped, and the newest is never the one evicted", () => {
-	ls.clear();
-	for (let i = 0; i < 30; i++) saveSession(checkpoint(beginSession(`0:/sys/f${i}.g`, "a"), `edit${i}`));
-	let kept = 0;
-	for (let i = 0; i < 30; i++) if (loadSession(`0:/sys/f${i}.g`) !== null) kept++;
-	assert.ok(kept <= 12, `capped at 12 files, kept ${kept}`);
-	assert.notEqual(loadSession("0:/sys/f29.g"), null, "the file just written survived");
+	withLocalStorage(() => {
+		const store = openMachineStore(MACHINE_A);
+		for (let i = 0; i < 30; i++) saveSession(store, checkpoint(beginSession(`0:/sys/f${i}.g`, "a"), `edit${i}`));
+		let kept = 0;
+		for (let i = 0; i < 30; i++) if (loadSession(store, `0:/sys/f${i}.g`) !== null) kept++;
+		assert.ok(kept <= 12, `capped at 12 files, kept ${kept}`);
+		assert.notEqual(loadSession(store, "0:/sys/f29.g"), null, "the file just written survived");
+	});
 });
 
 test("a session too large to store says so instead of pretending", () => {
-	ls.clear();
-	const huge = "x".repeat(600 * 1024);
-	assert.equal(saveSession(checkpoint(beginSession("0:/sys/big.g", "a"), huge)), false);
+	withLocalStorage(() => {
+		const store = openMachineStore(MACHINE_A);
+		const huge = "x".repeat(600 * 1024);
+		assert.equal(saveSession(store, checkpoint(beginSession("0:/sys/big.g", "a"), huge)), false);
+	});
 });
 
 // The exact sequence that destroyed a revision on duet3, where sys files are

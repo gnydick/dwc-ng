@@ -369,8 +369,8 @@ test("serializeCanvas round-trips through parseStoredCanvas and mergeCanvas", ()
 // ---- audit H6: slot adoption obeys the collision contract like a drag ----
 
 test("ensureSlot never persists an overlap - a colliding adoption is re-placed", async () => {
-	const { createPanelCanvas, findFreePosition } = await import("../src/shell/panelCanvas.ts");
-	const canvas = createPanelCanvas("dwc-ng.canvas.test-h6", [
+	const { createPanelCanvas, devCanvasKeys, findFreePosition } = await import("../src/shell/panelCanvas.ts");
+	const canvas = createPanelCanvas(devCanvasKeys("dwc-ng.canvas.test-h6"), [
 		{ id: "a", ...rect(0, 0, 12, 40) },
 	]);
 	// Adopt a slot whose requested rect sits exactly on top of "a" - the
@@ -459,8 +459,8 @@ const posOf = (canvas: { styleFor: (id: string) => Record<string, string> }, id:
 };
 
 test("hiding a card then showing it restores its exact position", async () => {
-	const { createPanelCanvas } = await import("../src/shell/panelCanvas.ts");
-	const canvas = createPanelCanvas("dwc-ng.canvas.test-hide-restore", [
+	const { createPanelCanvas, devCanvasKeys } = await import("../src/shell/panelCanvas.ts");
+	const canvas = createPanelCanvas(devCanvasKeys("dwc-ng.canvas.test-hide-restore"), [
 		{ id: "a", ...rect(0, 0, 12, 40) },
 		{ id: "b", ...rect(12, 0, 12, 40) },
 	]);
@@ -472,8 +472,8 @@ test("hiding a card then showing it restores its exact position", async () => {
 });
 
 test("showing a hidden card slides DOWN when its old spot is now taken", async () => {
-	const { createPanelCanvas } = await import("../src/shell/panelCanvas.ts");
-	const canvas = createPanelCanvas("dwc-ng.canvas.test-hide-slide", [
+	const { createPanelCanvas, devCanvasKeys } = await import("../src/shell/panelCanvas.ts");
+	const canvas = createPanelCanvas(devCanvasKeys("dwc-ng.canvas.test-hide-slide"), [
 		{ id: "a", ...rect(0, 0, 12, 40) },
 	]);
 	canvas.removeSlot("a"); // hide a (remembered at 0,0 spanning rows 0..39)
@@ -493,16 +493,16 @@ test("a remembered position survives a reload (persisted, card off the screen)",
 	}
 	(globalThis as { localStorage?: unknown }).localStorage = new MemStore();
 	try {
-		const { createPanelCanvas } = await import("../src/shell/panelCanvas.ts");
+		const { createPanelCanvas, devCanvasKeys } = await import("../src/shell/panelCanvas.ts");
 		const key = "dwc-ng.canvas.test-parked-persist";
-		const c1 = createPanelCanvas(key, [
+		const c1 = createPanelCanvas(devCanvasKeys(key), [
 			{ id: "a", ...rect(0, 0, 12, 40) },
 			{ id: "b", ...rect(12, 0, 12, 40) },
 		]);
 		c1.removeSlot("b"); // hide — remembered rect persists to localStorage
 		// "Reload": a fresh controller from the same key, with b NOT in defaults
 		// (it's hidden, so it isn't in the composition any more).
-		const c2 = createPanelCanvas(key, [{ id: "a", ...rect(0, 0, 12, 40) }]);
+		const c2 = createPanelCanvas(devCanvasKeys(key), [{ id: "a", ...rect(0, 0, 12, 40) }]);
 		c2.ensureSlot("b", rect(0, 200, 12, 40)); // show b again
 		assert.deepEqual(posOf(c2, "b"), { col: 12, row: 0 }, "restored from the persisted parked store");
 	} finally {

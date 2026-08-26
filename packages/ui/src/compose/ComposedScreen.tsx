@@ -21,7 +21,8 @@ import { useApp } from "../shell/context.ts";
 import { createArmed } from "../control/armed.ts";
 import { railSlot } from "../shell/railSlot.ts";
 import { PanelCanvas } from "../shell/PanelCanvas.tsx";
-import { canvasStorageKey, createPanelCanvas, type PanelCanvasController } from "../shell/panelCanvas.ts";
+import { createPanelCanvas, machineCanvasKeys, type PanelCanvasController } from "../shell/panelCanvas.ts";
+import { machineStoreFor, type MachineStore } from "../config/machineStore.ts";
 import { CARD_DEFS, allCardIds, parseCardId, type CardId } from "./defs.ts";
 import { RegistryCard, cardTitleOf } from "./RegistryCard.tsx";
 import { addCard, compositionRects, customCardIds, isCustomCardId, slotsOf, type Composition, type CustomCardId, type SlotId } from "./composition.ts";
@@ -68,94 +69,117 @@ export function ComposedScreen(props: { screenId: string }) {
 		onScreen: (id: CardId) => composition()[id] !== undefined,
 	});
 
-	const ctxFor = (id: SlotId): CardCtx => ({
-		...app,
-		connected,
-		orientation: () => canvas.orientationFor(id),
-		labels: () => canvas.labelsFor(id),
-		service,
-	});
-
-	const visibleFor = (id: CardId): boolean => {
-		const visibleWhen = CARD_DEFS[id].visibleWhen;
-		if (visibleWhen === undefined) return true;
-		// Containment: a predicate that throws is a card bug, but it must cost
-		// that CARD (shown despite the error), never the screen or the router —
-		// an exception here propagates through Show's memo and wedges the whole
-		// shell (observed live 2026-07-23 with an OM field a board didn't
-		// report). Predicates should be total; this makes the blast radius
-		// card-sized when one isn't.
-		try {
-			return visibleWhen(ctxFor(id));
-		} catch {
-			return true;
-		}
-	};
-
-	// Initial defaults from the composition at mount; later membership edits
-	// flow through the sync effect below instead of a remount.
-	const canvas = createPanelCanvas(
-		canvasStorageKey(props.screenId),
-		untrack(() => slotsOf(composition()).map(([id, slot]) => ({ id, ...slot }))),
-		rawId => {
-			const id = parseCardId(rawId);
-			return id === null ? true : visibleFor(id);
-		},
-		// A moved or resized card is an unsaved change: Save to machine is
-		// gated on the dirty flag, and geometry only reaches the overlay at
-		// save time (captureScreenGeometry), so without this the button stays
-		// greyed out and the layout can never leave this browser.
-		() => app.config.markLayoutDirty(),
-	);
-
-	// Composition edits → canvas slots. Adding a card adopts its (auto-placed)
-	// rect; removing forgets it. Untouched cards keep their state and DOM.
-	// The composition is the TOTAL slot truth for a screen, so anything the
-	// canvas tracks that isn't in it is stale — including unrecognizable junk
-	// ids from old storage, which the previous "known ids only" sweep kept
-	// forever (audit L5).
-	createEffect(() => {
-		const comp = composition();
-		for (const [id, slot] of slotsOf(comp)) canvas.ensureSlot(id, slot);
-		for (const id of canvas.slotIds()) {
-			if (!(id in comp)) canvas.removeSlot(id);
-		}
-	});
-
-	// Stable primitive keys: <For> keeps DOM/state for ids that remain.
-	const slotIdList = createMemo<SlotId[]>(() => slotsOf(composition()).map(([id]) => id));
+	// A screen's canvas is per-machine (GIT_86): the layout a card sits at was
+	// laid out on THIS machine, so it must not flash into view under a
+	// different one. `machineStoreFor` derives from AppServices.machineId,
+	// the one identity App.tsx resolves — never a second resolution.
+	const machineStore = createMemo<MachineStore | null>(() => machineStoreFor(app.machineId()));
 
 	return (
-		<>
-			{/* Into the RAIL, not above the canvas. The toolbar that used to live
-			    here cost 36px of full-width canvas height on every screen — nine
-			    row units off the top of every card — while the rail carried 812px
-			    of unused column. Portalled rather than hoisted: see railSlot.ts. */}
-			<Show when={railSlot()}>
-				{slot => (
-					<Portal mount={slot()}>
-						<ComposeDrawer screenId={props.screenId} entry={entry()} composition={composition()} previewCtx={ctxFor("console")} canvas={canvas} />
-					</Portal>
-				)}
-			</Show>
-			<PanelCanvas class={entry()?.def.class}>
-				<For each={slotIdList()}>
-					{id => (
-						<Show
-							when={isCustomCardId(id) ? id : null}
-							fallback={
-								// I3, mount half — same predicate the canvas filter uses.
-								<Show when={visibleFor(id as CardId)}>
-									<RegistryCard id={id as CardId} canvas={canvas} ctx={ctxFor(id)} />
-								</Show>
-							}
-						>
-							{customId => <CustomCard id={customId()} canvas={canvas} ctx={ctxFor(id)} />}
+		<Show
+			when={machineStore()}
+			keyed
+			// Reserves the SAME element the real content renders into, so the
+			// page does not reflow once identity resolves — it only fills in.
+			// Rendering the defaults here instead (the tempting shortcut) is
+			// exactly the jitter this gate exists to prevent: a card would
+			// appear at its coded default and then visibly jump to its saved
+			// spot the instant the canvas mounts for real.
+			fallback={<PanelCanvas class={entry()?.def.class}>{null}</PanelCanvas>}
+		>
+			{store => {
+				const ctxFor = (id: SlotId): CardCtx => ({
+					...app,
+					connected,
+					orientation: () => canvas.orientationFor(id),
+					labels: () => canvas.labelsFor(id),
+					service,
+				});
+
+				const visibleFor = (id: CardId): boolean => {
+					const visibleWhen = CARD_DEFS[id].visibleWhen;
+					if (visibleWhen === undefined) return true;
+					// Containment: a predicate that throws is a card bug, but it must
+					// cost that CARD (shown despite the error), never the screen or the
+					// router — an exception here propagates through Show's memo and
+					// wedges the whole shell (observed live 2026-07-23 with an OM field
+					// a board didn't report). Predicates should be total; this makes
+					// the blast radius card-sized when one isn't.
+					try {
+						return visibleWhen(ctxFor(id));
+					} catch {
+						return true;
+					}
+				};
+
+				// Initial defaults from the composition at mount; later membership
+				// edits flow through the sync effect below instead of a remount.
+				const canvas = createPanelCanvas(
+					machineCanvasKeys(store, props.screenId),
+					untrack(() => slotsOf(composition()).map(([id, slot]) => ({ id, ...slot }))),
+					rawId => {
+						const id = parseCardId(rawId);
+						return id === null ? true : visibleFor(id);
+					},
+					// A moved or resized card is an unsaved change: Save to machine is
+					// gated on the dirty flag, and geometry only reaches the overlay at
+					// save time (captureScreenGeometry), so without this the button
+					// stays greyed out and the layout can never leave this browser.
+					() => app.config.markLayoutDirty(),
+				);
+
+				// Composition edits → canvas slots. Adding a card adopts its
+				// (auto-placed) rect; removing forgets it. Untouched cards keep their
+				// state and DOM. The composition is the TOTAL slot truth for a
+				// screen, so anything the canvas tracks that isn't in it is stale —
+				// including unrecognizable junk ids from old storage, which the
+				// previous "known ids only" sweep kept forever (audit L5).
+				createEffect(() => {
+					const comp = composition();
+					for (const [id, slot] of slotsOf(comp)) canvas.ensureSlot(id, slot);
+					for (const id of canvas.slotIds()) {
+						if (!(id in comp)) canvas.removeSlot(id);
+					}
+				});
+
+				// Stable primitive keys: <For> keeps DOM/state for ids that remain.
+				const slotIdList = createMemo<SlotId[]>(() => slotsOf(composition()).map(([id]) => id));
+
+				return (
+					<>
+						{/* Into the RAIL, not above the canvas. The toolbar that used to
+						    live here cost 36px of full-width canvas height on every
+						    screen — nine row units off the top of every card — while the
+						    rail carried 812px of unused column. Portalled rather than
+						    hoisted: see railSlot.ts. */}
+						<Show when={railSlot()}>
+							{slot => (
+								<Portal mount={slot()}>
+									<ComposeDrawer screenId={props.screenId} entry={entry()} composition={composition()} previewCtx={ctxFor("console")} canvas={canvas} machineStore={store} />
+								</Portal>
+							)}
 						</Show>
-					)}
-				</For>
-			</PanelCanvas>
-		</>
+						<PanelCanvas class={entry()?.def.class}>
+							<For each={slotIdList()}>
+								{id => (
+									<Show
+										when={isCustomCardId(id) ? id : null}
+										fallback={
+											// I3, mount half — same predicate the canvas filter uses.
+											<Show when={visibleFor(id as CardId)}>
+												<RegistryCard id={id as CardId} canvas={canvas} ctx={ctxFor(id)} />
+											</Show>
+										}
+									>
+										{customId => <CustomCard id={customId()} canvas={canvas} ctx={ctxFor(id)} />}
+									</Show>
+								)}
+							</For>
+						</PanelCanvas>
+					</>
+				);
+			}}
+		</Show>
 	);
 }
 
@@ -213,7 +237,7 @@ function PaletteIcon() {
  *  "atx-like" names naturally — "case doesn't matter". */
 const byName = (a: string, b: string): number => a.localeCompare(b, undefined, { sensitivity: "base" });
 
-function ComposeDrawer(props: { screenId: string; entry: ScreenEntry | null; composition: Composition; previewCtx: CardCtx; canvas: PanelCanvasController }) {
+function ComposeDrawer(props: { screenId: string; entry: ScreenEntry | null; composition: Composition; previewCtx: CardCtx; canvas: PanelCanvasController; machineStore: MachineStore }) {
 	const app = useApp();
 	// The card pickers, alphabetized. Spread before sort so the registry's own
 	// definition order is never mutated.
@@ -281,7 +305,7 @@ function ComposeDrawer(props: { screenId: string; entry: ScreenEntry | null; com
 			// store alone shreds the layout card by card.
 			const screenId = plan.target?.id ?? app.config.addScreen(parsed.name);
 			const rects = remapScreenCards(parsed.cards, idMap);
-			replaceScreenLayout(app.config, screenId, rects);
+			replaceScreenLayout(app.config, props.machineStore, screenId, rects);
 			// The screen being replaced may be the one on screen, which no route
 			// change would remount.
 			if (screenId === props.screenId) props.canvas.adoptLayout(rects, orientationsOf(rects));

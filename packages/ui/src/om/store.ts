@@ -1,8 +1,10 @@
 import { createStore, reconcile, produce, type SetStoreFunction } from "solid-js/store";
+import type { Accessor } from "solid-js";
 import type { ConnectorEvents, ConnectionStatus, ConnectorTransport } from "@dwc-ng/connector";
 import { conformModelKey, emptyModel, type ObjectModel } from "./types.ts";
-import { appendCapped, loadConsole, saveConsole, type ConsoleLine } from "./consoleLog.ts";
+import { appendCapped, capLines, saveConsole, type ConsoleLine } from "./consoleLog.ts";
 import { isPlainObject, isSafeKey, safeEntries } from "@dwc-ng/connector";
+import type { MachineStore } from "../config/machineStore.ts";
 
 /**
  * The two stores of machine truth, and the bridge from a Connector.
@@ -37,11 +39,41 @@ export interface OmStore {
 	setOm: SetStoreFunction<ObjectModel>;
 	connection: ConnectionState;
 	console: ConsoleLine[];
+	/**
+	 * Fold a machine's persisted console lines in, oldest-first, ahead of
+	 * whatever arrived live since boot — never overwrite. Identity resolves
+	 * about a poll after boot (config/machineSession.ts), so replies can
+	 * already be streaming in by the time a machine's own history is known;
+	 * dropping them to make room for the load would lose live data to a
+	 * merely-late one. Capped the same as a live append, so a machine with a
+	 * long persisted log cannot make this call exceed CONSOLE_LIMIT.
+	 */
+	hydrateConsole(loaded: ConsoleLine[]): void;
 	/** ConnectorEvents implementation — pass to the connector's options. */
 	events: ConnectorEvents;
 }
 
-export function createOmStore(): OmStore {
+/**
+ * `machineStore` names which machine's store an incoming reply persists to,
+ * the same "no machine, no write" precedent as config/store.ts's machine
+ * half: a reply that arrives before identity resolves still joins the LIVE
+ * log (it is real data the operator is watching right now), it just is not
+ * written to disk under a guess. Optional and defaulting to "no machine" —
+ * unlike config/store.ts's machineStore, which the machine-identity work
+ * itself is reviewed against, createOmStore is called from many OM-merge
+ * tests that have nothing to do with identity, and an unwired default of
+ * "never persists" is safe (never wrong-machine) rather than merely
+ * convenient, so it does not carry the same "must be explicit" case.
+ *
+ * A lazy accessor rather than a `MachineStore | null` value: App.tsx builds
+ * the machine session FROM this store's `om` proxy, so the two are
+ * necessarily constructed in that order and the accessor is what lets the
+ * later one's answer reach code written here. It is read only from inside
+ * `persistSoon`'s deferred timeout, never synchronously during construction,
+ * so which of the two exists first is not a hazard.
+ */
+export function createOmStore(options?: { machineStore?: Accessor<MachineStore | null> }): OmStore {
+	const machineStore = options?.machineStore ?? ((): null => null);
 	const [om, setOm] = createStore<ObjectModel>(emptyModel());
 	const [connection, setConnection] = createStore<ConnectionState>({
 		status: "disconnected",
@@ -50,9 +82,18 @@ export function createOmStore(): OmStore {
 		transport: null,
 		boardType: null,
 	});
-	// Macro output (M118) is the reason to run some macros — restore it so a
-	// reload mid-run doesn't lose what the machine already told you.
-	const [consoleLines, setConsoleLines] = createStore<ConsoleLine[]>(loadConsole());
+	// Starts empty rather than reading a prior machine's (or no machine's)
+	// bytes at boot — see hydrateConsole's doc comment for how a machine's own
+	// history joins once identity is known.
+	const [consoleLines, setConsoleLines] = createStore<ConsoleLine[]>([]);
+
+	const hydrateConsole = (loaded: ConsoleLine[]): void => {
+		setConsoleLines(produce(lines => {
+			const merged = capLines([...loaded, ...lines]);
+			lines.length = 0;
+			lines.push(...merged);
+		}));
+	};
 
 	// Persist throttled: a chatty macro must not re-serialize the whole log per
 	// message. The store proxy is read at flush time, so this saves current state.
@@ -61,7 +102,8 @@ export function createOmStore(): OmStore {
 		if (saveTimer !== null) return;
 		saveTimer = setTimeout(() => {
 			saveTimer = null;
-			saveConsole(consoleLines.slice());
+			const store = machineStore();
+			if (store !== null) saveConsole(store, consoleLines.slice());
 		}, 400);
 	};
 
@@ -114,7 +156,7 @@ export function createOmStore(): OmStore {
 		},
 	};
 
-	return { om, setOm, connection, console: consoleLines, events };
+	return { om, setOm, connection, console: consoleLines, hydrateConsole, events };
 }
 
 /**

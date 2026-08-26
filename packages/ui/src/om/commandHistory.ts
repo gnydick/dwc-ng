@@ -3,18 +3,17 @@
  *
  * Separate from the reply log (om/consoleLog.ts): that stores what the machine
  * SAID, this stores what the operator TYPED, so a code can be recalled and
- * re-sent without retyping. Persisted to localStorage, not the config overlay —
- * a command log has no business being uploaded to the printer's SD, same
- * reasoning as the reply log.
+ * re-sent without retyping. Persisted through the caller's machine's store
+ * (config/machineStore.ts) — a command log has no business crossing machines
+ * any more than a config file does, same reasoning as the reply log.
  *
  * Pure reducer (`pushCommand`) kept apart from storage so it's testable and so
  * a corrupt/blocked store can never break boot.
  */
+import type { MachineStore } from "../config/machineStore.ts";
 
 /** Plenty to scroll back through a session's worth of manual codes. */
 export const COMMAND_LIMIT = 100;
-
-const STORAGE_KEY = "dwc-ng.cmdHistory";
 
 /**
  * Append a sent command, oldest→newest. Blank input is ignored; an immediate
@@ -27,6 +26,12 @@ export function pushCommand(history: string[], command: string, limit: number = 
 	if (history.length > 0 && history[history.length - 1] === trimmed) return history;
 	const next = [...history, trimmed];
 	return next.length > limit ? next.slice(next.length - limit) : next;
+}
+
+/** Keep only the newest `limit` commands — same shape as consoleLog's capLines,
+ *  used when hydrating a history that grew locally before a machine was known. */
+export function capHistory(history: string[], limit: number = COMMAND_LIMIT): string[] {
+	return history.length > limit ? history.slice(history.length - limit) : history;
 }
 
 /** Tolerant parse: anything unexpected yields an empty history, never a throw. */
@@ -46,21 +51,21 @@ export function serializeHistory(history: string[], limit: number = COMMAND_LIMI
 	return JSON.stringify(history.length > limit ? history.slice(history.length - limit) : history);
 }
 
-/** Restore the history; a blocked or corrupt store just starts empty. */
-export function loadCommandHistory(): string[] {
-	if (typeof localStorage === "undefined") return [];
+/** Restore the history from `store`'s machine; a blocked or corrupt store just
+ *  starts empty. */
+export function loadCommandHistory(store: MachineStore): string[] {
 	try {
-		return parseHistory(localStorage.getItem(STORAGE_KEY));
+		return parseHistory(store.get("cmdHistory"));
 	} catch {
 		return [];
 	}
 }
 
-/** Persist the history. Never throws — a full/blocked quota must not break the UI. */
-export function saveCommandHistory(history: string[]): void {
-	if (typeof localStorage === "undefined") return;
+/** Persist the history to `store`'s machine. Never throws — a full/blocked
+ *  quota must not break the UI. */
+export function saveCommandHistory(store: MachineStore, history: string[]): void {
 	try {
-		localStorage.setItem(STORAGE_KEY, serializeHistory(history));
+		store.set("cmdHistory", serializeHistory(history));
 	} catch {
 		// Private mode / quota exceeded: recall just won't survive a reload.
 	}

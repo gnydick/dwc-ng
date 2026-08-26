@@ -25,8 +25,7 @@
  * per-file keys would each be bounded and the set of them unbounded.
  */
 import { isPlainObject, safeEntries } from "@dwc-ng/connector";
-
-const STORE_KEY = "dwc-ng.drafts";
+import type { MachineStore } from "../config/machineStore.ts";
 
 /**
  * The document, its history, and the board copy it diverged from.
@@ -193,10 +192,18 @@ export function isStale(session: EditSession, boardText: string): boolean {
 
 type Store = Record<string, EditSession>;
 
+/**
+ * Every draft session lives in the caller's OWN machine's store (config/
+ * machineStore.ts) — a session is text read off and destined for THAT
+ * machine's SD card, so restoring it while talking to a different board
+ * would overwrite the wrong machine's file on the next Save. `store` is
+ * required, not optional: the caller (FileEditorBody) decides what to do
+ * before identity resolves, which is "don't", not "guess".
+ */
+
 /** Tolerant read of the whole store: anything malformed is simply not a session. */
-function readStore(): Store {
-	if (typeof localStorage === "undefined") return {};
-	const raw = localStorage.getItem(STORE_KEY);
+function readStore(machineStore: MachineStore): Store {
+	const raw = machineStore.get("drafts");
 	if (raw === null) return {};
 	let parsed: unknown;
 	try {
@@ -263,18 +270,17 @@ function reviveSession(path: string, value: unknown): EditSession | null {
 	return { path, baseline: normalizeDoc(baseline), entries, at: Math.max(0, rawAt - dropped) };
 }
 
-function writeStore(store: Store): void {
-	if (typeof localStorage === "undefined") return;
+function writeStore(machineStore: MachineStore, store: Store): void {
 	try {
-		localStorage.setItem(STORE_KEY, JSON.stringify(store));
+		machineStore.set("drafts", JSON.stringify(store));
 	} catch {
 		// Private mode / quota: drafts just won't outlive the tab.
 	}
 }
 
-/** The session held for `path`, or null. */
-export function loadSession(path: string): EditSession | null {
-	return readStore()[path] ?? null;
+/** The session held for `path` on `store`'s machine, or null. */
+export function loadSession(store: MachineStore, path: string): EditSession | null {
+	return readStore(store)[path] ?? null;
 }
 
 /**
@@ -300,26 +306,26 @@ export function loadSession(path: string): EditSession | null {
  *       whose insert reports evictions, so a third writer cannot add a session
  *       without meeting them.
  */
-export function saveSession(session: EditSession): boolean {
-	const store = readStore();
+export function saveSession(machineStore: MachineStore, session: EditSession): boolean {
+	const records = readStore(machineStore);
 	// Re-inserting last makes plain object order a least-recently-written list,
 	// which is what the count cap evicts from.
-	delete store[session.path];
-	store[session.path] = session;
-	for (const path of Object.keys(store)) {
-		if (Object.keys(store).length <= MAX_SESSIONS) break;
-		if (path !== session.path) delete store[path];
+	delete records[session.path];
+	records[session.path] = session;
+	for (const path of Object.keys(records)) {
+		if (Object.keys(records).length <= MAX_SESSIONS) break;
+		if (path !== session.path) delete records[path];
 	}
-	while (JSON.stringify(store).length > MAX_STORE_BYTES) {
-		const oldest = Object.keys(store).find(path => path !== session.path);
+	while (JSON.stringify(records).length > MAX_STORE_BYTES) {
+		const oldest = Object.keys(records).find(path => path !== session.path);
 		if (oldest === undefined) {
 			// Nothing left to give: this one session is over the ceiling on its
 			// own. Leave what was already stored alone rather than clearing it.
 			return false;
 		}
-		delete store[oldest];
+		delete records[oldest];
 	}
-	writeStore(store);
+	writeStore(machineStore, records);
 	return true;
 }
 
@@ -343,9 +349,9 @@ export function saveSession(session: EditSession): boolean {
  *       not of the store. Promote by having eviction report what it dropped, so
  *       a lost draft is observable rather than merely bounded.
  */
-export function closeSession(path: string): void {
-	const store = readStore();
-	if (!(path in store)) return;
-	delete store[path];
-	writeStore(store);
+export function closeSession(machineStore: MachineStore, path: string): void {
+	const records = readStore(machineStore);
+	if (!(path in records)) return;
+	delete records[path];
+	writeStore(machineStore, records);
 }
