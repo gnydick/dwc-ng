@@ -145,42 +145,63 @@ export const BED_COMPOSITION: Composition = {
 /**
  * Shaping: the input-shaping lab, in the order the operator works through it.
  *
- * Two columns, and the pairing across them is deliberate rather than a way of
- * filling space: what you are measuring sits beside what it produced. Status
- * next to Capture (the session and the run that feeds it), Decay next to Sweep
- * (one stop, then every speed), Candidates next to Custom (the ranked list and
- * the train you build yourself), Verify next to Apply (what the machine
- * measured and the line it earns). Every rowSpan matches the card's own
- * registry default (compose/defs.ts), so a fresh screen is each card fitted to
- * its content — and that is a claim test/composition.test.ts now checks, because
- * it had quietly stopped being true: Decay grew 75 -> 189 for its chart and
- * nobody moved the two cards under it.
+ * THREE columns, not two (GIT_86 — "the reset layout is just really bad", "i
+ * have 3 columns with random sizing"). The two-column default above wasted a
+ * third 156-wide column the owner's own hand-arranged layout used (his saved
+ * screen ran cols 0 / 156 / 312), and packed the remaining two so unevenly
+ * that pairing "what you measure beside what it produced" no longer read as
+ * a design — it read as arbitrary. Every rowSpan below is unchanged from the
+ * card's own registry size (compose/defs.ts CARD_DEFS) — that size IS the
+ * measured floor (contentRowSpan() in the Card Lab against the
+ * `shaping-measured` scenario, per-card comments there) and is pinned by
+ * test/composition.test.ts's "every Shaping card is placed at its own
+ * registry size" — so nothing here was re-guessed, only re-FLOWN. Re-run
+ * 2026-08-26 (Card Lab "Audit every card" against `shaping-measured`) as a
+ * spot check: seven of eight cards measured AT OR BELOW their registry span
+ * that instant (Apply matched exactly; Decay/Candidates/Custom/Verify came
+ * in well under, because a card's registry size is a floor checked across
+ * several states, not a reading of any one of them). Status and Capture
+ * measured a little over (188 vs 156, 147 vs 140) with this scenario's
+ * per-tool disclosures rendered open — status's own registry comment says
+ * exactly that: the floor is measured with every tpost row COLLAPSED, on
+ * purpose, because reserving space for a disclosure most sessions open once
+ * is worse than letting the body scroll while it's open. Not a regression,
+ * the documented exception firing as designed; see task-17-report.md for the
+ * full per-card table.
+ *
+ * COLUMN ASSIGNMENT is chosen, not measured, and the choice is this: put the
+ * FIRST card of each column in workflow order — status, capture, decay are
+ * steps 1, 2, 3, so the top of the screen reads left-to-right in the exact
+ * order an operator starts the procedure — then let each column's own
+ * remaining cards continue forward through the same procedure top to bottom
+ * (col 0: status(1) -> candidates(5) -> apply(8); col 1: capture(2) ->
+ * custom(6) -> verify(7); col 2: decay(3) -> sweep(4)). Every column is
+ * therefore internally monotonic in workflow order — scanning down any one
+ * of them always moves forward, never back — even though the three columns
+ * don't reach the same step at the same row. Decay and Sweep keep the
+ * original design's pairing (one stop, then every speed) by sharing a
+ * column instead of sitting side by side, which is also what makes column 2
+ * the tallest: Decay's chart (189) is not squeezed to balance the others.
+ *
+ * BALANCE: col 0 status+candidates+apply = 156+75+50 = 281. col 1
+ * capture+custom+verify = 140+71+62 = 273. col 2 decay+sweep = 189+118 =
+ * 307. Range 34 rows (12% of the 287 average) over 3 columns of 2-3 cards
+ * each, with the chart column allowed to run long on purpose — tighter
+ * would mean either shrinking Decay below its content or breaking the
+ * workflow-order property above.
  */
 export const SHAPING_COMPOSITION: Composition = {
-	// status 77 -> 138 when it gained the five-step workflow list, the per-tool
-	// tpost disclosure and the reserved message line, and 138 -> 156 when it
-	// gained the next-step region; the rest of the left column follows it down.
 	"shaping-status": { col: 0, row: 0, colSpan: 156, rowSpan: 156 },
-	// Capture 66 -> 140 when it gained the run control, the motion editor and the
-	// XY map (D3). The whole right column follows it down by 74.
+	"shaping-candidates": { col: 0, row: 156, colSpan: 156, rowSpan: 75 },
+	"shaping-apply": { col: 0, row: 231, colSpan: 156, rowSpan: 50 },
 	"shaping-capture": { col: 156, row: 0, colSpan: 156, rowSpan: 140 },
-	// Decay 75 -> 189: it grew for the chart (E1) and the board browser, and the
-	// screen was never re-flowed for it — the card was placed at less than half
-	// the height its own content declares. Everything below it in the left
-	// column moves down by the same 114.
-	"shaping-decay": { col: 0, row: 156, colSpan: 156, rowSpan: 189 },
-	// Sweep 39 -> 118 for the heat map (E2); the right column follows it down
-	// by 79. The card is the same ID, so a saved layout keeps whatever the
-	// operator dragged it to — this is the DEFAULT placement only.
-	"shaping-sweep": { col: 156, row: 140, colSpan: 156, rowSpan: 118 },
-	"shaping-candidates": { col: 0, row: 345, colSpan: 156, rowSpan: 75 },
-	"shaping-custom": { col: 156, row: 258, colSpan: 156, rowSpan: 71 },
-	"shaping-verify": { col: 0, row: 420, colSpan: 156, rowSpan: 62 },
-	"shaping-apply": { col: 156, row: 329, colSpan: 156, rowSpan: 50 },
-	// The left column is still the taller of the two (ends at 482, against the
-	// right column's 379); the full-width strip clears both.
-	console: { col: 0, row: 482, colSpan: 312, rowSpan: 75 },
-	camera: { col: 0, row: 557, colSpan: 104, rowSpan: 75 },
+	"shaping-custom": { col: 156, row: 140, colSpan: 156, rowSpan: 71 },
+	"shaping-verify": { col: 156, row: 211, colSpan: 156, rowSpan: 62 },
+	"shaping-decay": { col: 312, row: 0, colSpan: 156, rowSpan: 189 },
+	"shaping-sweep": { col: 312, row: 189, colSpan: 156, rowSpan: 118 },
+	// Column 2 (decay+sweep) is the tallest at 307; the strip clears all three.
+	console: { col: 0, row: 307, colSpan: 468, rowSpan: 75 },
+	camera: { col: 0, row: 382, colSpan: 104, rowSpan: 75 },
 };
 
 /** Settings: config-overlay editors + the save card (the former save-bar). */
