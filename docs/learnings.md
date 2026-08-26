@@ -1,12 +1,19 @@
-# Learnings — machine identity, phase 1 (GIT_86, campaign #76)
+# Learnings
+
+Accumulating record, newest first. Counterpart to the specs and plans in
+`docs/superpowers/`. Rules extracted from these live in `docs/rules.md`.
+
+---
+
+## 2026-08-26 — machine identity, phase 1 (GIT_86, campaign #76)
 
 Merged to `main` @ `9bf78d1`, deployed as build `CgG8a9xU`. 1,530 tests,
 typecheck clean, invariant register 73/73, storage-keys lint enforcing.
 
 Counterpart to `docs/superpowers/specs/2026-08-24-machine-profile-design.md`
-and `docs/superpowers/plans/2026-08-25-machine-identity-phase-1.md`. The two
-supporting artefacts sit beside this file: the whole-branch review
-(`-final-review.md`) and the mismatch analysis (`-postmortem.md`).
+and `docs/superpowers/plans/2026-08-25-machine-identity-phase-1.md`. The two supporting artefacts sit in
+`docs/superpowers/`: `2026-08-26-machine-identity-phase-1-final-review.md` and
+`2026-08-26-machine-identity-phase-1-postmortem.md`.
 
 ## The generator
 
