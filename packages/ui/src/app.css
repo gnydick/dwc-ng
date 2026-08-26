@@ -5401,6 +5401,10 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; appe
 	border-radius: var(--radius);
 }
 .shp-tool-chip[aria-pressed="true"] { box-shadow: inset 0 0 0 1px var(--accent); }
+/* One tool or none (the status card's picker only): disabled at the SAME
+   width/height as an enabled chip, never a narrower or omitted one — the
+   card's geometry must not depend on how many tools the machine reports. */
+.shp-tool-chip:disabled { opacity: 0.4; cursor: not-allowed; }
 /* Where the full-step line comes from, or the reason there is none. Takes the
    slack so the chips stay left, clipped rather than wrapping: it is a caption,
    and a caption that wrapped would make this row two lines on a narrow card. */

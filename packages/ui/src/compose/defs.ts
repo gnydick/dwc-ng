@@ -537,7 +537,20 @@ export const CARD_DEFS = {
 		// minimum width, which had this card's floor 15 cells WIDER than the
 		// card itself (see .shp-step-note in app.css). 125 is now the tools
 		// table's declared tracks and nothing else.
-		size: { colSpan: 156, rowSpan: 156 },
+		//
+		// 156 -> 158 for the tool picker (GIT_90): a `.shp-active` row (5u
+		// declared) between the message line and the table, present whether the
+		// machine reports four tools or one. Re-measured via contentRowSpan()
+		// against `shaping-measured` (unchanged, still four tools): row stop 158,
+		// unchanged across the 720 / 400 / 200 px probes, body worth 143 of it,
+		// no child moved. colStop held at 125 — the picker's row is shorter than
+		// the tools table it sits above, so it set no new floor. Scale sweep
+		// 158/158 rows, 125/125 cols, both deltas 0. The table itself now
+		// contributes exactly ONE row (or the one-row fallback) rather than up to
+		// four, which is most of why the net cost of an entire new control is
+		// two rows and not more: the picker adds 5u, the table gives back most
+		// of what it used to cost with several tools' rows open.
+		size: { colSpan: 156, rowSpan: 158 },
 	}),
 	/** The test motion: the box it may move in, the sensor, the moves it will
 	 *  make, and the armed control that makes them. */

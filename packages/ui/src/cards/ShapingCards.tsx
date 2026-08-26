@@ -228,13 +228,24 @@ function MacroLine(props: { tool: number; read: MacroRead }) {
  * Per-tool state of the whole session, what the machine is running right now,
  * and what each step of the workflow is waiting for.
  *
- * Three things are worth saying about the construction.
+ * Four things are worth saying about the construction.
  *
- * The tool picked here is the tool every other card on the screen is about,
- * which is why the row's identity is a BUTTON rather than a click handler on
- * the `<tr>`: it has to be reachable from a keyboard.
+ * The TOOL PICKER — a `role="group"` row of chips, one per tool the machine
+ * reports — is the only control on this card, or any card, that writes
+ * `svc.setTool`. It renders disabled rather than omitted when there is one
+ * tool or none: an inoperable control at the SAME geometry beats a card whose
+ * height depends on how many tools the machine happens to report (Gabe,
+ * 2026-08-26). The table beneath it no longer doubles as a picker — filtering
+ * it to the one selected tool (below) would have made a per-row "pick" button
+ * a second, redundant route to the same signal, which is exactly the kind of
+ * duplicate write site `cant-break-by-design` flags on sight.
  *
- * `tpost<N>.g` is read only when a row is opened. A four-tool machine would
+ * The per-tool TABLE shows one row: `svc.tool()`'s. It used to list every
+ * tool so the status card's "whole session" claim was literally true of the
+ * table; now that the table is scoped like the other seven cards, seeing
+ * another tool's row means picking it, not scrolling to it.
+ *
+ * `tpost<N>.g` is read only when the row is opened. A four-tool machine would
  * otherwise cost four downloads on mount, against a board whose HTTP server
  * tolerates very few, to fill a line most sessions never look at.
  *
@@ -255,6 +266,19 @@ function MacroLine(props: { tool: number; read: MacroRead }) {
 export function ShapingStatusBody(props: { ctx: CardCtx }) {
 	const svc = props.ctx.service("shaping");
 	const tools = createMemo(() => props.ctx.om.om.tools.filter(t => t !== null));
+	/** The one row the table shows: `svc.tool()`'s, resolved against what the
+	 *  machine actually reports rather than assumed present. Empty when the
+	 *  selection names no real tool — a fresh session before the object model
+	 *  has settled, or a machine whose tools do not start at 0 — which is a
+	 *  different fact from "this machine has no tools" and the table's fallback
+	 *  says so rather than conflating them. */
+	const shownTool = createMemo(() => tools().find(t => t.number === svc.tool()) ?? null);
+	/** The table's rows, as an array of zero or one — `<For>` needs a list,
+	 *  and this is the one place that turns the single lookup above into one. */
+	const shownRows = createMemo((): ReadonlyArray<NonNullable<ReturnType<typeof shownTool>>> => {
+		const t = shownTool();
+		return t === null ? [] : [t];
+	});
 	const shaping = (): Shaping => props.ctx.om.om.move.shaping;
 	const selected = (): ToolResults => svc.results();
 	// The card file the store could not read outranks a failed action: it is the
@@ -459,6 +483,36 @@ export function ShapingStatusBody(props: { ctx: CardCtx }) {
 			    card whose job is to be watched while the machine works. Hidden by
 			    visibility, so it occupies its row either way. */}
 			<p class="shp-msg" classList={{ "shp-msg-on": message() !== "" }}>{message()}</p>
+			{/* THE tool picker: the only control on this screen that calls
+			    `svc.setTool`, so every other card's "which tool" question has
+			    exactly one place it could have been answered (GitHub #90). Reuses
+			    the Sweep card's chip markup (.shp-tool-pick / .shp-tool-chip) verbatim
+			    rather than inventing a second look for the same choice.
+
+			    Disabled, not omitted, at one tool or none — the row's height comes
+			    from `.shp-active`'s declared min-height, not from how many chips are
+			    in it or whether they answer to a click, so a 1-tool machine's card is
+			    the same height as a 4-tool one (Gabe, 2026-08-26). The `<For>`
+			    fallback (a single disabled placeholder chip) is what gives a
+			    zero-tool machine the same one-chip-tall row instead of an empty group
+			    collapsing to nothing. */}
+			<div class="shp-active">
+				<span class="shp-cap">Tool</span>
+				<div class="shp-tool-pick" role="group" aria-label="Tool being tuned">
+					<For each={tools()} fallback={<button class="shp-pick shp-tool-chip" disabled>{NONE}</button>}>
+						{t => (
+							<button
+								class="shp-pick shp-tool-chip"
+								aria-pressed={svc.tool() === t.number}
+								disabled={tools().length <= 1}
+								onClick={() => svc.setTool(t.number)}
+							>
+								T{t.number}
+							</button>
+						)}
+					</For>
+				</div>
+			</div>
 			<table class="shp-table shp-tools">
 				<colgroup>
 					<col class="shp-c-open" />
@@ -471,10 +525,26 @@ export function ShapingStatusBody(props: { ctx: CardCtx }) {
 					<tr><th /><th>Tool</th><th>X</th><th>Y</th><th>State</th></tr>
 				</thead>
 				<tbody>
-					<For each={tools()} fallback={<tr><td colspan="5" class="shp-nil">no tools on this machine</td></tr>}>
+					{/* One row: `svc.tool()`'s. The picker above is now the only way to
+					    look at another tool, so this row no longer needs a "pick" button
+					    of its own — a second control writing the same signal the picker
+					    writes would be the exact duplicate-write-site this screen's one
+					    service exists to rule out. The two fallbacks are two different
+					    facts: no tools on the machine, versus a selection that names none
+					    of the tools it does have. */}
+					<For
+						each={shownRows()}
+						fallback={
+							<tr>
+								<td colspan="5" class="shp-nil">
+									{tools().length === 0 ? "no tools on this machine" : `T${svc.tool()} is not a tool on this machine`}
+								</td>
+							</tr>
+						}
+					>
 						{tool => (
 							<>
-								<tr classList={{ "shp-on": svc.tool() === tool.number }}>
+								<tr class="shp-on">
 									<td>
 										{/* The macro line is a SEPARATE disclosure from selecting the
 										    tool: opening it costs a download, and picking a tool must
@@ -488,15 +558,7 @@ export function ShapingStatusBody(props: { ctx: CardCtx }) {
 											{svc.macroFor(tool.number).kind === "closed" ? "▸" : "▾"}
 										</button>
 									</td>
-									<td>
-										<button
-											class="shp-pick"
-											aria-pressed={svc.tool() === tool.number}
-											onClick={() => svc.setTool(tool.number)}
-										>
-											T{tool.number}
-										</button>
-									</td>
+									<td><span class="shp-pick">T{tool.number}</span></td>
 									<td><ModeCell mode={fingerprintOf(svc.resultsFor(tool.number))?.X ?? null} /></td>
 									<td><ModeCell mode={fingerprintOf(svc.resultsFor(tool.number))?.Y ?? null} /></td>
 									<td class="shp-state">{progressOf(svc.resultsFor(tool.number))}</td>

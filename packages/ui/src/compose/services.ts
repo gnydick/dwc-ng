@@ -390,9 +390,17 @@ const RANKED_KEPT = 40;
  *
  * The results themselves come off the SD card through the store's single
  * reader (shaping/store.ts `results-persist-through-one-writer`), loaded for
- * every tool the machine reports rather than only the selected one: the status
- * card's whole job is the per-tool table, and a table where four of five rows
- * say "not measured" because nobody downloaded them is a lie, not a blank.
+ * every tool the machine reports rather than only the selected one — even
+ * though the status card's own table now shows just the one row `tool()`
+ * names (GitHub #90; the all-tools table this paragraph used to justify is
+ * gone). The reason to keep loading all of them is the PICKER, not the
+ * table: it is one click, on the status card, and every one of the other
+ * seven cards is `tool()` alone — a switch that then had to wait on a
+ * download would put a fetch, and a fetch's own failure mode, on the single
+ * gesture this screen exists to make cheap. Paying for every tool once, up
+ * front, is what lets the picker cost nothing per click; `loaded` below is
+ * what keeps that a once-per-tool-per-connection cost rather than a repeat
+ * of it.
  *
  * Loading is gated on the connection being READY, for the same reason the
  * height map is: mounting races rr_connect, and a download sent before the
