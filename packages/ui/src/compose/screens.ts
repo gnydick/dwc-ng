@@ -112,14 +112,19 @@ export const MACROS_COMPOSITION: Composition = {
 	camera: { col: 0, row: 225, colSpan: 104, rowSpan: 75 },
 };
 
-/** System: 0:/sys listing + editor, firmware update, the OM inspector. */
+/**
+ * System: which machine this is, then 0:/sys listing + editor, firmware
+ * update, the OM inspector. Identity leads the screen — it is the one card
+ * whose whole point is to be seen, not sought.
+ */
 export const SYSTEM_COMPOSITION: Composition = {
-	"system-files": { col: 0, row: 0, colSpan: 104, rowSpan: 120 },
-	"system-editor": { col: 104, row: 0, colSpan: 208, rowSpan: 120 },
-	firmware: { col: 0, row: 120, colSpan: 156, rowSpan: 112 },
-	"object-model": { col: 156, row: 120, colSpan: 156, rowSpan: 112 },
-	console: { col: 0, row: 232, colSpan: 312, rowSpan: 75 },
-	camera: { col: 0, row: 307, colSpan: 104, rowSpan: 75 },
+	"machine-identity": { col: 0, row: 0, colSpan: 312, rowSpan: 56 },
+	"system-files": { col: 0, row: 56, colSpan: 104, rowSpan: 120 },
+	"system-editor": { col: 104, row: 56, colSpan: 208, rowSpan: 120 },
+	firmware: { col: 0, row: 176, colSpan: 156, rowSpan: 112 },
+	"object-model": { col: 156, row: 176, colSpan: 156, rowSpan: 112 },
+	console: { col: 0, row: 288, colSpan: 312, rowSpan: 75 },
+	camera: { col: 0, row: 363, colSpan: 104, rowSpan: 75 },
 };
 
 /** Bed maintenance: the height map, which map is in use, tramming, and

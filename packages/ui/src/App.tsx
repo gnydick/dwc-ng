@@ -89,7 +89,7 @@ export default function App(props: { backend: Backend }) {
 	onCleanup(stopPins);
 
 	return (
-		<AppContext.Provider value={{ om, config, connector, temps, backend: props.backend }}>
+		<AppContext.Provider value={{ om, config, connector, temps, backend: props.backend, machineId: machine.id }}>
 			<Shell />
 		</AppContext.Provider>
 	);

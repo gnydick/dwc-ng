@@ -26,6 +26,7 @@ import { HOMING_SPEC, MOVEMENT_SPEC } from "./controls/builtin.ts";
 import {
 	JobFilesBody, JobsInventoryBody, JobDetailsBody, MacrosBody, MacrosInventoryBody, SystemFilesBody, OmInspectorBody, MacrosEditorBody, SystemEditorBody,
 } from "../cards/FileCards.tsx";
+import { MachineIdentityBody } from "../cards/SystemCards.tsx";
 import { HeightmapBody, ProbePointBody, MeshBody, BedTramBody } from "../cards/BedCards.tsx";
 import {
 	AxisRolesBody, DockSensorsBody, BedProbeBody, CameraConfigBody, SensorNamesBody, SavedVersionsBody, ConfigSaveBody,
@@ -158,6 +159,11 @@ export const CARD_RENDER: Record<CardId, CardRender> = {
 	macros: { body: ctx => <MacrosBody ctx={ctx} /> },
 	"macros-inventory": { body: ctx => <MacrosInventoryBody ctx={ctx} /> },
 	"macros-editor": { body: ctx => <MacrosEditorBody ctx={ctx} /> },
+	// claimed/onAdopt/onClear are left at their defaults (nothing claimed, no
+	// handlers) until Task 9 puts `meta.claimedProfile` on ConfigStore — see
+	// SystemCards.tsx's own comment for why that is a one-line change here,
+	// not a redesign, when it lands.
+	"machine-identity": { body: () => <MachineIdentityBody /> },
 	"system-files": { body: ctx => <SystemFilesBody ctx={ctx} /> },
 	"system-editor": { body: ctx => <SystemEditorBody ctx={ctx} /> },
 	"object-model": { body: ctx => <OmInspectorBody ctx={ctx} /> },
