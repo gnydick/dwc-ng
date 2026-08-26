@@ -20,6 +20,7 @@ import {
 } from "../src/editor/drafts.ts";
 import { openMachineStore } from "../src/config/machineStore.ts";
 import type { IdentifiedMachine } from "../src/config/machineId.ts";
+import { createDraftSessionHandle } from "../src/editor/draftSession.ts";
 import { withLocalStorage } from "./helpers/localStorage.ts";
 
 const MACHINE_A: IdentifiedMachine = { kind: "board", uniqueId: "MACHINE-A" };
@@ -267,4 +268,91 @@ test("a CRLF file is not dirty the moment it opens", () => {
 	assert.equal(isDirty(session), false, "every CRLF file would otherwise show unsaved on the first tick");
 	assert.equal(isStale(session, "G28\r\nG1 X0\r\n"), false, "nor changed on the board");
 	assert.equal(isDirty(checkpoint(session, "G28\nG1 X0\n")), false, "nor after the view returns it as LF");
+});
+
+// --- createDraftSessionHandle: the swap-safe machine binding behind
+// FileEditor's draft session (GIT_86 Defect 1b). "drafts do not cross
+// machines" above only proves the storage layer is scoped correctly — it
+// holds the buffer (the in-memory EditSession) constant and cannot fail on
+// the actual defect: `draftStore()` used to be resolved FRESH at every write
+// site, so an editor left open across a swap flushed the OUTGOING machine's
+// text under the INCOMING machine's `drafts` key on the very next tick.
+// These drive the identity change through the SAME handle FileEditor.tsx
+// itself now binds and reads `.store` from at every write site. ------------
+
+test("createDraftSessionHandle: the first resolution is 'bound', not 'swapped' — an edit begun pre-identity has only ever had one candidate machine", () => {
+	withLocalStorage(() => {
+		const a = openMachineStore(MACHINE_A);
+		const ds = createDraftSessionHandle();
+		assert.equal(ds.store, null);
+		assert.equal(ds.rebind(a), "bound");
+		assert.equal(ds.store, a);
+	});
+});
+
+test("createDraftSessionHandle: re-binding to the SAME machine is 'unchanged'", () => {
+	withLocalStorage(() => {
+		const a = openMachineStore(MACHINE_A);
+		const ds = createDraftSessionHandle();
+		ds.rebind(a);
+		// A fresh handle for the same machine id — e.g. re-derived on a
+		// re-render — must compare equal by machine identity, not object
+		// identity.
+		assert.equal(ds.rebind(openMachineStore(MACHINE_A)), "unchanged");
+	});
+});
+
+test("createDraftSessionHandle: re-binding to a DIFFERENT machine is 'swapped'", () => {
+	withLocalStorage(() => {
+		const a = openMachineStore(MACHINE_A);
+		const b = openMachineStore(MACHINE_B);
+		const ds = createDraftSessionHandle();
+		ds.rebind(a);
+		assert.equal(ds.rebind(b), "swapped");
+		assert.equal(
+			ds.store, b,
+			"the handle now points at the incoming machine — a caller that failed to drop its session on \"swapped\" would flush the outgoing text under B's key on the very next write",
+		);
+	});
+});
+
+test("createDraftSessionHandle: losing identity (a disconnect) is neither 'swapped' nor silently rebound to null without saying so", () => {
+	withLocalStorage(() => {
+		const a = openMachineStore(MACHINE_A);
+		const ds = createDraftSessionHandle();
+		ds.rebind(a);
+		assert.equal(ds.rebind(null), "bound", "a transition to unidentified is reported, just not as a swap between two machines");
+		assert.equal(ds.store, null);
+	});
+});
+
+test("a draft session dropped on a SWAP (matching FileEditor.tsx's dropSession) never reaches the incoming machine's storage", () => {
+	// Models exactly what FileEditor.tsx does at each site: persist through
+	// draftSession.store as bound BEFORE the swap, then on \"swapped\" —
+	// FileEditor's dropSession — discard the in-memory EditSession outright
+	// rather than ever calling saveSession with it again. Falsified by
+	// reverting draftSession.ts's swap detection (see task report): with
+	// `rebind` always returning \"bound\", this test's `result` assertion
+	// fails, proving it actually exercises the fix rather than the fixture.
+	withLocalStorage(() => {
+		const a = openMachineStore(MACHINE_A);
+		const b = openMachineStore(MACHINE_B);
+		const ds = createDraftSessionHandle();
+
+		ds.rebind(a);
+		let held = beginSession(CFG, "board text on A");
+		held = checkpoint(held, "typed while on A");
+		// A checkpoint tick's capture(): persists through whatever is bound now.
+		assert.equal(saveSession(ds.store!, held), true);
+		assert.notEqual(loadSession(a, CFG), null, "A has the checkpointed draft");
+
+		const result = ds.rebind(b);
+		assert.equal(result, "swapped");
+		// dropSession() runs here in the real component: `held` is discarded,
+		// and no further saveSession call is ever made with it — this test
+		// does not make one either, matching the fix.
+
+		assert.equal(loadSession(b, CFG), null, "B never received A's in-flight text");
+		assert.notEqual(loadSession(a, CFG), null, "A's own copy is untouched by the swap");
+	});
 });

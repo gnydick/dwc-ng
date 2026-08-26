@@ -2,7 +2,8 @@ import { createEffect, createSignal, onCleanup, Show, untrack } from "solid-js";
 import { useApp } from "../shell/context.ts";
 import { languageFor, type EditorLang } from "./lang.ts";
 import type { EditorHandle } from "./setup.ts";
-import { machineStoreFor, type MachineStore } from "../config/machineStore.ts";
+import { machineStoreFor } from "../config/machineStore.ts";
+import { createDraftSessionHandle } from "./draftSession.ts";
 import {
 	beginSession,
 	checkpoint,
@@ -80,15 +81,17 @@ export function FileEditorBody(props: {
 	let handle: EditorHandle | null = null;
 	let generation = 0;
 
-	// Resolved fresh at each use, never captured once: identity can still be
-	// unknown when this card first mounts (App.tsx wires the connector before
-	// the first poll resolves it), and a machine can — in principle — change
-	// under a long-lived tab. Drafts follow the machine-half precedent
-	// (config/store.ts): while unidentified there is nothing to attribute a
-	// draft to, so persistence is skipped rather than guessed at. The in-memory
-	// session still works for this mount; it just won't survive a reload until
-	// a machine is known.
-	const draftStore = (): MachineStore | null => machineStoreFor(app.machineId());
+	// Bound once per session (at load/begin time), never re-resolved fresh at
+	// a write site — see editor/draftSession.ts's own doc comment for why: an
+	// editor left open across an identity change must not flush the OUTGOING
+	// machine's text under the INCOMING machine's `drafts` key. Identity can
+	// still be unknown when this card first mounts (App.tsx wires the
+	// connector before the first poll resolves it); while unbound there is
+	// nothing to attribute a draft to, so persistence is skipped rather than
+	// guessed at — the in-memory session still works for this mount, it just
+	// won't survive a reload until a machine is known (draftSession.rebind's
+	// "bound" case starts persisting the moment one is).
+	const draftSession = createDraftSessionHandle();
 
 	const [dirty, setDirty] = createSignal(false);
 	const [status, setStatus] = createSignal<Status>("loading");
@@ -117,8 +120,10 @@ export function FileEditorBody(props: {
 		// No machine identified yet: nothing to persist against, and nothing to
 		// warn about — this is a transient boot-time state, not a capacity
 		// problem, so the "too large" notice stays reserved for an actual
-		// saveSession failure.
-		const store = draftStore();
+		// saveSession failure. `draftSession.store`, never a fresh resolve — see
+		// its own doc comment for why a write must go through whatever this
+		// SESSION was bound to, not whatever machine happens to be current now.
+		const store = draftSession.store;
 		if (store !== null && !saveSession(store, next)) {
 			setNotice("This file is too large to keep a draft of — your edits will be lost on reload.");
 		}
@@ -139,7 +144,14 @@ export function FileEditorBody(props: {
 		try {
 			const [mod, text] = await Promise.all([import("./setup.ts"), app.connector.download(path)]);
 			if (gen !== generation) return; // superseded by a newer load
-			const store = draftStore();
+			// (Re)bind to whichever machine is current RIGHT NOW — this is a NEW
+			// session beginning, so it is the one legitimate place to re-resolve
+			// identity rather than trust whatever draftSession was left bound to.
+			// A rebind to a genuinely different machine only reaches here via
+			// dropSession's forced reload below, by which point the old session is
+			// already gone — never a live merge of two machines' drafts.
+			draftSession.rebind(machineStoreFor(app.machineId()));
+			const store = draftSession.store;
 			const stored = store === null ? null : loadSession(store, path);
 			const active = stored ?? beginSession(path, text);
 			// A draft is never discarded for having gone stale — it is the
@@ -195,6 +207,41 @@ export function FileEditorBody(props: {
 		void load(path);
 	});
 
+	/**
+	 * Drop the in-memory session on an identity SWAP (draftSession.rebind
+	 * returning "swapped" — see its own doc comment). No flush, no persist:
+	 * unlike the console log this has no display-continuity argument, so
+	 * there is nothing to write anywhere before discarding it, matching
+	 * config/store.ts's hydrateMachine — "an edit made against a machine that
+	 * is no longer current has no machine to belong to."
+	 *
+	 * The effect above only re-runs `load` on a PATH or CONNECTED change —
+	 * neither happens on a same-path identity swap — so this drives the
+	 * reload directly rather than rely on that effect to notice. `load`
+	 * itself is generation-guarded, so a same-tick race with that effect
+	 * (a swap that happens to coincide with a reconnect) is at worst one
+	 * extra superseded download, never two sessions mounted at once.
+	 */
+	const dropSession = (): void => {
+		handle?.destroy();
+		handle = null;
+		setSession(null);
+		setDirty(false);
+		setNotice("");
+		setMessage("");
+		setStatus("loading");
+		if (connected()) {
+			loadedPath = props.path;
+			void load(props.path);
+		} else {
+			loadedPath = null; // next reconnect's effect run will (re)load
+		}
+	};
+
+	createEffect(() => {
+		if (draftSession.rebind(machineStoreFor(app.machineId())) === "swapped") dropSession();
+	});
+
 	const ticker = setInterval(capture, CHECKPOINT_MS);
 	onCleanup(() => {
 		clearInterval(ticker);
@@ -215,7 +262,7 @@ export function FileEditorBody(props: {
 			// back past a save. Only Close erases a session.
 			const next = markSaved(held, text);
 			setSession(next);
-			const store = draftStore();
+			const store = draftSession.store;
 			if (store !== null) saveSession(store, next);
 			handle.setDoc(text); // new clean baseline in the view
 			setStatus("ready");
@@ -238,7 +285,7 @@ export function FileEditorBody(props: {
 			// is one ◀ away from being undone.
 			const next = markSaved(held, text);
 			setSession(next);
-			const store = draftStore();
+			const store = draftSession.store;
 			if (store !== null) saveSession(store, next);
 			handle.setDoc(text);
 			setMessage("Reverted to the saved copy");
@@ -253,7 +300,7 @@ export function FileEditorBody(props: {
 	 * makes "history survives a save, not a close" structural.
 	 */
 	const close = (): void => {
-		const store = draftStore();
+		const store = draftSession.store;
 		if (store !== null) closeSession(store, props.path);
 		setSession(null);
 		props.onClose?.();
@@ -265,7 +312,7 @@ export function FileEditorBody(props: {
 		const next = stepTo(held, held.at + delta);
 		if (next === held) return;
 		setSession(next);
-		const store = draftStore();
+		const store = draftSession.store;
 		if (store !== null) saveSession(store, next);
 		handle.replaceDoc(currentText(next));
 		setMessage("");

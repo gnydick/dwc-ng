@@ -10,6 +10,7 @@
  * Pure reducer (`pushCommand`) kept apart from storage so it's testable and so
  * a corrupt/blocked store can never break boot.
  */
+import { machineKeySegment } from "../config/machineId.ts";
 import type { MachineStore } from "../config/machineStore.ts";
 
 /** Plenty to scroll back through a session's worth of manual codes. */
@@ -69,4 +70,66 @@ export function saveCommandHistory(store: MachineStore, history: string[]): void
 	} catch {
 		// Private mode / quota exceeded: recall just won't survive a reload.
 	}
+}
+
+/**
+ * The swap-safe in-memory buffer behind ConsolePanel's ↑/↓ recall.
+ *
+ * Same remedy as om/store.ts's hydrateConsole (the console-log sibling this
+ * campaign already fixed), but REPLACE rather than fold-and-flush: unlike the
+ * reply log, a command typed for one machine has no display-continuity
+ * argument for staying on screen after a swap, and — the harm that actually
+ * reaches hardware — sitting at the top of ↑-recall it can be resent to the
+ * WRONG board with one keystroke. So there is no boundary line and no
+ * flush-then-append; `bindMachine` on an identity change simply drops
+ * whatever is in memory and loads the newly-current machine's own history in
+ * its place, matching config/store.ts's hydrateMachine: "an edit made
+ * against a machine that is no longer current has no machine to belong to."
+ * That includes the FIRST bind — commands typed before identity resolves are
+ * discarded too, never folded into whichever machine happens to answer
+ * first (the same "no machine, no write" precedent, extended to reads).
+ *
+ * `push` persists through whichever store `bindMachine` most recently bound
+ * — captured once there, never re-resolved fresh at write time — so a send()
+ * that races a swap cannot land under the NEW machine's key.
+ */
+export interface CommandHistoryState {
+	readonly history: readonly string[];
+	/**
+	 * (Re)bind to `store`'s machine. A no-op when already bound to it
+	 * (compared by machineKeySegment, the same canonical string the storage
+	 * keys themselves use). Otherwise REPLACES the in-memory buffer with
+	 * that machine's own saved history — never merged with, and never
+	 * preceded or followed by, whatever was there before.
+	 */
+	bindMachine(store: MachineStore | null): void;
+	/** Record a sent command and persist it to whichever store is currently
+	 *  bound. A no-op write (in-memory only) while unbound. */
+	push(command: string): void;
+}
+
+export function createCommandHistoryState(): CommandHistoryState {
+	let history: string[] = [];
+	let boundStore: MachineStore | null = null;
+	let boundKey: string | null = null;
+	return {
+		get history() {
+			return history;
+		},
+		bindMachine(store) {
+			// Unidentified: nothing to bind to yet. Leave whatever is already in
+			// memory alone — same as the effect never running at all — rather
+			// than wipe it out from under an operator still typing.
+			if (store === null) return;
+			const key = machineKeySegment(store.id);
+			if (key === boundKey) return; // already bound to this machine
+			boundKey = key;
+			boundStore = store;
+			history = capHistory(loadCommandHistory(store));
+		},
+		push(command) {
+			history = pushCommand(history, command);
+			if (boundStore !== null) saveCommandHistory(boundStore, history);
+		},
+	};
 }

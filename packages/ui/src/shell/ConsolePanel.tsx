@@ -2,8 +2,7 @@ import { For, Show, createEffect, createSignal } from "solid-js";
 import { useApp } from "./context.ts";
 import { operatorTyped } from "../control/commands.ts";
 import { classifyReply } from "../om/consoleLog.ts";
-import { capHistory, loadCommandHistory, pushCommand, saveCommandHistory } from "../om/commandHistory.ts";
-import { machineKeySegment } from "../config/machineId.ts";
+import { createCommandHistoryState } from "../om/commandHistory.ts";
 import { machineStoreFor } from "../config/machineStore.ts";
 
 /**
@@ -70,21 +69,16 @@ function ConsoleForm() {
 	//
 	// This card mounts at boot (console drawer on every view), which is BEFORE
 	// identity resolves — so history starts empty rather than blocking on it.
-	// The effect below hydrates as soon as identity is known, prepending the
-	// machine's own saved history onto anything typed in the gap (its FIRST
-	// run happens synchronously at creation, so a machine already identified
-	// by mount time hydrates immediately, with no separate seed path to keep
-	// in sync). Same shape as the console's own hydrateConsole and for the
-	// same reason: overwriting would lose live input to a merely-late load.
-	let history: string[] = [];
-	let hydratedFor: string | null = null;
+	// `commandHistory.ts`'s createCommandHistoryState is the swap-safe buffer
+	// (its own doc comment has the full reasoning): the effect below binds it
+	// to whichever machine is current, and a REPLACE — never a merge — is what
+	// makes an identity change (the first resolution, or a later swap) unable
+	// to hand one machine's typed commands to another's ↑-recall. `history`
+	// below is read fresh off `commandState` each render rather than cached,
+	// since bindMachine mutates it in place on a swap.
+	const commandState = createCommandHistoryState();
 	createEffect(() => {
-		const store = machineStoreFor(app.machineId());
-		if (store === null) return;
-		const key = machineKeySegment(store.id);
-		if (key === hydratedFor) return;
-		hydratedFor = key;
-		history = capHistory([...loadCommandHistory(store), ...history]);
+		commandState.bindMachine(machineStoreFor(app.machineId()));
 	});
 	let cursor: number | null = null;
 	let draft = "";
@@ -101,9 +95,11 @@ function ConsoleForm() {
 		event.preventDefault();
 		const value = code().trim();
 		if (value === "") return;
-		history = pushCommand(history, value);
-		const store = machineStoreFor(app.machineId());
-		if (store !== null) saveCommandHistory(store, history);
+		// push() persists through whichever store the last bindMachine bound —
+		// never re-resolved fresh here — so a send() racing an identity change
+		// cannot land under the WRONG machine's key (see the state's own doc
+		// comment).
+		commandState.push(value);
 		cursor = null;
 		draft = "";
 		setCode("");
@@ -111,6 +107,7 @@ function ConsoleForm() {
 	};
 
 	const recall = (event: KeyboardEvent): void => {
+		const history = commandState.history;
 		if (event.key === "ArrowUp") {
 			if (history.length === 0) return;
 			event.preventDefault();
