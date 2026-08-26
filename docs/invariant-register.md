@@ -117,7 +117,7 @@ in the diff that drops it.
 
 **Why.** a delete that removes a card from every screen at once is exactly the action whose scope the operator must see before confirming — "delete this card?" cannot precede stripping it from screens they forgot it was on. The plan freezes usage at arm time; the studio is modal over composition edits, so the frozen report cannot go stale between the two clicks
 
-`packages/ui/src/compose/screens.ts:453`
+`packages/ui/src/compose/screens.ts:503`
 
 ### `compose/composition-degrades-per-slot` — rung 6
 
@@ -187,7 +187,7 @@ in the diff that drops it.
 
 **Why.** a second delete surface is how the blast-radius report gets skipped: the old drawer ✕ deleted from every screen while showing only a tooltip warning. One surface, armed with the plan, keeps "delete" and "here is what that does" inseparable
 
-`packages/ui/src/compose/CardStudio.tsx:143`
+`packages/ui/src/compose/CardStudio.tsx:144`
 
 ### `compose/one-run-at-a-time-per-screen` — rung 7
 
@@ -245,19 +245,19 @@ in the diff that drops it.
 
 ### `config/claim-invalidated-on-reidentify` — rung 6
 
-**Mechanism.** choke-point — this is the ONLY place `machineStore()` having changed is acted on, so it is also the one place a stale claim can be cleared the instant the machine it was checked against stops being current. `pendingClaimOverlay` and `meta.claimedProfile` are cleared here unconditionally, same as the machine half of `overlay` a few lines above — never re-attributed to the newly-current machine, never left pointing at the one that is no longer connected
+**Mechanism.** choke-point — this is the ONLY place `machineStore()` having changed is acted on, so it is also the one place a stale claim can be cleared the instant the machine it was checked against stops being current. `pendingClaimOverlay` and `meta.claimedProfile` are cleared here unconditionally, same as the machine half of `overlay` a few lines above — never re-attributed to the newly-current machine, never left pointing at the one that is no longer connected. `revertNotice` is cleared here too, for the identical reason one level down: it names a fact about the machine that was current when the revert ran ("no machine settings on record HERE"), and that fact does not carry over to whichever machine is current now
 
 **Why.** a claim names the board it was checked against ("written for b.A") by testing it against WHICHEVER machine was current at load time. Spec §3 explicitly anticipates identity changing under a live session (a mainboard swap, an SD card moved to another board) — a claim raised against B and left standing after re-resolving to C would let Adopt commit A's machine half (envelope included) into config now keyed to C: the exact cross-machine leak this campaign exists to make unrepresentable, reached THROUGH the confirm action rather than around it
 
-`packages/ui/src/config/store.ts:408`
+`packages/ui/src/config/store.ts:422`
 
 ### `config/claimed-not-adopted` — rung 6
 
-**Mechanism.** choke-point — readStampedMachineOverlay (config/migrateStorage.ts, Task 8) is the ONLY function that decides whether a downloaded file's machine half matches the CONNECTED machine, and this is its only caller on the SD load path. A mismatch (or a file old enough to carry no stamp at all) never reaches `commit`: the machine half of THIS commit is either the stamp's own returned overlay (matched) or the UNCHANGED current machine half (claimed) — never the claimed file's bytes. Those bytes are held only in the closure-private `pendingClaimOverlay` above, reachable solely through `adoptClaimedProfile`
+**Mechanism.** choke-point — readStampedMachineOverlay (config/migrateStorage.ts, Task 8) is the ONLY function that decides whether a downloaded file's machine half matches the CONNECTED machine, and this is its only caller on the SD load path. A mismatch (or a v3 file old enough to carry no stamp at all) never reaches `commit`: the machine half of THIS commit is either the stamp's own returned overlay (matched, or migrated — a pre-v3 file amnestied per spec §4) or the UNCHANGED current machine half (claimed) — never the claimed file's bytes. Those bytes are held only in the closure-private `pendingClaimOverlay` above, reachable solely through `adoptClaimedProfile`
 
 **Why.** spec §3: an SD card cloned or moved to another board must not have its settings silently adopted (a foreign envelope becomes the box the head is driven inside) or silently discarded (a real machine's real settings would be lost the first time its OWN card fails to round-trip through some other path). "Claimed, not adopted" is the third option this function exists to make the default
 
-`packages/ui/src/config/store.ts:823`
+`packages/ui/src/config/store.ts:874`
 
 ### `config/claimed-not-reachable-without-adopt` — rung 6
 
@@ -265,7 +265,7 @@ in the diff that drops it.
 
 **Why.** `store.meta.claimedProfile` (exposed, reactive) carries only the origin and section NAMES — see ClaimedProfile's doc comment — so a caller reading it can never mistake a claimed fact for live config. The real values still have to live SOMEWHERE for Adopt to apply them; keeping them here, off the store entirely, is what makes "cannot be consumed as fact without an explicit act" true by construction rather than by a caller remembering to check a flag
 
-`packages/ui/src/config/store.ts:305`
+`packages/ui/src/config/store.ts:319`
 
 ### `config/config-section-scope` — rung 6
 
@@ -291,7 +291,7 @@ in the diff that drops it.
 
 **Why.** "u-" ids must never collide with built-in screen ids or the lab route, and "c-" ids never with registry CardIds. A collision would silently shadow a built-in screen with a user one, and the user could not delete what they had not created
 
-`packages/ui/src/config/store.ts:938`
+`packages/ui/src/config/store.ts:1084`
 
 ### `config/labels-never-travel` — rung 6
 
@@ -301,7 +301,7 @@ in the diff that drops it.
 
 **Debt — promotion.** the payload is a hand-built object literal, so a future field is one line away — `machineId` (Task 9) is exactly that field arriving. Promote by giving ConfigOverlay a single serialize that returns a branded ConfigPayload upload accepts, so what travels is decided by the overlay's own type rather than here.
 
-`packages/ui/src/config/store.ts:772`
+`packages/ui/src/config/store.ts:823`
 
 ### `config/legacy-key-single-mention` — rung 6
 
@@ -317,7 +317,7 @@ in the diff that drops it.
 
 **Why.** (Ruling 18) an earlier version wrote this half into whichever machine happened to be resolved by `machineStore()` at the synchronous instant `createConfigStore` runs — no stamp, no evidence, on data migrateStorage.ts's own header says "carries no such proof" and "must be DROPPED, never guessed at". That branch was unreachable in THIS app only because of incidental boot ordering (App.tsx constructs the config store before the machine session can resolve) — improbable, not impossible, and this project's standard is that a hazard must be unrepresentable, not merely unlikely today. There is nothing an operator could confirm a recovered half against either (the origin is unknowable in principle), so there is no "claimed, pending confirmation" state to offer instead — dropping it is the only correct answer The one-shot v2 → v3 backfill of the pre-split, origin-global legacy cache (spec §4, campaign #76 phase 1 task 8; see migrateStorage.ts for the exact key name — only that module may spell it). That legacy cache predates Task 6/7's split and, like the live overlay it once carried, proves nothing about which machine wrote its machine-scoped bytes — Ruling 17/18 apply the identical drop-unconditionally rule to its snapshots that the live overlay already follows. The drop is not silent (Ruling 19): every migrated snapshot that HAD a non-empty machine half is named in the returned `droppedMachineSections`, alongside the live overlay's own report, so the one channel the System card already reads (Task 11) carries both. Returns `null` when there was nothing to migrate — the common case on every boot after the first, since readAndClearLegacyPersonCache removes the key on the one read that finds it.
 
-`packages/ui/src/config/store.ts:1085`
+`packages/ui/src/config/store.ts:1231`
 
 ### `config/machine-identity-single-resolution` — rung 6
 
@@ -347,7 +347,7 @@ in the diff that drops it.
 
 **Debt — promotion.** this function's contract depends on its caller never fabricating a `MachineStore` for the wrong machine — nothing here re-checks that a `handle`'s `id` matches "the current machine" beyond what machineSession.ts already guarantees by construction.
 
-`packages/ui/src/config/store.ts:1235`
+`packages/ui/src/config/store.ts:1394`
 
 ### `config/no-unstamped-sd-write` — rung 6
 
@@ -355,7 +355,7 @@ in the diff that drops it.
 
 **Why.** identity resolves about one poll after boot (machineSession.ts). A save attempted in that window must not put an unattributable file on the card — the next machine to read it (even THIS one, on a later boot with a different resolution) would have no stamp to check and no way to tell "mine" from "nobody's"
 
-`packages/ui/src/config/store.ts:790`
+`packages/ui/src/config/store.ts:841`
 
 ### `config/overlay-writes-persist` — rung 6
 
@@ -365,15 +365,15 @@ in the diff that drops it.
 
 **Debt — promotion.** `commit` is closure-private, so this holds within the module and says nothing about a future module. Promotion to 7 is making the overlay a branded value only commit can produce, so a second store could not assign one either.
 
-`packages/ui/src/config/store.ts:352`
+`packages/ui/src/config/store.ts:366`
 
 ### `config/revert-machine-half-scoped-to-current-machine` — rung 6
 
-**Mechanism.** choke-point — the machine half of a snapshot applies ONLY if it is found in the CURRENTLY connected machine's OWN "snapshots" key. Being found there IS the proof — the same way reading the SD file back over a live connection to board X proves it is board X's (migrateStorage.ts's header) — so no separate stamp/claimed check is needed here: a different machine's store cannot produce another machine's id by construction (machineStore.ts's own rung-6/7 keying). A different machine, no machine identified, or the entry having aged out of that machine's own MAX_SNAPSHOTS cap all read as "nothing to restore" — `{}` — never a guess
+**Mechanism.** choke-point — the machine half of a snapshot is APPLIED only if it is found in the CURRENTLY connected machine's OWN "snapshots" key. Being found there IS the proof — the same way reading the SD file back over a live connection to board X proves it is board X's (migrateStorage.ts's header) — so no separate stamp/claimed check is needed here: a different machine's store cannot produce another machine's id by construction (machineStore.ts's own rung-6/7 keying). A different machine, no machine identified, or the entry having aged out of that machine's own MAX_SNAPSHOTS cap all read as "not found here" — and "not found here" leaves the CURRENT machine half exactly as it is, untouched, the same way the claimed-not-adopted branch of loadFromMachine (above) leaves it untouched on a stamp mismatch. It is NEVER replaced with `{}`: `{}` is not "nothing to restore", it is "restore emptiness" — a positive, destructive act that this function used to commit and persistCache used to write straight to the card on the next Save. That was GIT_86 finding I1: reverting to a snapshot taken on machine A, while connected to machine B, erased B's own live machine half (axis roles, dock sensors, motion envelope, bed probe command) rather than leaving it alone. The person half (theme, units, habits) is restored regardless of the lookup outcome — `meta.snapshots` is person-scoped and origin-global by design, so it legitimately crosses machines; only the machine half needs this guard. A miss also sets `meta.revertNotice` (see ConfigStore's own doc comment on it), so a partial restore is told to the operator rather than looking identical to a full one.
 
-**Why.** snapshot() (above) is the sole writer of a machine's own "snapshots" key and never writes under an id taken on a different machine, so `.find(e => e.id === snap.id)` coming up empty on machine B is not a lookup miss to work around — it is the correct, safe answer for a snapshot machine B never took
+**Why.** snapshot() (above) is the sole writer of a machine's own "snapshots" key and never writes under an id taken on a different machine, so `.find(e => e.id === snap.id)` coming up empty on machine B proves the snapshot was not taken on B — but that only tells you WHOSE machine half it isn't; it says nothing about what B's own machine half currently holds, and is no license to overwrite it
 
-`packages/ui/src/config/store.ts:739`
+`packages/ui/src/config/store.ts:758`
 
 ### `config/screen-layout-two-tier` — rung 6
 
@@ -383,7 +383,7 @@ in the diff that drops it.
 
 **Debt — promotion.** replaceAllScreenCards is still reachable from anywhere holding the store, and its name is the only thing saying the caller owes the second tier — which is naming, not prevention. Rung 7 is having it take a branded value that only compose/screens.ts can mint, so a bare Record cannot be passed. Rung 8 would be folding the canvas write in here so one tier alone has no encoding at all; that needs the config store to reach the canvas store, which is a bigger architectural change than this invariant alone justifies.
 
-`packages/ui/src/config/store.ts:153`
+`packages/ui/src/config/store.ts:164`
 
 ### `config/snapshot-cache-is-person-only` — rung 6
 
@@ -391,7 +391,7 @@ in the diff that drops it.
 
 **Why.** a snapshot used to clone the WHOLE joined overlay into this same record (Ruling 17) — reverting to one taken on machine A while pointed at machine B restored A's axis roles and envelope onto B, the exact inherited-envelope hazard this campaign exists to remove
 
-`packages/ui/src/config/store.ts:1003`
+`packages/ui/src/config/store.ts:1149`
 
 ### `config/sole-snapshot-producer` — rung 6
 
@@ -401,7 +401,7 @@ in the diff that drops it.
 
 **Debt — promotion.** promote by making ConfigSnapshot's label a branded SnapshotLabel this function is the sole producer of, so a snapshot assembled elsewhere cannot be pushed at all rather than merely not being.
 
-`packages/ui/src/config/store.ts:694`
+`packages/ui/src/config/store.ts:713`
 
 ### `config/untrusted-overlay-boundary` — rung 6
 
@@ -421,7 +421,7 @@ in the diff that drops it.
 
 **Debt — promotion.** promote by making persistCache take one CacheRecord value assembled in one place, so a second call site physically cannot pass a subset.
 
-`packages/ui/src/config/store.ts:325`
+`packages/ui/src/config/store.ts:339`
 
 ## connector
 
@@ -663,7 +663,7 @@ in the diff that drops it.
 
 **Debt — promotion.** promote by making the guard the thing that resumes rather than a value to remember to compare — a helper that takes the promise and resolves only for the current generation, so an unchecked await has no way to reach the mount. Rung 6, and it removes the second site. `lang` forces the highlight mode; without it the extension decides. Macros are often extensionless on RRF, so callers that know the domain (macros, sys) pass "gcode" rather than falling back to plain text. Content-only body (the compose conversion): Revert/Save/Close moved from the old Panel header into the .editor-bar row here, because they read the editor's own state (dirty/status), which a registry's static actions closure cannot. The card's dynamic title (the file path) comes from the def. ## The text outlives this component CodeMirror is now a VIEW of an edit session (editor/drafts.ts), not the owner of the text. The view is destroyed whenever the open path changes or the card unmounts — which happens on every navigation — so anything held only inside it was being thrown away, including the in-progress text and CodeMirror's own undo stack. The session survives both, and a reload. Every route by which live text leaves the view goes through `capture()`: the 10s tick, stepping, saving, reverting, switching files, and unmounting. That is one place rather than six, so there is no exit from this component through which the last few seconds of typing can escape unrecorded — and because a session carries its own path, flushing on the way OUT of a file files the text under that file even though `props.path` has already changed.
 
-`packages/ui/src/editor/FileEditor.tsx:32`
+`packages/ui/src/editor/FileEditor.tsx:33`
 
 ### `editor/every-string-in-a-session-is-canonical` — rung 7
 
