@@ -100,7 +100,7 @@ export default function CardLab() {
 		// this stays the plain prepend a real store only does on its FIRST
 		// hydrate; a card that calls this (there are none today) still sees
 		// the same merge semantics.
-		hydrateConsole: (loaded, _machine) => setConsoleLines(produce(lines => {
+		hydrateConsole: (loaded, _store) => setConsoleLines(produce(lines => {
 			const merged = capLines([...loaded, ...lines]);
 			lines.length = 0;
 			lines.push(...merged);

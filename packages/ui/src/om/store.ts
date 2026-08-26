@@ -2,10 +2,10 @@ import { createStore, reconcile, produce, type SetStoreFunction } from "solid-js
 import type { Accessor } from "solid-js";
 import type { ConnectorEvents, ConnectionStatus, ConnectorTransport } from "@dwc-ng/connector";
 import { conformModelKey, emptyModel, type ObjectModel } from "./types.ts";
-import { appendCapped, capLines, saveConsole, type ConsoleLine } from "./consoleLog.ts";
+import { appendCapped, capLines, saveConsole, CONSOLE_LIMIT, type ConsoleLine } from "./consoleLog.ts";
 import { isPlainObject, isSafeKey, safeEntries } from "@dwc-ng/connector";
 import type { MachineStore } from "../config/machineStore.ts";
-import { describeMachineId, machineKeySegment, type IdentifiedMachine } from "../config/machineId.ts";
+import { describeMachineId, machineKeySegment } from "../config/machineId.ts";
 
 /**
  * The two stores of machine truth, and the bridge from a Connector.
@@ -51,17 +51,22 @@ export interface OmStore {
 	 *
 	 * The FIRST call (boot) prepends `loaded` ahead of whatever is already
 	 * live, on the assumption that a machine's disk history predates
-	 * anything this tab has seen. A LATER call for a DIFFERENT machine
+	 * anything this tab has seen. A LATER call for a DIFFERENT `store`
 	 * (Ruling 22 — a board swap mid-session) instead APPENDS a single
 	 * boundary line naming the new machine, then that machine's history —
 	 * the log otherwise has nothing distinguishing two machines' replies
 	 * sitting side by side, which is exactly the misattribution this
-	 * campaign exists to rule out elsewhere. The persisted stores stay
-	 * correctly separated regardless (each machine's own saveConsole write
-	 * only ever touches its own store) — this is a DISPLAY boundary, not a
-	 * storage one.
+	 * campaign exists to rule out elsewhere.
+	 *
+	 * DISPLAY continuity (both machines visible, separated by the boundary)
+	 * is deliberately wider than what gets WRITTEN (Ruling 23): only the
+	 * segment belonging to the CURRENTLY identified machine is ever saved —
+	 * see the `currentMachineStart` doc comment inside createOmStore for how
+	 * that segment is tracked. Passing `store` here (not just the identity)
+	 * is what lets this function rebind future persists to it directly,
+	 * rather than a later read racing a swap that already moved on.
 	 */
-	hydrateConsole(loaded: ConsoleLine[], machine: IdentifiedMachine): void;
+	hydrateConsole(loaded: ConsoleLine[], store: MachineStore): void;
 	/** ConnectorEvents implementation — pass to the connector's options. */
 	events: ConnectorEvents;
 }
@@ -85,9 +90,14 @@ export interface OmStore {
  * A lazy accessor rather than a `MachineStore | null` value: App.tsx builds
  * the machine session FROM this store's `om` proxy, so the two are
  * necessarily constructed in that order and the accessor is what lets the
- * later one's answer reach code written here. It is read only from inside
- * `persistSoon`'s deferred timeout, never synchronously during construction,
- * so which of the two exists first is not a hazard.
+ * later one's answer reach code written here. Read EAGERLY, once, the
+ * instant a reply schedules a persist (persistSoon) — never lazily inside
+ * the deferred timeout callback. Ruling 23: a lazy read there answers for
+ * WHATEVER machine is current when the timer fires, which can be a
+ * DIFFERENT machine than the one the buffered lines came from if a swap
+ * happened during the debounce window — the exact cross-contamination this
+ * rule exists to prevent. `scheduledFor` (below) carries the eager answer
+ * forward from schedule time to fire time.
  */
 export function createOmStore(options: { machineStore: Accessor<MachineStore | null> }): OmStore {
 	const machineStore = options.machineStore;
@@ -110,10 +120,74 @@ export function createOmStore(options: { machineStore: Accessor<MachineStore | n
 	// re-resolving to the SAME machine is never mistaken for a swap.
 	let hydratedFor: string | null = null;
 
-	const hydrateConsole = (loaded: ConsoleLine[], machine: IdentifiedMachine): void => {
-		const key = machineKeySegment(machine);
+	/**
+	 * Where the CURRENTLY identified machine's OWN lines begin in
+	 * `consoleLines` — in memory only, never persisted (Ruling 23). Everything
+	 * at or after this index came from (or arrived while talking to) the
+	 * current machine; everything before it is an earlier machine's content,
+	 * kept on screen for display continuity (Ruling 22) but never eligible to
+	 * be written under the current machine's own key. Reset to 0 on the
+	 * FIRST hydrate (nothing precedes it — the whole buffer is one machine's).
+	 * On a SWAP, set to just past the freshly-appended boundary line, using
+	 * `merged.length - loaded.length`: the boundary+loaded block is always
+	 * the tail of the pre-cap array, and capLines only ever trims from the
+	 * FRONT, so that arithmetic holds whether or not capping actually
+	 * dropped anything (clamped to 0 for the case where capping ate into
+	 * `loaded` itself, at which point the whole remaining tail is the new
+	 * machine's own content regardless). Adjusted downward -- never past 0 --
+	 * whenever a live append's own cap (appendCapped) evicts from the front.
+	 */
+	let currentMachineStart = 0;
+
+	// Persist throttled: a chatty macro must not re-serialize the whole log per
+	// message. `scheduledFor` is machineStore()'s answer captured the instant
+	// persistSoon schedules the timer (see machineStore's own doc comment for
+	// why eagerly, not lazily) — it is what a swap's flush (below) reads to
+	// know which store the ALREADY-PENDING lines belong to, since by the time
+	// hydrateConsole runs for the new machine, machineStore() only answers for
+	// the new one any more.
+	let saveTimer: ReturnType<typeof setTimeout> | null = null;
+	let scheduledFor: MachineStore | null = null;
+
+	/**
+	 * Write whatever is pending RIGHT NOW, synchronously, to whichever store
+	 * it was scheduled against — and only that machine's OWN segment
+	 * (`currentMachineStart` onward), never the earlier machine's content
+	 * still on screen for display continuity. A no-op when nothing is
+	 * pending (`scheduledFor` is only ever non-null alongside a live
+	 * `saveTimer`, so checking one is checking both).
+	 *
+	 * @invariant a-machine-swap-flushes-the-outgoing-machine-first
+	 * @rung 6  choke-point — the ONLY function that calls saveConsole, shared
+	 *          by persistSoon's own deferred timeout AND hydrateConsole's
+	 *          swap branch, so "which segment gets written" is decided once
+	 * @why the debounce timer is one shared value, not one per machine — a
+	 *      swap that rebinds it without flushing first hands the OUTGOING
+	 *      machine's last few lines to the INCOMING machine's key, the exact
+	 *      hazard #76 phase 1 exists to make unrepresentable
+	 */
+	const flushNow = (): void => {
+		if (saveTimer !== null) { clearTimeout(saveTimer); saveTimer = null; }
+		const store = scheduledFor;
+		scheduledFor = null;
+		if (store !== null) saveConsole(store, consoleLines.slice(currentMachineStart));
+	};
+
+	const persistSoon = (): void => {
+		if (saveTimer !== null) return;
+		scheduledFor = machineStore();
+		saveTimer = setTimeout(flushNow, 400);
+	};
+
+	const hydrateConsole = (loaded: ConsoleLine[], store: MachineStore): void => {
+		const key = machineKeySegment(store.id);
 		if (key === hydratedFor) return; // already folded this machine's history in
 		const first = hydratedFor === null;
+		// Ruling 23, requirement 1: flush the OUTGOING machine's pending
+		// persist BEFORE rebinding anything below. Harmless (a no-op) on the
+		// very first hydrate, since nothing can be scheduled — and pending —
+		// against a machine before one is ever known.
+		flushNow();
 		hydratedFor = key;
 		setConsoleLines(produce(lines => {
 			if (first) {
@@ -122,6 +196,7 @@ export function createOmStore(options: { machineStore: Accessor<MachineStore | n
 				const merged = capLines([...loaded, ...lines]);
 				lines.length = 0;
 				lines.push(...merged);
+				currentMachineStart = 0;
 				return;
 			}
 			// A machine SWAP (Ruling 22): appended, not prepended — `lines`
@@ -129,23 +204,14 @@ export function createOmStore(options: { machineStore: Accessor<MachineStore | n
 			// displayed, and splicing a different machine's disk history in
 			// ahead of that would interleave two machines' pasts with nothing
 			// marking where one ends and the other begins.
-			const boundary: ConsoleLine = { receivedAt: Date.now(), text: `— now viewing ${describeMachineId(machine)} —` };
+			const boundary: ConsoleLine = { receivedAt: Date.now(), text: `— now viewing ${describeMachineId(store.id)} —` };
 			const merged = capLines([...lines, boundary, ...loaded]);
 			lines.length = 0;
 			lines.push(...merged);
+			// See currentMachineStart's own doc comment for why this holds
+			// regardless of how much (if anything) capLines trimmed.
+			currentMachineStart = Math.max(0, merged.length - loaded.length);
 		}));
-	};
-
-	// Persist throttled: a chatty macro must not re-serialize the whole log per
-	// message. The store proxy is read at flush time, so this saves current state.
-	let saveTimer: ReturnType<typeof setTimeout> | null = null;
-	const persistSoon = (): void => {
-		if (saveTimer !== null) return;
-		saveTimer = setTimeout(() => {
-			saveTimer = null;
-			const store = machineStore();
-			if (store !== null) saveConsole(store, consoleLines.slice());
-		}, 400);
 	};
 
 	const events: ConnectorEvents = {
@@ -179,8 +245,17 @@ export function createOmStore(options: { machineStore: Accessor<MachineStore | n
 		},
 		onReply(text) {
 			// The bound lives in consoleLog.ts; this module no longer knows what
-			// it is, so it cannot append past it.
-			setConsoleLines(produce(lines => appendCapped(lines, { receivedAt: Date.now(), text })));
+			// it is, so it cannot append past it. appendCapped's own eviction
+			// (splicing from the front once over CONSOLE_LIMIT) can eat into
+			// content BEFORE currentMachineStart -- shift it down by however
+			// many lines actually left, clamped at 0, so it keeps pointing at
+			// the same logical position rather than drifting stale.
+			setConsoleLines(produce(lines => {
+				const before = lines.length;
+				appendCapped(lines, { receivedAt: Date.now(), text });
+				const evicted = Math.max(0, before + 1 - CONSOLE_LIMIT);
+				currentMachineStart = Math.max(0, currentMachineStart - evicted);
+			}));
 			persistSoon();
 		},
 		onStatusChange(status, detail) {
