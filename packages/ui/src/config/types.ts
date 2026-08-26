@@ -144,23 +144,20 @@ export interface PinnedCommand {
  * entirely here under minted "u-"-prefixed ids (the prefix keeps them out of
  * the built-in/lab route namespace by construction).
  *
- * Wholly PERSON-scoped (Ruling 12, Gabe): layout geometry — like custom
- * screens, renames and hidden state — is an operator's own arrangement
- * preference, not a fact about the machine. The machine-shaped provisioning
- * this might look like it should encode instead (how many tool cards, how
- * many axis rows) is a first-time-load survey's job, not something layout
- * geometry should be made to carry. This section does not span the split.
+ * Split machine/person (spec §4): `layouts` is a fact about this machine's
+ * screen geometry (built-in id → full composition override), so it lives in
+ * MachineConfig. `custom`, `renames` and `hidden` are the operator's own
+ * screens and naming/visibility preferences, carried in PersonConfig. This is
+ * the one section that spans both halves — see `splitOverlay`.
  */
 export type ScreenLayouts = Record<string, Record<string, SlotRect>>;
 
-export interface ScreensConfig {
+export interface ScreenPrefs {
 	custom: Record<UserScreenId, CustomScreen>;
 	/** Built-in id → display-name override. A rename never touches identity. */
 	renames: Record<string, string>;
 	/** Built-in ids removed from the nav (still recoverable — it's overlay). */
 	hidden: string[];
-	/** Built-in id → full composition override (membership + geometry). */
-	layouts: ScreenLayouts;
 }
 
 /** The three colours a heater reading takes as it warms. */
@@ -285,6 +282,9 @@ export interface MachineConfig {
 	 *  ShapingConfig), the capture-run defaults, and the per-tool
 	 *  accelerometer address. */
 	shaping: ShapingConfig;
+	/** Built-in screen layout overrides — geometry belongs to the machine that
+	 *  renders it (see ScreenLayouts). */
+	screens: { layouts: ScreenLayouts };
 }
 
 /**
@@ -299,9 +299,8 @@ export interface PersonConfig {
 	 *  the camera itself (see CameraPrefsConfig). */
 	cameraPrefs: CameraPrefsConfig;
 	macros: MacrosConfig;
-	/** Screens as user truth: custom screens, renames, hidden state, AND
-	 *  layout geometry (Ruling 12) — see ScreensConfig. */
-	screens: ScreensConfig;
+	/** User-created screens and naming/visibility overrides — see ScreenPrefs. */
+	screens: ScreenPrefs;
 	/** User-authored cards, keyed by minted "c-" ids (the prefix keeps them
 	 *  out of the registry CardId namespace by construction). */
 	cards: Record<CustomCardId, CustomCardDef>;
@@ -331,10 +330,10 @@ export interface ConfigSnapshot {
 
 /**
  * @invariant config-section-scope
- * @rung 6  choke-point — MACHINE_SECTIONS and PERSON_SECTIONS partition
- *          keyof UiConfig, and test/config-scope.test.ts fails if their
- *          union is not exactly Object.keys(DEFAULT_CONFIG). A new section
- *          cannot be added without being given a scope
+ * @rung 6  choke-point — MACHINE_SECTIONS, PERSON_SECTIONS and SPLIT_SECTIONS
+ *          partition keyof UiConfig, and test/config-scope.test.ts fails if
+ *          their union is not exactly Object.keys(DEFAULT_CONFIG). A new
+ *          section cannot be added without being given a scope
  * @why an unscoped section defaults to whichever half the code happens to
  *      write, and the half it must not default into is the machine one: that
  *      is how an envelope crosses machines
@@ -348,25 +347,38 @@ export const MACHINE_SECTIONS: readonly (keyof MachineConfig)[] = [
 	"axisRoles", "heaterColors", "dockSensors", "camera", "sensorNames", "bed", "pins", "shaping",
 ] as const satisfies readonly (keyof MachineConfig)[];
 export const PERSON_SECTIONS: readonly (keyof PersonConfig)[] = [
-	"thermalColors", "cameraPrefs", "macros", "cards", "screens",
+	"thermalColors", "cameraPrefs", "macros", "cards",
 ] as const satisfies readonly (keyof PersonConfig)[];
+/** The one section that spans both halves — layouts machine, the rest person. */
+export const SPLIT_SECTIONS = ["screens"] as const;
 
 /**
- * Divide an overlay along the machine/person line (spec §4, Ruling 12). A
- * clean whole-section partition — no section spans both halves, so a section
- * present in the overlay goes entirely to whichever list names it.
+ * Divide an overlay along the machine/person line (spec §4). `screens` is
+ * handled per leaf rather than by whole-section assignment: `layouts` goes to
+ * the machine half, everything else to the person half.
  */
 export function splitOverlay(o: ConfigOverlay): { machine: DeepPartial<MachineConfig>; person: DeepPartial<PersonConfig> } {
 	const machine: Record<string, unknown> = {};
 	const person: Record<string, unknown> = {};
 	for (const k of MACHINE_SECTIONS) if (k in o) machine[k] = o[k];
 	for (const k of PERSON_SECTIONS) if (k in o) person[k] = o[k];
+	const screens = o.screens;
+	if (screens !== undefined) {
+		const { layouts, ...rest } = screens;
+		if (layouts !== undefined) machine.screens = { layouts };
+		if (Object.keys(rest).length > 0) person.screens = rest;
+	}
 	return { machine: machine as DeepPartial<MachineConfig>, person: person as DeepPartial<PersonConfig> };
 }
 
 /** Recombine the two halves into one overlay. The inverse of `splitOverlay`. */
 export function joinOverlay(machine: DeepPartial<MachineConfig>, person: DeepPartial<PersonConfig>): ConfigOverlay {
-	return { ...machine, ...person } as ConfigOverlay;
+	const { screens: mScreens, ...m } = machine as Record<string, unknown> & { screens?: object };
+	const { screens: pScreens, ...p } = person as Record<string, unknown> & { screens?: object };
+	const screens = { ...(pScreens ?? {}), ...(mScreens ?? {}) };
+	const out = { ...m, ...p } as Record<string, unknown>;
+	if (Object.keys(screens).length > 0) out.screens = screens;
+	return out as ConfigOverlay;
 }
 
 export const DEFAULT_MACHINE_CONFIG: MachineConfig = {
@@ -383,6 +395,7 @@ export const DEFAULT_MACHINE_CONFIG: MachineConfig = {
 		defaults: { distMm: 60, speedMmS: 200, repeats: 3 },
 		accelByTool: {},
 	},
+	screens: { layouts: {} },
 };
 
 export const DEFAULT_PERSON_CONFIG: PersonConfig = {
@@ -390,13 +403,14 @@ export const DEFAULT_PERSON_CONFIG: PersonConfig = {
 	cameraPrefs: { pinned: false },
 	// Off by default: a fresh install asks before firing a macro at the machine.
 	macros: { autoConfirmRun: false },
-	screens: { custom: {}, renames: {}, hidden: [], layouts: {} },
+	screens: { custom: {}, renames: {}, hidden: [] },
 	cards: {},
 };
 
 export const DEFAULT_CONFIG: UiConfig = {
 	...DEFAULT_MACHINE_CONFIG,
 	...DEFAULT_PERSON_CONFIG,
+	screens: { ...DEFAULT_MACHINE_CONFIG.screens, ...DEFAULT_PERSON_CONFIG.screens },
 };
 
 /** Where the overlay lives on the machine's SD card. */
