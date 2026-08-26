@@ -98,3 +98,23 @@ test("no localStorage (SSR, a locked-down browser) is not a crash", () => {
 		s.remove("config");
 	} finally { g.localStorage = prior; }
 });
+
+test("a storage that throws on setItem/removeItem (quota exceeded, Safari private mode) does not throw out of set/remove (GIT_86 finding 3)", () => {
+	const g = globalThis as { localStorage?: unknown };
+	const prior = g.localStorage;
+	g.localStorage = {
+		getItem: () => null,
+		setItem: () => { throw new DOMException("QuotaExceededError"); },
+		removeItem: () => { throw new DOMException("QuotaExceededError"); },
+		length: 0,
+		key: () => null,
+	};
+	try {
+		const s = openMachineStore(A);
+		// Before this fix, both of these threw straight out of the caller —
+		// and config/store.ts's createComputed calls into `set` SYNCHRONOUSLY
+		// during construction, so an uncaught throw here came out of App().
+		assert.doesNotThrow(() => s.set("config", "x"), "set must swallow a storage write failure");
+		assert.doesNotThrow(() => s.remove("config"), "remove must swallow a storage write failure");
+	} finally { g.localStorage = prior; }
+});

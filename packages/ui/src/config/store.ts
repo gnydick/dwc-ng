@@ -1261,9 +1261,22 @@ function loadPersonCache(): {
 	return merged;
 }
 
+/** Never throws — matching every other storage writer in this file (see
+ *  writeMachineOverlay, and editor/drafts.ts / om/commandHistory.ts /
+ *  om/consoleLog.ts's identical try/catch). GIT_86 finding 3: this used to
+ *  be an uncaught setItem, and createComputed's construction-time
+ *  hydrateMachine -> commit -> persistCache chain calls it SYNCHRONOUSLY
+ *  from createConfigStore() — a quota-exceeded or storage-blocked browser
+ *  (Safari private mode) threw out of App() and rendered nothing, where a
+ *  failed write must instead mean "does not survive a reload", never a
+ *  blank app. */
 function writePersonCache(person: DeepPartial<PersonConfig>, dirty: boolean, snapshots: readonly ConfigSnapshot[]): void {
 	if (typeof localStorage === "undefined") return;
-	localStorage.setItem(CONFIG_CACHE_KEY, JSON.stringify({ version: CONFIG_VERSION, overlay: person, dirty, snapshots }));
+	try {
+		localStorage.setItem(CONFIG_CACHE_KEY, JSON.stringify({ version: CONFIG_VERSION, overlay: person, dirty, snapshots }));
+	} catch {
+		// Private mode / quota exceeded: this edit just won't survive a reload.
+	}
 }
 
 /**

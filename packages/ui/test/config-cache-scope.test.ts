@@ -168,3 +168,61 @@ test("a snapshot taken with no identified machine never carries a machine half, 
 		});
 	});
 });
+
+// GIT_86 finding 3: createConfigStore's construction-time createComputed runs
+// hydrateMachine -> commit -> persistCache synchronously, so BOTH
+// writePersonCache and writeMachineOverlay (via MachineStore.set) can run
+// before createConfigStore ever returns. Before this fix, neither caught a
+// storage write failure, so a quota-exceeded or storage-blocked browser threw
+// straight out of construction — and therefore out of App() — where a failed
+// write must instead mean "does not survive a reload", never a blank app.
+test("a storage that throws on every write does not prevent the config store from being constructed, with an ALREADY-identified machine", () => {
+	const g = globalThis as { localStorage?: unknown };
+	const prior = g.localStorage;
+	g.localStorage = {
+		getItem: () => null,
+		setItem: () => { throw new DOMException("QuotaExceededError"); },
+		removeItem: () => { throw new DOMException("QuotaExceededError"); },
+		length: 0,
+		key: () => null,
+	};
+	try {
+		const A = openMachineStore({ kind: "board", uniqueId: "A" });
+		createRoot(dispose => {
+			const [ms] = createSignal<MachineStore | null>(A);
+			let store: ReturnType<typeof createConfigStore> | undefined;
+			assert.doesNotThrow(() => { store = createConfigStore({ machineStore: ms }); },
+				"construction must survive a storage that throws on every write — this is the createComputed path, not an edit made later");
+			// The store still works in memory even though nothing it writes can
+			// reach disk — a failed write must degrade to "won't survive a
+			// reload", not to a store that never came into being.
+			store!.setAxisRole("U", "in memory only");
+			assert.equal(store!.config.axisRoles.U, "in memory only");
+			dispose();
+		});
+	} finally { g.localStorage = prior; }
+});
+
+test("a storage that throws on every write does not prevent the config store from being constructed, with NO identified machine (person-only path)", () => {
+	const g = globalThis as { localStorage?: unknown };
+	const prior = g.localStorage;
+	g.localStorage = {
+		getItem: () => null,
+		setItem: () => { throw new DOMException("QuotaExceededError"); },
+		removeItem: () => { throw new DOMException("QuotaExceededError"); },
+		length: 0,
+		key: () => null,
+	};
+	try {
+		createRoot(dispose => {
+			const [ms] = createSignal<MachineStore | null>(null);
+			let store: ReturnType<typeof createConfigStore> | undefined;
+			// This path exercises writePersonCache alone (no MachineStore involved
+			// at all) — the other half of the fix.
+			assert.doesNotThrow(() => { store = createConfigStore({ machineStore: ms }); });
+			store!.setThermalColors({ hot: "#ff0000" });
+			assert.equal(store!.config.thermalColors.hot, "#ff0000");
+			dispose();
+		});
+	} finally { g.localStorage = prior; }
+});

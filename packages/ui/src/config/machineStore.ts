@@ -76,8 +76,27 @@ export function openMachineStore(id: IdentifiedMachine): MachineStore {
 	return {
 		id,
 		get: (name, suffix) => ls()?.getItem(keyFor(name, suffix)) ?? null,
-		set: (name, value, suffix) => ls()?.setItem(keyFor(name, suffix), value),
-		remove: (name, suffix) => ls()?.removeItem(keyFor(name, suffix)),
+		// Never throws (GIT_86 finding 3) — matching every other storage writer
+		// in this app (editor/drafts.ts, om/commandHistory.ts, om/consoleLog.ts):
+		// a quota-exceeded or storage-blocked browser must lose only the write,
+		// not the caller. This is the ONE door onto machine-scoped storage
+		// (see this module's own invariant above), and config/store.ts's
+		// createComputed calls into it SYNCHRONOUSLY during construction — an
+		// uncaught throw here used to come straight out of App().
+		set: (name, value, suffix) => {
+			try {
+				ls()?.setItem(keyFor(name, suffix), value);
+			} catch {
+				// Private mode / quota exceeded: this value just won't survive a reload.
+			}
+		},
+		remove: (name, suffix) => {
+			try {
+				ls()?.removeItem(keyFor(name, suffix));
+			} catch {
+				// Private mode / quota exceeded: removal just won't survive a reload either.
+			}
+		},
 	};
 }
 
