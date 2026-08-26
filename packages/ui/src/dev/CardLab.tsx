@@ -96,9 +96,11 @@ export default function CardLab() {
 	const omStore: OmStore = {
 		om: model, setOm: setModel, connection, console: consoleLines,
 		// No real machine behind the lab (Ruling 2) — there is nothing to
-		// persist a hydrate FROM, but a card that calls this (there are none
-		// today) should still see the same merge semantics as the real store.
-		hydrateConsole: loaded => setConsoleLines(produce(lines => {
+		// persist a hydrate FROM, and no second machine to ever swap to, so
+		// this stays the plain prepend a real store only does on its FIRST
+		// hydrate; a card that calls this (there are none today) still sees
+		// the same merge semantics.
+		hydrateConsole: (loaded, _machine) => setConsoleLines(produce(lines => {
 			const merged = capLines([...loaded, ...lines]);
 			lines.length = 0;
 			lines.push(...merged);

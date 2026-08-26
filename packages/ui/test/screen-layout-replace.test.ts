@@ -18,7 +18,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { replaceScreenLayout } from "../src/compose/screens.ts";
+import { captureScreenGeometry, replaceScreenLayout } from "../src/compose/screens.ts";
 import { createPanelCanvas, devCanvasKeys, machineCanvasKeys, mergeCanvas, parseStoredCanvas, readCanvasState } from "../src/shell/panelCanvas.ts";
 import type { SlotRect, UiConfig } from "../src/config/types.ts";
 import { DEFAULT_CONFIG } from "../src/config/types.ts";
@@ -239,5 +239,19 @@ test("the Card Lab's dev canvas key stays a plain literal, untouched by machine 
 		const keys = devCanvasKeys("dwc-ng.canvas.cardlab");
 		keys.set("layout", "x");
 		assert.equal(localStorage.getItem("dwc-ng.canvas.cardlab"), "x");
+	});
+});
+
+test("captureScreenGeometry is a no-op with no machine identified — nothing to read FROM, so it does not guess", () => {
+	withLocalStorage(() => {
+		const machine = openMachineStore(MACHINE_A);
+		// Something IS on disk for machine A, so a bug that ignored the null
+		// and fell back to some default store would show up here — seeded
+		// through its own throwaway config-overlay stub, discarded below.
+		replaceScreenLayout(stubStore(), machine, "machine", IMPORTED);
+
+		const store = stubStore(); // fresh — no prior writes to mask a false pass
+		captureScreenGeometry(store, null);
+		assert.deepEqual(store.written, {}, "captureScreenGeometry must not touch the config overlay with no machine identified");
 	});
 });

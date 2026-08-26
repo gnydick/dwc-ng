@@ -6,7 +6,7 @@ import { createOmStore } from "../src/om/store.ts";
 
 test("before boards land, there is no store to write through", () => {
 	createRoot(dispose => {
-		const om = createOmStore();
+		const om = createOmStore({ machineStore: () => null });
 		const session = createMachineSession(om.om);
 		assert.equal(session.id().kind, "unidentified");
 		assert.equal(session.store(), null, "no handle means no machine-scoped read is even expressible");
@@ -16,7 +16,7 @@ test("before boards land, there is no store to write through", () => {
 
 test("identity appears when the boards key lands, and the store follows", () => {
 	createRoot(dispose => {
-		const om = createOmStore();
+		const om = createOmStore({ machineStore: () => null });
 		const session = createMachineSession(om.om);
 		om.events.onModelKey?.("boards", [{ canAddress: 0, uniqueId: "LIVE-1", accelerometer: null }]);
 		assert.deepEqual(session.id(), { kind: "board", uniqueId: "LIVE-1" });
@@ -27,7 +27,7 @@ test("identity appears when the boards key lands, and the store follows", () => 
 
 test("the MAC fallback lands from the network key alone", () => {
 	createRoot(dispose => {
-		const om = createOmStore();
+		const om = createOmStore({ machineStore: () => null });
 		const session = createMachineSession(om.om);
 		om.events.onModelKey?.("boards", [{ canAddress: 0, accelerometer: null }]);
 		assert.equal(session.id().kind, "unidentified");
@@ -41,7 +41,7 @@ test("the store handle is stable while the id is unchanged", () => {
 	// Consumers key effects off it; a new object per poll would re-run every
 	// hydrate and thrash the console and the layouts.
 	createRoot(dispose => {
-		const om = createOmStore();
+		const om = createOmStore({ machineStore: () => null });
 		const session = createMachineSession(om.om);
 		om.events.onModelKey?.("boards", [{ canAddress: 0, uniqueId: "LIVE-1", accelerometer: null }]);
 		const first = session.store();
@@ -59,7 +59,7 @@ test("the store handle is stable when a second board joins and the main board do
 	// content-equals comparator. This is the one case whose outcome
 	// actually depends on that comparator.
 	createRoot(dispose => {
-		const om = createOmStore();
+		const om = createOmStore({ machineStore: () => null });
 		const session = createMachineSession(om.om);
 		om.events.onModelKey?.("boards", [{ canAddress: 0, uniqueId: "LIVE-1", accelerometer: null }]);
 		const first = session.store();
@@ -74,7 +74,7 @@ test("the store handle is stable when a second board joins and the main board do
 
 test("a mainboard swap re-keys rather than carrying settings over", () => {
 	createRoot(dispose => {
-		const om = createOmStore();
+		const om = createOmStore({ machineStore: () => null });
 		const session = createMachineSession(om.om);
 		om.events.onModelKey?.("boards", [{ canAddress: 0, uniqueId: "LIVE-1", accelerometer: null }]);
 		const first = session.store();

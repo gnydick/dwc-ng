@@ -56,7 +56,7 @@ test("deepMergeInto ignores prototype-reaching keys in board patches", () => {
 });
 
 test("onModelKey refuses a prototype-reaching key from the wire", () => {
-	const store = createOmStore();
+	const store = createOmStore({ machineStore: () => null });
 	const before = Object.keys(store.om);
 	store.events.onModelKey?.("__proto__", { pollutedKey: true });
 	assert.deepEqual(Object.keys(store.om), before, "the store gains no key");

@@ -33,12 +33,13 @@ export default function App(props: { backend: Backend }) {
 	// unconditionally, from an origin-global key). It now waits for identity —
 	// and re-fires on a machine SWAP, which folds that (different) machine's
 	// own saved history in too rather than leaving the previous machine's
-	// bytes on screen forever. hydrateConsole prepends rather than replacing,
-	// so replies that arrived live before this fires are never discarded.
+	// bytes on screen forever. hydrateConsole never discards what's already
+	// live, and marks a swap with a boundary line (Ruling 22) rather than
+	// silently interleaving two machines' replies.
 	createEffect(() => {
 		const store = machine.store();
 		if (store === null) return;
-		om.hydrateConsole(loadConsole(store));
+		om.hydrateConsole(loadConsole(store), store.id);
 	});
 	// Boot from the persisted dev backend (Mock by default; "Real" targets the
 	// board via the dev proxy). In production this is always the same-origin

@@ -17,7 +17,7 @@ test("unusable top-level shapes are rejected — the store keeps last good", () 
 	assert.deepEqual(conformModelKey("tools", { not: "an array" }), { ok: false });
 	assert.deepEqual(conformModelKey("boards", null), { ok: false });
 
-	const store = createOmStore();
+	const store = createOmStore({ machineStore: () => null });
 	store.events.onModelKey?.("move", { axes: [{ letter: "X" }] });
 	store.events.onModelKey?.("move", "garbage");
 	assert.equal((store.om.move.axes[0] as { letter: string }).letter, "X", "last good subtree survives");

@@ -4,9 +4,13 @@ import { createOmStore, deepMergeInto } from "../src/om/store.ts";
 import { CONSOLE_LIMIT } from "../src/om/consoleLog.ts";
 import { createMockServer } from "../../mock-duet/src/server.ts";
 import { PollConnector } from "@dwc-ng/connector/testing";
+import type { IdentifiedMachine } from "../src/config/machineId.ts";
+
+const MACHINE_A: IdentifiedMachine = { kind: "board", uniqueId: "MACHINE-A" };
+const MACHINE_B: IdentifiedMachine = { kind: "board", uniqueId: "MACHINE-B" };
 
 test("onModelKey replaces a subtree wholesale", () => {
-	const store = createOmStore();
+	const store = createOmStore({ machineStore: () => null });
 	store.events.onModelKey!("heat", {
 		bedHeaters: [0],
 		chamberHeaters: [],
@@ -20,7 +24,7 @@ test("onModelKey replaces a subtree wholesale", () => {
 });
 
 test("onModelPatch deep-merges without deleting", () => {
-	const store = createOmStore();
+	const store = createOmStore({ machineStore: () => null });
 	store.events.onModelKey!("state", {
 		status: "idle", currentTool: -1, machineMode: "FFF", displayMessage: "hello", upTime: 0,
 	});
@@ -50,7 +54,7 @@ test("array patches merge element-wise and never truncate", () => {
 });
 
 test("console log is a capped ring buffer", () => {
-	const store = createOmStore();
+	const store = createOmStore({ machineStore: () => null });
 	const overflow = 30;
 	const total = CONSOLE_LIMIT + overflow;
 	for (let i = 0; i < total; i++) store.events.onReply!(`reply ${i}`);
@@ -59,10 +63,39 @@ test("console log is a capped ring buffer", () => {
 	assert.equal(store.console.at(-1)!.text, `reply ${total - 1}`);
 });
 
+test("hydrateConsole's FIRST call prepends disk history ahead of whatever is already live", () => {
+	const store = createOmStore({ machineStore: () => null });
+	store.events.onReply!("live before hydrate");
+	store.hydrateConsole([{ receivedAt: 1, text: "from disk" }], MACHINE_A);
+	assert.deepEqual(store.console.map(l => l.text), ["from disk", "live before hydrate"]);
+});
+
+test("hydrateConsole for the SAME machine twice does not duplicate", () => {
+	const store = createOmStore({ machineStore: () => null });
+	store.hydrateConsole([{ receivedAt: 1, text: "from disk" }], MACHINE_A);
+	store.hydrateConsole([{ receivedAt: 1, text: "from disk" }], MACHINE_A);
+	assert.deepEqual(store.console.map(l => l.text), ["from disk"]);
+});
+
+// Ruling 22: a machine swap mid-session inserts a boundary line rather than
+// silently interleaving two machines' replies with nothing distinguishing them.
+test("hydrateConsole marks a machine SWAP with a boundary line, appended after what's already on screen", () => {
+	const store = createOmStore({ machineStore: () => null });
+	store.hydrateConsole([{ receivedAt: 1, text: "A's disk history" }], MACHINE_A);
+	store.events.onReply!("A's live reply");
+	store.hydrateConsole([{ receivedAt: 2, text: "B's disk history" }], MACHINE_B);
+
+	const texts = store.console.map(l => l.text);
+	assert.deepEqual(texts.slice(0, 2), ["A's disk history", "A's live reply"], "A's content is untouched and stays first");
+	assert.equal(texts.length, 4, "a boundary line was inserted");
+	assert.ok(texts[2]!.includes("board MACHINE-B"), `boundary line should name the new machine, got: ${texts[2]}`);
+	assert.equal(texts[3], "B's disk history", "B's history follows the boundary");
+});
+
 test("end to end: poll → seqs → rr_model → reconcile, mock to store", async () => {
 	const mock = createMockServer({ tickMs: 0 });
 	const port = await mock.listen(0);
-	const store = createOmStore();
+	const store = createOmStore({ machineStore: () => null });
 	const connector = new PollConnector({
 		baseUrl: `http://127.0.0.1:${port}`,
 		autoPoll: false,
