@@ -824,13 +824,14 @@ export function createConfigStore(options: { machineStore: Accessor<MachineStore
 		 * @rung 6  choke-point — readStampedMachineOverlay (config/migrateStorage.ts,
 		 *          Task 8) is the ONLY function that decides whether a downloaded
 		 *          file's machine half matches the CONNECTED machine, and this is
-		 *          its only caller on the SD load path. A mismatch (or a file old
-		 *          enough to carry no stamp at all) never reaches `commit`: the
+		 *          its only caller on the SD load path. A mismatch (or a v3 file
+		 *          old enough to carry no stamp at all) never reaches `commit`: the
 		 *          machine half of THIS commit is either the stamp's own returned
-		 *          overlay (matched) or the UNCHANGED current machine half
-		 *          (claimed) — never the claimed file's bytes. Those bytes are
-		 *          held only in the closure-private `pendingClaimOverlay` above,
-		 *          reachable solely through `adoptClaimedProfile`
+		 *          overlay (matched, or migrated — a pre-v3 file amnestied per spec
+		 *          §4) or the UNCHANGED current machine half (claimed) — never the
+		 *          claimed file's bytes. Those bytes are held only in the
+		 *          closure-private `pendingClaimOverlay` above, reachable solely
+		 *          through `adoptClaimedProfile`
 		 * @why spec §3: an SD card cloned or moved to another board must not have
 		 *      its settings silently adopted (a foreign envelope becomes the box
 		 *      the head is driven inside) or silently discarded (a real machine's
@@ -839,12 +840,22 @@ export function createConfigStore(options: { machineStore: Accessor<MachineStore
 		 *      third option this function exists to make the default
 		 */
 		async loadFromMachine(connector) {
-			// NEVER clobber unsaved local edits. After an import/delete/edit the
-			// cache is the freshest local truth; pulling the SD config over it is
-			// exactly how imports vanished on the first reload after they were
-			// made. The operator still Saves to machine to push, or reverts to
-			// pull — but a mere reconnect must not silently discard their work.
-			if (meta.dirty) return;
+			// NEVER clobber unsaved local edits, in the general case — after an
+			// import/delete/edit the cache is the freshest local truth for BOTH
+			// halves (a machine-scoped edit is written straight to the
+			// per-machine store, dirty or not — see persistCache/
+			// writeMachineOverlay), and pulling an ordinary SD copy over it is
+			// exactly how edits vanished on the first reload after they were
+			// made. The one exception is spec §4's v2→v3 migration amnesty,
+			// below: a pre-v3 file was never checked against a stamp at all, so
+			// there is no "this SD copy might be stale" question to protect
+			// against for ITS machine half — that half is empty locally by
+			// construction (nothing was ever written to a per-machine store
+			// before this campaign introduced one), so there is nothing there
+			// FOR this guard to protect. `wasDirty` is captured once, up front,
+			// so a machine-half edit made mid-await cannot change which branch
+			// below applies out from under this call.
+			const wasDirty = meta.dirty;
 
 			let text: string | null = null;
 			try {
@@ -860,10 +871,12 @@ export function createConfigStore(options: { machineStore: Accessor<MachineStore
 			};
 
 			if (text === null) {
-				// No file on the card — keep the current (cache-seeded) overlay,
-				// exactly as before Task 9. Nothing to claim either.
+				// No file on the card — nothing to reconcile the local overlay
+				// against, migration included. Not dirty: keep the current
+				// (cache-seeded) overlay and mark clean, exactly as before Task 9.
+				// Dirty: leave the overlay AND the flag exactly as they are.
 				noClaim();
-				commit(overlay, false);
+				if (!wasDirty) commit(overlay, false);
 				return;
 			}
 
@@ -871,27 +884,24 @@ export function createConfigStore(options: { machineStore: Accessor<MachineStore
 			if (loaded === null) {
 				// Corrupt or foreign-versioned — same fallback as no file at all.
 				noClaim();
-				commit(overlay, false);
+				if (!wasDirty) commit(overlay, false);
 				return;
 			}
 
-			const { person, machine: fileMachineHalf } = splitOverlay(loaded);
 			const handle = machineStore();
 			if (handle === null) {
-				// No identified machine to check a stamp against — a claim needs a
-				// name to test the file AGAINST, and there isn't one yet. Per spec
-				// §3, an unidentified machine has "no local machine cache at all:
-				// SD is its only store" — so the file is trusted in full, exactly
-				// as it was before this task, rather than held back with nothing to
-				// eventually reconcile it against.
-				//
-				// This is safe, not merely convenient: hydrateMachine (above, this
-				// file) rebuilds the machine half from SCRATCH the instant identity
-				// DOES resolve — from that machine's own local cache alone, never
-				// from whatever `overlay` held a moment before (see its own doc
-				// comment). Nothing loaded here survives that rebuild, so it can
-				// never be the mechanism that attaches this file's machine data to
-				// whichever board happens to identify first.
+				// No identified machine — nothing to migrate FOR (a stamp names a
+				// machine, and there isn't one to name yet) and nothing to protect
+				// unsaved work against either (hydrateMachine will rebuild the
+				// machine half from scratch the instant identity resolves — see
+				// its own doc comment — so nothing loaded here survives that
+				// anyway). Dirty here is the general guard: leave everything as
+				// is, same as any other ordinary (non-migrating) dirty load below.
+				if (wasDirty) return;
+				// Per spec §3, an unidentified machine has "no local machine cache
+				// at all: SD is its only store" — so the file is trusted in full,
+				// exactly as it was before this task, rather than held back with
+				// nothing to eventually reconcile it against.
 				noClaim();
 				commit(loaded, false);
 				return;
@@ -902,20 +912,56 @@ export function createConfigStore(options: { machineStore: Accessor<MachineStore
 			// type carries no room for a sibling `machineId` field, and that
 			// field has no version-migration story of its own (Task 9 is where it
 			// is introduced) — so re-parsing here duplicates no business logic,
-			// only the deserialization step.
+			// only the deserialization step. `fileVersion` is this same payload's
+			// `version` field — readStampedMachineOverlay needs it to tell a
+			// pre-v3 file (no stamp ever existed) apart from an unstamped v3 one
+			// (a stamp existed and is missing) — see its own doc comment.
 			let rawTop: unknown = null;
 			try { rawTop = JSON.parse(text); } catch { /* parseOverlayPayload already proved this text parses */ }
+			const fileVersion = isPlainObject(rawTop) && typeof rawTop.version === "number" ? rawTop.version : 0;
+
+			const { person: filePerson, machine: fileMachineHalf } = splitOverlay(loaded);
 
 			// readStampedMachineOverlay does its own parse/split of `.overlay`, so
 			// the already-split, already-validated `fileMachineHalf` passes
-			// through it unchanged when the stamp matches — this is not a second
-			// validation pass, just the one choke point's own contract.
+			// through it unchanged when the stamp matches or the file migrates —
+			// this is not a second validation pass, just the one choke point's
+			// own contract.
 			const stamped = readStampedMachineOverlay(
 				{ machineId: isPlainObject(rawTop) ? rawTop.machineId : undefined, overlay: fileMachineHalf },
 				handle.id,
+				fileVersion,
 			);
 
-			if (stamped.claimed) {
+			// The ONE carve-out in the dirty guard: a migration is not "an
+			// ordinary SD copy that might be stale", it is a one-time amnesty for
+			// a machine half that has never had a local copy to be stale AGAINST
+			// (spec §4) — so it proceeds regardless. Every other outcome (a
+			// matched or claimed v3 stamp) is an ordinary load, and gets the
+			// FULL original guard back: dirty means stop here, touching nothing,
+			// exactly as it did before this file's own `wasDirty` was introduced.
+			if (!stamped.migrated && wasDirty) return;
+
+			// The file's person section may be a DIFFERENT browser's — never this
+			// browser's own unsaved edits. Only reachable with wasDirty true from
+			// the migrated branch (every other branch already returned above), so
+			// this is "keep it" exactly there and "take the file's" everywhere
+			// else — the same as before this task in the non-migrated case.
+			const person = wasDirty ? splitOverlay(overlay).person : filePerson;
+
+			if (stamped.migrated) {
+				// Pre-v3: the file came off THIS board's own card over a live
+				// connection — that IS its proof of origin (spec §3/§4) — adopted
+				// for the machine we are connected to right now, then written
+				// back stamped so the next load does not have to migrate again.
+				// Routed through saveToMachine (never a second CONFIG_FILE write
+				// site — see its own no-unstamped-sd-write invariant), which also
+				// takes a labelled backup and clears `dirty`: the whole overlay,
+				// person half included, is now genuinely on the card.
+				noClaim();
+				commit(joinOverlay(stamped.overlay, person), wasDirty);
+				await store.saveToMachine(connector, "migrated to v3");
+			} else if (stamped.claimed) {
 				pendingClaimOverlay = fileMachineHalf;
 				setMeta("claimedProfile", { writtenFor: stamped.writtenFor, sections: overlaySectionNames(fileMachineHalf) });
 				// The machine half is left UNCHANGED — never the claimed file's

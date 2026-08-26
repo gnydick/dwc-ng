@@ -24,7 +24,7 @@
 import { isPlainObject } from "@dwc-ng/connector";
 import { parseOverlay } from "./parse.ts";
 import {
-	MACHINE_SECTIONS, splitOverlay,
+	CONFIG_VERSION, MACHINE_SECTIONS, splitOverlay,
 	type ConfigOverlay, type DeepPartial, type MachineConfig, type PersonConfig,
 } from "./types.ts";
 import { machineKeySegment, type IdentifiedMachine } from "./machineId.ts";
@@ -152,20 +152,44 @@ export function stampMachineOverlay(
  * the CURRENTLY connected machine before trusting a single byte of it.
  *
  * `claimed: true` means "bytes exist but are not in effect" — an SD card
- * moved to a different board, or content old enough to carry no stamp at
- * all (absence of proof is not proof: treated identically to a mismatch,
- * never adopted). Only a stamp that names THIS machine returns its overlay;
- * every other outcome returns `{}`, so a caller that forgets to check
- * `claimed` still gets nothing rather than a silent wrong-machine value.
+ * moved to a different board, or a v3 payload old enough (or corrupt enough)
+ * to carry no stamp at all (absence of proof is not proof: treated
+ * identically to a mismatch, never adopted). Only a stamp that names THIS
+ * machine returns its overlay; every other CLAIMED outcome returns `{}`, so
+ * a caller that forgets to check `claimed` still gets nothing rather than a
+ * silent wrong-machine value.
+ *
+ * `version` is the top-level payload's `CONFIG_VERSION` field, supplied by
+ * the caller rather than read off `raw` itself: a pre-v3 machine half (spec
+ * §4's `stampMachineOverlay` shape) never carried a sibling version field —
+ * versioning lives on the OUTER `{version, machineId, overlay}` envelope,
+ * not on this inner shape — so there is nothing here to infer it from.
+ *
+ * `migrated: true` (version !== CONFIG_VERSION) is spec §3's one-time
+ * amnesty, and the THIRD, distinct outcome this function can report: a
+ * pre-v3 file never had a stamp to check in the first place, and per spec
+ * §4 that is not evidence AGAINST it — reading it back over a live
+ * connection to THIS board is itself proof of origin ("split the v2
+ * overlay, stamp the machine half with the currently connected MachineId,
+ * write v3 back"). So it is adopted, exactly like a matched v3 stamp, never
+ * quarantined as `claimed` the way a missing v3 stamp is — the two "no
+ * machineId field" cases look identical byte-for-byte and only `version`
+ * tells them apart.
  */
 export function readStampedMachineOverlay(
 	raw: unknown,
 	id: IdentifiedMachine,
-): { overlay: DeepPartial<MachineConfig>; claimed: boolean; writtenFor: string | null } {
-	if (!isPlainObject(raw) || !isPlainObject(raw.overlay)) return { overlay: {}, claimed: true, writtenFor: null };
+	version: number,
+): { overlay: DeepPartial<MachineConfig>; claimed: boolean; writtenFor: string | null; migrated: boolean } {
+	if (!isPlainObject(raw) || !isPlainObject(raw.overlay)) {
+		return { overlay: {}, claimed: true, writtenFor: null, migrated: false };
+	}
+	if (version !== CONFIG_VERSION) {
+		return { overlay: splitOverlay(parseOverlay(raw.overlay)).machine, claimed: false, writtenFor: null, migrated: true };
+	}
 	const writtenFor = typeof raw.machineId === "string" ? raw.machineId : null;
 	if (writtenFor === null || writtenFor !== machineKeySegment(id)) {
-		return { overlay: {}, claimed: true, writtenFor };
+		return { overlay: {}, claimed: true, writtenFor, migrated: false };
 	}
-	return { overlay: splitOverlay(parseOverlay(raw.overlay)).machine, claimed: false, writtenFor };
+	return { overlay: splitOverlay(parseOverlay(raw.overlay)).machine, claimed: false, writtenFor, migrated: false };
 }
