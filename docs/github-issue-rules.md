@@ -1,4 +1,4 @@
-# GitHub issue rules (Ferrislicer)
+# GitHub issue rules (dwc-ng)
 
 Source of truth: `CLAUDE.md` § "Tracking work". This file restates it verbatim and adds the
 commands that execute it, so another Claude session can follow it without the repo context.
@@ -45,14 +45,17 @@ commands that execute it, so another Claude session can follow it without the re
 
 ## How the rules are executed (commands that work, 2026-08-22)
 
-Repo: `gnydick/ferrislicer`.
+Repo: `gnydick/dwc-ng`. Confirm with `git remote -v` before any `gh` call — this
+file was adapted from another project, and a stale repo name here caused a
+session to file four tickets into the wrong repository and close two unrelated
+issues there (2026-08-26).
 
 ### Pickup (minimal tokens)
 
 ```bash
 gh issue list --state open --limit 200 --json number,title,labels
 gh issue view N --json title,labels,state
-gh api graphql -f query='{ repository(owner:"gnydick", name:"ferrislicer") { issue(number:N) { subIssues(first:2) { nodes { number title body } } } } }'
+gh api graphql -f query='{ repository(owner:"gnydick", name:"dwc-ng") { issue(number:N) { subIssues(first:2) { nodes { number title body } } } } }'
 ```
 
 Read the parent body only if the child proves insufficient.
@@ -62,8 +65,8 @@ Read the parent body only if the child proves insufficient.
 ```bash
 gh issue create --title "<engineer-stranger title>" --body-file parent.md            # -> #N
 gh issue create --title "Context: #N" --body-file child.md                          # -> #N+1
-PID=$(gh api graphql -f query='{repository(owner:"gnydick",name:"ferrislicer"){issue(number:N){id}}}' -q .data.repository.issue.id)
-CID=$(gh api graphql -f query='{repository(owner:"gnydick",name:"ferrislicer"){issue(number:N+1){id}}}' -q .data.repository.issue.id)
+PID=$(gh api graphql -f query='{repository(owner:"gnydick",name:"dwc-ng"){issue(number:N){id}}}' -q .data.repository.issue.id)
+CID=$(gh api graphql -f query='{repository(owner:"gnydick",name:"dwc-ng"){issue(number:N+1){id}}}' -q .data.repository.issue.id)
 gh api graphql -f query="mutation{addSubIssue(input:{issueId:\"$PID\",subIssueId:\"$CID\"}){subIssue{number}}}"
 gh label create GIT_N --color 0e8a16 2>/dev/null; gh issue edit N --add-label GIT_N; gh issue edit N+1 --add-label GIT_N
 ```
