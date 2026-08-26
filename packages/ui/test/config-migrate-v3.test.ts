@@ -152,7 +152,7 @@ test("a legacy backfill does not clobber newer dwc-ng.person edits; current wins
 	});
 });
 
-test("a legacy snapshot's machine half is attributed to the machine already known at migration time", () => {
+test("Ruling 18: a legacy snapshot's machine half is dropped UNCONDITIONALLY — even when a machine is already known at migration time", () => {
 	withLocalStorage(() => {
 		localStorage.setItem("dwc-ng.config", JSON.stringify({
 			version: 2,
@@ -160,6 +160,11 @@ test("a legacy snapshot's machine half is attributed to the machine already know
 			dirty: false,
 			snapshots: [{ takenAt: 111, label: "old", overlay: { axisRoles: { U: "legacy Z motor" }, thermalColors: { hot: "#f00" } } }],
 		}));
+		// A machine IS resolved at the exact synchronous instant migration
+		// runs — the one case Ruling 18 exists to close. A resolved machine is
+		// not evidence about who wrote a byte read out of unkeyed localStorage;
+		// it must not be treated as such merely because a machine happens to
+		// be identified at this instant.
 		const A = openMachineStore({ kind: "board", uniqueId: "legacy-attrib" });
 		const store = createConfigStore({ machineStore: () => A });
 
@@ -167,9 +172,15 @@ test("a legacy snapshot's machine half is attributed to the machine already know
 		assert.equal(store.snapshots[0]!.label, "old");
 		assert.deepEqual(store.snapshots[0]!.overlay, { thermalColors: { hot: "#f00" } }, "the snapshot record itself is person-only");
 
-		store.setAxisRole("U", "changed after migration");
 		store.revert(0);
-		assert.equal(store.config.axisRoles.U, "legacy Z motor", "the machine half was attributed to A and is restorable on A");
+		assert.equal(
+			store.config.axisRoles.U, undefined,
+			"the machine half must NOT have been attributed to A — its origin is unknowable in principle, so A being connected right now proves nothing",
+		);
+		assert.ok(
+			store.droppedMachineSections.includes('saved version "old"'),
+			"the drop is visible, not silent (Ruling 19) — reported alongside the live overlay's own droppedMachineSections",
+		);
 	});
 });
 
@@ -186,5 +197,6 @@ test("a legacy snapshot's machine half is dropped when no machine is known at mi
 
 		store.revert(0);
 		assert.equal(store.config.axisRoles.U, undefined, "no machine was known at migration time — nothing to attribute the machine half to");
+		assert.ok(store.droppedMachineSections.includes('saved version "old"'), "the drop is reported here too, not only in the machine-known case");
 	});
 });

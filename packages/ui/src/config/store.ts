@@ -239,15 +239,15 @@ export function createConfigStore(options: { machineStore: Accessor<MachineStore
 	// NOT seeded here: it depends on `machineStore`, which the hydrateMachine
 	// computed below reads and applies synchronously, before this function
 	// returns, whatever `machineStore` resolves to at construction time.
-	// machineStore() is read here ONCE, synchronously, for the one-shot v2
-	// migration below (readAndClearLegacyPersonCache runs at most once per
-	// browser) — never subscribed to. In the real app this is always `null`
-	// (identity resolves about a poll after boot, well after this line), so a
-	// legacy snapshot's machine half is, in practice, always unattributable
-	// and dropped exactly like the live overlay's; a caller that already has
-	// a resolved MachineStore at construction (tests; a future re-ordering)
-	// gets attribution instead. See migrateLegacyPersonCache's own doc.
-	const cached = loadPersonCache(machineStore());
+	//
+	// The one-shot v2 migration below (readAndClearLegacyPersonCache runs at
+	// most once per browser) never consults `machineStore()` (Ruling 18): a
+	// legacy snapshot's machine half is exactly as unattributable as the live
+	// overlay's — localStorage carries no proof of origin regardless of which
+	// machine happens to be resolved at this synchronous instant — so it is
+	// dropped unconditionally, the same as the live overlay's, never kept on
+	// the strength of incidental boot ordering.
+	const cached = loadPersonCache();
 	let overlay: ConfigOverlay = joinOverlay({}, cached?.person ?? {});
 	const [config, setConfig] = createStore<UiConfig>(effective(overlay));
 	const [meta, setMeta] = createStore<{ dirty: boolean; snapshots: ConfigSnapshot[]; droppedMachineSections: readonly string[] }>({
@@ -865,21 +865,43 @@ function parseCacheRecord(raw: string | null): ConfigOverlay {
 }
 
 /**
+ * @invariant legacy-snapshot-machine-half-unconditional-drop
+ * @rung 6  choke-point — this is the ONLY place a legacy (pre-v3) snapshot's
+ *          machine half is decided, and the decision is a constant: it is
+ *          never written anywhere, and no parameter of this function names a
+ *          machine to consult. There is nothing left to make conditional.
+ * @why (Ruling 18) an earlier version wrote this half into whichever machine
+ *      happened to be resolved by `machineStore()` at the synchronous instant
+ *      `createConfigStore` runs — no stamp, no evidence, on data
+ *      migrateStorage.ts's own header says "carries no such proof" and "must
+ *      be DROPPED, never guessed at". That branch was unreachable in THIS
+ *      app only because of incidental boot ordering (App.tsx constructs the
+ *      config store before the machine session can resolve) — improbable,
+ *      not impossible, and this project's standard is that a hazard must be
+ *      unrepresentable, not merely unlikely today. There is nothing an
+ *      operator could confirm a recovered half against either (the origin is
+ *      unknowable in principle), so there is no "claimed, pending
+ *      confirmation" state to offer instead — dropping it is the only
+ *      correct answer
+ *
  * The one-shot v2 → v3 backfill of the pre-split, origin-global legacy cache
  * (spec §4, campaign #76 phase 1 task 8; see migrateStorage.ts for the exact
  * key name — only that module may spell it). That legacy cache predates
  * Task 6/7's split and, like the live overlay it once carried, proves nothing
- * about which machine wrote its machine-scoped bytes — Ruling 17 applies the
- * identical rule to its snapshots. `machineNow` is whatever config/store.ts's
- * `createConfigStore` already knows at construction (almost always `null` in
- * the real app — see its call site); a machine half is kept only when it is
- * non-null, and dropped otherwise, exactly like the live overlay's.
+ * about which machine wrote its machine-scoped bytes — Ruling 17/18 apply the
+ * identical drop-unconditionally rule to its snapshots that the live overlay
+ * already follows.
+ *
+ * The drop is not silent (Ruling 19): every migrated snapshot that HAD a
+ * non-empty machine half is named in the returned `droppedMachineSections`,
+ * alongside the live overlay's own report, so the one channel the System
+ * card already reads (Task 11) carries both.
  *
  * Returns `null` when there was nothing to migrate — the common case on every
  * boot after the first, since readAndClearLegacyPersonCache removes the key
  * on the one read that finds it.
  */
-function migrateLegacyPersonCache(machineNow: MachineStore | null): {
+function migrateLegacyPersonCache(): {
 	person: DeepPartial<PersonConfig>; dirty: boolean; snapshots: ConfigSnapshot[]; droppedMachineSections: string[];
 } | null {
 	const raw = readAndClearLegacyPersonCache();
@@ -896,17 +918,18 @@ function migrateLegacyPersonCache(machineNow: MachineStore | null): {
 		// keep defaults
 	}
 
+	// The machine half of every legacy snapshot is dropped, unconditionally
+	// — see this function's own invariant above. Only the person half ever
+	// becomes a ConfigSnapshot; a snapshot that HAD a machine half is still
+	// named in droppedMachineSections, by its label, so the loss is visible
+	// rather than silent (Ruling 19).
 	const migrated = migrateLegacySnapshots(rawSnapshots);
 	const snapshots: ConfigSnapshot[] = migrated.map(e => ({ id: e.id, takenAt: e.takenAt, label: e.label, overlay: e.person }));
-	const attributable = migrated.filter(e => Object.keys(e.machine).length > 0);
-	if (machineNow !== null && attributable.length > 0) {
-		writeMachineSnapshots(machineNow, [
-			...parseMachineSnapshots(machineNow.get("snapshots")),
-			...attributable.map(e => ({ id: e.id, overlay: e.machine })),
-		].slice(-MAX_SNAPSHOTS));
-	}
+	const droppedSnapshotLabels = migrated
+		.filter(e => Object.keys(e.machine).length > 0)
+		.map(e => `saved version "${e.label}"`);
 
-	return { person: splitOverlay(person).person, dirty, snapshots, droppedMachineSections };
+	return { person, dirty, snapshots, droppedMachineSections: [...droppedMachineSections, ...droppedSnapshotLabels] };
 }
 
 /**
@@ -922,12 +945,12 @@ function migrateLegacyPersonCache(machineNow: MachineStore | null): {
  * least once, so anything already in it postdates whatever the legacy key
  * carried and must not be clobbered by an older record.
  */
-function loadPersonCache(machineNow: MachineStore | null): {
+function loadPersonCache(): {
 	person: DeepPartial<PersonConfig>; dirty: boolean; snapshots: ConfigSnapshot[]; droppedMachineSections: string[];
 } | null {
 	if (typeof localStorage === "undefined") return null;
 
-	const legacy = migrateLegacyPersonCache(machineNow);
+	const legacy = migrateLegacyPersonCache();
 
 	const raw = localStorage.getItem(CONFIG_CACHE_KEY);
 	let current: { person: DeepPartial<PersonConfig>; dirty: boolean; snapshots: ConfigSnapshot[] } | null = null;
