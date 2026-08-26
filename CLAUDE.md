@@ -156,3 +156,34 @@ with no rework above the connector abstraction.
 
 Put this file's contents (condensed) into CLAUDE.md as project memory.
 Ask me before deviating from any decision recorded here.
+
+## Working rules (verification discipline)
+
+Adopted 2026-08-26 from campaign #76 phase 1, where five of six BEFORE/AFTER
+mismatches shared one cause and two of them destroyed configuration on the
+real printer. Each fires on an ARTEFACT — when you write the word, the check
+is due. Evidence per rule is in `docs/LEARNINGS.md`; the register that groups
+them is `docs/RULES-GROUPED.md`.
+
+- **A "class" or "shape" ruling must enumerate every instance.** If a finding
+  or ruling uses a class noun ("class", "shape", "pattern") or calls a
+  behaviour recurring, search the changed layer for the same shape and fix or
+  defer every hit BY NAME before the task closes. Fixing the one you were
+  pointed at does not discharge a class-shaped claim.
+- **A diagnosis is not "confirmed" until the call path is traced.** For a
+  behavioural bug, cite the call chain hop by hop, file:line, from the entry
+  point that runs on the ACTUAL observed input to the indicted line. Reading
+  the end function correctly is not showing that execution reaches it.
+- **A fix for a falsified premise must check the premise underneath it.** When
+  a task exists BECAUSE an earlier premise was shown false, state what the
+  broken premise assumed about its INPUTS, and check whether the replacement
+  inherits it one layer down: does the new code still trust its input to be
+  complete, coherent or singular when nothing enforces that?
+- **Closing an open question requires a testable proposition.** Name the
+  variable whose value would flip the answer, as something a later reader
+  could check and find FALSE. If only prose can be written, the question is
+  not closed — it is a guess with a due date.
+- **Verify the target from the environment, not from a document.** Before any
+  action leaving the working tree: `git remote -v` for a tracker, the
+  configured host for a deploy, `rev-parse` for a branch. A document adapted
+  from another project carries that project's identifiers.
