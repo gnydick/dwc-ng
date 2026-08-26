@@ -9,6 +9,12 @@
  * fact is shown.
  */
 import { isIdentified, machineKeySegment, type MachineId } from "../config/machineId.ts";
+// The canonical shape lives on ConfigStore (config/store.ts) — imported (and
+// re-exported below for SystemCards.tsx) rather than re-declared here, so a
+// shape change there is a compile error at every consumer of this alias
+// instead of a silent divergence a test would have to happen to catch.
+import type { ClaimedProfile } from "../config/store.ts";
+export type { ClaimedProfile };
 
 /**
  * The storage key this identity resolves to (machineKeySegment, Task 2's
@@ -37,19 +43,6 @@ export function identitySourceNote(id: MachineId): string | null {
 		case "unidentified":
 			return null;
 	}
-}
-
-/**
- * A settings profile read off the SD card but not yet known to belong to
- * THIS machine — config/migrateStorage.ts's `readStampedMachineOverlay`
- * (Task 8), rendered by Task 9 as `store.meta.claimedProfile`. Not yet
- * wired to a live store (Task 9 has not landed — see SystemCards.tsx's own
- * comment), but the shape matches what Task 9's brief commits to, so this
- * function is ready for it rather than guessing at it later.
- */
-export interface ClaimedProfile {
-	readonly writtenFor: string | null;
-	readonly sections: readonly string[];
 }
 
 /** Names the board a claimed profile was written for, so "claimed, not

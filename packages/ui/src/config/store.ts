@@ -14,7 +14,10 @@ import {
 	type SlotRect, type ThermalColors, type UiConfig, type UserScreenId,
 } from "./types.ts";
 import type { MachineStore } from "./machineStore.ts";
-import { migrateLegacySnapshots, migratePersonCacheToV3, readAndClearLegacyPersonCache } from "./migrateStorage.ts";
+import {
+	migrateLegacySnapshots, migratePersonCacheToV3, overlaySectionNames, readAndClearLegacyPersonCache,
+	readStampedMachineOverlay, stampMachineOverlay,
+} from "./migrateStorage.ts";
 
 /**
  * What a caller may change about the shaping section. `envelope` is declared
@@ -27,11 +30,44 @@ export interface ShapingPatch {
 	defaults?: Partial<ShapingDefaults>;
 }
 
+/**
+ * A settings profile read off the SD card but not yet known to belong to
+ * THIS machine (spec §3, "claimed, not adopted" — config/migrateStorage.ts's
+ * `readStampedMachineOverlay`). Deliberately carries only the ORIGIN and the
+ * section NAMES a mismatched file held — never a leaf value. The actual
+ * overlay is kept in a closure-private variable only `adoptClaimedProfile`
+ * can read (see its definition below); nothing exported from this module can
+ * reach it any other way, so a caller cannot render a claimed fact as if it
+ * were live config even by accident — there is no live-value field to
+ * misread. `cards/machineIdentityText.ts` imports this type rather than
+ * declaring its own, so a shape change here is a compile error there too,
+ * not merely a review risk.
+ */
+export interface ClaimedProfile {
+	readonly writtenFor: string | null;
+	readonly sections: readonly string[];
+}
+
 export interface ConfigStore {
 	/** Effective config = defaults + overlay. Read this in the UI. */
 	config: UiConfig;
 	/** True when the overlay changed since the last save/load. */
 	readonly dirty: boolean;
+	/**
+	 * A settings profile read off the SD card for a DIFFERENT machine than the
+	 * one currently identified — `null` when there is nothing claimed. See
+	 * `ClaimedProfile`'s own doc comment for what it does and does not expose.
+	 */
+	readonly meta: { readonly claimedProfile: ClaimedProfile | null };
+	/**
+	 * Apply a claimed profile's machine half and clear the claim. A no-op when
+	 * nothing is claimed. The ONLY place the private pending overlay (set by
+	 * loadFromMachine) is read back out — see ClaimedProfile's doc comment.
+	 */
+	adoptClaimedProfile(): void;
+	/** Discard a claimed profile without applying it. A no-op when nothing is
+	 *  claimed. */
+	clearClaimedProfile(): void;
 	/**
 	 * Report that a screen's LAYOUT changed (a card dragged or resized).
 	 *
@@ -250,12 +286,40 @@ export function createConfigStore(options: { machineStore: Accessor<MachineStore
 	const cached = loadPersonCache();
 	let overlay: ConfigOverlay = joinOverlay({}, cached?.person ?? {});
 	const [config, setConfig] = createStore<UiConfig>(effective(overlay));
-	const [meta, setMeta] = createStore<{ dirty: boolean; snapshots: ConfigSnapshot[]; droppedMachineSections: readonly string[] }>({
+	const [meta, setMeta] = createStore<{
+		dirty: boolean; snapshots: ConfigSnapshot[]; droppedMachineSections: readonly string[];
+		claimedProfile: ClaimedProfile | null;
+	}>({
 		dirty: cached?.dirty ?? false,
 		// Restore the backup history too, so it survives a reload.
 		snapshots: cached?.snapshots ?? [],
 		droppedMachineSections: cached?.droppedMachineSections ?? [],
+		// Never restored from cache: a claim is a fact about the SD card just
+		// downloaded, not about this browser's own history, and there is
+		// nothing claimed until loadFromMachine runs at least once.
+		claimedProfile: null,
 	});
+	/**
+	 * The claimed profile's ACTUAL machine-half values, pending Adopt.
+	 *
+	 * @invariant claimed-not-reachable-without-adopt
+	 * @rung 6  choke-point, and a stronger one than the usual convention-only
+	 *          kind: this is a closure-local variable with no export and no
+	 *          field on `store`, so no code OUTSIDE this function can even
+	 *          NAME it, let alone read it — a bypass from another module is
+	 *          not merely discouraged, it is unwritable. `adoptClaimedProfile`
+	 *          below is its one reader; nothing stops a second reader being
+	 *          added INSIDE this same closure by a future edit to this file,
+	 *          which is why this stays rung 6 rather than a claimed 7
+	 * @why `store.meta.claimedProfile` (exposed, reactive) carries only the
+	 *      origin and section NAMES — see ClaimedProfile's doc comment — so a
+	 *      caller reading it can never mistake a claimed fact for live config.
+	 *      The real values still have to live SOMEWHERE for Adopt to apply
+	 *      them; keeping them here, off the store entirely, is what makes
+	 *      "cannot be consumed as fact without an explicit act" true by
+	 *      construction rather than by a caller remembering to check a flag
+	 */
+	let pendingClaimOverlay: DeepPartial<MachineConfig> | null = null;
 
 	/**
 	 * @invariant whole-cache-write
@@ -410,6 +474,23 @@ export function createConfigStore(options: { machineStore: Accessor<MachineStore
 		},
 		get snapshots() { return meta.snapshots; },
 		get droppedMachineSections() { return meta.droppedMachineSections; },
+		get meta() { return meta; },
+
+		adoptClaimedProfile() {
+			if (pendingClaimOverlay === null) return;
+			const { person } = splitOverlay(overlay);
+			// Dirty, deliberately: the SD file itself still carries the OTHER
+			// machine's stamp. Adopting only changes what THIS browser believes
+			// in memory (and, via commit → persistCache, this machine's own
+			// local cache) — the file is not re-stamped until the next Save.
+			commit(joinOverlay(pendingClaimOverlay, person), true);
+			pendingClaimOverlay = null;
+			setMeta("claimedProfile", null);
+		},
+		clearClaimedProfile() {
+			pendingClaimOverlay = null;
+			setMeta("claimedProfile", null);
+		},
 
 		setAxisRole(letter, role) {
 			apply(draft => { (draft.axisRoles ??= {})[letter] = role; });
@@ -669,30 +750,73 @@ export function createConfigStore(options: { machineStore: Accessor<MachineStore
 		/*
 		 * @invariant labels-never-travel
 		 * @rung 6  choke-point plus a type with no room for it — the payload is
-		 *          assembled here and nowhere else, out of `overlay` alone, and
-		 *          ConfigOverlay has no label field for one to be written into.
-		 *          Labels live in `meta`, a separate store the upload never reads
+		 *          assembled here and nowhere else, out of `overlay` and the
+		 *          connected machine's own id, and ConfigOverlay has no label
+		 *          field for one to be written into. Labels live in `meta`, a
+		 *          separate store the upload never reads
 		 * @why a save name is about THIS browser's restore points. In the payload
 		 *      it becomes machine configuration: it rides to the SD card, comes
 		 *      back on every other browser that loads the file, and names a
 		 *      snapshot none of them took. A named save and an unnamed one must
 		 *      upload identical bytes
 		 * @debt the payload is a hand-built object literal, so a future field is
-		 *       one line away. Promote by giving ConfigOverlay a single serialize
+		 *       one line away — `machineId` (Task 9) is exactly that field
+		 *       arriving. Promote by giving ConfigOverlay a single serialize
 		 *       that returns a branded ConfigPayload upload accepts, so what
 		 *       travels is decided by the overlay's own type rather than here.
 		 */
+		/*
+		 * @invariant no-unstamped-sd-write
+		 * @rung 6  choke-point — this is the ONLY function that writes CONFIG_FILE,
+		 *          and it refuses before taking a snapshot or touching the
+		 *          connector at all when no machine is identified. A file with no
+		 *          stamp is indistinguishable from one written by this exact bug,
+		 *          which is what readStampedMachineOverlay treats a missing stamp
+		 *          as (claimed, never adopted) — refusing here is cheaper than
+		 *          relying on that fallback to catch it later
+		 * @why identity resolves about one poll after boot (machineSession.ts). A
+		 *      save attempted in that window must not put an unattributable file
+		 *      on the card — the next machine to read it (even THIS one, on a
+		 *      later boot with a different resolution) would have no stamp to
+		 *      check and no way to tell "mine" from "nobody's"
+		 */
 		async saveToMachine(connector, label) {
+			const handle = machineStore();
+			if (handle === null) return;
 			// The snapshot is taken from the overlay BEING saved, so the name
 			// describes exactly the state that went to the card. The label is
 			// local-only — it never reaches the payload below, so a named save
 			// and an unnamed one upload identical bytes.
 			store.snapshot(label ?? "");
-			const payload = JSON.stringify({ version: CONFIG_VERSION, overlay }, null, "\t");
+			// stampMachineOverlay is the sole producer of a machine id string in
+			// this format (config/migrateStorage.ts) — reached for here even
+			// though only `.machineId` is used, so the SD file's stamp and the
+			// browser's own per-machine cache stamp can never drift apart.
+			const { machineId } = stampMachineOverlay(splitOverlay(overlay).machine, handle.id);
+			const payload = JSON.stringify({ version: CONFIG_VERSION, machineId, overlay }, null, "\t");
 			await connector.upload(CONFIG_FILE, payload);
 			markDirty(false);
 		},
 
+		/*
+		 * @invariant claimed-not-adopted
+		 * @rung 6  choke-point — readStampedMachineOverlay (config/migrateStorage.ts,
+		 *          Task 8) is the ONLY function that decides whether a downloaded
+		 *          file's machine half matches the CONNECTED machine, and this is
+		 *          its only caller on the SD load path. A mismatch (or a file old
+		 *          enough to carry no stamp at all) never reaches `commit`: the
+		 *          machine half of THIS commit is either the stamp's own returned
+		 *          overlay (matched) or the UNCHANGED current machine half
+		 *          (claimed) — never the claimed file's bytes. Those bytes are
+		 *          held only in the closure-private `pendingClaimOverlay` above,
+		 *          reachable solely through `adoptClaimedProfile`
+		 * @why spec §3: an SD card cloned or moved to another board must not have
+		 *      its settings silently adopted (a foreign envelope becomes the box
+		 *      the head is driven inside) or silently discarded (a real machine's
+		 *      real settings would be lost the first time its OWN card fails to
+		 *      round-trip through some other path). "Claimed, not adopted" is the
+		 *      third option this function exists to make the default
+		 */
 		async loadFromMachine(connector) {
 			// NEVER clobber unsaved local edits. After an import/delete/edit the
 			// cache is the freshest local truth; pulling the SD config over it is
@@ -700,15 +824,87 @@ export function createConfigStore(options: { machineStore: Accessor<MachineStore
 			// made. The operator still Saves to machine to push, or reverts to
 			// pull — but a mere reconnect must not silently discard their work.
 			if (meta.dirty) return;
-			let loaded: ConfigOverlay | null = null;
+
+			let text: string | null = null;
 			try {
-				loaded = parseOverlayPayload(await connector.download(CONFIG_FILE));
+				text = await connector.download(CONFIG_FILE);
 			} catch (err) {
 				// No config on the SD card yet — a fresh machine, not an error
 				if (!(err instanceof FileNotFoundError)) throw err;
 			}
-			// Keep the current (cache-seeded) overlay when the SD has none.
-			commit(loaded ?? overlay, false);
+
+			const noClaim = (): void => {
+				pendingClaimOverlay = null;
+				setMeta("claimedProfile", null);
+			};
+
+			if (text === null) {
+				// No file on the card — keep the current (cache-seeded) overlay,
+				// exactly as before Task 9. Nothing to claim either.
+				noClaim();
+				commit(overlay, false);
+				return;
+			}
+
+			const loaded = parseOverlayPayload(text);
+			if (loaded === null) {
+				// Corrupt or foreign-versioned — same fallback as no file at all.
+				noClaim();
+				commit(overlay, false);
+				return;
+			}
+
+			const { person, machine: fileMachineHalf } = splitOverlay(loaded);
+			const handle = machineStore();
+			if (handle === null) {
+				// No identified machine to check a stamp against — a claim needs a
+				// name to test the file AGAINST, and there isn't one yet. Per spec
+				// §3, an unidentified machine has "no local machine cache at all:
+				// SD is its only store" — so the file is trusted in full, exactly
+				// as it was before this task, rather than held back with nothing to
+				// eventually reconcile it against.
+				//
+				// This is safe, not merely convenient: hydrateMachine (above, this
+				// file) rebuilds the machine half from SCRATCH the instant identity
+				// DOES resolve — from that machine's own local cache alone, never
+				// from whatever `overlay` held a moment before (see its own doc
+				// comment). Nothing loaded here survives that rebuild, so it can
+				// never be the mechanism that attaches this file's machine data to
+				// whichever board happens to identify first.
+				noClaim();
+				commit(loaded, false);
+				return;
+			}
+
+			// A second, harmless JSON.parse of the same text: parseOverlayPayload
+			// (above) already validated and migrated the OVERLAY, but its return
+			// type carries no room for a sibling `machineId` field, and that
+			// field has no version-migration story of its own (Task 9 is where it
+			// is introduced) — so re-parsing here duplicates no business logic,
+			// only the deserialization step.
+			let rawTop: unknown = null;
+			try { rawTop = JSON.parse(text); } catch { /* parseOverlayPayload already proved this text parses */ }
+
+			// readStampedMachineOverlay does its own parse/split of `.overlay`, so
+			// the already-split, already-validated `fileMachineHalf` passes
+			// through it unchanged when the stamp matches — this is not a second
+			// validation pass, just the one choke point's own contract.
+			const stamped = readStampedMachineOverlay(
+				{ machineId: isPlainObject(rawTop) ? rawTop.machineId : undefined, overlay: fileMachineHalf },
+				handle.id,
+			);
+
+			if (stamped.claimed) {
+				pendingClaimOverlay = fileMachineHalf;
+				setMeta("claimedProfile", { writtenFor: stamped.writtenFor, sections: overlaySectionNames(fileMachineHalf) });
+				// The machine half is left UNCHANGED — never the claimed file's
+				// bytes, never reset to empty either (that would discard this
+				// machine's own already-hydrated local truth for no reason).
+				commit(joinOverlay(splitOverlay(overlay).machine, person), false);
+			} else {
+				noClaim();
+				commit(joinOverlay(stamped.overlay, person), false);
+			}
 		},
 	};
 

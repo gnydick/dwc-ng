@@ -30,15 +30,20 @@ import {
 import { machineKeySegment, type IdentifiedMachine } from "./machineId.ts";
 
 /**
- * Which machine sections the RAW (untrusted) overlay names, for the report —
- * not the validated result. A key that is present but malformed (a garbled
- * `axisRoles`) is still reported: the operator's old cache DID carry an
- * axisRoles section and it was NOT carried forward, which is true whether or
- * not its content also failed validation. `screens` is reported as
+ * Which machine sections an (untrusted) overlay names — not the validated
+ * result. A key that is present but malformed (a garbled `axisRoles`) is
+ * still named: the caller's overlay DID carry an axisRoles section, whether
+ * or not its content also failed validation. `screens` is reported as
  * `screens.layouts` (never bare `screens`) because that is the only part of
  * it that is ever machine-scoped — see types.ts's splitOverlay.
+ *
+ * Two callers, one naming rule: config/store.ts's v2 → v3 migration report
+ * (what a legacy cache carried and could not be carried forward) and its
+ * claimed-profile report (what a mismatched SD file's machine half names,
+ * pending Adopt/Clear — Task 9). Exported rather than duplicated so the two
+ * reports can never drift on what counts as a "section".
  */
-function droppedSectionNames(rawOverlay: Record<string, unknown>): string[] {
+export function overlaySectionNames(rawOverlay: Record<string, unknown>): string[] {
 	const names: string[] = [];
 	for (const key of MACHINE_SECTIONS) {
 		if (key in rawOverlay) names.push(key);
@@ -69,7 +74,7 @@ export function migratePersonCacheToV3(raw: string | null): { person: ConfigOver
 	}
 	if (!isPlainObject(parsed) || parsed.version !== 2 || !isPlainObject(parsed.overlay)) return empty;
 	const { person } = splitOverlay(parseOverlay(parsed.overlay));
-	return { person, droppedMachineSections: droppedSectionNames(parsed.overlay) };
+	return { person, droppedMachineSections: overlaySectionNames(parsed.overlay) };
 }
 
 /**

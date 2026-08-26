@@ -138,7 +138,11 @@ test("a named save labels the backup and still clears dirty", async () => {
 	const connector = new PollConnector({ baseUrl: `http://127.0.0.1:${port}`, autoPoll: false, retryDelayMs: 10 });
 	try {
 		await connector.connect();
-		const store = createConfigStore({ machineStore: () => null });
+		// saveToMachine now requires an identified machine to stamp the SD file
+		// for (Task 9) — the name/dirty behaviour this test pins is orthogonal
+		// to identity, so any identified machine exercises it.
+		const machine = openMachineStore({ kind: "board", uniqueId: "named-save" });
+		const store = createConfigStore({ machineStore: () => machine });
 		store.setAxisRole("U", "Z motor 1");
 		await store.saveToMachine(connector, "toolchanger baseline");
 		assert.equal(store.snapshots.at(-1)!.label, "toolchanger baseline");
@@ -159,12 +163,13 @@ test("the backup name never reaches the SD payload", async () => {
 	try {
 		await connector.connect();
 
-		const plain = createConfigStore({ machineStore: () => null });
+		const machine = openMachineStore({ kind: "board", uniqueId: "label-never-travels" });
+		const plain = createConfigStore({ machineStore: () => machine });
 		plain.setAxisRole("U", "Z motor 1");
 		await plain.saveToMachine(connector);
 		const unnamedBytes = await connector.download(CONFIG_FILE);
 
-		const named = createConfigStore({ machineStore: () => null });
+		const named = createConfigStore({ machineStore: () => machine });
 		named.setAxisRole("U", "Z motor 1");
 		await named.saveToMachine(connector, "pre-CNC experiment");
 		const namedBytes = await connector.download(CONFIG_FILE);
@@ -184,7 +189,12 @@ test("save/load round-trip through the machine's SD card", async () => {
 	try {
 		await connector.connect();
 
-		const store = createConfigStore({ machineStore: () => null });
+		// A round-trip proves the SAME machine's SD file coming back to it — see
+		// config-claimed.test.ts for the cross-machine ("claimed") case Task 9
+		// adds. `other` shares `store`'s machine id, exactly as a second browser
+		// tab pointed at the same physical board would.
+		const machine = openMachineStore({ kind: "board", uniqueId: "round-trip" });
+		const store = createConfigStore({ machineStore: () => machine });
 		store.setAxisRole("U", "Z motor 1");
 		store.setDockSensor(0, { gpIn: 4 });
 		await store.saveToMachine(connector);
@@ -192,7 +202,7 @@ test("save/load round-trip through the machine's SD card", async () => {
 		assert.equal(store.snapshots.at(-1)!.label, "saved", "every save snapshots first");
 
 		// A different session (fresh store) sees the same config
-		const other = createConfigStore({ machineStore: () => null });
+		const other = createConfigStore({ machineStore: () => machine });
 		await other.loadFromMachine(connector);
 		assert.equal(other.config.axisRoles["U"], "Z motor 1");
 		assert.deepEqual(other.config.dockSensors["0"], { gpIn: 4 });
@@ -281,13 +291,16 @@ test("loadFromMachine does NOT overwrite unsaved local edits", async () => {
 		await connector.connect();
 
 		// A saved config on the SD card.
-		const onMachine = createConfigStore({ machineStore: () => null });
+		const machine = openMachineStore({ kind: "board", uniqueId: "dirty-wins" });
+		const onMachine = createConfigStore({ machineStore: () => machine });
 		onMachine.setAxisRole("U", "from SD");
 		await onMachine.saveToMachine(connector);
 
-		// A different session with its OWN unsaved edit — then a connect.
+		// A different session with its OWN unsaved edit — then a connect. Same
+		// machine as `onMachine`: the point of this test is the DIRTY guard,
+		// which must short-circuit before a stamp is even checked.
 		ls.clear();
-		const local = createConfigStore({ machineStore: () => null });
+		const local = createConfigStore({ machineStore: () => machine });
 		local.setAxisRole("V", "unsaved local");
 		assert.equal(local.dirty, true);
 		await local.loadFromMachine(connector);
@@ -311,16 +324,19 @@ test("a CLEAN session still adopts the SD config on connect", async () => {
 	const connector = new PollConnector({ baseUrl: `http://127.0.0.1:${port}`, autoPoll: false, retryDelayMs: 10 });
 	try {
 		await connector.connect();
-		const onMachine = createConfigStore({ machineStore: () => null });
+		const machine = openMachineStore({ kind: "board", uniqueId: "clean-adopts" });
+		const onMachine = createConfigStore({ machineStore: () => machine });
 		onMachine.setAxisRole("U", "from SD");
 		await onMachine.saveToMachine(connector);
 
-		// Fresh, clean session (no unsaved edits) must pick the SD config up.
+		// Fresh, clean session (no unsaved edits), SAME machine, must pick the
+		// SD config up — the stamp matches, so nothing is claimed.
 		ls.clear();
-		const fresh = createConfigStore({ machineStore: () => null });
+		const fresh = createConfigStore({ machineStore: () => machine });
 		assert.equal(fresh.dirty, false);
 		await fresh.loadFromMachine(connector);
 		assert.equal(fresh.config.axisRoles["U"], "from SD", "clean session adopts SD");
+		assert.equal(fresh.meta.claimedProfile, null);
 	} finally {
 		await connector.disconnect().catch(() => undefined);
 		await mock.close();

@@ -18,16 +18,13 @@ import {
 } from "./machineIdentityText.ts";
 
 /**
- * `claimed`/`onAdopt`/`onClear` are NOT wired to a live store: `ConfigStore`
- * has no `meta.claimedProfile` until Task 9 lands ("claimed, not adopted" on
- * the SD load path — docs/superpowers/sdd/2026-08-25-machine-identity-phase-1/
- * plan, Task 9). This body always receives `undefined` from the registry
- * today, so the row never renders — the correct state while there is
- * genuinely nothing claimed to report. The prop shape already matches what
- * Task 9's brief commits to (`{ writtenFor: string | null; sections: string[]
- * } | null`, `adoptClaimedProfile()`/`clearClaimedProfile()`), so wiring it
- * in is a one-line change at the CARD_RENDER call site below, not a
- * redesign.
+ * `claimed`/`onAdopt`/`onClear` are wired at the CARD_RENDER call site
+ * (compose/cards.tsx) straight off `ConfigStore.meta.claimedProfile` /
+ * `adoptClaimedProfile()` / `clearClaimedProfile()` (Task 9 — "claimed, not
+ * adopted" on the SD load path). This component stays a thin renderer: it
+ * takes whatever it is given and never reaches into `useApp()` for the claim
+ * itself, so a test can drive `claimedProfileText` directly (machine-card.
+ * test.ts) without needing a live store.
  */
 export function MachineIdentityBody(props: {
 	claimed?: ClaimedProfile | null;
