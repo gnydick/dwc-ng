@@ -592,8 +592,19 @@ export function conformModelKey(key: string, value: unknown): { ok: true; value:
 				travelAcceleration: numberOrNull(value.travelAcceleration),
 			} };
 		}
-		// network is gated for one reason: machine IDENTITY is read out of it
-		// (config/machineId.ts). An ungated subtree cannot carry a key.
+		// network is gated because machine IDENTITY is read out of it
+		// (config/machineId.ts): a wholesale `onModelKey("network", ...)`
+		// replacement is shaped here before resolveMachineId ever sees it.
+		// This gate does NOT cover every route identity can be read through,
+		// and must not be read as "an ungated subtree cannot carry a key" —
+		// `onModelPatch` (om/store.ts's every-tick d99fn live projection)
+		// deep-merges a board's raw JSON patch straight into the store with NO
+		// gate at all, network included. The real enforcement against THAT
+		// route is resolveMachineId's own `?? []` guards (config/machineId.ts),
+		// which treat a malformed/absent `network.interfaces` as a live input
+		// rather than a state this gate has already ruled out. Re-routing
+		// onModelPatch through per-key conforming would close that gap
+		// properly; it is a larger phase-2 change, out of scope here.
 		case "network": {
 			if (!isObject(value)) return { ok: false };
 			return { ok: true, value: {

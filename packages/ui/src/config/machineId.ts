@@ -40,6 +40,15 @@ const mainBoard = (boards: readonly (Board | null)[]): Board | undefined =>
 	boards.find((b): b is Board => b !== null && typeof b === "object" && (b.canAddress ?? 0) === 0);
 
 export function resolveMachineId(om: Pick<ObjectModel, "boards" | "network">): MachineId {
+	// `?? []` here and on `ifaces` below are NOT defensive padding against a
+	// state ObjectModel's non-optional array types already forbid — they are
+	// live enforcement. `conformModelKey` (om/types.ts) gates a full-subtree
+	// replacement, but `onModelPatch` (om/store.ts's every-tick d99fn live
+	// projection) deep-merges the board's raw JSON straight into the store
+	// with NO gate at all, so `om.boards` reaching this function as `undefined`
+	// or a sparse/malformed array is a real, reachable input, not a type-system
+	// impossibility. This function IS part of the real enforcement for machine
+	// identity, not a caller downstream of one.
 	const board = mainBoard(om.boards ?? []);
 	const uniqueId = (board as { uniqueId?: unknown } | undefined)?.uniqueId;
 	if (nonEmpty(uniqueId)) return { kind: "board", uniqueId };
@@ -47,6 +56,9 @@ export function resolveMachineId(om: Pick<ObjectModel, "boards" | "network">): M
 	// Gabe, 2026-08-25: the MAC of the first interface that has one. "First
 	// found" is first CARRYING a mac — the field is nullable and the real
 	// board's wifi radio is disabled with a mac while ethernet may have none.
+	// Same reasoning as `om.boards` above: `om.network?.interfaces` reaching
+	// here as `undefined` is a real input via the onModelPatch bypass, not a
+	// theoretical one this `?? []` merely guards against out of caution.
 	const ifaces = (om.network?.interfaces ?? []) as readonly (NetworkInterface | null)[];
 	for (const iface of ifaces) {
 		if (iface !== null && nonEmpty(iface.mac)) return { kind: "mac", mac: iface.mac };
