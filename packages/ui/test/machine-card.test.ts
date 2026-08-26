@@ -100,9 +100,10 @@ test("no dropped sections renders nothing", () => {
 	assert.equal(droppedSectionsText([]), null);
 });
 
-test("dropped sections name what was re-read from this board's card", () => {
+test("dropped sections say they were DROPPED, not recovered (GIT_86 finding 2) — the claim banner is the one that offers recovery", () => {
 	const text = droppedSectionsText(["axisRoles", "shaping"]);
-	assert.match(text ?? "", /re-read from this board's card/);
+	assert.match(text ?? "", /could not be carried forward and were dropped/);
+	assert.doesNotMatch(text ?? "", /re-read/, "nothing here was actually re-read from anywhere — that claim was false");
 	assert.match(text ?? "", /axisRoles/);
 	assert.match(text ?? "", /shaping/);
 });

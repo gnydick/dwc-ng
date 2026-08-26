@@ -77,12 +77,17 @@ export function claimedProfileText(claimed: ClaimedProfile | null): string | nul
 
 /**
  * The v2 -> v3 migration's report (config/store.ts `droppedMachineSections`,
- * Task 8): which machine-scoped sections were re-read from this board's own
- * card because the browser's copy carried no proof of which machine it
- * belonged to.
+ * Task 8): which machine-scoped sections (and, separately, which named saved
+ * snapshots that had a machine half) were DROPPED during the migration
+ * because the browser's copy carried no proof of which machine it belonged
+ * to — see migrateLegacyPersonCache's own invariant in config/store.ts, which
+ * discards them unconditionally rather than guessing. Nothing here was
+ * re-read from anywhere; recovering a previous machine's settings, when that
+ * is even possible, is the claim banner's job (claimedProfileText above),
+ * not this one's.
  */
 export function droppedSectionsText(sections: readonly string[]): string | null {
 	if (sections.length === 0) return null;
-	return "Machine settings from before this update were re-read from this board's card: "
+	return "Machine settings from before this update could not be carried forward and were dropped: "
 		+ `${sections.join(", ")}.`;
 }
