@@ -14,11 +14,15 @@ import Shell from "./shell/Shell.tsx";
 import "./app.css";
 
 export default function App(props: { backend: Backend }) {
-	// `machine` is read only from inside a deferred timeout (om/store.ts's
-	// persistSoon), never synchronously during createOmStore's own
-	// construction — see createOmStore's doc comment. That is what makes this
-	// declare-then-assign safe: by the time anything actually CALLS
-	// `machine.store()`, the assignment below has already run.
+	// `machine` is read (via machineStore()) eagerly at persistSoon's SCHEDULE
+	// time, and later only through the value it captured then (scheduledFor) —
+	// never synchronously during createOmStore's own construction, and never
+	// again by name once captured. See om/store.ts's own doc comments (Ruling
+	// 23) for why eager-not-lazy. Either way, `machine` is only ever read from
+	// code that runs after a connector event fires (a reply arriving), which
+	// cannot happen before this function's synchronous body — including the
+	// assignment below — has finished running. That ordering is what makes
+	// this declare-then-assign safe.
 	let machine!: ReturnType<typeof createMachineSession>;
 	const om = createOmStore({ machineStore: () => machine.store() });
 	// Identity resolves about one poll after boot (machineSession.ts): `store()`
