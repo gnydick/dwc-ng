@@ -1188,13 +1188,16 @@ function removeStorage(key: string): void {
  * ride alongside it under the historic `<key>.parked` / `.orientation` /
  * `.nolabels` siblings — hidden cards' remembered spots, per-card content
  * direction, and which cards have their label column off. One interface
- * with two producers, deliberately: `machineCanvasKeys` is the ONLY one
+ * with THREE producers, deliberately: `machineCanvasKeys` is the ONLY one
  * backed by a real machine's store (config/machineStore.ts's closed
  * MachineKeyName union), so a screen's saved layout can never be read back
  * under the wrong machine. `devCanvasKeys` is the Card Lab's own carve-out —
  * a bench with no machine behind it (Ruling 2, storage-keys.test.ts) that
  * was never machine-scoped and stays that way, isolated under its own fixed
- * key rather than pretending to be a `MachineStore`.
+ * key rather than pretending to be a `MachineStore`. `nullCanvasKeys` (GIT_86
+ * finding 1) is the third: a screen rendered before identity resolves at
+ * all, which has neither a machine store NOR a fixed bench key to fall back
+ * on — the only honest answer is to persist nowhere.
  */
 export type CanvasKeyKind = "layout" | "parked" | "orientation" | "labels";
 
@@ -1244,6 +1247,34 @@ export function devCanvasKeys(baseKey: string): CanvasKeys {
 		get: kind => readStorage(key(kind)),
 		set: (kind, value) => writeStorage(key(kind), value),
 		remove: kind => removeStorage(key(kind)),
+	};
+}
+
+/**
+ * A canvas with no machine to belong to (GIT_86 finding 1): the render for a
+ * screen visited before identity resolves, or on a board that never
+ * identifies at all (unreachable, or reporting neither a `uniqueId` nor an
+ * interface MAC — spec §3 treats this as a supported operating mode, not an
+ * error). There is no `IdentifiedMachine` here to open a `MachineStore`
+ * for, and machine-scoped storage's one door (`openMachineStore`,
+ * config/machineStore.ts) takes nothing else — so this is deliberately NOT
+ * a fourth way to reach `localStorage` under a made-up or shared key. It is
+ * a plain in-memory record, alive for exactly as long as whatever created
+ * it: ComposedScreen constructs one fresh per mount of its unidentified
+ * branch, and the moment identity lands, its keyed `<Show>` tears that
+ * branch down and mounts a new one against `machineCanvasKeys` instead —
+ * this map, and anything written to it, is discarded with it, never
+ * migrated or merged into the real store. A card the operator drags while
+ * unidentified stays where they put it for as long as that render lives,
+ * exactly like any other canvas; it simply cannot outlive the render,
+ * because there is no machine yet for it to belong to.
+ */
+export function nullCanvasKeys(): CanvasKeys {
+	const values = new Map<CanvasKeyKind, string>();
+	return {
+		get: kind => values.get(kind) ?? null,
+		set: (kind, value) => { values.set(kind, value); },
+		remove: kind => { values.delete(kind); },
 	};
 }
 

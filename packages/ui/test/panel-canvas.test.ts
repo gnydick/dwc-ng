@@ -600,6 +600,125 @@ test("a remembered position survives a reload (persisted, card off the screen)",
 	}
 });
 
+// --- GIT_86 finding 1: an unidentified machine must still render cards ------
+//
+// ComposedScreen.tsx cannot be mounted here — this repo has no jsdom/happy-dom
+// (there is no `document`, `<For>`/`<Show>`/`<Portal>` all need one), so the
+// fix's actual JSX (the identity card rendering, the compose drawer hiding
+// while unidentified, the ONE clean remount `<Show keyed>` performs) is
+// UNTESTED at this level and stays that way until this repo gets a DOM. What
+// IS reachable, and what these tests drive directly, is the exact mechanism
+// ComposedScreen now relies on: `nullCanvasKeys()` standing in for
+// `machineCanvasKeys()` while `machineStore()` is null, and createPanelCanvas
+// behaving identically either way except for where (if anywhere) it persists.
+
+test("nullCanvasKeys answers get/set/remove in memory and touches no real storage", async () => {
+	class MemStore {
+		private m = new Map<string, string>();
+		getItem(k: string) { return this.m.has(k) ? this.m.get(k)! : null; }
+		setItem(k: string, v: string) { this.m.set(k, String(v)); }
+		removeItem(k: string) { this.m.delete(k); }
+		get size() { return this.m.size; }
+	}
+	const mem = new MemStore();
+	(globalThis as { localStorage?: unknown }).localStorage = mem;
+	try {
+		const { nullCanvasKeys } = await import("../src/shell/panelCanvas.ts");
+		const keys = nullCanvasKeys();
+		assert.equal(keys.get("layout"), null, "nothing set yet");
+		keys.set("layout", "probe-value");
+		assert.equal(keys.get("layout"), "probe-value", "answers back what it was just told");
+		assert.equal(mem.size, 0, "the in-memory keys never reached real storage");
+		keys.remove("layout");
+		assert.equal(keys.get("layout"), null, "remove works in memory too");
+	} finally {
+		delete (globalThis as { localStorage?: unknown }).localStorage;
+	}
+});
+
+test("createPanelCanvas seeded with nullCanvasKeys renders the coded defaults — an unidentified screen is not blank", async () => {
+	const { createPanelCanvas, nullCanvasKeys } = await import("../src/shell/panelCanvas.ts");
+	const defaults = [
+		{ id: "machine-identity", ...rect(0, 0, 12, 10) },
+		{ id: "other-card", ...rect(12, 0, 12, 10) },
+	];
+	// Exactly what ComposedScreen builds while `machineStore()` is null: no
+	// machine-scoped seed either, since savedScreenLayout naturally answers
+	// null when there is no identified machine to read an overlay for.
+	const canvas = createPanelCanvas(nullCanvasKeys(), defaults);
+	assert.deepEqual(posOf(canvas, "machine-identity"), { col: 0, row: 0 },
+		"the identity card — the one card whose job is explaining THIS state — renders at its coded spot");
+	assert.deepEqual(posOf(canvas, "other-card"), { col: 12, row: 0 }, "every other card renders too");
+});
+
+test("a drag made while unidentified lives only in memory and never reaches real storage", async () => {
+	class MemStore {
+		private m = new Map<string, string>();
+		getItem(k: string) { return this.m.has(k) ? this.m.get(k)! : null; }
+		setItem(k: string, v: string) { this.m.set(k, String(v)); }
+		removeItem(k: string) { this.m.delete(k); }
+		get size() { return this.m.size; }
+	}
+	const mem = new MemStore();
+	(globalThis as { localStorage?: unknown }).localStorage = mem;
+	try {
+		const { createPanelCanvas, nullCanvasKeys } = await import("../src/shell/panelCanvas.ts");
+		const canvas = createPanelCanvas(nullCanvasKeys(), [
+			{ id: "a", ...rect(0, 0, 12, 40) },
+			{ id: "b", ...rect(12, 0, 12, 40) },
+		]);
+		canvas.removeSlot("b"); // the same "hide" write path a real canvas persists
+		assert.equal(mem.size, 0, "hiding a card while unidentified must not create a real storage record");
+		canvas.ensureSlot("b", rect(0, 100, 12, 40));
+		assert.deepEqual(posOf(canvas, "b"), { col: 12, row: 0 }, "still remembered for the life of THIS render");
+		assert.equal(mem.size, 0, "showing it again is still an in-memory-only round trip");
+	} finally {
+		delete (globalThis as { localStorage?: unknown }).localStorage;
+	}
+});
+
+test("identity resolving is a clean swap: the in-memory canvas is discarded, the machine's own saved layout takes over — never a blank frame in between", async () => {
+	class MemStore {
+		private m = new Map<string, string>();
+		getItem(k: string) { return this.m.has(k) ? this.m.get(k)! : null; }
+		setItem(k: string, v: string) { this.m.set(k, String(v)); }
+		removeItem(k: string) { this.m.delete(k); }
+	}
+	(globalThis as { localStorage?: unknown }).localStorage = new MemStore();
+	try {
+		const { createPanelCanvas, nullCanvasKeys, machineCanvasKeys, serializeCanvas } = await import("../src/shell/panelCanvas.ts");
+		const { openMachineStore } = await import("../src/config/machineStore.ts");
+		const defaults = [
+			{ id: "machine-identity", ...rect(0, 0, 12, 10) },
+			{ id: "other-card", ...rect(12, 0, 12, 10) },
+		];
+
+		// BEFORE: unidentified. Cards render at their coded defaults — this is
+		// the render finding 1 says must exist and previously did not.
+		const before = createPanelCanvas(nullCanvasKeys(), defaults);
+		assert.deepEqual(posOf(before, "other-card"), { col: 12, row: 0 });
+		// The operator drags a card around while waiting for identity to land.
+		before.ensureSlot("other-card", rect(0, 200, 12, 10));
+
+		// Meanwhile, a DIFFERENT layout is already saved on the SD card for the
+		// real machine this board turns out to be — from a previous session.
+		const store = openMachineStore({ kind: "board", uniqueId: "finding1-swap-test" });
+		const savedKeys = machineCanvasKeys(store, "test-screen");
+		savedKeys.set("layout", serializeCanvas({ "machine-identity": rect(0, 0, 12, 10), "other-card": rect(30, 30, 12, 10) }));
+
+		// AFTER: identity lands. ComposedScreen's keyed `<Show>` tears down the
+		// null-object branch and mounts a fresh createPanelCanvas against the
+		// real store — modeled here as a second, independent call, since the
+		// component itself cannot be mounted (no DOM in this suite).
+		const after = createPanelCanvas(machineCanvasKeys(store, "test-screen"), defaults);
+		assert.deepEqual(posOf(after, "other-card"), { col: 30, row: 30 },
+			"the machine's own saved layout wins outright — the drag made before identity resolved left no trace");
+		assert.deepEqual(posOf(after, "machine-identity"), { col: 0, row: 0 });
+	} finally {
+		delete (globalThis as { localStorage?: unknown }).localStorage;
+	}
+});
+
 // --- content-fit hard stop (the gold limit) ----------------------------------
 // clampToStop is the pure half of the resize physics: the card's content fit is
 // a WALL — the edge stops there and cannot be pulled through, on either axis.

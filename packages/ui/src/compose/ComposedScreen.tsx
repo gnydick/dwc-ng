@@ -21,7 +21,7 @@ import { useApp } from "../shell/context.ts";
 import { createArmed } from "../control/armed.ts";
 import { railSlot } from "../shell/railSlot.ts";
 import { PanelCanvas } from "../shell/PanelCanvas.tsx";
-import { createPanelCanvas, machineCanvasKeys, type PanelCanvasController } from "../shell/panelCanvas.ts";
+import { createPanelCanvas, machineCanvasKeys, nullCanvasKeys, type PanelCanvasController } from "../shell/panelCanvas.ts";
 import { machineStoreFor, type MachineStore } from "../config/machineStore.ts";
 import { CARD_DEFS, allCardIds, parseCardId, type CardId } from "./defs.ts";
 import { RegistryCard, cardTitleOf } from "./RegistryCard.tsx";
@@ -33,6 +33,19 @@ import { CardStudio } from "./CardStudio.tsx";
 import { ImportReview } from "./ImportReview.tsx";
 import { exportCard, exportScreen, parseShareFile, remapScreenCards, type ShareImport } from "./share.ts";
 import type { CardCtx } from "./ctx.ts";
+
+/**
+ * A stable sentinel so "unidentified" is its OWN keyed branch of the `<Show>`
+ * below, rather than the falsy value that sends it to a fallback with no
+ * card in hand at all (GIT_86 finding 1). A module-level constant, not one
+ * minted per render: `<Show keyed>` remounts its child whenever the `when`
+ * value's REFERENCE changes, so a fresh object every render would remount
+ * the whole canvas on every poll tick. This one reference never changes, so
+ * repeated "still unidentified" renders are a no-op, and the ONLY remount is
+ * the real transition — sentinel to a genuine `MachineStore` — the instant
+ * identity resolves.
+ */
+const UNIDENTIFIED_CANVAS: unique symbol = Symbol("unidentified-canvas");
 
 /** Hand a share file to the browser as a download. */
 function downloadShare(file: { fileName: string; text: string }): void {
@@ -77,17 +90,31 @@ export function ComposedScreen(props: { screenId: string }) {
 
 	return (
 		<Show
-			when={machineStore()}
+			// UNIDENTIFIED_CANVAS, never `null`/`undefined`: an unidentified
+			// machine is a SUPPORTED operating mode (spec §3), not an absence
+			// of content, so it must not fall to `<Show>`'s falsy fallback —
+			// there IS no fallback branch any more (GIT_86 finding 1). Both
+			// branches render the exact same cards, including the
+			// machine-identity card whose whole job is explaining this very
+			// state; only the CanvasKeys they persist through differ.
+			when={machineStore() ?? UNIDENTIFIED_CANVAS}
 			keyed
-			// Reserves the SAME element the real content renders into, so the
-			// page does not reflow once identity resolves — it only fills in.
-			// Rendering the defaults here instead (the tempting shortcut) is
-			// exactly the jitter this gate exists to prevent: a card would
-			// appear at its coded default and then visibly jump to its saved
-			// spot the instant the canvas mounts for real.
-			fallback={<PanelCanvas class={entry()?.def.class}>{null}</PanelCanvas>}
 		>
-			{store => {
+			{resolved => {
+				// Narrowed once per mount of this branch, never reassigned — the
+				// `<Show keyed>` above already remounts this whole closure the one
+				// time `resolved` changes from the sentinel to a real store (or
+				// back, on a re-identify), so nothing further down needs to react
+				// to identity changing itself.
+				// The cast is TS inference, not a real widening: Solid's generic
+				// `Show<T>` loses the sentinel's `unique symbol` branding down to
+				// bare `symbol` when inferring T from `when`, so the `===` check
+				// below narrows the RUNTIME value correctly but not the static
+				// type. `resolved` can only ever be `UNIDENTIFIED_CANVAS` itself or
+				// whatever `machineStore()` produced, so once it fails that
+				// equality check it IS a `MachineStore`.
+				const store: MachineStore | null = resolved === UNIDENTIFIED_CANVAS ? null : (resolved as MachineStore);
+
 				const ctxFor = (id: SlotId): CardCtx => ({
 					...app,
 					connected,
@@ -114,8 +141,18 @@ export function ComposedScreen(props: { screenId: string }) {
 
 				// Initial defaults from the composition at mount; later membership
 				// edits flow through the sync effect below instead of a remount.
+				//
+				// KEYS: `machineCanvasKeys` once identified — the ONLY producer
+				// backed by real storage — or `nullCanvasKeys` while unidentified,
+				// an in-memory stand-in that writes nowhere (GIT_86 finding 1). A
+				// drag made in this state is real for as long as this render lives
+				// and vanishes with it the instant identity resolves and the
+				// `<Show>` above remounts against the real store — which is exactly
+				// the "defaults render, then the saved layout replaces them in ONE
+				// transition" property the old whole-canvas gate existed to protect,
+				// kept here without ever blanking the screen to get it.
 				const canvas = createPanelCanvas(
-					machineCanvasKeys(store, props.screenId),
+					store !== null ? machineCanvasKeys(store, props.screenId) : nullCanvasKeys(),
 					untrack(() => slotsOf(composition()).map(([id, slot]) => ({ id, ...slot }))),
 					rawId => {
 						const id = parseCardId(rawId);
@@ -130,7 +167,11 @@ export function ComposedScreen(props: { screenId: string }) {
 					// Seeds a canvas store with no record at all (GIT_86 task 16) from
 					// what the operator actually saved to the SD card, so a card they
 					// placed is honoured exactly and a coded-only card can never land
-					// on top of it - see createPanelCanvas's seedFromOverlay doc.
+					// on top of it - see createPanelCanvas's seedFromOverlay doc. While
+					// unidentified the machine half of the overlay is always `{}`
+					// (config/store.ts's writeMachineOverlay never ran without a
+					// handle), so this naturally yields null and every card sites at
+					// its coded default — nothing extra to gate here.
 					untrack(() => savedScreenLayout(app.config.config, props.screenId)),
 				);
 
@@ -157,12 +198,22 @@ export function ComposedScreen(props: { screenId: string }) {
 						    live here cost 36px of full-width canvas height on every
 						    screen — nine row units off the top of every card — while the
 						    rail carried 812px of unused column. Portalled rather than
-						    hoisted: see railSlot.ts. */}
-						<Show when={railSlot()}>
-							{slot => (
-								<Portal mount={slot()}>
-									<ComposeDrawer screenId={props.screenId} entry={entry()} composition={composition()} previewCtx={ctxFor("console")} canvas={canvas} machineStore={store} />
-								</Portal>
+						    hoisted: see railSlot.ts.
+						    Only once identified: composing (rename/delete/import a
+						    screen, add/remove cards) needs a real MachineStore — an
+						    import replaces the canvas's PERSISTED geometry
+						    (replaceScreenLayout/writeCanvasState), which has nowhere to
+						    go while unidentified. The cards themselves render regardless
+						    (below); this is the one piece that stays gated. */}
+						<Show when={store} keyed>
+							{s => (
+								<Show when={railSlot()}>
+									{slot => (
+										<Portal mount={slot()}>
+											<ComposeDrawer screenId={props.screenId} entry={entry()} composition={composition()} previewCtx={ctxFor("console")} canvas={canvas} machineStore={s} />
+										</Portal>
+									)}
+								</Show>
 							)}
 						</Show>
 						<PanelCanvas class={entry()?.def.class}>
