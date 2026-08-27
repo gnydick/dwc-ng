@@ -182,6 +182,14 @@ export function ComposedScreen(props: { screenId: string }) {
 					// gated on the dirty flag, and geometry only reaches the overlay at
 					// save time (captureScreenGeometry), so without this the button
 					// stays greyed out and the layout can never leave this browser.
+					//
+					// Reached ONLY from an operator gesture. The canvas decides that,
+					// not this call site: `persist` takes a LayoutOrigin and only
+					// "operator-gesture" reaches this callback. The sync effect below
+					// (ensureSlot/removeSlot) is a "composition-reconcile" and is
+					// silent — the config edit that caused it already marked itself
+					// dirty via setScreenCard -> apply -> commit, and at boot there
+					// was no edit to report (#120 defect B).
 					() => app.config.markLayoutDirty(),
 					undefined,
 					// Seeds a canvas store with no record at all (GIT_86 task 16) from

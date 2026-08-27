@@ -1278,6 +1278,21 @@ export function nullCanvasKeys(): CanvasKeys {
 	};
 }
 
+/**
+ * WHO moved the card — the distinction the dirty flag actually needs.
+ *
+ * `"operator-gesture"`: a person did this. A drag, a resize, an import, a
+ * reset of one slot. It is unsaved work, and Save to machine must light up.
+ *
+ * `"composition-reconcile"`: the canvas catching up to a fact the config
+ * already holds — a slot the composition gained or lost since this canvas was
+ * built (ComposedScreen's sync effect). The overlay edit that CAUSED it has
+ * already marked itself dirty through the config store's own `commit`, so
+ * reporting it a second time here can only ever be double-counting; at boot,
+ * where there was no edit at all, it is a plain falsehood.
+ */
+export type LayoutOrigin = "operator-gesture" | "composition-reconcile";
+
 export interface PanelCanvasController {
 	styleFor: (id: string) => Record<string, string>;
 	startMove: (id: string, event: PointerEvent) => void;
@@ -1312,9 +1327,13 @@ export interface PanelCanvasController {
 	/** Ids currently tracked (reactive). */
 	slotIds: () => string[];
 	/** Adopt a slot added after mount (composition editing) at the given rect;
-	 *  no-op if already tracked. Persists like a drop. */
+	 *  no-op if already tracked. Persists, but as a RECONCILE, never as a
+	 *  gesture: the composition edit that added the card already marked the
+	 *  config dirty through `setScreenCard` -> apply -> commit, and at boot
+	 *  there is no edit at all. See LayoutOrigin. */
 	ensureSlot: (id: string, rect: PanelRect) => void;
-	/** Forget a slot removed after mount. Persists like a drop. */
+	/** Forget a slot removed after mount. Persists as a RECONCILE — same
+	 *  reasoning as ensureSlot above. */
 	removeSlot: (id: string) => void;
 	/**
 	 * Rebuild the layout wholesale from `rects` — the live half of an import.
@@ -1352,11 +1371,16 @@ export function createPanelCanvas(
 	defaults: PanelDefault[],
 	isActive?: (id: string) => boolean,
 	/**
-	 * Called whenever this canvas's geometry changes. A screen passes the
-	 * config store's markLayoutDirty, because a moved card is an unsaved
-	 * change and Save to machine is gated on the dirty flag — without this a
-	 * rearranged screen could never be pushed to the SD card at all. Surfaces
-	 * whose geometry is device-only (the Card Lab) pass nothing.
+	 * Called when an OPERATOR changes this canvas's geometry — a drag, a
+	 * resize, an import, a per-slot reset. A screen passes the config store's
+	 * markLayoutDirty, because a moved card is an unsaved change and Save to
+	 * machine is gated on the dirty flag — without this a rearranged screen
+	 * could never be pushed to the SD card at all. Surfaces whose geometry is
+	 * device-only (the Card Lab) pass nothing.
+	 *
+	 * NOT called for a composition reconcile or for the construction-time
+	 * repair: see LayoutOrigin and `persist` below for why those two facts
+	 * had to stop sharing one notifier (#120 defect B).
 	 */
 	onLayoutChange?: () => void,
 	/**
@@ -1421,9 +1445,10 @@ export function createPanelCanvas(
 			: mergeCanvas(effectiveStored, defaults),
 	);
 	// Settle a redesign repair once rather than recomputing it on every load.
-	// Deliberately NOT persist(): that fires onLayoutChange -> markLayoutDirty,
-	// and a repair is not a user edit — nor is mutating the config store during
-	// signal initialisation safe. Correctness never depends on this landing:
+	// Deliberately NOT persist(): a repair is not a user edit, and mutating the
+	// config store during signal initialisation is not safe either. Kept as a
+	// direct keys.set even though persist(…, "composition-reconcile") would now
+	// also be silent — the second reason still stands on its own. Correctness never depends on this landing:
 	// growToDefaults + reflow are deterministic and idempotent, so a browser
 	// where the write no-ops (private mode, quota) rebuilds the identical
 	// layout every time.
@@ -1479,10 +1504,41 @@ export function createPanelCanvas(
 		keys.set("parked", serializeCanvas(next));
 	};
 
-	const persist = (next: CanvasState): void => {
+	/**
+	 * Write geometry, and say WHERE IT CAME FROM.
+	 *
+	 * @invariant only-an-operator-gesture-reports-unsaved-work
+	 * @rung 6  choke-point with a mandatory discriminator — `persist` is the
+	 *          only function that writes the "layout" key, `onLayoutChange` is
+	 *          named at exactly one line in the program (the one below), and
+	 *          `origin` has no default, so a geometry write that never decided
+	 *          whose act it was does not COMPILE. A new call site added by
+	 *          someone who read nothing still has to answer the only question
+	 *          that matters here. Not rung 7: the two origins are string
+	 *          literals a caller could still pick wrongly, which is what
+	 *          test/layout-dirty-origin.test.ts's per-call-site scan pins
+	 * @why one flag used to carry two different facts — "the operator
+	 *          rearranged the screen" and "the canvas emitted a geometry
+	 *          event". `ensureSlot`/`removeSlot` run from ComposedScreen's
+	 *          composition-sync effect, which fires as the screen is being
+	 *          brought up to date with a config change nobody dragged; routing
+	 *          those through the same notifier as a drag is what let a plain
+	 *          reload report unsaved work that did not exist (#120 defect B).
+	 *          The fix is NOT to stop marking dirty: geometry only reaches the
+	 *          overlay at save time (captureScreenGeometry) and Save is gated
+	 *          on the flag, so a canvas that never marks dirty is one whose
+	 *          rearrangement can never be saved at all
+	 * @enumerated the geometry writers NOT on this route, and why: `reset()`
+	 *          REMOVES the key rather than writing one (the next mount re-seeds
+	 *          from defaults) and has never notified; the construction-time
+	 *          settle write at the top of this function is a deterministic
+	 *          repair, not an edit, and deliberately calls `keys.set` directly.
+	 *          Both are unchanged by #120 and neither can express a notify.
+	 */
+	const persist = (next: CanvasState, origin: LayoutOrigin): void => {
 		setState(next);
 		keys.set("layout", serializeCanvas(next));
-		onLayoutChange?.();
+		if (origin === "operator-gesture") onLayoutChange?.();
 	};
 
 	// Hidden labels, stored as the EXCEPTION set rather than a value per card:
@@ -1559,7 +1615,7 @@ export function createPanelCanvas(
 				? { ...wanted, ...findFreePosition(occupied, wanted) }
 				: wanted;
 		}
-		persist({ ...state(), [id]: placed });
+		persist({ ...state(), [id]: placed }, "composition-reconcile");
 	};
 
 	const removeSlot = (id: string): void => {
@@ -1570,7 +1626,7 @@ export function createPanelCanvas(
 		persistParked({ ...parked(), [id]: rect });
 		const next = { ...state() };
 		delete next[id];
-		persist(next);
+		persist(next, "composition-reconcile");
 	};
 
 	/**
@@ -1747,12 +1803,12 @@ export function createPanelCanvas(
 				// without ever finding a legal delta. Persist the state as it
 				// stands rather than an empty patch, so the drop is still a
 				// no-op and not a write of stale rects.
-				persist(lastPatch === null ? state() : { ...state(), ...lastPatch });
+				persist(lastPatch === null ? state() : { ...state(), ...lastPatch }, "operator-gesture");
 				// The formation has landed. Keeping it lit would make the next
 				// unrelated drag pick all of them up again.
 				clearSelection();
 			} else {
-				persist({ ...state(), [id]: lastValid });
+				persist({ ...state(), [id]: lastValid }, "operator-gesture");
 			}
 		};
 		window.addEventListener("pointermove", onMove);
@@ -1912,7 +1968,7 @@ export function createPanelCanvas(
 			cardEl?.classList.remove("at-limit");
 			window.removeEventListener("pointermove", onMove);
 			window.removeEventListener("pointerup", onUp);
-			persist(state());
+			persist(state(), "operator-gesture");
 		};
 		window.addEventListener("pointermove", onMove);
 		window.addEventListener("pointerup", onUp);
@@ -1933,7 +1989,7 @@ export function createPanelCanvas(
 	// already in memory, because importing the screen you are LOOKING at does
 	// not change the route and so never remounts.
 	const adoptLayout = (rects: CanvasState, orientations?: OrientationState): void => {
-		persist(sanitizeCanvas(rects));
+		persist(sanitizeCanvas(rects), "operator-gesture");
 		persistParked({});
 		// The incoming layout brings its own directions; it does not inherit
 		// the replaced layout's, and it does not lose its own either.
@@ -1946,7 +2002,7 @@ export function createPanelCanvas(
 	const resetSlot = (id: string): void => {
 		const coded = defaults.find(d => d.id === id);
 		if (coded === undefined) return;
-		persist({ ...state(), [id]: clampRect({ col: coded.col, row: coded.row, colSpan: coded.colSpan, rowSpan: coded.rowSpan }) });
+		persist({ ...state(), [id]: clampRect({ col: coded.col, row: coded.row, colSpan: coded.colSpan, rowSpan: coded.rowSpan }) }, "operator-gesture");
 		// A slot's remembered hidden spot and its content direction are part of
 		// the deviation being undone, same as in reset() — but only this one's.
 		const nextParked = { ...parked() };
