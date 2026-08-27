@@ -563,7 +563,16 @@ export const CARD_DEFS = {
 		// steps complete (verified live: identical row `top` offsets before and
 		// after a step's readiness text changed entirely, and before and after
 		// running one).
-		size: { colSpan: 156, rowSpan: 139 },
+		//
+		// 139 -> 108 for the removal of the "Means" walk (GIT_90 fix round 5,
+		// Gabe: "there's a big section above the picker that we don't need in the
+		// shaping card" — a deliberate override of the walk's own rationale, not
+		// an accident; see the file-header note in ShapingCards.tsx). Re-measured
+		// via contentRowSpan() against `shaping-measured`: row stop 108, unchanged
+		// across the 720 / 400 / 200 px probes (reproduced twice), body worth 93
+		// of it, no child moved. colStop held at 125 — the walk never set the
+		// column floor, only the tools table did.
+		size: { colSpan: 156, rowSpan: 108 },
 	}),
 	/** The test motion: the box it may move in, the sensor, the moves it will
 	 *  make, and the armed control that makes them. */

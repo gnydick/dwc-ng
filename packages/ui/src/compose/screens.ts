@@ -191,9 +191,9 @@ export const BED_COMPOSITION: Composition = {
  * workflow-order property above.
  */
 export const SHAPING_COMPOSITION: Composition = {
-	"shaping-status": { col: 0, row: 0, colSpan: 156, rowSpan: 139 },
-	"shaping-candidates": { col: 0, row: 139, colSpan: 156, rowSpan: 75 },
-	"shaping-apply": { col: 0, row: 214, colSpan: 156, rowSpan: 50 },
+	"shaping-status": { col: 0, row: 0, colSpan: 156, rowSpan: 108 },
+	"shaping-candidates": { col: 0, row: 108, colSpan: 156, rowSpan: 75 },
+	"shaping-apply": { col: 0, row: 183, colSpan: 156, rowSpan: 50 },
 	"shaping-capture": { col: 156, row: 0, colSpan: 156, rowSpan: 140 },
 	"shaping-custom": { col: 156, row: 140, colSpan: 156, rowSpan: 71 },
 	"shaping-verify": { col: 156, row: 211, colSpan: 156, rowSpan: 62 },

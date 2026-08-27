@@ -21,7 +21,7 @@ and invariant claim mentions 13 -> 23, so no mechanism was deleted and no
 claim was lost in the gap. From here the ratchets make a dropped rung visible
 in the diff that drops it.
 
-**Totals:** 155 invariants · 131 at rung 6 or above · 24 below rung 6 (ceiling 24).
+**Totals:** 153 invariants · 129 at rung 6 or above · 24 below rung 6 (ceiling 24).
 
 ## bed
 
@@ -1129,14 +1129,6 @@ in the diff that drops it.
 
 `packages/ui/src/shaping/evidence/evidence.ts:16`
 
-### `shaping/evidence/every-caveat-has-an-inquiry` — rung 7
-
-**Mechanism.** totality — `inquiryFor` switches on the caveat union with a `never` arm and no default. A finding added without saying what question it raises stops compilation, which is the point: a finding that leaves the operator nowhere to go is the failure this module exists to prevent, and it must not be possible to add one by accident
-
-**Why.** the screen already said what to DO next (#37) and now says what the readings MEAN. Neither one connects the two, and the gap between them is where the 2026-08-23 wrong conclusion was reached: the sweep's black band was a fact, the fingerprint was a fact, and nothing said "these two do not contradict each other, and here is the measurement that would settle it"
-
-`packages/ui/src/shaping/evidence/inquiry.ts:18`
-
 ### `shaping/evidence/every-caveat-has-copy` — rung 7
 
 **Mechanism.** totality — `caveatText` (copy.ts) and `severityOf` below both switch on the discriminant with a `never` arm and no default, so a reason added here stops compilation in two places until someone has written its sentence AND decided whether shaping can act on it
@@ -1162,14 +1154,6 @@ in the diff that drops it.
 **Debt — promotion.** inheritance is unconditional because this function is written that way, not because a filtered version is unrepresentable. Promote by making a candidate list's caveats a value derived WITH the fingerprint's — one type carrying both, minted together — so a list whose caveats omit its source's cannot be constructed at all
 
 `packages/ui/src/shaping/evidence/findings.ts:267`
-
-### `shaping/evidence/the-walk-is-never-empty` — rung 7
-
-**Mechanism.** totality — every `ShapingStep` has a row in `STEP_QUESTION` (a `Record` over the closed union, so a step added without one is a compile error) and every stage contributes either a known line or an open question. A tool with nothing measured therefore still walks: five open questions and the first one live
-
-**Why.** the previous thread was a fold over caveats, and on a freshly wiped machine it rendered the em dash — the screen said "Next: Measure" and then nothing about why, which is the state this campaign exists to fix
-
-`packages/ui/src/shaping/evidence/walk.ts:21`
 
 ### `shaping/evidence/verdict-is-derived-never-stored` — rung 7
 

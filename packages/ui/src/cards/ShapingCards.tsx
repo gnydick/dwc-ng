@@ -28,6 +28,21 @@
  * (shaping/procedure.ts keeps them in `#`-private fields), so the only route
  * to the machine a card will ever have is a `cmd.*` builder it names itself.
  *
+ * THE WALK (`.shp-walk`, the "Means" block that used to sit above the
+ * Running line) is GONE, deliberately, not lost to an accident. GIT_90
+ * round 5, Gabe, driving the code-complete build: "there's a big section
+ * above the picker that we don't need in the shaping card." It carried a
+ * real rationale — built stages-first (evidence/walk.ts) so a freshly
+ * wiped tool still walked five open questions instead of going silent, per
+ * GitHub #68 and Gabe's own 2026-08-24 report of exactly that silence —
+ * and the owner overrode that rationale on sight, in the running app, not
+ * by forgetting it existed. `walkThrough`, `evidence/walk.ts`,
+ * `evidence/inquiry.ts` and `copy.ts`'s `inquiryText`/`answerText` were
+ * deleted with it (zero remaining callers, checked) rather than left as an
+ * unused path. A future reader who finds this paragraph via `git blame` or
+ * `git log -S walkThrough` should not restore it as a fix for a
+ * regression; it was never one.
+ *
  * Positional stability is the governing constraint: this screen updates while
  * a measurement runs, so every table declares fixed column tracks, every
  * numeric cell is tabular, and a value that can be absent renders an em dash
@@ -41,12 +56,10 @@ import { armedRunText, armedSaveText, batchSummaryText, type CaptureSource, capt
 import type { CardCtx } from "../compose/ctx.ts";
 import type { MacroRead } from "../compose/services.ts";
 import { nextStep, SHAPING_STEPS, type StepInputs, type StepSpec } from "../shaping/steps.ts";
-import { walkThrough } from "../shaping/evidence/walk.ts";
 import { productsFor } from "../shaping/evidence/products.ts";
 import { reportText } from "../shaping/accelReport.ts";
 import type { ApplyHow, ApplyIntent } from "../shaping/applyRun.ts";
 import { applyStateText, armedApplyText } from "../shaping/copy.ts";
-import { inquiryText } from "../shaping/copy.ts";
 import type { Evidence } from "../shaping/evidence/evidence.ts";
 import type { Caveat } from "../shaping/evidence/caveat.ts";
 import { caveatText } from "../shaping/copy.ts";
@@ -322,72 +335,8 @@ export function ShapingStatusBody(props: { ctx: CardCtx }) {
 
 	const workflow = createMemo(() => nextStep(inputsFor));
 
-	/** One walk per render, for the same reason there is one readiness pass:
-	 *  the list and the highlighted question come out of the same call, so the
-	 *  question shown as live cannot be one the list does not contain. */
-	const walk = createMemo(() => walkThrough(selected(), products()));
-
-	/**
-	 * The walk as a FIXED number of rows.
-	 *
-	 * The walk itself grows and shrinks — five open questions on a fresh tool,
-	 * eight lines once a stage has been done and has findings of its own. This
-	 * card is watched while the machine works, so what it renders cannot change
-	 * height as answers arrive. Six rows, always:
-	 *
-	 *   1   the most recent settled fact, or a dash before there is one;
-	 *   2-3 the live question with its remedy, which is why it gets two;
-	 *   4-6 the questions after it, one line each.
-	 *
-	 * Presentation only. `walkThrough` stays the whole picture and stays
-	 * node-testable; choosing what fits on a card is this component's job.
-	 */
-	const walkRows = createMemo((): ReadonlyArray<{ kind: string; text: string; full: string; live: boolean }> => {
-		const w = walk();
-		const settled = w.lines.filter(l => l.kind === "known");
-		const last = settled[settled.length - 1];
-		const opens = w.lines.filter(l => l.kind === "open");
-		const live = w.next;
-		const after = opens.filter(l => l !== live).slice(0, 3);
-		const rows = [
-			{ kind: "known", text: last === undefined ? NONE : last.text, full: last === undefined ? "" : last.text, live: false },
-			...(live === null
-				? [{ kind: "done", text: "everything this screen can measure has been measured", full: "", live: false }]
-				: [{ kind: "open", text: inquiryText(live.inquiry), full: inquiryText(live.inquiry), live: true }]),
-			...after.map(l => ({ kind: "open", text: l.inquiry.question, full: inquiryText(l.inquiry), live: false })),
-		];
-		// Pad to the declared row count so the block's height is the same in
-		// every state, including "nothing left to ask".
-		while (rows.length < 5) rows.push({ kind: "pad", text: "", full: "", live: false });
-		return rows;
-	});
-
 	return (
 		<>
-			{/* The walk: where this session has got to, and the next question.
-			    Replaces the single worst-caveat line, which was a fold over
-			    CAVEATS and therefore silent on a machine that had measured
-			    nothing — exactly the moment somebody most needs leading.
-
-			    Built from the STAGES first (evidence/walk.ts), so a freshly
-			    wiped tool still walks: five open questions with the first one
-			    live. Known lines carry their numbers so they can be checked
-			    against the card; open lines carry the question and the act that
-			    would settle it. */}
-			<div class="shp-walk">
-				<span class="shp-cap">Means</span>
-				<div class="shp-walk-note">
-					<ol class="shp-walk-list">
-						<For each={walkRows()}>
-							{row => (
-								<li class="shp-walk-line" data-kind={row.kind} classList={{ "shp-walk-now": row.live }}>
-									<span title={row.full}>{row.text}</span>
-								</li>
-							)}
-						</For>
-					</ol>
-				</div>
-			</div>
 			<p class="shp-active">
 				<span class="shp-cap">Running</span>
 				<Show
