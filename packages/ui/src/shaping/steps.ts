@@ -304,8 +304,8 @@ export interface Workflow {
 	 * The one to act on now, or null when every step's product is already on
 	 * the card — the only state in which there is genuinely nothing next.
 	 *
-	 * Reference-identical to its entry in `steps`, so the prominent button and
-	 * the row it corresponds to cannot show different readiness.
+	 * Reference-identical to its entry in `byStep`, so the row and the
+	 * workflow cannot disagree about its readiness.
 	 */
 	readonly next: StepState | null;
 }

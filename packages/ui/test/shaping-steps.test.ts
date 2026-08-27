@@ -92,9 +92,9 @@ test("with nothing done and nothing in the way, the first step is next", () => {
 });
 
 test("the pick is the very object the list renders, not an equal copy", () => {
-	// This is the invariant: the prominent button and the row it corresponds to
-	// hold ONE readiness. A structural clone would satisfy deepEqual and still
-	// let the two drift the moment either is recomputed.
+	// This is the invariant: `next` and its `byStep` entry hold ONE readiness.
+	// A structural clone would satisfy deepEqual and still let the two drift
+	// the moment either is recomputed.
 	const wf = nextStep(all());
 	assert.ok(wf.steps.includes(wf.next!), "next is not one of the steps");
 	assert.equal(wf.next, wf.byStep[wf.next!.spec.step]);
