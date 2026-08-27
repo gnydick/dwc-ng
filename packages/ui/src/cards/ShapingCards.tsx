@@ -40,8 +40,8 @@
  * `evidence/inquiry.ts` and `copy.ts`'s `inquiryText`/`answerText` were
  * deleted with it (zero remaining callers, checked) rather than left as an
  * unused path. A future reader who finds this paragraph via `git blame` or
- * `git log -S walkThrough` should not restore it as a fix for a
- * regression; it was never one.
+ * `git log -S walkThrough` is looking at a removal, not a regression:
+ * restoring it would reinstate what the owner rejected.
  *
  * Positional stability is the governing constraint: this screen updates while
  * a measurement runs, so every table declares fixed column tracks, every
