@@ -21,7 +21,7 @@ and invariant claim mentions 13 -> 23, so no mechanism was deleted and no
 claim was lost in the gap. From here the ratchets make a dropped rung visible
 in the diff that drops it.
 
-**Totals:** 153 invariants · 129 at rung 6 or above · 24 below rung 6 (ceiling 24).
+**Totals:** 154 invariants · 129 at rung 6 or above · 25 below rung 6 (ceiling 25).
 
 ## bed
 
@@ -896,6 +896,16 @@ in the diff that drops it.
 **Why.** a shaper the mock silently failed to model would leave the ring at full height, and the Verify step would report a real shaper as having done nothing — a wrong verdict about the machine, produced by the test rig rather than measured
 
 `packages/mock-duet/src/accelerometer.ts:118`
+
+### `mock-duet/g28-axis-set-from-model` — rung 4
+
+**Mechanism.** static-analysis test (test/gcode-derivation.test.ts) reads this case's own source text and fails the suite if a quoted axis letter is reintroduced into it. Nothing in TypeScript forbids writing `letter === "X"` here, so the source scan is what is actually holding this today, not a decoration on top of it.
+
+**Why.** G28 used to filter a hardcoded ["X","Y","Z"] against the code's letters — a second, independent statement of "what axes exist" that inevitably disagreed with the object model on any machine with more axes (the bundled 7-axis toolchanger: X Y Z U V W C), and silently homed X/Y/Z for any letter it didn't recognise. Deriving the set from om.move.axes at the one call site removes the second statement instead of reconciling it (technique 8, derive-don't-duplicate) — there is nothing left to disagree with.
+
+**Debt — promotion.** promotion to 7 is a branded AxisLetter type mintable only by looking one up in om.move.axes, so a handler can never hold a letter value the model doesn't have; that closes the gap the source scan can only detect after the fact.
+
+`packages/mock-duet/src/gcode.ts:72`
 
 ### `mock-duet/one-parameter-reader` — rung 6
 

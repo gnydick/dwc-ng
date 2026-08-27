@@ -2,7 +2,14 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { Machine } from "../src/machine.ts";
 import { scenarios } from "../src/scenarios/index.ts";
+import { loadCaptureFile } from "../src/capture.ts";
 import { startMock } from "./helpers.ts";
+
+// The real capture from Gabe's toolchanger (SBC mode, GET /machine/model):
+// 7 axes (X Y Z U V W C), none of which are X/Y/Z-only — the machine G28
+// must be able to home UVW/C on, and must error rather than guess when a
+// letter names an axis this machine doesn't have.
+const TOOLCHANGER = new URL("../captures/om-snapshot-2026-07-12.json", import.meta.url);
 
 test("idle machine: clock advances, temperatures stay near ambient", () => {
 	const machine = new Machine(scenarios["idle"]);
@@ -299,6 +306,55 @@ test("G28 homes axes; T0/T-1 selects and deselects the tool", () => {
 	machine.execute("T-1");
 	assert.equal(machine.om.state.currentTool, -1);
 	assert.equal(machine.om.tools[0].state, "off");
+});
+
+test("G28 bare homes every axis the object model declares, not a fixed three", () => {
+	const machine = new Machine(undefined, loadCaptureFile(TOOLCHANGER));
+	const axes = () => machine.om.move.axes as Array<{ letter: string; homed: boolean; userPosition: number; machinePosition: number; min: number }>;
+	assert.deepEqual(axes().map(a => a.letter), ["X", "Y", "Z", "U", "V", "W", "C"]);
+	assert.ok(axes().every(a => !a.homed), "starts unhomed");
+
+	machine.execute("G28");
+
+	assert.ok(axes().every(a => a.homed), "bare G28 homes all seven axes, including U/V/W/C");
+	for (const axis of axes()) {
+		assert.equal(axis.userPosition, axis.min, `${axis.letter}.userPosition lands on min`);
+		assert.equal(axis.machinePosition, axis.min, `${axis.letter}.machinePosition lands on min`);
+	}
+});
+
+test("G28 U homes U only and leaves X/Y/Z untouched (regression: used to home X/Y/Z instead)", () => {
+	const machine = new Machine(undefined, loadCaptureFile(TOOLCHANGER));
+	const byLetter = (letter: string) => machine.om.move.axes.find((a: any) => a.letter === letter);
+
+	machine.execute("G28 U");
+
+	assert.equal(byLetter("U").homed, true, "U was homed");
+	for (const letter of ["X", "Y", "Z", "V", "W", "C"]) {
+		assert.equal(byLetter(letter).homed, false, `${letter} must stay unhomed`);
+	}
+});
+
+test("G28 X Y homes exactly those two axes, not the home-everything fallback", () => {
+	const machine = new Machine(undefined, loadCaptureFile(TOOLCHANGER));
+	const byLetter = (letter: string) => machine.om.move.axes.find((a: any) => a.letter === letter);
+
+	machine.execute("G28 X Y");
+
+	assert.equal(byLetter("X").homed, true);
+	assert.equal(byLetter("Y").homed, true);
+	for (const letter of ["Z", "U", "V", "W", "C"]) {
+		assert.equal(byLetter(letter).homed, false, `${letter} must stay unhomed`);
+	}
+});
+
+test("G28 Q errors on a machine with no Q axis and homes nothing", () => {
+	const machine = new Machine(undefined, loadCaptureFile(TOOLCHANGER));
+
+	const reply = machine.execute("G28 Q");
+
+	assert.match(reply, /Error/, "an unknown axis letter must be reported, not silently redirected");
+	assert.ok(machine.om.move.axes.every((a: any) => !a.homed), "no axis was homed on error");
 });
 
 test("multi-line gcode runs every line; G91 jogs relative without moving other axes", () => {

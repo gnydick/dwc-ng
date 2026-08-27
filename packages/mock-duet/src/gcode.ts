@@ -68,14 +68,57 @@ function executeLine(machine: Machine, line: string): string {
 		case "M83": machine.extruderRelative = true; return "";
 		case "M120": machine.pushMode(); return "";
 		case "M121": machine.popMode(); return "";
+		/**
+		 * @invariant g28-axis-set-from-model
+		 * @rung 4  static-analysis test (test/gcode-derivation.test.ts) reads this
+		 *          case's own source text and fails the suite if a quoted axis
+		 *          letter is reintroduced into it. Nothing in TypeScript forbids
+		 *          writing `letter === "X"` here, so the source scan is what is
+		 *          actually holding this today, not a decoration on top of it.
+		 * @why G28 used to filter a hardcoded ["X","Y","Z"] against the code's
+		 *      letters — a second, independent statement of "what axes exist"
+		 *      that inevitably disagreed with the object model on any machine
+		 *      with more axes (the bundled 7-axis toolchanger: X Y Z U V W C),
+		 *      and silently homed X/Y/Z for any letter it didn't recognise.
+		 *      Deriving the set from om.move.axes at the one call site removes
+		 *      the second statement instead of reconciling it (technique 8,
+		 *      derive-don't-duplicate) — there is nothing left to disagree with.
+		 * @debt promotion to 7 is a branded AxisLetter type mintable only by
+		 *       looking one up in om.move.axes, so a handler can never hold a
+		 *       letter value the model doesn't have; that closes the gap the
+		 *       source scan can only detect after the fact.
+		 */
 		case "G28": {
-			const letters = ["X", "Y", "Z"].filter(l => new RegExp(`\\b${l}`, "i").test(code.slice(3)));
-			const toHome = letters.length > 0 ? letters : ["X", "Y", "Z"];
+			const tail = code.slice(word.length).trim();
+			const requested = tail === ""
+				? []
+				: tail.split(/\s+/)
+					.map(token => /^[A-Za-z]/.exec(token)?.[0]?.toUpperCase())
+					.filter((letter): letter is string => letter !== undefined);
+
+			const homeAxis = (axis: any) => {
+				axis.homed = true;
+				axis.userPosition = axis.machinePosition = axis.min;
+			};
+
+			// Bare G28 homes every axis the model declares. This fallback is
+			// load-bearing (home-everything is the only meaning of no letters),
+			// re-sourced from om.move.axes rather than the old literal list.
+			if (requested.length === 0) {
+				for (const axis of om.move.axes) homeAxis(axis);
+				return "";
+			}
+
+			// A letter naming an axis this machine does not have must error, not
+			// silently fall through to homing something else — that fallthrough
+			// is exactly what turned "G28 U" into "home X/Y/Z" before this fix.
+			const unknown = requested.filter(letter => !om.move.axes.some((axis: any) => axis.letter === letter));
+			if (unknown.length > 0) {
+				return `Error: G28: axis '${unknown.join("', '")}' not found`;
+			}
+
 			for (const axis of om.move.axes) {
-				if (toHome.includes(axis.letter)) {
-					axis.homed = true;
-					axis.userPosition = axis.machinePosition = axis.min;
-				}
+				if (requested.includes(axis.letter)) homeAxis(axis);
 			}
 			return "";
 		}
