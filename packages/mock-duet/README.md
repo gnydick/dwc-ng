@@ -104,6 +104,43 @@ Other ingestion points, still open for captures:
 - **File metadata** — captures of `rr_fileinfo` responses drop into
   `VirtualSD.fileInfo` (`src/files.ts`).
 
+## Persisting state across a restart (`--state`, opt-in)
+
+By default the mock **forgets everything on exit**, and that default is
+deliberate: a mock that forgets is a faithful model of a machine that can be
+wiped, and one that silently remembers can hide a config-LOADING bug — the UI's
+own `localStorage` cache already masks that class of defect. With no flag,
+nothing is written to disk anywhere.
+
+```
+pnpm --filter @dwc-ng/mock-duet start -- --state ./machine.state.json
+```
+
+Given a path, the mock writes ONE snapshot holding the whole virtual SD card
+(config, shaping results, macros, uploads, the `fileInfo`/thumbnail indexes)
+**and** the machine state a session established (homed axes, selected tool),
+and restores it at startup. Simulated values — temperatures, positions, job
+progress — are not persisted: they are computed every tick, not set by a person.
+
+Durability: every write goes to a temp file beside the destination, is fsynced,
+and is then renamed over it, so a `Stop-Process -Force` at any instant leaves
+either the previous complete file or the new complete file — never a prefix.
+The file also carries a CRC-32 of its payload; a file damaged by anything else
+is reported unreadable at startup and the mock starts clean, rather than
+restoring half a machine. This is `src/persist.ts`, the only module in the
+package that writes to disk.
+
+A state file can be committed and replayed: `test/fixtures/state-v2-toolchanger.json`
+is a real pre-v3 machine, produced by driving a mock over HTTP and killing it,
+and `packages/ui/test/config-migrate-from-mock-state.test.ts` puts a current
+build in front of it to see what config migration actually does — which is why
+this exists at all. Copy a committed fixture before pointing a mock at it: a
+mock rewrites its own state file.
+
+Not to be confused with `--config-version`, which seeds a *synthetic* v1/v2/v3
+`dwc-ng-config.json`. That stays as it is; this makes a *real* old machine
+reproducible.
+
 ## Protocol sources (do not code from memory)
 
 - `reference/connectors/src/PollConnector.ts` — the request patterns the real client makes
