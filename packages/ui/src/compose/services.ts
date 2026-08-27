@@ -65,6 +65,7 @@ import { findShapingLine, replaceShapingLine, toolMacroPath } from "../shaping/t
 import type { ShapingStep } from "../shaping/steps.ts";
 import { candidateFor, shortlist } from "../shaping/engine/rank.ts";
 import { verifyAnalysis } from "../shaping/store.ts";
+import { type Selection, selectionOf, specKey, type SpecKey } from "../shaping/selection.ts";
 import type { CardId } from "./defs.ts";
 import { useEngine } from "../shaping/useEngine.ts";
 import { ACCEL_DIR, type BoardListingState, boardRef, byNewest, captureLiveness, captureNameParts, type CaptureRef, createCaptureLoader, type ImportedCapture, importedCount, importRef, isCaptureFile, type Liveness, MAX_BATCH, MAX_SWEEP, speedFamilies, type SweepFamily } from "../shaping/captures.ts";
@@ -411,7 +412,18 @@ const RANKED_KEPT = 40;
 function shapingService(base: ServiceBaseCtx) {
 	const store = createShapingStore(base.connector);
 	const [tool, setToolNow] = createSignal(0);
-	const [candidateIndex, setCandidateIndex] = createSignal(0);
+	/**
+	 * The spec the operator tapped, held as the spec's KEY rather than a row
+	 * index, and `null` while nobody has tapped anything.
+	 *
+	 * A key, because the default selection is `recommendation()`'s answer and
+	 * that answer can be a verified spec the ranking never produced — no index
+	 * into `candidates` names it. A key also survives a re-rank meaning what it
+	 * said: an index would move onto whatever row happened to land in that
+	 * position. What the key resolves to is `selection` below, which is the one
+	 * value every acting card reads (shaping/selection.ts).
+	 */
+	const [specPick, setSpecPick] = createSignal<SpecKey | null>(null);
 
 	/**
 	 * Which capture the Decay card is drawing, held as the source's KEY rather
@@ -872,7 +884,12 @@ function shapingService(base: ServiceBaseCtx) {
 	const setTool = (next: number): void => {
 		setToolNow(next);
 		setCapturePick(null);
-		setCandidateIndex(0);
+		// The pick is dropped as well, though it is not what keeps a selection
+		// off the wrong tool — `selection` resolving against the tool on screen
+		// is (shaping/selection.ts). Dropping it is what makes the tap itself
+		// per-tool: a spec both tools happen to rank would otherwise read as
+		// having been tapped on a head nobody tapped it on.
+		setSpecPick(null);
 		disarmAll();
 	};
 
@@ -913,6 +930,42 @@ function shapingService(base: ServiceBaseCtx) {
 	});
 
 	const resultsFor = (n: number): ToolResults => store.results[n] ?? emptyResults(n);
+
+	/**
+	 * The one answer to "which spec is this screen acting on".
+	 *
+	 * Both acting cards read THIS. The Verify card builds its run request from
+	 * it and the Apply card writes its line from it, so the row the Candidates
+	 * table shows as pressed is the row both of them use. Each of them used to
+	 * work it out for itself — Verify from the tapped index, Apply from
+	 * `recommendation()` — which is the defect GIT_108 exists to remove.
+	 *
+	 * Resolved against `resultsFor(tool())` on every read, so the selection
+	 * belongs to the tool on screen by construction rather than by a reset
+	 * somebody has to perform (shaping/selection.ts
+	 * `a-selection-is-one-of-this-tools-own-results`).
+	 *
+	 * A plain accessor rather than a `createMemo`. What it costs is two linear
+	 * scans of a table an operator reads on one screen; what a memo costs is
+	 * that under Solid's SERVER build a memo is evaluated once and frozen, so
+	 * every test that drives this service through its real factory would be
+	 * reading the selection the tool had before anything was ranked or tapped.
+	 * The reactivity is identical either way: the reads inside are the signals.
+	 */
+	const selection = (): Selection | null => selectionOf(resultsFor(tool()), specPick());
+
+	/** Tap a row: the sole route to a pick, and it takes a SPEC rather than a
+	 *  key, so no card is in a position to spell one that names nothing. */
+	const select = (spec: ShaperSpec): void => {
+		setSpecPick(specKey(spec));
+	};
+
+	/** Whether this spec is the selected one — asked by the Candidates table of
+	 *  each of its rows, answered from the same value the acting cards read. */
+	const isSelected = (spec: ShaperSpec): boolean => {
+		const current = selection();
+		return current !== null && specKey(current.spec) === specKey(spec);
+	};
 
 	/**
 	 * The last thing this screen tried and could not do — a failed rank today, a
@@ -1349,7 +1402,7 @@ function shapingService(base: ServiceBaseCtx) {
 		board, boardState, boardError, wantBoard, refreshBoard, liveness,
 		runState, fitCaptures, saveMeasurement, clearRun, machineNow,
 		fits, families, fullStepFor, sweepState, buildSweep, saveSweep,
-		candidateIndex, setCandidateIndex,
+		selection, select, isSelected, specPick,
 		accelFor, accelReportFor, readAccel, setAccelRate, gate, macroFor, toggleMacro, rank, ranking, problem, offer, runStep,
 		applyShaper, applyState, saveVerified,
 		offers: (step: ShapingStep): boolean => offered().includes(step),

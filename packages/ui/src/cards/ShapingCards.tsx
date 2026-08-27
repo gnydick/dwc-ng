@@ -80,6 +80,7 @@ import { planarPosition, travelAcceleration } from "../shaping/preconditions.ts"
 import { mapPoint, mapSummary, mapView, type MapView } from "../charts/mapData.ts";
 import { capturesOf, fingerprintOf, RESULTS_PATH, type ToolResults } from "../shaping/results.ts";
 import type { VerifiedCandidate } from "../shaping/store.ts";
+import type { Selection } from "../shaping/selection.ts";
 import { DecayChart } from "../charts/DecayChart.tsx";
 import { SweepHeatmap } from "../charts/SweepHeatmap.tsx";
 import { fingerprintMarkers, type SweepMarker } from "../charts/sweepData.ts";
@@ -582,15 +583,16 @@ export function ShapingCaptureBody(props: { ctx: CardCtx }) {
 	 *
 	 * `kind()` is what the operator picked; a request is that plus whatever the
 	 * run needs. Only `verify` needs anything — the shaper to install — and it
-	 * takes the Candidates card's selection, which is the same one the Verify
-	 * step is about. With nothing ranked there is no verify to request, so this
-	 * falls back to the measure the card was already showing rather than
-	 * inventing a spec.
+	 * takes `svc.selection()`, the screen's ONE answer to which spec is being
+	 * acted on (compose/services.ts). The Apply card writes its line from the
+	 * same value, so a run verifies the spec that card would install. With
+	 * nothing ranked or verified there is nothing selected, so this falls back
+	 * to the measure the card was already showing rather than inventing a spec.
 	 */
 	const request = createMemo((): RunRequest => {
 		if (kind() !== "verify") return { kind: kind() === "sweep" ? "sweep" : "measure" };
-		const pick = svc.results().candidates[svc.candidateIndex()];
-		return pick === undefined ? { kind: "measure" } : { kind: "verify", spec: pick.spec };
+		const pick = svc.selection();
+		return pick === null ? { kind: "measure" } : { kind: "verify", spec: pick.spec };
 	});
 
 	const plans = createMemo((): readonly Plan[] => {
@@ -2146,6 +2148,11 @@ export function ShapingSweepBody(props: { ctx: CardCtx }) {
  * The ranked shapers. Residual is what the impulse model predicts is LEFT of
  * the ring; ±10 % is the same figure with the mode mistuned by a tenth, which
  * is the number that decides whether a shaper survives a tool change.
+ *
+ * Tapping a row SELECTS that spec, for the whole screen: the verify run uses
+ * it and the Apply card writes it. The pressed row is the recommendation until
+ * somebody taps another, and the Apply card says which of the two it is
+ * looking at (compose/services.ts `selection`).
  */
 export function ShapingCandidatesBody(props: { ctx: CardCtx }) {
 	const svc = props.ctx.service("shaping");
@@ -2187,13 +2194,13 @@ export function ShapingCandidatesBody(props: { ctx: CardCtx }) {
 				</thead>
 				<tbody>
 					<For each={candidates()}>
-						{(candidate, index) => (
-							<tr classList={{ "shp-on": svc.candidateIndex() === index() }}>
+						{candidate => (
+							<tr classList={{ "shp-on": svc.isSelected(candidate.spec) }}>
 								<td>
 									<button
 										class="shp-pick shp-pick-wide"
-										aria-pressed={svc.candidateIndex() === index()}
-										onClick={() => svc.setCandidateIndex(index())}
+										aria-pressed={svc.isSelected(candidate.spec)}
+										onClick={() => svc.select(candidate.spec)}
 									>
 										{specName(candidate.spec)}
 									</button>
@@ -2347,39 +2354,22 @@ export function ShapingVerifyBody(props: { ctx: CardCtx }) {
 
 /* ------------------------------------------------------------------- 8. apply */
 
-/** The largest share of the baseline ring left on any axis — the honest
- *  single number for "how well did this actually work". */
-const worstMeasured = (v: VerifiedCandidate): number => Math.max(0, ...Object.values(v.measured));
-
 /**
- * The line to put on the machine.
+ * The card that puts the line on the machine.
  *
- * A verified candidate that introduced no mode of its own beats anything
- * merely predicted, however good the prediction — that ordering IS the lesson
- * of the 2026-08-22 session, where the model's second-favourite shaper of any
- * type measured 167 % of the unshaped ring. Among those, the one that left
- * least behind, measured; and only with nothing verified at all does the
- * ranking's own top row stand in, labelled as the guess it is.
+ * It does NOT decide which line. `svc.selection()` is that decision, made once
+ * for the screen (compose/services.ts, shaping/selection.ts) and read here and
+ * by the verify run alike — the ordering that used to live in this file as a
+ * private `recommendation()` is now the DEFAULT selection, in
+ * shaping/selection.ts, unchanged. Deciding again here is what let this card
+ * offer row 1 while the operator had tapped row 3 and the verify run had gone
+ * and measured it.
  */
-function recommendation(r: ToolResults): { spec: ShaperSpec; basis: "verified" | "predicted" } | null {
-	// Clean means CHECKED and clean. A candidate whose artefact test could not
-	// run on an axis (no baseline mode to compare against) has not earned
-	// "measured on the machine, no new peaks" — that sentence would be claiming
-	// a result nobody established.
-	const clean = r.verified.filter(v => v.artefacts.length === 0 && v.unjudged.length === 0);
-	if (clean.length > 0) {
-		const best = clean.reduce((a, b) => (worstMeasured(b) < worstMeasured(a) ? b : a));
-		return { spec: best.spec, basis: "verified" };
-	}
-	const top = r.candidates[0];
-	return top === undefined ? null : { spec: top.spec, basis: "predicted" };
-}
-
 export function ShapingApplyBody(props: { ctx: CardCtx }) {
 	const svc = props.ctx.service("shaping");
 	const [copied, setCopied] = createSignal(false);
 	const [armed, setArmed] = createArmed<ApplyHow>();
-	const pick = createMemo(() => recommendation(svc.results()));
+	const pick = (): Selection | null => svc.selection();
 
 	const copy = async (line: string): Promise<void> => {
 		setCopied(await copyText(line));
@@ -2426,17 +2416,57 @@ export function ShapingApplyBody(props: { ctx: CardCtx }) {
 					<dt>Tool</dt>
 					<dd class="shp-mono">T{svc.tool()} · {toolMacroPath(svc.tool())}</dd>
 				</div>
+				{/* Where the line came from, in the operator's own terms: the
+				    machine's advice measured, the machine's advice predicted, or
+				    their own tap. The third exists so departing from the
+				    recommendation reads as a decision somebody made rather than
+				    as what the screen worked out. */}
 				<div class="shp-fact">
 					<dt>Basis</dt>
 					<dd>
 						<Show when={pick()} fallback={<span class="shp-nil">{NONE}</span>}>
 							{made => (
-								<Show
-									when={made().basis === "verified"}
-									fallback={<span class="shp-warn-inline">predicted only — not yet measured on the machine</span>}
-								>
-									<span class="shp-ok-inline">measured on the machine, no new peaks</span>
-								</Show>
+								<Switch>
+									<Match when={made().basis === "verified"}>
+										<span class="shp-ok-inline">measured on the machine, no new peaks</span>
+									</Match>
+									<Match when={made().basis === "predicted"}>
+										<span class="shp-warn-inline">predicted only — not yet measured on the machine</span>
+									</Match>
+									<Match when={made().basis === "override"}>
+										<Show
+											when={made().verified !== null}
+											fallback={<span class="shp-warn-inline">your pick — predicted only, not measured on the machine</span>}
+										>
+											<span class="shp-ok-inline">your pick — measured on the machine</span>
+										</Show>
+									</Match>
+								</Switch>
+							)}
+						</Show>
+					</dd>
+				</div>
+				{/* The best evidence that exists FOR THE SELECTED SPEC, which is
+				    the verify run's own numbers wherever one has been run — a
+				    tapped spec that was verified is described by what the machine
+				    did with it, never by what the model predicted it would do. */}
+				<div class="shp-fact">
+					<dt>Result</dt>
+					<dd class="shp-mono">
+						<Show when={pick()} fallback={<span class="shp-nil">{NONE}</span>}>
+							{made => (
+								<Switch fallback={<span class="shp-nil">{NONE}</span>}>
+									<Match when={made().verified}>
+										{v => (
+											<>X {pctOrNone(v().measured.X)} · Y {pctOrNone(v().measured.Y)} of baseline, measured</>
+										)}
+									</Match>
+									<Match when={made().candidate}>
+										{c => (
+											<>X {pctOrNone(c().residual.X)} · Y {pctOrNone(c().residual.Y)} · ±10% {pct0(c().worstRobust)}, predicted</>
+										)}
+									</Match>
+								</Switch>
 							)}
 						</Show>
 					</dd>
