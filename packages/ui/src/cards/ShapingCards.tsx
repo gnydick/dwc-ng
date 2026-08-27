@@ -346,15 +346,6 @@ export function ShapingStatusBody(props: { ctx: CardCtx }) {
 					</span>
 				</Show>
 			</p>
-			{/* Rendered only when there is something to say (#98, live UAT: "remove
-			    all of the dead space from the top of the Shaping card" — this row
-			    used to be reserved, empty, on every idle session). The picker and
-			    table below move by this row's height on the rare arrival or
-			    clearing of a message; #98 accepted that cost against the constant
-			    one the reservation charged every session that never saw either. */}
-			<Show when={message() !== ""}>
-				<p class="shp-msg">{message()}</p>
-			</Show>
 			{/* THE tool picker: the ONLY control on the whole screen that calls
 			    `svc.setTool` (GitHub #90; verified by grep — see the fix-round-1
 			    note in the file header). Sweep used to carry an identical chip
@@ -481,6 +472,23 @@ export function ShapingStatusBody(props: { ctx: CardCtx }) {
 					}}
 				</For>
 			</ol>
+			{/* Rendered only when there is something to say (#98), and placed LAST:
+			    nothing on this card follows it, so a message arriving or clearing
+			    moves nothing — not "usually nothing", an actual property of the
+			    position, verified at the card's real production height (the
+			    rowSpan comment in compose/defs.ts). It used to sit between the
+			    Running line and the tool picker, reserved and visibility-hidden
+			    whether or not there was a message; a review of that placement
+			    found two paths where the message CAN change while the carriage is
+			    moving — a rank failure, and a reconnect's forced re-load of every
+			    tool's file (compose/services.ts's revision effect) — which is why
+			    "moves nothing" replaced "moves rarely" rather than the reverse.
+			    The top rule (padding-top + inset box-shadow, `.shp-fact +
+			    .shp-fact`'s own idiom) marks it as its own line, not a sixth
+			    step. */}
+			<Show when={message() !== ""}>
+				<p class="shp-msg">{message()}</p>
+			</Show>
 		</>
 	);
 }

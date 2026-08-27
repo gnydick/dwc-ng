@@ -4476,9 +4476,16 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; appe
 }
 .shp-warn { margin: 0 0 calc(2 * var(--u)); color: var(--fault); font-size: calc(3.5 * var(--u)); }
 /* Rendered only when there is a message (#98); no reserved height for the
-   ordinary case where there is none. */
+   ordinary case where there is none. Last child of the card on purpose —
+   nothing follows it, so its arrival or clearing moves nothing else on the
+   card (see the placement comment in ShapingCards.tsx). The top rule is the
+   same inset-shadow idiom `.shp-fact + .shp-fact` uses for a rule between
+   items, borrowed here to mark this as its own line rather than a sixth
+   step trailing the list above it. */
 .shp-msg {
-	margin: 0 0 calc(1 * var(--u));
+	margin: calc(2 * var(--u)) 0 0;
+	padding-top: calc(1.5 * var(--u));
+	box-shadow: inset 0 1px 0 var(--hairline);
 	font: 400 calc(3.5 * var(--u))/calc(4.5 * var(--u)) var(--font-body);
 	color: var(--fault);
 	white-space: nowrap;
