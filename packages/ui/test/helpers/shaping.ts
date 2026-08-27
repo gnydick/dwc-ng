@@ -5,6 +5,8 @@ import { fitDecay, isMode, type Mode, type Fingerprint } from "../../src/shaping
 import { hz, seconds } from "../../src/shaping/engine/units.ts";
 import { type Conditions, type Evidence, held, type Provenance } from "../../src/shaping/evidence/evidence.ts";
 import type { WorkflowProducts } from "../../src/shaping/steps.ts";
+import type { ServiceBaseCtx } from "../../src/compose/services.ts";
+import type { Connector } from "@dwc-ng/connector";
 
 export function modeForTest(f: number, zeta: number, amp = 0.3, rate = 2688): Mode {
 	const n = Math.round(1.2 * rate);
@@ -70,3 +72,35 @@ export const productsOf = (have: Have = {}): WorkflowProducts => {
 		applied: one(have.applied),
 	};
 };
+
+/**
+ * The minimum `ServiceBaseCtx` `shapingService` can be constructed against
+ * without throwing — for the tests that drive the REAL service factory rather
+ * than a reimplementation of one of its parts.
+ *
+ * `connected: () => false` is load-bearing: both of the service's own
+ * `createEffect`s short-circuit on a disconnected base before touching
+ * `om`/`config`, which is what makes it safe for those two fields to be empty
+ * stand-ins rather than a full object model and config store. `gate` is a
+ * `createMemo` and runs EAGERLY at construction, so `accelByTool` has to exist
+ * even for a test that never calls `svc.gate()`; empty means `accelFor`
+ * returns null for every tool, which is `gate`'s own short-circuit before it
+ * would ever reach `base.om.om`.
+ *
+ * One stub, not one per test file: two of these drifting apart would be two
+ * different machines called "the empty one", and a test passing on the wrong
+ * one is the failure this whole directory exists to avoid.
+ */
+export function stubShapingBase(): ServiceBaseCtx {
+	return {
+		om: { om: {} } as unknown as ServiceBaseCtx["om"],
+		config: { config: { shaping: { accelByTool: {} } } } as unknown as ServiceBaseCtx["config"],
+		connector: {} as unknown as Connector,
+		temps: {} as unknown as ServiceBaseCtx["temps"],
+		backend: {} as unknown as ServiceBaseCtx["backend"],
+		machineId: () => "unidentified" as unknown as ReturnType<ServiceBaseCtx["machineId"]>,
+		configLoaded: () => false,
+		connected: () => false,
+		onScreen: () => true,
+	};
+}

@@ -21,7 +21,7 @@ and invariant claim mentions 13 -> 23, so no mechanism was deleted and no
 claim was lost in the gap. From here the ratchets make a dropped rung visible
 in the diff that drops it.
 
-**Totals:** 157 invariants · 132 at rung 6 or above · 25 below rung 6 (ceiling 25).
+**Totals:** 158 invariants · 133 at rung 6 or above · 25 below rung 6 (ceiling 25).
 
 ## bed
 
@@ -101,7 +101,7 @@ in the diff that drops it.
 
 **Why.** a baseline measured through a shaper ranks against modes that are not there, applies, and re-measures — nothing downstream can detect it and the output looks clean
 
-`packages/ui/src/compose/services.ts:327`
+`packages/ui/src/compose/services.ts:328`
 
 ### `compose/additive-placement` — rung 7
 
@@ -195,7 +195,7 @@ in the diff that drops it.
 
 **Why.** the run this screen starts sends a 200 mm/s G1 with nobody's hand on the jog wheel. Two of them interleaved would each be re-checking the carriage against ITS plan's expected position and finding the other one's move — every step refused, the machine moving anyway, and two restores racing at the end
 
-`packages/ui/src/compose/services.ts:1183`
+`packages/ui/src/compose/services.ts:1236`
 
 ### `compose/one-service-instance-per-screen` — rung 8
 
@@ -247,7 +247,7 @@ in the diff that drops it.
 
 **Why.** before this, an arm payload carrying its OWN tool (`{ kind: "save", tool }`) was how a stale arm was DETECTED — `save()` compared `armed().tool` against `svc.tool()` on every click. The review that closed GIT_90 round 2 traced every such comparison and found no reachable mis-save, but the mismatch was still REPRESENTABLE: two copies of "which tool" existed in the running code, and only careful reading kept them from disagreeing. Gabe, invoking cant-break-by-design: "it shouldn't be possible to mismatch tool identification in the same active code." Removing the second copy (the arm payloads no longer carry a tool at all — ShapingCards.tsx's Decay/Sweep/Capture save arms) and disarming on every tool change makes a stale arm impossible to CLICK rather than merely unprofitable to click: by the time a second click could fire a write, the control has already reverted to unarmed.
 
-`packages/ui/src/compose/services.ts:834`
+`packages/ui/src/compose/services.ts:846`
 
 ## config
 
@@ -1032,6 +1032,14 @@ in the diff that drops it.
 **Why.** the map on the card is a promise about where the carriage will go. A second arithmetic for "where does this run start" — one for the drawing, one for the moving — is a promise that can be broken silently
 
 `packages/ui/src/shaping/runPlan.ts:20`
+
+### `shaping/a-selection-is-one-of-this-tools-own-results` — rung 7
+
+**Mechanism.** sole-constructor type — `Selection` carries `selectionBrand`, a `unique symbol` declared in this module and never exported, so an object literal of that type cannot be written anywhere else: a second route to a selection is a compile error, not a review catch. `made` is the only expression in the program that produces one, it is module-private, and both of its call sites are inside `selectionOf`. Neither can hand it a foreign spec: one passes what `findSpec` located inside the `ToolResults` argument, the other passes what `recommendation` returned, which is itself an element of `r.verified` or `r.candidates`. A `SpecKey` naming nothing in `r` — the previous tool's shaper, a spec dropped by a re-rank — resolves to the default rather than to itself, so the stale-key state has no representation to reach.
+
+**Why.** the selected spec becomes the `M593` line written into `tpost<N>.g`, at every future pickup of that head. A selection that outlived the results it was made against would install a shaper measured on a different tool, under the name of this one.
+
+`packages/ui/src/shaping/selection.ts:21`
 
 ### `shaping/a-verify-run-names-the-shaper-it-installs` — rung 8
 
