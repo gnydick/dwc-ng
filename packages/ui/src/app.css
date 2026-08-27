@@ -4475,20 +4475,16 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; appe
 	white-space: nowrap;
 }
 .shp-warn { margin: 0 0 calc(2 * var(--u)); color: var(--fault); font-size: calc(3.5 * var(--u)); }
-/* Always in the layout, only sometimes visible — the same discipline as
-   .fb-msg. This card is watched while the machine works, so a message arriving
-   must not push the table it sits above down the card. */
+/* Rendered only when there is a message (#98); no reserved height for the
+   ordinary case where there is none. */
 .shp-msg {
 	margin: 0 0 calc(1 * var(--u));
-	min-height: calc(4.5 * var(--u));
 	font: 400 calc(3.5 * var(--u))/calc(4.5 * var(--u)) var(--font-body);
 	color: var(--fault);
 	white-space: nowrap;
 	overflow: hidden;
 	text-overflow: ellipsis;
-	visibility: hidden;
 }
-.shp-msg.shp-msg-on { visibility: visible; }
 .shp-warn-inline { color: var(--gold); }
 .shp-ok-inline { color: var(--ok); }
 

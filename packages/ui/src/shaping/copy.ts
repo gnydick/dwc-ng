@@ -783,3 +783,14 @@ export function applyStateText(s: ApplyState): string {
 		}
 	}
 }
+
+/**
+ * The status card's one message line, picked from two independent sources
+ * that never both matter equally: a results file this build could not parse
+ * outranks a failed rank or run, because the unreadable file makes everything
+ * else the card shows suspect. Empty when neither has anything to say, which
+ * is the ordinary case and the one #98 stopped reserving a row for.
+ */
+export function statusMessageText(storeError: string, problem: string): string {
+	return storeError || problem;
+}

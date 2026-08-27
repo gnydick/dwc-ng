@@ -52,7 +52,7 @@ import { For, Match, Show, Switch, createEffect, createMemo, createSignal } from
 import { cmd } from "../control/commands.ts";
 import { copyText } from "../shell/copyText.ts";
 import { createArmed } from "../control/armed.ts";
-import { armedRunText, armedSaveText, batchSummaryText, type CaptureSource, captureSourceLabel, captureWhenText, livenessNote, motionStateText, refusalText, rescanNoteText, runKindText, stepStatusText, sweepStateText } from "../shaping/copy.ts";
+import { armedRunText, armedSaveText, batchSummaryText, type CaptureSource, captureSourceLabel, captureWhenText, livenessNote, motionStateText, refusalText, rescanNoteText, runKindText, statusMessageText, stepStatusText, sweepStateText } from "../shaping/copy.ts";
 import type { CardCtx } from "../compose/ctx.ts";
 import type { MacroRead } from "../compose/services.ts";
 import { nextStep, SHAPING_STEPS, type StepInputs, type StepSpec } from "../shaping/steps.ts";
@@ -298,9 +298,7 @@ export function ShapingStatusBody(props: { ctx: CardCtx }) {
 	});
 	const shaping = (): Shaping => props.ctx.om.om.move.shaping;
 	const selected = (): ToolResults => svc.results();
-	// The card file the store could not read outranks a failed action: it is the
-	// one that makes everything else on screen wrong.
-	const message = (): string => svc.store.error() || svc.problem();
+	const message = (): string => statusMessageText(svc.store.error(), svc.problem());
 
 	const inputsFor = (spec: StepSpec): StepInputs => ({
 		refusal: svc.gate(),
@@ -348,11 +346,15 @@ export function ShapingStatusBody(props: { ctx: CardCtx }) {
 					</span>
 				</Show>
 			</p>
-			{/* ONE message line, always laid out. It was a <Show>, which meant the
-			    whole table jumped down the moment anything went wrong — on the
-			    card whose job is to be watched while the machine works. Hidden by
-			    visibility, so it occupies its row either way. */}
-			<p class="shp-msg" classList={{ "shp-msg-on": message() !== "" }}>{message()}</p>
+			{/* Rendered only when there is something to say (#98, live UAT: "remove
+			    all of the dead space from the top of the Shaping card" — this row
+			    used to be reserved, empty, on every idle session). The picker and
+			    table below move by this row's height on the rare arrival or
+			    clearing of a message; #98 accepted that cost against the constant
+			    one the reservation charged every session that never saw either. */}
+			<Show when={message() !== ""}>
+				<p class="shp-msg">{message()}</p>
+			</Show>
 			{/* THE tool picker: the ONLY control on the whole screen that calls
 			    `svc.setTool` (GitHub #90; verified by grep — see the fix-round-1
 			    note in the file header). Sweep used to carry an identical chip
