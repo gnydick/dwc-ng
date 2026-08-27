@@ -46,6 +46,12 @@ export { isPlainObject, isSafeKey, safeEntries } from "./safeObject.ts";
 export { EMERGENCY_STOP, isEmergencyStop } from "./emergency.ts";
 export { createStubConnector } from "./stubConnector.ts";
 /**
+ * The page-lifecycle release (GIT_110). It belongs on this face rather than in
+ * the app because WHICH session is held and how it is handed back is transport
+ * business — the app only knows that its page went away.
+ */
+export { releaseSessionWhileHidden, type PageLifecycleHost, type PageVisibility } from "./pageSession.ts";
+/**
  * The clock seam's types only. `realClock` is deliberately NOT on this face:
  * it is the default the connectors already apply, so an app never needs to
  * name it, and a second construction of "now" is exactly what the seam exists

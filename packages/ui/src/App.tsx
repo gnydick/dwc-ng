@@ -5,7 +5,7 @@ import { createConfigStore } from "./config/store.ts";
 import { createMachineSession } from "./config/machineSession.ts";
 import { DEFAULT_THERMAL_COLORS } from "./config/types.ts";
 import { createTemperatureHistory } from "./om/temperature.ts";
-import { createConnector } from "@dwc-ng/connector";
+import { createConnector, releaseSessionWhileHidden } from "@dwc-ng/connector";
 import { writesArmed, type Backend } from "./dev/backend.ts";
 import { guardWrites } from "./dev/writeGuard.ts";
 import { startPinSender } from "./control/pinSender.ts";
@@ -117,6 +117,14 @@ export default function App(props: { backend: Backend }) {
 			.finally(() => setConfigLoaded(true));
 	});
 	onCleanup(() => void connector.disconnect());
+	// GIT_110: hand the board's session back while the page is not on screen.
+	// A closed tab, a refresh, or a phone switched away from used to keep a
+	// slot until the board idled it out, and the board has four of them or
+	// fewer. Which events fire, and why `beforeunload` is not among them, is
+	// argued in connector/src/pageSession.ts; the resume is part of the same
+	// handler, so returning to the tab does not leave the operator staring at
+	// a Connect button.
+	onCleanup(releaseSessionWhileHidden(connector));
 
 	// The pinned-command re-assert loop. Reads config.config.pins fresh each
 	// tick and sends through the guarded connector, so it respects the dev

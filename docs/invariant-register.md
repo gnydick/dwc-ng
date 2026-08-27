@@ -21,7 +21,7 @@ and invariant claim mentions 13 -> 23, so no mechanism was deleted and no
 claim was lost in the gap. From here the ratchets make a dropped rung visible
 in the diff that drops it.
 
-**Totals:** 154 invariants · 129 at rung 6 or above · 25 below rung 6 (ceiling 25).
+**Totals:** 155 invariants · 130 at rung 6 or above · 25 below rung 6 (ceiling 25).
 
 ## bed
 
@@ -469,7 +469,7 @@ in the diff that drops it.
 
 **Debt — promotion.** the bypass is chosen by inspecting the code string. Promote by giving the e-stop its own method on the transport so "send this without a slot" is a distinct operation rather than a branch inside the general one, and cannot be reached by any other payload. One transparent re-auth on a culled session (also unqueued), then re-fire; any other failure surfaces to the button, which honestly reports "failed" rather than pretending.
 
-`packages/connector/src/PollConnector.ts:342`
+`packages/connector/src/PollConnector.ts:375`
 
 ### `connector/estop-vocabulary` — rung 6
 
@@ -498,6 +498,14 @@ in the diff that drops it.
 **Debt — promotion.** MEASURED 2026-08-02, and the previously filed promotion does not work. It said: move the connector into its own package, then shadow the global in @dwc-ng/ui with a d.ts declaring `fetch: never`, for rung 7. The package move is done. The shadow is not achievable: a global `declare const fetch: never` does not override lib.dom's declaration — tested directly, a `fetch(...)` call beside it compiles clean, and skipLibCheck hides the duplicate-identifier conflict that would otherwise be raised against the DECLARATION rather than against uses. Making it work needs either dropping "DOM" from ui's lib and re-declaring what the app actually uses, which is a large and fragile surface, or a lint rule — and the linter is a dependency, which is Gabe's call under the dependency policy rather than mine. Filed rather than guessed at: the scan stays, and it now guards a much smaller gap.
 
 `packages/connector/src/index.ts:4`
+
+### `connector/session-replacement-releases` — rung 7
+
+**Mechanism.** sole-constructor/sealed-field. `#key` is a JS private field with no setter and no other writer in the module, so "take a new session without releasing the old one" is not an expression a caller can write — outside this file it is a compile error AND a runtime TypeError. The one route that legitimately skips the goodbye, `reauth`, demands a `SessionRefusal`, a branded token whose sole constructor returns null for any status other than 401/403: a caller with no refusing response cannot reach that route at all. Both routes serialize on one internal chain, so two callers racing (a Connect click landing on top of a ladder attempt) cannot each open a session and leave one of them unowned. A goodbye that cannot be delivered is kept, not forgotten, so the next attempt on a live link still frees the board's slot.
+
+**Why.** a connector that leaks a slot per reconnect attempt starves itself off the machine and cannot recover on its own — and the number of slots on the target hardware is four, or fewer
+
+`packages/connector/src/session.ts:20`
 
 ### `connector/sole-construction` — rung 6
 
