@@ -1989,7 +1989,11 @@ export function ShapingSweepBody(props: { ctx: CardCtx }) {
 	// Decay's save bar, which carried the identical defect until GIT_90 round 3.
 	const [armed, setArmed] = createArmed<true>();
 
-	const sweep = (): SweepMatrix | null => svc.results().sweep;
+	// The SAME accessor the card's status sentence is derived from
+	// (shaping/sweepRun.ts `sweepSentence`), not a second reading of the store
+	// that happens to be spelled the same way. The two cannot disagree because
+	// there is only one of them.
+	const sweep = (): SweepMatrix | null => svc.sweepHeld();
 
 	/**
 	 * The chosen family, resolved by ID against the current listing rather than

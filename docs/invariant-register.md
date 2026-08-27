@@ -21,7 +21,7 @@ and invariant claim mentions 13 -> 23, so no mechanism was deleted and no
 claim was lost in the gap. From here the ratchets make a dropped rung visible
 in the diff that drops it.
 
-**Totals:** 153 invariants · 129 at rung 6 or above · 24 below rung 6 (ceiling 24).
+**Totals:** 155 invariants · 131 at rung 6 or above · 24 below rung 6 (ceiling 24).
 
 ## bed
 
@@ -195,7 +195,7 @@ in the diff that drops it.
 
 **Why.** the run this screen starts sends a 200 mm/s G1 with nobody's hand on the jog wheel. Two of them interleaved would each be re-checking the carriage against ITS plan's expected position and finding the other one's move — every step refused, the machine moving anyway, and two restores racing at the end
 
-`packages/ui/src/compose/services.ts:1174`
+`packages/ui/src/compose/services.ts:1183`
 
 ### `compose/one-service-instance-per-screen` — rung 8
 
@@ -247,7 +247,7 @@ in the diff that drops it.
 
 **Why.** before this, an arm payload carrying its OWN tool (`{ kind: "save", tool }`) was how a stale arm was DETECTED — `save()` compared `armed().tool` against `svc.tool()` on every click. The review that closed GIT_90 round 2 traced every such comparison and found no reachable mis-save, but the mismatch was still REPRESENTABLE: two copies of "which tool" existed in the running code, and only careful reading kept them from disagreeing. Gabe, invoking cant-break-by-design: "it shouldn't be possible to mismatch tool identification in the same active code." Removing the second copy (the arm payloads no longer carry a tool at all — ShapingCards.tsx's Decay/Sweep/Capture save arms) and disarming on every tool change makes a stale arm impossible to CLICK rather than merely unprofitable to click: by the time a second click could fire a write, the control has already reverted to unarmed.
 
-`packages/ui/src/compose/services.ts:840`
+`packages/ui/src/compose/services.ts:834`
 
 ## config
 
@@ -1023,6 +1023,14 @@ in the diff that drops it.
 
 `packages/ui/src/shaping/runPlan.ts:61`
 
+### `shaping/absence-of-a-file-is-not-evidence-about-memory` — rung 7
+
+**Mechanism.** disjoint containers plus a lexical capability — a tool's results live in TWO separately-held stores rather than one: `cards`, the mirror of what the results file said, and `staged`, the work this session produced and has not written. The load path is `loadFromCard`, a MODULE-LEVEL function outside createShapingStore's closure, and the only writer it is handed is a `put` that addresses the card mirror. `setStaged` is a closure-local `const` that is not in its scope at all, so a load that erased unsaved work is not a mistake to review for — the name does not resolve and the file does not compile. The empty value a missing file produces therefore has nowhere to land except the mirror, whatever anyone writes in loadFromCard later
+
+**Why.** `load()` ran `replace(tool, emptyResults(tool))` for every tool with no file on the card — the normal state of a tool nobody has measured — and that replaced the WHOLE entry. A sweep matrix built and not yet saved was destroyed by the Reload link on the same screen, and because Save's gate reads the matrix, the loss showed up as a permanently dead button rather than as lost work (GitHub #100, reported during UAT as "save is not working for sweep, ghosted"). The file being absent said nothing whatever about what was in memory, and the old shape could not tell the two apart because it stored them in the same place @limit the residue is the one-line adapter `load` passes as `put`, which is written inside the factory where both setters are nameable. It forwards and does nothing else, and every branch of the load path is pinned against it in test/shaping-results.test.ts — that is a BACKSTOP for those two lines, not the mechanism for the invariant, exactly as the `as VerifiedCandidate` residue is above
+
+`packages/ui/src/shaping/store.ts:39`
+
 ### `shaping/capture-text-has-one-loader` — rung 6
 
 **Mechanism.** choke-point — `CaptureLoader.text` is the only function that turns a CaptureRef into CSV, and a CaptureRef is the only thing it takes. A board file is downloaded at most once per session and answered from the cache after that, so no second call site can decide for itself whether to re-fetch
@@ -1298,6 +1306,14 @@ in the diff that drops it.
 **Why.** the first version of this had the button's `disabled` on one expression and its caption on another; they agree until someone edits one of them, and the failure mode is a control that looks available and does nothing
 
 `packages/ui/src/shaping/steps.ts:12`
+
+### `shaping/the-sentence-and-the-save-gate-are-one-value` — rung 8
+
+**Mechanism.** derived, not stored — `built` is the only arm that claims a matrix is held, and it is UNREACHABLE unless the `held` argument is a matrix. `held` is the same accessor the Save button's `disabled` reads (`svc.sweepHeld()`, compose/services.ts), so "the card says a sweep is held" and "Save is enabled" are two readings of one value rather than two states that have to be kept in step. There is no spelling for the disagreement: to write it, a caller would have to pass a matrix here and a different one to the button
+
+**Why.** the failure this replaces was invisible as lost work and visible as a dead control, which is the worst arrangement of the two: the operator was told the sweep existed by the only line on the card that talks, and was refused by the only button that acts
+
+`packages/ui/src/shaping/sweepRun.ts:67`
 
 ### `shaping/the-shaper-to-restore-is-read-once-per-run` — rung 5
 
