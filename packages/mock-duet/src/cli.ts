@@ -17,6 +17,14 @@ const { values } = parseArgs({
 		"busy-every": { type: "string", default: "0" },
 		"chunk-size": { type: "string", default: "8" },
 		"reply-expiry": { type: "string", default: "3000" },
+		// RRF's embedded server allows very few concurrent sessions, and the
+		// defaults below MODEL that constraint deliberately — a mock that hands
+		// out sessions freely cannot show a session leak, which is the class of
+		// bug #110 exists for. These flags raise the cap for a UAT session that
+		// is fighting the leak rather than hunting it; they do NOT change what
+		// the mock is by default.
+		"max-sessions": { type: "string", default: "" },
+		"session-timeout": { type: "string", default: "" },
 		"no-auth": { type: "boolean", default: false },
 		dsf: { type: "boolean", default: false },
 		// "3" (current) by default; "1"/"2" stay selectable so the pre-v3
@@ -43,6 +51,12 @@ Options:
       --busy-every <n>    Every nth rr_model/rr_filelist request gets a 503.
       --chunk-size <n>    Array elements per rr_model chunk / files per page (default: 8).
       --reply-expiry <ms> Drop unread G-code replies after this long (default: 3000).
+      --max-sessions <n>  Concurrent session slots (default: 4, matching RRF's
+                          real scarcity). Raise ONLY to work around a known
+                          session leak during UAT — a high cap hides that class
+                          of bug.
+      --session-timeout <ms>
+                          Idle session expiry (default: 8000).
       --no-auth           Don't require X-Session-Key (handy for curl).
       --dsf               Also serve the DSF (SBC) surface: /machine/* REST
                           routes and the /machine WebSocket push loop.
@@ -81,6 +95,8 @@ const mock = createMockServer({
 	busyEvery: parseInt(values["busy-every"], 10),
 	chunkSize: parseInt(values["chunk-size"], 10),
 	replyExpiryMs: parseInt(values["reply-expiry"], 10),
+	...(values["max-sessions"] === "" ? {} : { maxSessions: parseInt(values["max-sessions"], 10) }),
+	...(values["session-timeout"] === "" ? {} : { sessionTimeout: parseInt(values["session-timeout"], 10) }),
 	requireAuth: !values["no-auth"],
 	dsf: values.dsf,
 	configVersion,
