@@ -9,6 +9,7 @@ import { THUMBNAIL_PNG_BASE64 } from "../../mock-duet/src/files.ts";
 import { DsfConnector, type DsfConnectorOptions } from "../src/DsfConnector.ts";
 import { EMERGENCY_STOP } from "../src/emergency.ts";
 import { createVirtualClock, type VirtualClock } from "./virtualClock.ts";
+import { createLinkGate } from "./linkGate.ts";
 import {
 	DisconnectedError, FileNotFoundError, InvalidPasswordError, OperationFailedError,
 	type ConnectionStatus,
@@ -549,6 +550,107 @@ test("deliberate disconnect: session dropped, no ladder, no timer left behind", 
 	}
 });
 
+/**
+ * The starvation reproduction (GIT_110). A flapping link is not a rare event
+ * on a printer in a workshop, and every trip round the ladder used to take a
+ * fresh session slot and abandon the one it was replacing. The mock's OWN
+ * defaults are used deliberately — maxSessions 4, sessionTimeout 8000 — so the
+ * numbers here are the ticket's arithmetic, not a fixture tuned to fail.
+ *
+ * The socket is FIREWALLED rather than destroyed: a destroyed socket tells the
+ * server the client is gone, which unpins the session and lets the idle sweep
+ * clean up after us. A paused one does not, so the only thing that can free the
+ * slot is a goodbye the connector sends — which is exactly the property under
+ * test, and exactly what a WiFi drop looks like from the board's side.
+ */
+test("a flapping link holds ONE session slot, however many reconnects", T, async () => {
+	const pingMs = 20;
+	const reconnectMs = 25;
+	const h = await startHarness(
+		{ maxSessions: 4, sessionTimeout: 8000 },
+		{ pingIntervalMs: pingMs, reconnectDelayMs: reconnectMs },
+	);
+	try {
+		await h.connector.connect();
+		assert.equal(h.mock.sessions.size, 1, "one tab, one slot");
+
+		const slots: number[] = [];
+		let stalled: string | null = null;
+		for (let i = 0; i < 6; i++) {
+			h.rawSockets.at(-1)!.pause();
+			const before = h.rawSockets.length;
+			try {
+				await advanceUntil(
+					h.clock,
+					() => h.connector.status === "connected" && h.rawSockets.length > before,
+					`reconnect ${i + 1} completed`, 25, 4000,
+				);
+			} catch (err) {
+				stalled = (err as Error).message;
+				break;
+			}
+			slots.push(h.mock.sessions.size);
+		}
+
+		assert.equal(stalled, null,
+			`the ladder stopped recovering after ${slots.length} reconnects, with ${h.mock.sessions.size}/4 slots in use`);
+		assert.deepEqual(slots, [1, 1, 1, 1, 1, 1],
+			"steady-state slot usage for ONE browser tab is ONE, however many reconnects");
+	} finally {
+		await h.close();
+	}
+});
+
+/**
+ * Requirement 2, on the DSF transport. A goodbye is best effort: with the link
+ * genuinely dead the board never hears it, and that must cost the ladder
+ * NOTHING — not a stall, not a missed attempt, not a connector that never comes
+ * back. The orphan left behind is the accepted price and the board's idle sweep
+ * collects it; a ladder waiting on a network that will not answer is not.
+ *
+ * A TCP gate rather than the firewall trick above, because here BOTH halves
+ * must die: the WebSocket and the REST call the goodbye rides on.
+ */
+test("a goodbye into a black hole neither stalls nor breaks the ladder", T, async () => {
+	const mock = createMockServer({ dsf: true, tickMs: 0, maxSessions: 4, sessionTimeout: 60_000 });
+	const boardPort = await mock.listen(0);
+	const gate = createLinkGate(boardPort);
+	const gatePort = await gate.listen();
+	const clock = createVirtualClock();
+	const connector = new DsfConnector({
+		baseUrl: `http://127.0.0.1:${gatePort}`,
+		clock,
+		pingIntervalMs: 20,
+		reconnectDelayMs: 25,
+		requestTimeoutMs: 2000,
+		events: {},
+	});
+	try {
+		await connector.connect();
+		assert.equal(mock.sessions.size, 1, "one tab, one slot");
+
+		gate.blackhole();
+		// Nothing FAILS in a black hole; the liveness deadline is what notices.
+		await advanceUntil(clock, () => connector.status === "reconnecting",
+			"the liveness deadline noticed the silence", 25, 20_000);
+		const attemptsAtCut = gate.attempts();
+
+		// Each attempt now tries to hand the old key back over a dead link,
+		// fails, and must carry on to the connect regardless.
+		await advanceUntil(clock, () => gate.attempts() > attemptsAtCut + 1,
+			"the ladder kept attempting while the link was down", 25, 20_000);
+
+		gate.restore();
+		await advanceUntil(clock, () => connector.status === "connected",
+			"recovered once the link returned", 25, 20_000);
+		assert.equal(connector.status, "connected");
+	} finally {
+		await connector.disconnect().catch(() => undefined);
+		await gate.close();
+		await mock.close();
+	}
+});
+
 // ---- codes ----
 
 test("sendCode returns the reply text; silent codes answer empty and act", T, async () => {
@@ -635,6 +737,14 @@ test("a socket that opens but never pushes trips the deadline into the ladder", 
 		// connect() is in flight.
 		const rejected = assert.rejects(c.connect(), (err: unknown) => err instanceof OperationFailedError,
 			"connect() rejects on the silent socket instead of hanging");
+		// Let the request actually GO OUT before moving time. The session is
+		// taken through SessionSlot.acquire (session.ts), which releases the
+		// previous key first, so the probe is issued a microtask after
+		// connect() is called rather than inside its synchronous prologue —
+		// and a budget registered mid-advance would be measured from the wrong
+		// instant. The two assertions below are still exact; this only makes
+		// "now" mean the same thing for both of them.
+		await clock.settle();
 
 		// This bare server answers nothing at all, so /machine/connect hangs
 		// and only its own budget ends it. That budget used to be real: this

@@ -10,6 +10,7 @@ import { isEmergencyStop } from "./emergency.ts";
 import { createLayerHistory, type LayerHistory, type LayerObservation } from "./layerHistory.ts";
 import { isPlainObject as isRecord, safeEntries } from "./safeObject.ts";
 import { realClock, type Clock, type TimerHandle } from "./clock.ts";
+import { SessionSlot, sessionRefusal, assertGoodbyeDelivered, GOODBYE_TIMEOUT_MS, type SessionRefusal } from "./session.ts";
 
 // --- platform-timer shadow (invariant connector/clock-seam) -----------------
 // Module-scoped shadows of the platform's timers: `setTimeout(...)` in this
@@ -100,7 +101,15 @@ export class PollConnector implements Connector {
 	/** Every deferral below runs on THIS, never on the platform (clock.ts). */
 	private readonly clock: Clock;
 
-	private sessionKey: number | null = null;
+	/**
+	 * The one session this connector may hold (session.ts). Taking a new key
+	 * through it IS handing the old one back — the reason a flapping link no
+	 * longer eats a board slot per attempt (GIT_110).
+	 */
+	private readonly session: SessionSlot<number>;
+	/** The held key, read-only: the slot owns the write side, so "take a new
+	 *  session and forget the old one" is not an expression in this file. */
+	private get sessionKey(): number | null { return this.session.key; }
 	private lastSeqs: Record<string, number> = {};
 	private lastVolSeqs: number[] = [];
 	private pollTimer: TimerHandle | null = null;
@@ -140,6 +149,20 @@ export class PollConnector implements Connector {
 		this.autoPoll = options.autoPoll ?? true;
 		this.events = options.events ?? {};
 		this.clock = options.clock ?? realClock;
+		// A BARE fetch, deliberately outside both the retry ladder and the
+		// request queue. Outside the ladder because attemptRequest answers a
+		// 401 by re-authenticating — which would take a session in the middle
+		// of giving one back. Outside the queue because the one slot can be
+		// held for minutes by an upload, and a goodbye nobody is waiting for
+		// is a goodbye that never leaves.
+		this.session = new SessionSlot<number>(async key => assertGoodbyeDelivered(await fetch(`${this.base}/rr_disconnect`, {
+			headers: { "X-Session-Key": String(key) },
+			// The goodbye must outlive the page that sends it: an ordinary
+			// fetch dies with the document, which is exactly when
+			// releaseSessionWhileHidden fires one.
+			keepalive: true,
+			signal: this.clock.timeoutSignal(Math.min(this.requestTimeoutMs, GOODBYE_TIMEOUT_MS)),
+		})));
 	}
 
 	// ---------- lifecycle ----------
@@ -159,18 +182,26 @@ export class PollConnector implements Connector {
 
 	async disconnect(): Promise<void> {
 		this.stopTimers();
-		if (this.sessionKey !== null) {
-			try {
-				await this.rawRequest("rr_disconnect", undefined, "high");
-			} catch {
-				// Session dies via idle timeout anyway; nothing to recover.
-			}
-		}
-		this.sessionKey = null;
+		// Best effort inside the slot: if the goodbye cannot be delivered the
+		// board idles the session out, and nothing here waits on the network's
+		// patience to say so.
+		await this.session.release();
 		this.setStatus("disconnected");
 	}
 
-	private async openSession(): Promise<void> {
+	/**
+	 * Take a session. Going through the slot RELEASES the key being replaced
+	 * FIRST, so the reconnect ladder cannot ask RRF for a slot faster than
+	 * RRF can free the one the previous attempt took — freeing it is on the
+	 * critical path of the next attempt (GIT_110 requirement 4). RRF has very
+	 * few slots (CLAUDE.md), so this is the difference between recovering from
+	 * a flapping link and thrashing against a board with none left.
+	 */
+	private openSession(): Promise<void> {
+		return this.session.acquire(() => this.negotiateSession());
+	}
+
+	private async negotiateSession(): Promise<number | null> {
 		const res = await this.rawRequest(
 			`rr_connect?password=${encodeURIComponent(this.password)}&time=${encodeURIComponent(isoOf(this.clock.now()))}&sessionKey=yes`,
 		);
@@ -178,13 +209,13 @@ export class PollConnector implements Connector {
 		if (body.err === 1) throw new InvalidPasswordError();
 		if (body.err === 2) throw new NoFreeSessionError();
 		if (body.err !== 0) throw new OperationFailedError(`rr_connect err ${body.err}`);
-		this.sessionKey = body.sessionKey ?? null;
 		this.emulated = body.isEmulated === true;
 		this.events.onBoardInfo?.({
 			emulated: this.emulated,
 			transport: this.emulated ? "rr-emulated" : "rr",
 			boardType: body.boardType,
 		});
+		return body.sessionKey ?? null;
 	}
 
 	/** Fetch seqs then every model key, emitting wholesale replacements. */
@@ -252,7 +283,9 @@ export class PollConnector implements Connector {
 	private beginReconnect(): void {
 		if (this.status !== "connected" && this.status !== "reconnecting") return;
 		this.stopTimers();
-		this.sessionKey = null;
+		// The key is deliberately still HELD here. The attempt below acquires
+		// through the slot, and acquiring is releasing: dropping it here is
+		// what used to orphan a slot on the board per attempt.
 		this.setStatus("reconnecting");
 		const attempt = (): void => {
 			this.reconnectTimer = this.clock.setTimeout(() => {
@@ -364,9 +397,15 @@ export class PollConnector implements Connector {
 			headers: this.sessionKey !== null ? { "X-Session-Key": String(this.sessionKey) } : {},
 			signal: this.clock.timeoutSignal(this.requestTimeoutMs),
 		});
-		if ((res.status === 401 || res.status === 403) && !retried) {
-			const body = await (await this.fetchConnect()).json() as { err: number; sessionKey?: number };
-			if (body.err === 0) this.sessionKey = body.sessionKey ?? null;
+		const refusal = sessionRefusal(res.status);
+		if (refusal !== null && !retried) {
+			// reauth, not acquire: the board has just REFUSED this key, so it
+			// has already freed the slot — and an e-stop must not wait behind
+			// a goodbye for a session that no longer exists.
+			await this.session.reauth(refusal, async () => {
+				const body = await (await this.fetchConnect()).json() as { err: number; sessionKey?: number };
+				return body.err === 0 ? body.sessionKey ?? null : null;
+			});
 			return this.sendEmergencyStop(code, true);
 		}
 		if (!res.ok) throw new OperationFailedError(`emergency stop: HTTP ${res.status}`);
@@ -409,8 +448,9 @@ export class PollConnector implements Connector {
 			try { return JSON.parse(result.text) as { err: number }; }
 			catch { return { err: 0 }; } // some firmware answers empty on success
 		}
-		if ((result.status === 401 || result.status === 403) && retry < this.maxRetries) {
-			await this.openSessionDirect(); // outside the slot — safe
+		const refusal = sessionRefusal(result.status);
+		if (refusal !== null && retry < this.maxRetries) {
+			await this.openSessionDirect(refusal); // outside the slot — safe
 			return this.attemptUpload(path, bytes, onProgress, retry + 1);
 		}
 		throw new OperationFailedError(`${path}: HTTP ${result.status}`);
@@ -721,10 +761,11 @@ export class PollConnector implements Connector {
 			}
 			return this.attemptRequest(path, init, retry + 1, priority, budgetMs, rungs);
 		}
-		if ((res.status === 401 || res.status === 403) && !path.startsWith("rr_connect")) {
+		const refusal = sessionRefusal(res.status);
+		if (refusal !== null && !path.startsWith("rr_connect")) {
 			// Session was culled (idle timeout, reboot, another client):
 			// re-auth with the stored password and replay (original :202-224)
-			await this.openSessionDirect();
+			await this.openSessionDirect(refusal);
 			return this.attemptRequest(path, init, retry + 1, priority, budgetMs, rungs);
 		}
 		if (res.status === 404) throw new FileNotFoundError(path);
@@ -758,12 +799,19 @@ export class PollConnector implements Connector {
 		);
 	}
 
-	/** Re-auth after a culled session. High priority: nothing else can proceed. */
-	private async openSessionDirect(): Promise<void> {
-		const res = await this.requests.enqueue(() => this.fetchConnect(), "high");
-		const body = await res.json() as { err: number; sessionKey?: number };
-		if (body.err !== 0) throw new InvalidPasswordError();
-		this.sessionKey = body.sessionKey ?? null;
+	/**
+	 * Re-auth after a culled session. High priority: nothing else can proceed.
+	 * `reauth` rather than `acquire`: the 401 IS the board reporting that the
+	 * key we held is gone, so a goodbye for it would ask a weak server to free
+	 * a slot it has already freed (session.ts).
+	 */
+	private openSessionDirect(refusal: SessionRefusal): Promise<void> {
+		return this.session.reauth(refusal, async () => {
+			const res = await this.requests.enqueue(() => this.fetchConnect(), "high");
+			const body = await res.json() as { err: number; sessionKey?: number };
+			if (body.err !== 0) throw new InvalidPasswordError();
+			return body.sessionKey ?? null;
+		});
 	}
 
 	private setStatus(status: ConnectionStatus, detail?: string): void {
