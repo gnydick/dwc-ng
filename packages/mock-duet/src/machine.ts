@@ -1,5 +1,5 @@
 import { createBaseModel, POLLED_KEYS, AMBIENT, type Om } from "./snapshot.ts";
-import { VirtualSD } from "./files.ts";
+import { VirtualSD, type ConfigSeedVersion } from "./files.ts";
 import { executeGCode } from "./gcode.ts";
 import { AccelBank, advanceCaptures } from "./accelerometer.ts";
 import type { Scenario, ScenarioEvent } from "./scenarios/types.ts";
@@ -15,7 +15,7 @@ import type { Scenario, ScenarioEvent } from "./scenarios/types.ts";
  */
 export class Machine {
 	om: Om;
-	sd = new VirtualSD();
+	sd: VirtualSD;
 	seqs: Record<string, number> = {};
 	volSeqs: number[];
 	/** Pristine model restored on reset (base or loaded capture). */
@@ -71,7 +71,8 @@ export class Machine {
 	private bootTime = Date.parse("2026-07-12T12:00:00");
 	private messageBoxSeq = 0;
 
-	constructor(scenario?: Scenario, baseModel?: Om) {
+	constructor(scenario?: Scenario, baseModel?: Om, configVersion?: ConfigSeedVersion) {
+		this.sd = new VirtualSD(configVersion);
 		this.pristine = baseModel ?? createBaseModel();
 		this.om = structuredClone(this.pristine);
 		this.volSeqs = (this.om.volumes as Om[]).map(() => 0);

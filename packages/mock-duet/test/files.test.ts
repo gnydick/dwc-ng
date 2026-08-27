@@ -36,11 +36,16 @@ test("rr_filelist paginates via first/next", async t => {
 	assert.equal(all.length, 10, "0:/sys is seeded with 10 files (incl. dwc-ng-config.json)");
 });
 
-test("mock SD seeds dwc-ng-config.json for the emulated toolchanger", async t => {
+test("mock SD seeds dwc-ng-config.json at the current version, stamped and mapped", async t => {
 	// The UI's dock indicator and axis-role labels are opt-in: they only
 	// render when the machine's SD carries a mapping. Seeding it here keeps
 	// those working out of the box (and across mock restarts, since the SD is
 	// rebuilt from this seed every start — an in-memory VirtualSD).
+	//
+	// GIT_90 round 5: the default moved 1 -> 3 (current) and gained a
+	// machineId stamp and an accelByTool mapping — the gate that kept every
+	// Shaping step disabled ("no accelerometer chosen for this tool") on a
+	// fresh mock, per Gabe's live UAT.
 	const mock = await startMock();
 	t.after(() => mock.close());
 	const key = await mock.connect();
@@ -48,7 +53,12 @@ test("mock SD seeds dwc-ng-config.json for the emulated toolchanger", async t =>
 	const down = await mock.getRaw("rr_download?name=0:/sys/dwc-ng-config.json", key);
 	assert.equal(down.status, 200);
 	const parsed = JSON.parse(await down.text());
-	assert.equal(parsed.version, 1);
+	assert.equal(parsed.version, 3);
+	// Stamped for the mainboard uniqueId this same snapshot reports
+	// (om-snapshot-2026-07-12.json boards[0]), machineKeySegment's "b." form
+	// (packages/ui/src/config/machineId.ts) — a bare uniqueId here would fail
+	// every claimed-not-adopted check against a live connection to this mock.
+	assert.equal(parsed.machineId, "b.0JDAM-9F6NU-F05S0-7JKDJ-3SD6T-1SWQ1");
 
 	// Dock sensors: tools 0..3 map to gpIn 10..13 (real machine wiring).
 	for (let tool = 0; tool <= 3; tool++) {
@@ -57,6 +67,48 @@ test("mock SD seeds dwc-ng-config.json for the emulated toolchanger", async t =>
 	// Axis roles: U/V/W are the individual Z-leadscrew motors, C is the coupler.
 	assert.equal(parsed.overlay.axisRoles.C, "Coupler");
 	assert.match(parsed.overlay.axisRoles.U, /Z motor/);
+
+	// The accelerometer mapping: tools 0..3 on the four TOOL1LC boards this
+	// snapshot's toolchanger carries, CAN 20..23, device 0 each.
+	for (let tool = 0; tool <= 3; tool++) {
+		assert.equal(parsed.overlay.shaping.accelByTool[String(tool)], `${20 + tool}.0`);
+	}
+});
+
+test("--config-version 1 seeds the byte-identical pre-v3 shape (no stamp, no accelByTool)", async t => {
+	// GIT_92 requirement 3: the pre-v3 migration path a real board's SD can
+	// still carry must stay reachable on a live mock, not only in the UI's
+	// own synthetic parser fixtures (config-parse.test.ts). This is that
+	// path, on purpose, not an accident of a version bump.
+	const mock = await startMock({ configVersion: 1 });
+	t.after(() => mock.close());
+	const key = await mock.connect();
+
+	const down = await mock.getRaw("rr_download?name=0:/sys/dwc-ng-config.json", key);
+	const parsed = JSON.parse(await down.text());
+	assert.equal(parsed.version, 1);
+	assert.equal(parsed.machineId, undefined, "v1 predates the machineId stamp");
+	assert.equal(parsed.overlay.shaping, undefined, "v1 never carried a shaping section");
+	assert.equal(parsed.overlay.axisRoles.C, "Coupler");
+	assert.equal(parsed.overlay.dockSensors["0"].gpIn, 10);
+});
+
+test("--config-version 2 carries the current overlay shape under the pre-split version number", async t => {
+	// v2 and v3 read identically in config/parse.ts's parseOverlayPayload —
+	// the v2 -> v3 change was to STORAGE LAYOUT (machine/person split), not
+	// the overlay shape — so this is legitimately the same overlay as the
+	// default, just unstamped and under version 2. See files.ts
+	// buildConfigSeed's own doc comment for why this does not need (and
+	// should not invent) a distinct shape.
+	const mock = await startMock({ configVersion: 2 });
+	t.after(() => mock.close());
+	const key = await mock.connect();
+
+	const down = await mock.getRaw("rr_download?name=0:/sys/dwc-ng-config.json", key);
+	const parsed = JSON.parse(await down.text());
+	assert.equal(parsed.version, 2);
+	assert.equal(parsed.machineId, undefined, "only a v3 payload is stamped");
+	assert.equal(parsed.overlay.shaping.accelByTool["0"], "20.0");
 });
 
 test("rr_filelist reports err 1 (unmounted) and err 2 (missing)", async t => {
