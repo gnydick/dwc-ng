@@ -21,7 +21,7 @@ and invariant claim mentions 13 -> 23, so no mechanism was deleted and no
 claim was lost in the gap. From here the ratchets make a dropped rung visible
 in the diff that drops it.
 
-**Totals:** 153 invariants · 129 at rung 6 or above · 24 below rung 6 (ceiling 24).
+**Totals:** 156 invariants · 132 at rung 6 or above · 24 below rung 6 (ceiling 24).
 
 ## bed
 
@@ -257,7 +257,7 @@ in the diff that drops it.
 
 **Why.** a claim names the board it was checked against ("written for b.A") by testing it against WHICHEVER machine was current at load time. Spec §3 explicitly anticipates identity changing under a live session (a mainboard swap, an SD card moved to another board) — a claim raised against B and left standing after re-resolving to C would let Adopt commit A's machine half (envelope included) into config now keyed to C: the exact cross-machine leak this campaign exists to make unrepresentable, reached THROUGH the confirm action rather than around it
 
-`packages/ui/src/config/store.ts:422`
+`packages/ui/src/config/store.ts:464`
 
 ### `config/claimed-not-adopted` — rung 6
 
@@ -265,7 +265,7 @@ in the diff that drops it.
 
 **Why.** spec §3: an SD card cloned or moved to another board must not have its settings silently adopted (a foreign envelope becomes the box the head is driven inside) or silently discarded (a real machine's real settings would be lost the first time its OWN card fails to round-trip through some other path). "Claimed, not adopted" is the third option this function exists to make the default
 
-`packages/ui/src/config/store.ts:874`
+`packages/ui/src/config/store.ts:916`
 
 ### `config/claimed-not-reachable-without-adopt` — rung 6
 
@@ -273,7 +273,7 @@ in the diff that drops it.
 
 **Why.** `store.meta.claimedProfile` (exposed, reactive) carries only the origin and section NAMES — see ClaimedProfile's doc comment — so a caller reading it can never mistake a claimed fact for live config. The real values still have to live SOMEWHERE for Adopt to apply them; keeping them here, off the store entirely, is what makes "cannot be consumed as fact without an explicit act" true by construction rather than by a caller remembering to check a flag
 
-`packages/ui/src/config/store.ts:319`
+`packages/ui/src/config/store.ts:349`
 
 ### `config/config-section-scope` — rung 6
 
@@ -299,7 +299,7 @@ in the diff that drops it.
 
 **Why.** "u-" ids must never collide with built-in screen ids or the lab route, and "c-" ids never with registry CardIds. A collision would silently shadow a built-in screen with a user one, and the user could not delete what they had not created
 
-`packages/ui/src/config/store.ts:1084`
+`packages/ui/src/config/store.ts:1126`
 
 ### `config/labels-never-travel` — rung 6
 
@@ -309,7 +309,7 @@ in the diff that drops it.
 
 **Debt — promotion.** the payload is a hand-built object literal, so a future field is one line away — `machineId` (Task 9) is exactly that field arriving. Promote by giving ConfigOverlay a single serialize that returns a branded ConfigPayload upload accepts, so what travels is decided by the overlay's own type rather than here.
 
-`packages/ui/src/config/store.ts:823`
+`packages/ui/src/config/store.ts:865`
 
 ### `config/legacy-key-single-mention` — rung 6
 
@@ -325,7 +325,7 @@ in the diff that drops it.
 
 **Why.** (Ruling 18) an earlier version wrote this half into whichever machine happened to be resolved by `machineStore()` at the synchronous instant `createConfigStore` runs — no stamp, no evidence, on data migrateStorage.ts's own header says "carries no such proof" and "must be DROPPED, never guessed at". That branch was unreachable in THIS app only because of incidental boot ordering (App.tsx constructs the config store before the machine session can resolve) — improbable, not impossible, and this project's standard is that a hazard must be unrepresentable, not merely unlikely today. There is nothing an operator could confirm a recovered half against either (the origin is unknowable in principle), so there is no "claimed, pending confirmation" state to offer instead — dropping it is the only correct answer The one-shot v2 → v3 backfill of the pre-split, origin-global legacy cache (spec §4, campaign #76 phase 1 task 8; see migrateStorage.ts for the exact key name — only that module may spell it). That legacy cache predates Task 6/7's split and, like the live overlay it once carried, proves nothing about which machine wrote its machine-scoped bytes — Ruling 17/18 apply the identical drop-unconditionally rule to its snapshots that the live overlay already follows. The drop is not silent (Ruling 19): every migrated snapshot that HAD a non-empty machine half is named in the returned `droppedMachineSections`, alongside the live overlay's own report, so the one channel the System card already reads (Task 11) carries both. Returns `null` when there was nothing to migrate — the common case on every boot after the first, since readAndClearLegacyPersonCache removes the key on the one read that finds it.
 
-`packages/ui/src/config/store.ts:1231`
+`packages/ui/src/config/store.ts:1273`
 
 ### `config/machine-identity-single-resolution` — rung 6
 
@@ -355,7 +355,7 @@ in the diff that drops it.
 
 **Debt — promotion.** this function's contract depends on its caller never fabricating a `MachineStore` for the wrong machine — nothing here re-checks that a `handle`'s `id` matches "the current machine" beyond what machineSession.ts already guarantees by construction.
 
-`packages/ui/src/config/store.ts:1394`
+`packages/ui/src/config/store.ts:1495`
 
 ### `config/no-unstamped-sd-write` — rung 6
 
@@ -363,7 +363,15 @@ in the diff that drops it.
 
 **Why.** identity resolves about one poll after boot (machineSession.ts). A save attempted in that window must not put an unattributable file on the card — the next machine to read it (even THIS one, on a later boot with a different resolution) would have no stamp to check and no way to tell "mine" from "nobody's"
 
-`packages/ui/src/config/store.ts:841`
+`packages/ui/src/config/store.ts:883`
+
+### `config/open-tab-sees-other-tabs-history` — rung 6
+
+**Mechanism.** choke-point — `mergeSnapshots` is the one function that decides what the history IS, and both the writer (writePersonCache) and this re-hydrator go through it, so a tab's in-memory list and the record on disk cannot disagree about which entries exist. Not rung 7: nothing stops a future field being re-read here without the merge
+
+**Why.** without it the losing tab had to be reloaded before it could see a backup taken next door — and, before the merge above existed, its next commit destroyed that backup instead. The listener is what turns "the other tab wins the race" into "there is no race" @scope SNAPSHOTS ONLY. `overlay` and `dirty` are this instance's own unsaved work; adopting another tab's copy of them would discard an edit the operator is still typing. A `storage` event never fires in the document that caused it, so this can only ever be another tab.
+
+`packages/ui/src/config/store.ts:319`
 
 ### `config/overlay-writes-persist` — rung 6
 
@@ -373,7 +381,15 @@ in the diff that drops it.
 
 **Debt — promotion.** `commit` is closure-private, so this holds within the module and says nothing about a future module. Promotion to 7 is making the overlay a branded value only commit can produce, so a second store could not assign one either.
 
-`packages/ui/src/config/store.ts:366`
+`packages/ui/src/config/store.ts:408`
+
+### `config/person-cache-snapshots-only-grow` — rung 6
+
+**Mechanism.** choke-point, and the strong kind: `writePersonCache` is the ONLY function in the program that writes CONFIG_CACHE_KEY, and its `snapshots` field is not a parameter at all — it is COMPUTED here from the record already on disk. There is no argument a caller can pass, correct or otherwise, that expresses "the stored history is exactly this list", so an instance holding a stale or empty `meta.snapshots` cannot shorten what another instance saved. The rung is 6 rather than 7 because a future module could still call `localStorage.setItem(CONFIG_CACHE_KEY, …)` directly; that is what test/config-person-cache-merge.ts's sole-writer scan pins
+
+**Why.** `persistCache` used to hand `meta.snapshots` straight through, and that list is seeded once at createConfigStore and never re-read — so any tab built BEFORE a save persisted `snapshots: []` over the newer record and the next boot restored nothing (#120 defect A, reproduced with an in-browser setItem hook) @why-ordered ordering by `takenAt` rather than by arrival is what makes the merge idempotent: re-running it over its own output changes nothing, so a record that has been through several writers still reads oldest-first and `revert(i)` still means what the list shows. @why-stable ties are NOT broken by id. `mintSnapshotId` includes `Math.random()`, so an id tie-break REORDERS two backups taken in the same millisecond differently on every write — which is a real gesture (Save, rename, Save again) and made "the newest is last" false at random. Ties keep the order they already have (stored first, then this call's contribution), which `Array.prototype.sort`'s stability guarantees.
+
+`packages/ui/src/config/store.ts:1446`
 
 ### `config/revert-machine-half-scoped-to-current-machine` — rung 6
 
@@ -381,7 +397,7 @@ in the diff that drops it.
 
 **Why.** snapshot() (above) is the sole writer of a machine's own "snapshots" key and never writes under an id taken on a different machine, so `.find(e => e.id === snap.id)` coming up empty on machine B proves the snapshot was not taken on B — but that only tells you WHOSE machine half it isn't; it says nothing about what B's own machine half currently holds, and is no license to overwrite it
 
-`packages/ui/src/config/store.ts:758`
+`packages/ui/src/config/store.ts:800`
 
 ### `config/screen-layout-two-tier` — rung 6
 
@@ -399,7 +415,7 @@ in the diff that drops it.
 
 **Why.** a snapshot used to clone the WHOLE joined overlay into this same record (Ruling 17) — reverting to one taken on machine A while pointed at machine B restored A's axis roles and envelope onto B, the exact inherited-envelope hazard this campaign exists to remove
 
-`packages/ui/src/config/store.ts:1149`
+`packages/ui/src/config/store.ts:1191`
 
 ### `config/sole-snapshot-producer` — rung 6
 
@@ -409,7 +425,7 @@ in the diff that drops it.
 
 **Debt — promotion.** promote by making ConfigSnapshot's label a branded SnapshotLabel this function is the sole producer of, so a snapshot assembled elsewhere cannot be pushed at all rather than merely not being.
 
-`packages/ui/src/config/store.ts:713`
+`packages/ui/src/config/store.ts:755`
 
 ### `config/untrusted-overlay-boundary` — rung 6
 
@@ -427,9 +443,9 @@ in the diff that drops it.
 
 **Why.** the three pieces (overlay, dirty, snapshots) are one fact about "what the user has unsaved". Persisting two and dropping the third is the dropped-snapshots bug: the overlay survived a reload while the history it belonged to did not, so revert offered nothing to revert to. Task 7 splits `overlay` itself across two records; a second, independently-timed write path to either one would reintroduce the same class of bug
 
-**Debt — promotion.** promote by making persistCache take one CacheRecord value assembled in one place, so a second call site physically cannot pass a subset.
+**Debt — promotion.** promote by making persistCache take one CacheRecord value assembled in one place, so a second call site physically cannot pass a subset. @note #120 A narrowed this invariant's scope rather than weakening it: overlay/dirty/snapshots still reach disk in ONE write, but the snapshot list is no longer this instance's copy — it is derived inside writePersonCache from the record on disk plus whatever this call contributes. "Written together" was always the invariant; "written from one tab's memory" was an unstated assumption riding along with it, and it was false the moment a second tab existed.
 
-`packages/ui/src/config/store.ts:339`
+`packages/ui/src/config/store.ts:369`
 
 ## connector
 
@@ -1346,6 +1362,14 @@ in the diff that drops it.
 **Why.** the geometry engine computes spans in cells while the browser lays them out in pixels. When those were two facts, a card's computed position and its painted position could differ by a whole column with nothing failing — and the arithmetic looks right in both places
 
 `packages/ui/src/shell/panelCanvas.ts:109`
+
+### `shell/only-an-operator-gesture-reports-unsaved-work` — rung 6
+
+**Mechanism.** choke-point with a mandatory discriminator — `persist` is the only function that writes the "layout" key, `onLayoutChange` is named at exactly one line in the program (the one below), and `origin` has no default, so a geometry write that never decided whose act it was does not COMPILE. A new call site added by someone who read nothing still has to answer the only question that matters here. Not rung 7: the two origins are string literals a caller could still pick wrongly, which is what test/layout-dirty-origin.test.ts's per-call-site scan pins
+
+**Why.** one flag used to carry two different facts — "the operator rearranged the screen" and "the canvas emitted a geometry event". `ensureSlot`/`removeSlot` run from ComposedScreen's composition-sync effect, which fires as the screen is being brought up to date with a config change nobody dragged; routing those through the same notifier as a drag is what let a plain reload report unsaved work that did not exist (#120 defect B). The fix is NOT to stop marking dirty: geometry only reaches the overlay at save time (captureScreenGeometry) and Save is gated on the flag, so a canvas that never marks dirty is one whose rearrangement can never be saved at all @enumerated the geometry writers NOT on this route, and why: `reset()` REMOVES the key rather than writing one (the next mount re-seeds from defaults) and has never notified; the construction-time settle write at the top of this function is a deterministic repair, not an edit, and deliberately calls `keys.set` directly. Both are unchanged by #120 and neither can express a notify.
+
+`packages/ui/src/shell/panelCanvas.ts:1510`
 
 ### `shell/reflow-preserves-reading-order` — rung 6
 

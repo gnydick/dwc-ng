@@ -1,5 +1,5 @@
 import { createStore, reconcile, unwrap } from "solid-js/store";
-import { createComputed, untrack, type Accessor } from "solid-js";
+import { createComputed, onCleanup, untrack, type Accessor } from "solid-js";
 import type { Connector } from "@dwc-ng/connector";
 import { FileNotFoundError } from "@dwc-ng/connector";
 import { isPlainObject, safeEntries } from "@dwc-ng/connector";
@@ -314,6 +314,36 @@ export function createConfigStore(options: { machineStore: Accessor<MachineStore
 		revertNotice: null,
 	});
 	/**
+	 * ANOTHER instance of this app, on this origin, appended a backup.
+	 *
+	 * @invariant open-tab-sees-other-tabs-history
+	 * @rung 6  choke-point — `mergeSnapshots` is the one function that decides
+	 *          what the history IS, and both the writer (writePersonCache) and
+	 *          this re-hydrator go through it, so a tab's in-memory list and
+	 *          the record on disk cannot disagree about which entries exist.
+	 *          Not rung 7: nothing stops a future field being re-read here
+	 *          without the merge
+	 * @why without it the losing tab had to be reloaded before it could see a
+	 *      backup taken next door — and, before the merge above existed, its
+	 *      next commit destroyed that backup instead. The listener is what
+	 *      turns "the other tab wins the race" into "there is no race"
+	 * @scope SNAPSHOTS ONLY. `overlay` and `dirty` are this instance's own
+	 *      unsaved work; adopting another tab's copy of them would discard an
+	 *      edit the operator is still typing. A `storage` event never fires in
+	 *      the document that caused it, so this can only ever be another tab.
+	 */
+	if (typeof window !== "undefined") {
+		const onStorage = (event: StorageEvent): void => {
+			// `key === null` is a whole-store clear(), which also drops the
+			// history — re-read either way and let the merge decide.
+			if (event.key !== null && event.key !== CONFIG_CACHE_KEY) return;
+			setMeta("snapshots", current => mergeSnapshots(readStoredSnapshots(), current));
+		};
+		window.addEventListener("storage", onStorage);
+		onCleanup(() => window.removeEventListener("storage", onStorage));
+	}
+
+	/**
 	 * The claimed profile's ACTUAL machine-half values, pending Adopt.
 	 *
 	 * @invariant claimed-not-reachable-without-adopt
@@ -353,10 +383,22 @@ export function createConfigStore(options: { machineStore: Accessor<MachineStore
 	 *      reintroduce the same class of bug
 	 * @debt promote by making persistCache take one CacheRecord value assembled
 	 *       in one place, so a second call site physically cannot pass a subset.
+	 * @note #120 A narrowed this invariant's scope rather than weakening it:
+	 *       overlay/dirty/snapshots still reach disk in ONE write, but the
+	 *       snapshot list is no longer this instance's copy — it is derived
+	 *       inside writePersonCache from the record on disk plus whatever this
+	 *       call contributes. "Written together" was always the invariant;
+	 *       "written from one tab's memory" was an unstated assumption riding
+	 *       along with it, and it was false the moment a second tab existed.
 	 */
-	const persistCache = (): void => {
+	const persistCache = (contribute: readonly ConfigSnapshot[] = []): void => {
 		const { machine, person } = splitOverlay(overlay);
-		writePersonCache(person, meta.dirty, meta.snapshots);
+		// `meta.snapshots` is deliberately NOT passed: this instance's view of
+		// the history is a MIRROR, seeded once at construction, and handing it
+		// to the writer is what destroyed other instances' backups (#120 A).
+		// A caller that has genuinely NEW entries contributes those and only
+		// those; everything already on disk is preserved by writePersonCache.
+		writePersonCache(person, meta.dirty, contribute);
 		// Skipped ENTIRELY — not written as `{}` — when no machine is
 		// identified. See writeMachineOverlay's own invariant.
 		writeMachineOverlay(machineStore(), machine);
@@ -732,14 +774,12 @@ export function createConfigStore(options: { machineStore: Accessor<MachineStore
 			const clean = label.trim().slice(0, MAX_LABEL_LEN) || DEFAULT_SNAPSHOT_LABEL;
 			// Split exactly like the live overlay (Ruling 17, types.ts splitOverlay)
 			// — the person half is all that ever reaches meta.snapshots, which is
-			// what makes it safe for writePersonCache to persist wholesale into
-			// the origin-global cache below.
+			// and so all that this function ever CONTRIBUTES to the
+			// origin-global cache below.
 			const { machine, person } = splitOverlay(overlay);
 			const id = mintSnapshotId();
-			setMeta("snapshots", snapshots => {
-				const next = [...snapshots, { id, takenAt: Date.now(), label: clean, overlay: structuredClone(person) }];
-				return next.slice(-MAX_SNAPSHOTS);
-			});
+			const taken: ConfigSnapshot = { id, takenAt: Date.now(), label: clean, overlay: structuredClone(person) };
+			setMeta("snapshots", snapshots => [...snapshots, taken].slice(-MAX_SNAPSHOTS));
 			// The machine half goes behind whichever machine is CURRENTLY
 			// connected, in that machine's own store — never here, and never
 			// under `id` alone without one. No machine identified means nothing
@@ -751,8 +791,10 @@ export function createConfigStore(options: { machineStore: Accessor<MachineStore
 				writeMachineSnapshots(handle, [...existing, { id, overlay: structuredClone(machine) }].slice(-MAX_SNAPSHOTS));
 			}
 			// Persist the new backup immediately — the whole point is that it
-			// outlives the session that took it.
-			persistCache();
+			// outlives the session that took it. `taken` is the ONE entry this
+			// call contributes; everything else in the stored history belongs
+			// to whoever wrote it and is preserved by writePersonCache's merge.
+			persistCache([taken]);
 		},
 		/*
 		 * @invariant revert-machine-half-scoped-to-current-machine
@@ -1370,13 +1412,72 @@ function loadPersonCache(): {
  *  (Safari private mode) threw out of App() and rendered nothing, where a
  *  failed write must instead mean "does not survive a reload", never a
  *  blank app. */
-function writePersonCache(person: DeepPartial<PersonConfig>, dirty: boolean, snapshots: readonly ConfigSnapshot[]): void {
+function writePersonCache(person: DeepPartial<PersonConfig>, dirty: boolean, contribute: readonly ConfigSnapshot[] = []): void {
 	if (typeof localStorage === "undefined") return;
 	try {
+		// DERIVED, never taken from the caller (technique 8): the list that
+		// goes to disk is the one already on disk plus whatever this writer
+		// brought. See mergeSnapshots / person-cache-snapshots-only-grow.
+		const snapshots = mergeSnapshots(readStoredSnapshots(), contribute);
 		localStorage.setItem(CONFIG_CACHE_KEY, JSON.stringify({ version: CONFIG_VERSION, overlay: person, dirty, snapshots }));
 	} catch {
 		// Private mode / quota exceeded: this edit just won't survive a reload.
 	}
+}
+
+/** The backup history currently ON DISK, parsed through the same untrusted
+ *  boundary every other reader uses (parseSnapshots). Reads only the snapshot
+ *  field: the overlay and dirty halves of the record belong to whichever
+ *  instance is writing, and are deliberately NOT adopted from another tab. */
+function readStoredSnapshots(): ConfigSnapshot[] {
+	if (typeof localStorage === "undefined") return [];
+	try {
+		const raw = localStorage.getItem(CONFIG_CACHE_KEY);
+		if (raw === null) return [];
+		return parseSnapshots((JSON.parse(raw) as { snapshots?: unknown }).snapshots);
+	} catch {
+		return [];
+	}
+}
+
+/**
+ * Union of two views of the backup history, keyed by snapshot id.
+ *
+ * @invariant person-cache-snapshots-only-grow
+ * @rung 6  choke-point, and the strong kind: `writePersonCache` is the ONLY
+ *          function in the program that writes CONFIG_CACHE_KEY, and its
+ *          `snapshots` field is not a parameter at all — it is COMPUTED here
+ *          from the record already on disk. There is no argument a caller can
+ *          pass, correct or otherwise, that expresses "the stored history is
+ *          exactly this list", so an instance holding a stale or empty
+ *          `meta.snapshots` cannot shorten what another instance saved. The
+ *          rung is 6 rather than 7 because a future module could still call
+ *          `localStorage.setItem(CONFIG_CACHE_KEY, …)` directly; that is what
+ *          test/config-person-cache-merge.ts's sole-writer scan pins
+ * @why `persistCache` used to hand `meta.snapshots` straight through, and that
+ *      list is seeded once at createConfigStore and never re-read — so any tab
+ *      built BEFORE a save persisted `snapshots: []` over the newer record and
+ *      the next boot restored nothing (#120 defect A, reproduced with an
+ *      in-browser setItem hook)
+ * @why-ordered ordering by `takenAt` rather than by arrival is what makes the
+ *      merge idempotent: re-running it over its own output changes nothing, so
+ *      a record that has been through several writers still reads oldest-first
+ *      and `revert(i)` still means what the list shows.
+ * @why-stable ties are NOT broken by id. `mintSnapshotId` includes
+ *      `Math.random()`, so an id tie-break REORDERS two backups taken in the
+ *      same millisecond differently on every write — which is a real gesture
+ *      (Save, rename, Save again) and made "the newest is last" false at
+ *      random. Ties keep the order they already have (stored first, then this
+ *      call's contribution), which `Array.prototype.sort`'s stability
+ *      guarantees.
+ */
+function mergeSnapshots(stored: readonly ConfigSnapshot[], contribute: readonly ConfigSnapshot[]): ConfigSnapshot[] {
+	const byId = new Map<string, ConfigSnapshot>();
+	for (const s of stored) byId.set(s.id, s);
+	for (const s of contribute) byId.set(s.id, s);
+	return [...byId.values()]
+		.sort((a, b) => a.takenAt - b.takenAt)
+		.slice(-MAX_SNAPSHOTS);
 }
 
 /**
