@@ -21,7 +21,7 @@ and invariant claim mentions 13 -> 23, so no mechanism was deleted and no
 claim was lost in the gap. From here the ratchets make a dropped rung visible
 in the diff that drops it.
 
-**Totals:** 159 invariants · 134 at rung 6 or above · 25 below rung 6 (ceiling 25).
+**Totals:** 161 invariants · 136 at rung 6 or above · 25 below rung 6 (ceiling 25).
 
 ## bed
 
@@ -924,6 +924,22 @@ in the diff that drops it.
 **Debt — promotion.** promotion to 7 is a branded AxisLetter type mintable only by looking one up in om.move.axes, so a handler can never hold a letter value the model doesn't have; that closes the gap the source scan can only detect after the fact.
 
 `packages/mock-duet/src/gcode.ts:72`
+
+### `mock-duet/mock-state-atomic-replace` — rung 6
+
+**Mechanism.** choke-point. `writeAtomic` below is the only function in the package that opens a file for writing, and it writes a temp file in the destination's own directory, fsyncs it, and renames it over the destination. A reader therefore observes either the previous file or the new one, never a prefix of the new one — the mock is routinely killed with `Stop-Process -Force`, which can land between any two bytes. On top of that the file carries a CRC-32 of its payload, so a file damaged by anything OUTSIDE this writer is reported unreadable and the mock starts clean, rather than restoring half a machine
+
+**Why.** a state file that fails to load presents to the operator as data loss with extra steps, and a half-restored one is worse still: it looks like a UI bug
+
+`packages/mock-duet/src/persist.ts:35`
+
+### `mock-duet/mock-state-one-snapshot` — rung 7
+
+**Mechanism.** sole-constructor type. `MockSnapshot` carries a brand keyed on a module-private `unique symbol` (SNAPSHOT_BRAND, never exported), so no code outside this file can produce a value of that type — not by object literal, not by cast to a nameable type. `encodeSnapshot` and `applySnapshot` accept nothing else, and the only producer is `captureSnapshot`, which reads `machine.sd` and `machine.om` in the same expression. Persisting one store without the other is therefore a compile error, not a review note
+
+**Why.** the SD tree and the machine's own state are two stores. Persisted through two paths they drift, and a restored machine claims a homed axis with no file behind it (GIT_114 design constraint). One snapshot, one restore — and the type is what makes "one" true
+
+`packages/mock-duet/src/persist.ts:21`
 
 ### `mock-duet/one-parameter-reader` — rung 6
 

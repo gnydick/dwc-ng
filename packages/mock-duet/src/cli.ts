@@ -31,6 +31,10 @@ const { values } = parseArgs({
 		// migration a real board's SD can carry is reachable on a live mock,
 		// not only in the UI's own synthetic parser tests (GIT_92 req. 3).
 		"config-version": { type: "string", default: "3" },
+		// Opt-in persistence (GIT_114). Absent = the mock forgets on exit,
+		// which is the default on purpose: a mock that silently remembers can
+		// hide a config-loading bug.
+		state: { type: "string", default: "" },
 		list: { type: "boolean", default: false },
 		help: { type: "boolean", short: "h", default: false },
 	},
@@ -100,6 +104,7 @@ const mock = createMockServer({
 	requireAuth: !values["no-auth"],
 	dsf: values.dsf,
 	configVersion,
+	statePath: values.state !== "" ? values.state : undefined,
 });
 
 const port = await mock.listen(parseInt(values.port, 10));
@@ -112,6 +117,15 @@ if (model !== undefined) {
 if (values["no-auth"]) console.log("auth disabled (--no-auth): X-Session-Key not required");
 if (values.dsf) console.log(`DSF mode (--dsf): REST http://127.0.0.1:${port}/machine/*, push ws://127.0.0.1:${port}/machine`);
 console.log(`dwc-ng-config.json seed: version ${configVersion}${configVersion === 3 ? " (current)" : ""}`);
+if (mock.stateRestore === null) {
+	console.log("state: not persisted (pass --state <file> to keep it across restarts)");
+} else if (mock.stateRestore.kind === "restored") {
+	console.log(`state: restored from ${values.state}`);
+} else if (mock.stateRestore.kind === "unreadable") {
+	console.log(`state: ${values.state} is UNREADABLE (${mock.stateRestore.reason}) — starting clean; it will be overwritten on the next change`);
+} else {
+	console.log(`state: ${values.state} (new file; written after the first change)`);
+}
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
 	process.on(signal, () => {
