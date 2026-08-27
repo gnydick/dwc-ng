@@ -58,7 +58,7 @@ import { forcedJobInfoErrorNow } from "../dev/forcedJobInfoError.ts";
 import { createHeightMapStore } from "../heightmap/store.ts";
 import { cellPosition } from "../heightmap/parse.ts";
 import { createShapingStore } from "../shaping/store.ts";
-import { type CaptureRecord, emptyResults, fingerprintOf, RESULTS_PATH, type ToolResults } from "../shaping/results.ts";
+import { type CaptureRecord, fingerprintOf, RESULTS_PATH, type ToolResults } from "../shaping/results.ts";
 import { Preconditions, type Refusal, travelAcceleration } from "../shaping/preconditions.ts";
 import type { Conditions, MachineNow, Provenance } from "../shaping/evidence/evidence.ts";
 import { findShapingLine, replaceShapingLine, toolMacroPath } from "../shaping/toolMacro.ts";
@@ -74,12 +74,12 @@ import { type FileListEntry, FileNotFoundError } from "@dwc-ng/connector";
 import { aggregate, type Axis, type Fingerprint, type Mode, type NoFit } from "../shaping/engine/fit.ts";
 import { type FullStep, fullStepPerMm } from "../shaping/fullStep.ts";
 import { mmPerS, seconds } from "../shaping/engine/units.ts";
-import { analysedRows } from "../shaping/engine/sweep.ts";
+import type { SweepMatrix } from "../shaping/engine/sweep.ts";
 import type { ApplyState } from "../shaping/applyRun.ts";
 import { type AccelReport, parseAccelReport } from "../shaping/accelReport.ts";
 import type { ShaperSpec } from "../shaping/engine/shapers.ts";
 import { cmd } from "../control/commands.ts";
-import type { SweepState } from "../shaping/sweepRun.ts";
+import { sweepSentence, type SweepPhase, type SweepState } from "../shaping/sweepRun.ts";
 import { motionBusy, type MotionState } from "../shaping/motionRun.ts";
 import { createFitCache } from "../shaping/fitCache.ts";
 import type { AppServices } from "../shell/context.ts";
@@ -739,7 +739,7 @@ function shapingService(base: ServiceBaseCtx) {
 	 */
 	const fullStepFor = (axis: Axis): FullStep => fullStepPerMm(base.om.om.move.axes, axis);
 
-	const [sweepState, setSweepState] = createSignal<SweepState>({ kind: "idle" });
+	const [sweepPhase, setSweepPhase] = createSignal<SweepPhase>({ kind: "idle" });
 
 	/**
 	 * Turn one family of speed-suffixed captures into a `SweepMatrix`.
@@ -767,23 +767,23 @@ function shapingService(base: ServiceBaseCtx) {
 	 * explicit act, for the same reason `saveMeasurement` is.
 	 */
 	const buildSweep = async (family: SweepFamily): Promise<void> => {
-		const state = sweepState().kind;
+		const state = sweepPhase().kind;
 		if (state === "loading" || state === "computing") return;
 		if (family.members.length === 0) return;
 		// The cap lives here, on the one route that would issue the requests —
 		// a disabled button is a suggestion, this is the thing that downloads.
 		if (family.members.length > MAX_SWEEP) {
-			setSweepState({ kind: "failed", why: `${family.id} has ${family.members.length} captures; a sweep is capped at ${MAX_SWEEP}.` });
+			setSweepPhase({ kind: "failed", why: `${family.id} has ${family.members.length} captures; a sweep is capped at ${MAX_SWEEP}.` });
 			return;
 		}
 		const step = fullStepFor(family.axis);
 		if (!step.known) {
-			setSweepState({ kind: "failed", why: step.why });
+			setSweepPhase({ kind: "failed", why: step.why });
 			return;
 		}
 		const distMm = base.config.config.shaping.defaults.distMm;
 		if (!(Number.isFinite(distMm) && distMm > 0)) {
-			setSweepState({ kind: "failed", why: "the excitation move has no length — set one in Settings › Input shaping." });
+			setSweepPhase({ kind: "failed", why: "the excitation move has no length — set one in Settings › Input shaping." });
 			return;
 		}
 		const n = tool();
@@ -791,7 +791,7 @@ function shapingService(base: ServiceBaseCtx) {
 		const rows: Array<{ speed: ReturnType<typeof mmPerS>; csv: string; moveS: ReturnType<typeof seconds>; axis: 0 | 1 | 2 }> = [];
 		try {
 			for (const [index, member] of family.members.entries()) {
-				setSweepState({ kind: "loading", done: index, total: family.members.length, file: member.file });
+				setSweepPhase({ kind: "loading", done: index, total: family.members.length, file: member.file });
 				rows.push({
 					speed: mmPerS(member.speed),
 					csv: await loader.text(boardRef(member.file)),
@@ -799,18 +799,12 @@ function shapingService(base: ServiceBaseCtx) {
 					axis: channel,
 				});
 			}
-			setSweepState({ kind: "computing", total: rows.length });
+			setSweepPhase({ kind: "computing", total: rows.length });
 			const matrix = await useEngine().sweep(rows, step.perMm);
 			store.setSweep(n, matrix);
-			setSweepState({
-				kind: "built",
-				tool: n,
-				family: family.id,
-				rows: matrix.speeds.length,
-				analysed: analysedRows(matrix),
-			});
+			setSweepPhase({ kind: "built", tool: n, family: family.id });
 		} catch (err) {
-			setSweepState({ kind: "failed", why: `${family.id}: ${err instanceof Error ? err.message : String(err)}` });
+			setSweepPhase({ kind: "failed", why: `${family.id}: ${err instanceof Error ? err.message : String(err)}` });
 		}
 	};
 
@@ -824,12 +818,12 @@ function shapingService(base: ServiceBaseCtx) {
 	 */
 	const saveSweep = async (): Promise<void> => {
 		const n = tool();
-		setSweepState({ kind: "saving", tool: n });
+		setSweepPhase({ kind: "saving", tool: n });
 		try {
 			await store.save(n);
-			setSweepState({ kind: "saved", tool: n });
+			setSweepPhase({ kind: "saved", tool: n });
 		} catch (err) {
-			setSweepState({ kind: "failed", why: `could not write ${RESULTS_PATH(n)}: ${err instanceof Error ? err.message : String(err)}` });
+			setSweepPhase({ kind: "failed", why: `could not write ${RESULTS_PATH(n)}: ${err instanceof Error ? err.message : String(err)}` });
 		}
 	};
 
@@ -912,7 +906,22 @@ function shapingService(base: ServiceBaseCtx) {
 		})();
 	});
 
-	const resultsFor = (n: number): ToolResults => store.results[n] ?? emptyResults(n);
+	const resultsFor = (n: number): ToolResults => store.resultsFor(n);
+
+	/**
+	 * The matrix the Sweep card is about: ONE accessor, read by the card's Save
+	 * gate and by the sentence under it.
+	 *
+	 * Not two readings of `results().sweep` that happen to be spelled the same
+	 * — one value with one name, so "the card says a sweep is held" and "Save
+	 * is enabled" cannot come apart (shaping/sweepRun.ts, invariant
+	 * the-sentence-and-the-save-gate-are-one-value).
+	 */
+	const sweepHeld = (): SweepMatrix | null => resultsFor(tool()).sweep;
+
+	/** What the card says, derived from the phase and from `sweepHeld` — see
+	 *  `sweepSentence`, which is where the rule and its reasoning live. */
+	const sweepState = createMemo((): SweepState => sweepSentence(sweepPhase(), tool(), sweepHeld()));
 
 	/**
 	 * The last thing this screen tried and could not do — a failed rank today, a
@@ -1348,7 +1357,7 @@ function shapingService(base: ServiceBaseCtx) {
 		capturePick, setCapturePick, imports, addImport, loadCapture: loader.text,
 		board, boardState, boardError, wantBoard, refreshBoard, liveness,
 		runState, fitCaptures, saveMeasurement, clearRun, machineNow,
-		fits, families, fullStepFor, sweepState, buildSweep, saveSweep,
+		fits, families, fullStepFor, sweepState, sweepHeld, buildSweep, saveSweep,
 		candidateIndex, setCandidateIndex,
 		accelFor, accelReportFor, readAccel, setAccelRate, gate, macroFor, toggleMacro, rank, ranking, problem, offer, runStep,
 		applyShaper, applyState, saveVerified,

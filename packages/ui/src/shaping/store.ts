@@ -2,7 +2,7 @@
  * The per-tool shaping results, in memory and on the card, and the one place a
  * candidate can become a VERIFIED candidate.
  *
- * Two invariants live here.
+ * Three invariants live here.
  *
  * @invariant verified-is-a-type
  * @rung 7  sole-constructor type — `VerifiedCandidate` carries a brand keyed by
@@ -35,9 +35,48 @@
  *      would put hand-edited numbers straight into a ranking
  * @debt the path is a plain string (see results.ts); promote by branding it so
  *       a second writer cannot address the file at all. Tracked on GitHub #19.
+ *
+ * @invariant absence-of-a-file-is-not-evidence-about-memory
+ * @rung 6  disjoint containers behind a single load choke point — a tool's results
+ *          live in TWO separately-held stores rather than one: `cards`, the
+ *          mirror of what the results file said, and `staged`, the work this
+ *          session produced and has not written. The load path is
+ *          `loadFromCard`, a MODULE-LEVEL function outside
+ *          createShapingStore's closure, and the only writer it is handed is
+ *          a `put` that addresses the card mirror. `setStaged` is a
+ *          closure-local `const` that is not in its scope at all, so a load
+ *          that erased unsaved work is not a mistake to review for — the name
+ *          does not resolve and the file does not compile. The empty value a
+ *          missing file produces therefore has nowhere to land except the
+ *          mirror, whatever anyone writes in loadFromCard later.
+ *
+ *          NOT rung 7, and the distinction is the point: the compile barrier
+ *          covers loadFromCard's BODY, not the whole invariant. The adapter
+ *          `load` hands it as `put` is written inside the factory, where
+ *          `setStaged` IS nameable, so editing that one line to clear staged
+ *          compiles and reproduces GitHub #100 exactly. What stops that is
+ *          test/shaping-results.test.ts, which is rung 3 doing the work at the
+ *          seam. Rung 6 is the honest reading — one route, sealed against
+ *          everything except its own adapter — and promotion to 7 means
+ *          giving `put` a type only the card mirror's setter inhabits
+ * @why `load()` ran `replace(tool, emptyResults(tool))` for every tool with no
+ *      file on the card — the normal state of a tool nobody has measured — and
+ *      that replaced the WHOLE entry. A sweep matrix built and not yet saved
+ *      was destroyed by the Reload link on the same screen, and because Save's
+ *      gate reads the matrix, the loss showed up as a permanently dead button
+ *      rather than as lost work (GitHub #100, reported during UAT as "save is
+ *      not working for sweep, ghosted"). The file being absent said nothing
+ *      whatever about what was in memory, and the old shape could not tell the
+ *      two apart because it stored them in the same place
+ * @limit the residue is the one-line adapter `load` passes as `put`, which is
+ *        written inside the factory where both setters are nameable. It
+ *        forwards and does nothing else, and every branch of the load path is
+ *        pinned against it in test/shaping-results.test.ts — that is a
+ *        BACKSTOP for those two lines, not the mechanism for the invariant,
+ *        exactly as the `as VerifiedCandidate` residue is above
  */
 import { type Accessor, createSignal } from "solid-js";
-import { createStore, type Store, unwrap } from "solid-js/store";
+import { createStore, unwrap } from "solid-js/store";
 import type { ConnectorReads, ConnectorWrites } from "@dwc-ng/connector";
 import { newPeaks, type Artefact } from "./engine/artefact.ts";
 import type { Fingerprint } from "./engine/fit.ts";
@@ -126,8 +165,19 @@ export function verifyAnalysis(baseline: Fingerprint, candidate: Candidate, meas
 }
 
 export type ShapingStore = {
-	/** Results by tool number. A tool with no entry has never been loaded. */
-	readonly results: Store<Record<number, ToolResults>>;
+	/**
+	 * A tool's results as this session knows them: its unsaved work if it has
+	 * any, otherwise the card's own file, otherwise the never-measured state.
+	 *
+	 * ONE value derived from the two containers rather than a third copy kept
+	 * alongside them — a screen reading this and a screen reading the store
+	 * cannot come to different conclusions about whether a sweep exists.
+	 * Reactive: it reads the store proxies, so it tracks under a Solid effect
+	 * exactly as an indexed read did.
+	 */
+	resultsFor(tool: number): ToolResults;
+	/** True while this tool holds work the results file does not have yet. */
+	unsaved(tool: number): boolean;
 	readonly loading: Accessor<boolean>;
 	/** Empty unless the card held a file this build could not read. */
 	readonly error: Accessor<string>;
@@ -155,18 +205,96 @@ export type ShapingStore = {
 	setCandidates(tool: number, candidates: readonly Candidate[]): void;
 	addVerified(tool: number, verified: VerifiedCandidate): void;
 	setApplied(tool: number, applied: ShaperSpec | null): void;
-	/** Drop everything measured for a tool, back to the never-measured state. */
-	clear(tool: number): void;
 };
 
 /** The connector surface this store needs: reads, plus the two writes that put
  *  the file on the card — the upload, and the directory it has to land in. */
 export type ResultsConnector = ConnectorReads & Pick<ConnectorWrites, "upload" | "mkdir">;
 
+/**
+ * Read one tool's results file and hand what the card said to `put`.
+ *
+ * MODULE LEVEL, outside createShapingStore's closure, and the placement is the
+ * mechanism for absence-of-a-file-is-not-evidence-about-memory rather than a
+ * preference about file layout. Everything this function can write, it was
+ * handed: `put`, which addresses the card mirror, and `report`, which puts a
+ * sentence on the screen. The setter for unsaved work is a `const` inside the
+ * factory below and does not exist as a name here, so the write that caused
+ * GitHub #100 is not something a later edit to this function can express.
+ *
+ * The reader is fetched FIRST and its failure is reported, because the two
+ * failures below it mean opposite things. A download that rejects means "this
+ * tool has no file", the normal state of an unmeasured tool, and is
+ * deliberately silent; a reader that did not load means this deployment is
+ * incomplete, which is never normal — folded together it would report every
+ * tool on the machine as never measured over a card that may hold a full
+ * session.
+ */
+async function loadFromCard(
+	conn: ResultsConnector,
+	tool: number,
+	put: (fromCard: ToolResults) => void,
+	report: (message: string) => void,
+): Promise<void> {
+	const path = RESULTS_PATH(tool);
+	let parseResults: ResultsCodec["parseResults"];
+	try {
+		({ parseResults } = await resultsCodec());
+	} catch {
+		report(`${path} could not be read: this build's results-file reader did not load.`);
+		return;
+	}
+	let text: string;
+	try {
+		text = await conn.download(path);
+	} catch {
+		// No file yet, or a transport failure the connector cannot tell apart
+		// from one — the connection status strip reports the latter, so this
+		// stays quiet rather than crying wolf per tool. The mirror records
+		// what the card gave us, which is nothing.
+		put(emptyResults(tool));
+		return;
+	}
+	let parsed: ToolResults | null;
+	try {
+		parsed = parseResults(text);
+	} catch {
+		// A parser that threw on hostile text is the same outcome for the
+		// operator as one that returned null, and it must not be reported as
+		// "no file": the file is right there and this build cannot read it.
+		parsed = null;
+	}
+	if (parsed === null) {
+		// The card has a file and it is not one we can read. Say so: silently
+		// showing "never measured" would invite the operator to re-run a
+		// session they already have on disk.
+		report(`${path} is not a shaping results file this build understands.`);
+		put(emptyResults(tool));
+		return;
+	}
+	put(parsed);
+}
+
 export function createShapingStore(conn: ResultsConnector): ShapingStore {
-	const [results, setResults] = createStore<Record<number, ToolResults>>({});
+	// TWO containers, and the split is the invariant declared at the top of
+	// this file rather than an implementation detail.
+	//
+	// `cards` mirrors the results file: written by a load, and by a save at the
+	// moment the upload succeeded and the two are known equal. `staged` holds
+	// what this session produced and has not written: every setter below, and
+	// nothing else. Because "what came off the card" and "what the operator
+	// built" are no longer the same object, replacing one of them is no longer
+	// a way of destroying the other — which is exactly what a load did before.
+	//
+	// An absent key means different things in the two, and both are the honest
+	// reading: absent from `cards` is "the card has not been read for this
+	// tool", absent from `staged` is "memory and card agree".
+	const [cards, setCards] = createStore<Record<number, ToolResults | undefined>>({});
+	const [staged, setStaged] = createStore<Record<number, ToolResults | undefined>>({});
 	const [loading, setLoading] = createSignal(false);
 	const [error, setError] = createSignal("");
+
+	const resultsFor = (tool: number): ToolResults => staged[tool] ?? cards[tool] ?? emptyResults(tool);
 
 	// A tool entry is written whole rather than by path.
 	//
@@ -177,63 +305,34 @@ export function createShapingStore(conn: ResultsConnector): ShapingStore {
 	// fine-grained notification a path write buys is worth nothing here while
 	// the "which paths are legal" typing it costs is real. Wholesale subtree
 	// replacement is the project's merge model anyway.
+	//
+	// It reads whatever is effective — staged if there is any, the card's copy
+	// otherwise — and writes the result to `staged`, so the first edit after a
+	// load promotes the card's copy into unsaved work rather than editing a
+	// mirror that is supposed to say what the file says.
 	const patch = (tool: number, change: (current: ToolResults) => Partial<ToolResults>): void => {
-		const current = unwrap(results[tool] ?? emptyResults(tool));
-		setResults(tool, { ...current, ...change(current) });
-	};
-
-	const replace = (tool: number, next: ToolResults): void => {
-		setResults(tool, next);
+		const current = unwrap(resultsFor(tool));
+		setStaged(tool, { ...current, ...change(current) });
 	};
 
 	return {
-		results,
+		resultsFor,
+		unsaved: (tool: number): boolean => staged[tool] !== undefined,
 		loading,
 		error,
 
 		load: async (tool: number): Promise<void> => {
-			const path = RESULTS_PATH(tool);
 			setLoading(true);
 			setError("");
-			// The reader comes FIRST and OUTSIDE the try below, because the two
-			// failures mean opposite things. The catch below means "this tool
-			// has no file", which is the normal state of an unmeasured tool and
-			// is deliberately silent. A reader that did not load means this
-			// deployment is incomplete, which is never normal — folded into the
-			// same catch it would report every tool on the machine as never
-			// measured, over a card that may hold a full session.
-			let parseResults: ResultsCodec["parseResults"];
 			try {
-				({ parseResults } = await resultsCodec());
-			} catch {
-				setError(`${path} could not be read: this build's results-file reader did not load.`);
-				setLoading(false);
-				return;
-			}
-			try {
-				const parsed = parseResults(await conn.download(path));
-				if (parsed === null) {
-					// The card has a file and it is not one we can read. Say so:
-					// silently showing "never measured" would invite the operator
-					// to re-run a session they already have on disk.
-					setError(`${path} is not a shaping results file this build understands.`);
-					replace(tool, emptyResults(tool));
-				} else {
-					replace(tool, parsed);
-				}
-			} catch {
-				// No file yet is the normal state for a tool nobody has measured,
-				// and the connector cannot distinguish that from a transport
-				// failure — the connection status strip is what reports the
-				// latter, so this stays quiet rather than crying wolf per tool.
-				replace(tool, emptyResults(tool));
+				await loadFromCard(conn, tool, fromCard => setCards(tool, fromCard), setError);
 			} finally {
 				setLoading(false);
 			}
 		},
 
 		save: async (tool: number): Promise<void> => {
-			const current = unwrap(results[tool] ?? emptyResults(tool));
+			const current = unwrap(resultsFor(tool));
 			const path = RESULTS_PATH(tool);
 			// The directory chain first. RRF's rr_upload does not create it and
 			// `0:/sys/dwc-ng/shaping/` does not exist on a machine that has
@@ -251,6 +350,12 @@ export function createShapingStore(conn: ResultsConnector): ShapingStore {
 			// as a save that did not happen — which is exactly what it is.
 			const { serializeResults } = await resultsCodec();
 			await conn.upload(path, serializeResults(current));
+			// Only now, past the upload: this is the one moment the card and
+			// memory are known to hold the same thing, so it is the only place
+			// staged work may be retired. A failed upload rejects above and the
+			// staged copy is still there to try again with.
+			setCards(tool, current);
+			setStaged(tool, undefined);
 		},
 
 		setMeasurement: (tool, measurement): void => {
@@ -274,9 +379,6 @@ export function createShapingStore(conn: ResultsConnector): ShapingStore {
 		},
 		setApplied: (tool, applied): void => {
 			patch(tool, () => ({ applied }));
-		},
-		clear: (tool): void => {
-			replace(tool, emptyResults(tool));
 		},
 	};
 }

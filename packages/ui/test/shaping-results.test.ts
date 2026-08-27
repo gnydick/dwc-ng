@@ -192,21 +192,21 @@ test("save writes RESULTS_PATH and load brings the same results back", async () 
 	store.setCandidates(1, results.candidates);
 	for (const v of results.verified) store.addVerified(1, v);
 	store.setApplied(1, results.applied);
-	assert.deepEqual(unwrap(store.results[1]!), results);
+	assert.deepEqual(unwrap(store.resultsFor(1)), results);
 
 	await store.save(1);
 	assert.ok(conn.files.has(RESULTS_PATH(1)), `wrote ${[...conn.files.keys()].join(", ")}`);
 
 	const reloaded = createShapingStore(conn);
 	await reloaded.load(1);
-	assert.deepEqual(unwrap(reloaded.results[1]!), results);
+	assert.deepEqual(unwrap(reloaded.resultsFor(1)), results);
 	assert.equal(reloaded.error(), "");
 });
 
 test("loading a tool with no file on the card is empty, not an error state", async () => {
 	const store = createShapingStore(fakeConn());
 	await store.load(4);
-	assert.deepEqual(unwrap(store.results[4]!), emptyResults(4));
+	assert.deepEqual(unwrap(store.resultsFor(4)), emptyResults(4));
 	assert.equal(store.error(), "");
 });
 
@@ -215,7 +215,7 @@ test("loading a corrupt file says so and leaves the tool empty", async () => {
 	conn.files.set(RESULTS_PATH(0), "{ this is not json");
 	const store = createShapingStore(conn);
 	await store.load(0);
-	assert.deepEqual(unwrap(store.results[0]!), emptyResults(0));
+	assert.deepEqual(unwrap(store.resultsFor(0)), emptyResults(0));
 	assert.match(store.error(), /tool0\.json/);
 });
 
@@ -284,12 +284,113 @@ test("setMeasurement replaces the captures and drops what was scored against the
 	store.setMeasurement(0, before.measurement!);
 	store.setCandidates(0, before.candidates);
 	store.setApplied(0, before.applied);
-	assert.ok(store.results[0]!.candidates.length > 0);
+	assert.ok(store.resultsFor(0).candidates.length > 0);
 
 	const after = fullResults(0);
 	store.setMeasurement(0, { ...after.measurement!, captures: [after.measurement!.captures[0]!] });
-	assert.equal(store.results[0]!.measurement!.captures.length, 1, "captures replaced, not appended");
-	assert.deepEqual(store.results[0]!.candidates, [], "a ranking scored against the old baseline is gone");
-	assert.deepEqual(store.results[0]!.verified, []);
-	assert.deepEqual(store.results[0]!.applied, before.applied, "what is on the machine is unchanged by a re-measure");
+	assert.equal(store.resultsFor(0).measurement!.captures.length, 1, "captures replaced, not appended");
+	assert.deepEqual(store.resultsFor(0).candidates, [], "a ranking scored against the old baseline is gone");
+	assert.deepEqual(store.resultsFor(0).verified, []);
+	assert.deepEqual(store.resultsFor(0).applied, before.applied, "what is on the machine is unchanged by a re-measure");
+});
+
+/*
+ * GitHub #100 — absence of a file on the card is not evidence about memory.
+ *
+ * `load()` used to answer "this tool has no results file" by replacing the
+ * tool's whole in-memory entry with `emptyResults`, which destroyed anything
+ * built and not yet saved. The Reload link on the shaping screen calls it for
+ * EVERY tool the machine reports, so the common first-run case — build a
+ * sweep, click Reload, click Save — silently threw the sweep away and left
+ * Save permanently disabled.
+ *
+ * These tests drive the real store, not a re-implementation, and the tool they
+ * load has no file in the fake connector at all: the catch branch is the path
+ * under test.
+ */
+
+test("#100: a load that finds no file on the card leaves an unsaved sweep alone", async () => {
+	const conn = fakeConn();
+	const store = createShapingStore(conn);
+	const matrix = sweepFixture();
+	store.setSweep(0, matrix);
+	assert.equal(store.unsaved(0), true, "the fixture must stage work before the assertion means anything");
+
+	assert.equal(conn.files.has(RESULTS_PATH(0)), false, "the card must have no file for this tool");
+	await store.load(0);
+
+	assert.notEqual(store.resultsFor(0).sweep, null, "the built matrix survives a load that found no file");
+	assert.deepEqual(unwrap(store.resultsFor(0).sweep), matrix);
+	assert.equal(store.error(), "", "a tool with no file is not an error state");
+});
+
+test("#100 class: EVERY field emptyResults wipes survives a load with no file on the card", async () => {
+	// `replace(tool, emptyResults(tool))` discarded the whole entry, so the
+	// exposure was never sweep-specific. emptyResults sets five fields —
+	// measurement, sweep, candidates, verified, applied — and each is asserted
+	// here by name, because fixing the one that was reported is not the same
+	// as fixing the shape that produced it.
+	const conn = fakeConn();
+	const store = createShapingStore(conn);
+	const staged = fullResults(2);
+	store.setMeasurement(2, staged.measurement!);
+	store.setSweep(2, staged.sweep);
+	store.setCandidates(2, staged.candidates);
+	for (const v of staged.verified) store.addVerified(2, v);
+	store.setApplied(2, staged.applied);
+
+	assert.equal(conn.files.has(RESULTS_PATH(2)), false);
+	await store.load(2);
+
+	const after = unwrap(store.resultsFor(2));
+	assert.deepEqual(after.measurement, staged.measurement, "measurement survives");
+	assert.deepEqual(after.sweep, staged.sweep, "sweep survives");
+	assert.deepEqual(after.candidates, staged.candidates, "candidates survive");
+	assert.deepEqual(after.verified, staged.verified, "verified survives");
+	assert.deepEqual(after.applied, staged.applied, "applied survives");
+	assert.deepEqual(after, staged, "and nothing else about the entry moved either");
+});
+
+test("#100: repeated loads never wear unsaved work down", async () => {
+	// The load effect runs once per tool per Reload, and Reload is not a
+	// once-per-session gesture. A fix that survived the first load and lost the
+	// second would pass a single-load test.
+	const store = createShapingStore(fakeConn());
+	store.setSweep(3, sweepFixture());
+	for (let i = 0; i < 5; i++) await store.load(3);
+	assert.notEqual(store.resultsFor(3).sweep, null);
+});
+
+test("#100: a file the build cannot read is reported, and still does not discard unsaved work", async () => {
+	// The other branch that reached `emptyResults`: the card HAS a file and it
+	// is not one this build understands. Saying so is right; taking the
+	// operator's unsaved session down with the message is not.
+	const conn = fakeConn();
+	conn.files.set(RESULTS_PATH(1), "{ this is not json");
+	const store = createShapingStore(conn);
+	store.setSweep(1, sweepFixture());
+
+	await store.load(1);
+
+	assert.match(store.error(), /tool1\.json/, "the unreadable file is still reported");
+	assert.notEqual(store.resultsFor(1).sweep, null, "the unsaved matrix is not collateral");
+});
+
+test("#100: a save retires the staged copy, and a later load adopts the card's file", async () => {
+	// The other half of the split: unsaved work has to STOP being unsaved once
+	// it is on the card, or the mirror would never be read again and an edit
+	// made elsewhere could not arrive.
+	const conn = fakeConn();
+	const store = createShapingStore(conn);
+	store.setSweep(0, sweepFixture());
+	assert.equal(store.unsaved(0), true);
+
+	await store.save(0);
+	assert.equal(store.unsaved(0), false, "what is on the card is not unsaved work");
+
+	// The card's copy, edited out from under the screen, is what a load brings
+	// back — the behaviour reload exists for.
+	conn.files.set(RESULTS_PATH(0), serializeResults(emptyResults(0)));
+	await store.load(0);
+	assert.equal(store.resultsFor(0).sweep, null, "a load still re-reads a tool with nothing staged");
 });
