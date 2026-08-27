@@ -21,7 +21,7 @@ and invariant claim mentions 13 -> 23, so no mechanism was deleted and no
 claim was lost in the gap. From here the ratchets make a dropped rung visible
 in the diff that drops it.
 
-**Totals:** 155 invariants · 131 at rung 6 or above · 24 below rung 6 (ceiling 24).
+**Totals:** 154 invariants · 129 at rung 6 or above · 25 below rung 6 (ceiling 25).
 
 ## bed
 
@@ -117,7 +117,7 @@ in the diff that drops it.
 
 **Why.** a delete that removes a card from every screen at once is exactly the action whose scope the operator must see before confirming — "delete this card?" cannot precede stripping it from screens they forgot it was on. The plan freezes usage at arm time; the studio is modal over composition edits, so the frozen report cannot go stale between the two clicks
 
-`packages/ui/src/compose/screens.ts:502`
+`packages/ui/src/compose/screens.ts:503`
 
 ### `compose/composition-degrades-per-slot` — rung 6
 
@@ -195,7 +195,7 @@ in the diff that drops it.
 
 **Why.** the run this screen starts sends a 200 mm/s G1 with nobody's hand on the jog wheel. Two of them interleaved would each be re-checking the carriage against ITS plan's expected position and finding the other one's move — every step refused, the machine moving anyway, and two restores racing at the end
 
-`packages/ui/src/compose/services.ts:1183`
+`packages/ui/src/compose/services.ts:1174`
 
 ### `compose/one-service-instance-per-screen` — rung 8
 
@@ -247,7 +247,7 @@ in the diff that drops it.
 
 **Why.** before this, an arm payload carrying its OWN tool (`{ kind: "save", tool }`) was how a stale arm was DETECTED — `save()` compared `armed().tool` against `svc.tool()` on every click. The review that closed GIT_90 round 2 traced every such comparison and found no reachable mis-save, but the mismatch was still REPRESENTABLE: two copies of "which tool" existed in the running code, and only careful reading kept them from disagreeing. Gabe, invoking cant-break-by-design: "it shouldn't be possible to mismatch tool identification in the same active code." Removing the second copy (the arm payloads no longer carry a tool at all — ShapingCards.tsx's Decay/Sweep/Capture save arms) and disarming on every tool change makes a stale arm impossible to CLICK rather than merely unprofitable to click: by the time a second click could fire a write, the control has already reverted to unarmed.
 
-`packages/ui/src/compose/services.ts:834`
+`packages/ui/src/compose/services.ts:840`
 
 ## config
 
@@ -897,6 +897,16 @@ in the diff that drops it.
 
 `packages/mock-duet/src/accelerometer.ts:118`
 
+### `mock-duet/g28-axis-set-from-model` — rung 4
+
+**Mechanism.** static-analysis test (test/gcode-derivation.test.ts) reads this case's own source text and fails the suite if a quoted axis letter is reintroduced into it. Nothing in TypeScript forbids writing `letter === "X"` here, so the source scan is what is actually holding this today, not a decoration on top of it.
+
+**Why.** G28 used to filter a hardcoded ["X","Y","Z"] against the code's letters — a second, independent statement of "what axes exist" that inevitably disagreed with the object model on any machine with more axes (the bundled 7-axis toolchanger: X Y Z U V W C), and silently homed X/Y/Z for any letter it didn't recognise. Deriving the set from om.move.axes at the one call site removes the second statement instead of reconciling it (technique 8, derive-don't-duplicate) — there is nothing left to disagree with.
+
+**Debt — promotion.** promotion to 7 is a branded AxisLetter type mintable only by looking one up in om.move.axes, so a handler can never hold a letter value the model doesn't have; that closes the gap the source scan can only detect after the fact.
+
+`packages/mock-duet/src/gcode.ts:72`
+
 ### `mock-duet/one-parameter-reader` — rung 6
 
 **Mechanism.** choke-point — every parameter any code handler reads comes from `readParams`. The handlers receive a `Params` and have no access to the raw line, so a second, subtly different `P(\d+)` regex has nowhere to be written; adding an accessor here changes one grammar for every code at once
@@ -1022,14 +1032,6 @@ in the diff that drops it.
 **Why.** a verify with no shaper is not a run that fails, it is a run that succeeds at the wrong thing: it re-measures the baseline and files the result as a verification of a candidate. The operator then reads a shaper as proved on hardware when nothing was installed for the measurement, which is the one claim this whole step exists to make
 
 `packages/ui/src/shaping/runPlan.ts:61`
-
-### `shaping/absence-of-a-file-is-not-evidence-about-memory` — rung 6
-
-**Mechanism.** disjoint containers behind a single load choke point — a tool's results live in TWO separately-held stores rather than one: `cards`, the mirror of what the results file said, and `staged`, the work this session produced and has not written. The load path is `loadFromCard`, a MODULE-LEVEL function outside createShapingStore's closure, and the only writer it is handed is a `put` that addresses the card mirror. `setStaged` is a closure-local `const` that is not in its scope at all, so a load that erased unsaved work is not a mistake to review for — the name does not resolve and the file does not compile. The empty value a missing file produces therefore has nowhere to land except the mirror, whatever anyone writes in loadFromCard later. NOT rung 7, and the distinction is the point: the compile barrier covers loadFromCard's BODY, not the whole invariant. The adapter `load` hands it as `put` is written inside the factory, where `setStaged` IS nameable, so editing that one line to clear staged compiles and reproduces GitHub #100 exactly. What stops that is test/shaping-results.test.ts, which is rung 3 doing the work at the seam. Rung 6 is the honest reading — one route, sealed against everything except its own adapter — and promotion to 7 means giving `put` a type only the card mirror's setter inhabits
-
-**Why.** `load()` ran `replace(tool, emptyResults(tool))` for every tool with no file on the card — the normal state of a tool nobody has measured — and that replaced the WHOLE entry. A sweep matrix built and not yet saved was destroyed by the Reload link on the same screen, and because Save's gate reads the matrix, the loss showed up as a permanently dead button rather than as lost work (GitHub #100, reported during UAT as "save is not working for sweep, ghosted"). The file being absent said nothing whatever about what was in memory, and the old shape could not tell the two apart because it stored them in the same place @limit the residue is the one-line adapter `load` passes as `put`, which is written inside the factory where both setters are nameable. It forwards and does nothing else, and every branch of the load path is pinned against it in test/shaping-results.test.ts — that is a BACKSTOP for those two lines, not the mechanism for the invariant, exactly as the `as VerifiedCandidate` residue is above
-
-`packages/ui/src/shaping/store.ts:39`
 
 ### `shaping/capture-text-has-one-loader` — rung 6
 
@@ -1306,14 +1308,6 @@ in the diff that drops it.
 **Why.** the first version of this had the button's `disabled` on one expression and its caption on another; they agree until someone edits one of them, and the failure mode is a control that looks available and does nothing
 
 `packages/ui/src/shaping/steps.ts:12`
-
-### `shaping/the-sentence-and-the-save-gate-are-one-value` — rung 8
-
-**Mechanism.** derived, not stored — `built` is the only arm that claims a matrix is held, and it is UNREACHABLE unless the `held` argument is a matrix. `held` is the same accessor the Save button's `disabled` reads (`svc.sweepHeld()`, compose/services.ts), so "the card says a sweep is held" and "Save is enabled" are two readings of one value rather than two states that have to be kept in step. There is no spelling for the disagreement: to write it, a caller would have to pass a matrix here and a different one to the button
-
-**Why.** the failure this replaces was invisible as lost work and visible as a dead control, which is the worst arrangement of the two: the operator was told the sweep existed by the only line on the card that talks, and was refused by the only button that acts
-
-`packages/ui/src/shaping/sweepRun.ts:67`
 
 ### `shaping/the-shaper-to-restore-is-read-once-per-run` — rung 5
 
