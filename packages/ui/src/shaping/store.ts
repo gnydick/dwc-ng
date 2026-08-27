@@ -37,7 +37,7 @@
  *       a second writer cannot address the file at all. Tracked on GitHub #19.
  *
  * @invariant absence-of-a-file-is-not-evidence-about-memory
- * @rung 7  disjoint containers plus a lexical capability — a tool's results
+ * @rung 6  disjoint containers behind a single load choke point — a tool's results
  *          live in TWO separately-held stores rather than one: `cards`, the
  *          mirror of what the results file said, and `staged`, the work this
  *          session produced and has not written. The load path is
@@ -48,7 +48,17 @@
  *          that erased unsaved work is not a mistake to review for — the name
  *          does not resolve and the file does not compile. The empty value a
  *          missing file produces therefore has nowhere to land except the
- *          mirror, whatever anyone writes in loadFromCard later
+ *          mirror, whatever anyone writes in loadFromCard later.
+ *
+ *          NOT rung 7, and the distinction is the point: the compile barrier
+ *          covers loadFromCard's BODY, not the whole invariant. The adapter
+ *          `load` hands it as `put` is written inside the factory, where
+ *          `setStaged` IS nameable, so editing that one line to clear staged
+ *          compiles and reproduces GitHub #100 exactly. What stops that is
+ *          test/shaping-results.test.ts, which is rung 3 doing the work at the
+ *          seam. Rung 6 is the honest reading — one route, sealed against
+ *          everything except its own adapter — and promotion to 7 means
+ *          giving `put` a type only the card mirror's setter inhabits
  * @why `load()` ran `replace(tool, emptyResults(tool))` for every tool with no
  *      file on the card — the normal state of a tool nobody has measured — and
  *      that replaced the WHOLE entry. A sweep matrix built and not yet saved
