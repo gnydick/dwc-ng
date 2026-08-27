@@ -77,7 +77,7 @@ import { commitMotionField, MOTION_FIELDS } from "../shaping/motionFields.ts";
 import { motionBad, motionBusy, motionProgress } from "../shaping/motionRun.ts";
 import { fitCapturesOf, runMotion } from "../shaping/runner.ts";
 import { planarPosition, travelAcceleration } from "../shaping/preconditions.ts";
-import { mapPoint, mapSummary, mapView, type MapView } from "../charts/mapData.ts";
+import { MAP_STAGE_STYLE, mapPoint, mapSummary, mapView, type MapView } from "../charts/mapData.ts";
 import { capturesOf, fingerprintOf, RESULTS_PATH, type ToolResults } from "../shaping/results.ts";
 import type { VerifiedCandidate } from "../shaping/store.ts";
 import type { Selection } from "../shaping/selection.ts";
@@ -1000,7 +1000,7 @@ export function ShapingCaptureBody(props: { ctx: CardCtx }) {
 
 			{/* The stage declares the drawing's box, so the map never sizes the
 			    card and the card never has to be resized when a plan changes. */}
-			<div class="shp-map-stage">
+			<div class="shp-map-stage" style={MAP_STAGE_STYLE}>
 				<Show
 					when={view()}
 					fallback={<p class="shp-map-empty">Draw the motion envelope in Settings › Input shaping — nothing may move until you do.</p>}

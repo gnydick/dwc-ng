@@ -21,7 +21,7 @@ and invariant claim mentions 13 -> 23, so no mechanism was deleted and no
 claim was lost in the gap. From here the ratchets make a dropped rung visible
 in the diff that drops it.
 
-**Totals:** 158 invariants · 133 at rung 6 or above · 25 below rung 6 (ceiling 25).
+**Totals:** 159 invariants · 134 at rung 6 or above · 25 below rung 6 (ceiling 25).
 
 ## bed
 
@@ -92,6 +92,16 @@ in the diff that drops it.
 **Debt — promotion.** the trailing zero is recognised by its VALUE, so a genuinely instantaneous layer (a board reporting whole seconds, a layer under 500ms) is indistinguishable from an in-progress one and gets dropped. Promote by taking the live layer number alongside the array and trimming by INDEX, which is the fact actually being reasoned about.
 
 `packages/ui/src/charts/layerData.ts:18`
+
+### `charts/the-map-is-fitted-to-the-box-it-is-drawn-in` — rung 6
+
+**Mechanism.** sole route — ONE constant is both the stage's size and the aspect the viewBox is fitted to. The stage gets its dimensions from `MAP_STAGE_STYLE` and from nowhere else (app.css declares no width, height or padding for `.shp-map-stage`, and a test asserts it does not), and the aspect `mapView` fits to is NOT a parameter, so no call site can supply a different one. A viewBox whose aspect disagrees with the viewport it is drawn into is therefore not expressible through this module's surface, and `xMidYMid meet` letterboxes by zero: the drawing maps ONTO the visible box, so it is fully visible and centred at every envelope aspect ratio
+
+**Why.** the drawing is a concentric pair — the envelope outside, the capture ring inside — and the operator reads the run's SHAPE off it before arming moves that cross the bed at 200 mm/s. Before the two facts were related, a 400 x 400 envelope produced a 220 x 220 SVG box in a 220 x 172 opening and `overflow: hidden` took the envelope's bottom edge: measured -30.21 px of bottom margin against 17.79 px of top. A portrait envelope lost 198 px. Landscape was never concentric either (top 17.79, bottom 47.88) — it merely did not clip, which is why five months of landscape machines showed nothing
+
+**Debt — promotion.** a branded viewBox type minted only by `mapView`, so a hand-built `MapView` literal cannot carry an arbitrary aspect either; and a lint rather than a test for the stylesheet half
+
+`packages/ui/src/charts/mapData.ts:110`
 
 ## compose
 
