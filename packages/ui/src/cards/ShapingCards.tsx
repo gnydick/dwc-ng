@@ -8,6 +8,15 @@
  * being tuned — the failure a per-card signal would guarantee on a screen
  * whose whole point is following one measurement from capture to apply.
  *
+ * WHICH TOOL, specifically, is set from exactly one place: the picker in
+ * `ShapingStatusBody`. GIT_90 added the picker; fix round 1 (Gabe, 2026-08-26,
+ * "one picker for the entire screen so everything implicitly uses the chosen
+ * tool") removed the two other places that had grown their own route to the
+ * same signal — the Sweep card's own chip row, and the Decay card's
+ * independent attribution `<select>` — so `grep -rn "svc.setTool("` over this
+ * file returns exactly one call site. A future card that adds a second one is
+ * the regression this note exists to make easy to catch.
+ *
  * Everything the cards SHOW is derived, never stored twice: a fingerprint is
  * whatever the store parsed, a candidate's numbers are re-scored by the engine
  * against that fingerprint (shaping/results.ts), and every M593 string comes
@@ -19,6 +28,21 @@
  * (shaping/procedure.ts keeps them in `#`-private fields), so the only route
  * to the machine a card will ever have is a `cmd.*` builder it names itself.
  *
+ * THE WALK (`.shp-walk`, the "Means" block that used to sit above the
+ * Running line) is GONE, deliberately, not lost to an accident. GIT_90
+ * round 5, Gabe, driving the code-complete build: "there's a big section
+ * above the picker that we don't need in the shaping card." It carried a
+ * real rationale — built stages-first (evidence/walk.ts) so a freshly
+ * wiped tool still walked five open questions instead of going silent, per
+ * GitHub #68 and Gabe's own 2026-08-24 report of exactly that silence —
+ * and the owner overrode that rationale on sight, in the running app, not
+ * by forgetting it existed. `walkThrough`, `evidence/walk.ts`,
+ * `evidence/inquiry.ts` and `copy.ts`'s `inquiryText`/`answerText` were
+ * deleted with it (zero remaining callers, checked) rather than left as an
+ * unused path. A future reader who finds this paragraph via `git blame` or
+ * `git log -S walkThrough` should not restore it as a fix for a
+ * regression; it was never one.
+ *
  * Positional stability is the governing constraint: this screen updates while
  * a measurement runs, so every table declares fixed column tracks, every
  * numeric cell is tabular, and a value that can be absent renders an em dash
@@ -28,16 +52,14 @@ import { For, Match, Show, Switch, createEffect, createMemo, createSignal } from
 import { cmd } from "../control/commands.ts";
 import { copyText } from "../shell/copyText.ts";
 import { createArmed } from "../control/armed.ts";
-import { allDoneAction, armedRunText, armedSaveText, batchSummaryText, type CaptureSource, captureSourceLabel, captureWhenText, livenessNote, motionStateText, refusalText, rescanNoteText, runKindText, stepActionText, stepStatusText, sweepStateText, type StepScope } from "../shaping/copy.ts";
+import { armedRunText, armedSaveText, batchSummaryText, type CaptureSource, captureSourceLabel, captureWhenText, livenessNote, motionStateText, refusalText, rescanNoteText, runKindText, stepStatusText, sweepStateText } from "../shaping/copy.ts";
 import type { CardCtx } from "../compose/ctx.ts";
 import type { MacroRead } from "../compose/services.ts";
-import { nextStep, SHAPING_STEPS, type ShapingStep, type StepInputs, type StepSpec } from "../shaping/steps.ts";
-import { walkThrough } from "../shaping/evidence/walk.ts";
+import { nextStep, SHAPING_STEPS, type StepInputs, type StepSpec } from "../shaping/steps.ts";
 import { productsFor } from "../shaping/evidence/products.ts";
 import { reportText } from "../shaping/accelReport.ts";
 import type { ApplyHow, ApplyIntent } from "../shaping/applyRun.ts";
 import { applyStateText, armedApplyText } from "../shaping/copy.ts";
-import { inquiryText } from "../shaping/copy.ts";
 import type { Evidence } from "../shaping/evidence/evidence.ts";
 import type { Caveat } from "../shaping/evidence/caveat.ts";
 import { caveatText } from "../shaping/copy.ts";
@@ -47,7 +69,7 @@ import type { Shaping } from "../om/types.ts";
 import type { Artefact } from "../shaping/engine/artefact.ts";
 import { isMode, MIN_CYCLES, type Axis, type Fingerprint, type Mode, type NoFit } from "../shaping/engine/fit.ts";
 import { type Candidate, customCandidate } from "../shaping/engine/rank.ts";
-import { convolve, type Impulses, SHAPER_TYPES, type ShaperSpec, zv } from "../shaping/engine/shapers.ts";
+import { convolve, type Impulses, type ShaperSpec, zv } from "../shaping/engine/shapers.ts";
 import { seconds } from "../shaping/engine/units.ts";
 import { longestCapture, plannedSegments, type CaptureWindow, type Plan, type PlannedSegment } from "../shaping/procedure.ts";
 import { captureNameRange, defaultPrefix, envelopeText, plannedCaptureCount, RUN_KINDS, runOrigin, runPlans, safePrefix, type RunKind, type RunRequest } from "../shaping/runPlan.ts";
@@ -120,12 +142,6 @@ const shaperLine = (spec: ShaperSpec): string => cmd.inputShaping(spec);
 const specName = (spec: ShaperSpec): string => (spec.type === "custom" ? "custom" : spec.type.toUpperCase());
 const specF = (spec: ShaperSpec): string => (spec.type === "custom" ? NONE : `${spec.F.toFixed(1)}`);
 const specS = (spec: ShaperSpec): string => (spec.type === "custom" ? NONE : `${spec.S.toFixed(3)}`);
-
-/** A shaper in the fewest words that still identify it, for the primary
- *  action's label: the full M593 line neither fits a button nor gets read
- *  there, and the Apply card shows it in full a few centimetres away. */
-const shaperShort = (spec: ShaperSpec): string =>
-	spec.type === "custom" ? "custom shaper" : `${specName(spec)} ${specF(spec)} Hz`;
 
 /**
  * What limits this card's own reading, in one reserved slot.
@@ -228,24 +244,36 @@ function MacroLine(props: { tool: number; read: MacroRead }) {
  * Per-tool state of the whole session, what the machine is running right now,
  * and what each step of the workflow is waiting for.
  *
- * Three things are worth saying about the construction.
+ * Four things are worth saying about the construction.
  *
- * The tool picked here is the tool every other card on the screen is about,
- * which is why the row's identity is a BUTTON rather than a click handler on
- * the `<tr>`: it has to be reachable from a keyboard.
+ * The TOOL PICKER — a `role="group"` row of chips, one per tool the machine
+ * reports — is the only control on this card, or any card, that writes
+ * `svc.setTool`. It renders disabled rather than omitted when there is one
+ * tool or none: an inoperable control at the SAME geometry beats a card whose
+ * height depends on how many tools the machine happens to report (Gabe,
+ * 2026-08-26). The table beneath it no longer doubles as a picker — filtering
+ * it to the one selected tool (below) would have made a per-row "pick" button
+ * a second, redundant route to the same signal, which is exactly the kind of
+ * duplicate write site `cant-break-by-design` flags on sight.
  *
- * `tpost<N>.g` is read only when a row is opened. A four-tool machine would
+ * The per-tool TABLE shows one row: `svc.tool()`'s. It used to list every
+ * tool so the status card's "whole session" claim was literally true of the
+ * table; now that the table is scoped like the other seven cards, seeing
+ * another tool's row means picking it, not scrolling to it.
+ *
+ * `tpost<N>.g` is read only when the row is opened. A four-tool machine would
  * otherwise cost four downloads on mount, against a board whose HTTP server
  * tolerates very few, to fill a line most sessions never look at.
  *
- * The next-step region and the step list REPORT; they do not decide. One
- * `nextStep` call per render produces every row's enabled state, its sentence,
- * its chip and which step is next — the prominent button holds the very object
- * its row does (shaping/steps.ts,
- * `next-step-comes-from-the-readiness-it-shows`), so the two cannot disagree.
- * Both buttons call whichever card offered to carry the step out. There is no
- * verdict invented here and no second implementation of a run — the firmware
- * and the planner are the authorities, and the doing cards own the doing.
+ * The step list REPORTS; it does not decide. One `nextStep` call per render
+ * produces every row's enabled state, its sentence, its chip and which step
+ * is next (shaping/steps.ts, `next-step-comes-from-the-readiness-it-shows`) —
+ * GIT_90 round 4 removed the prominent "do this next" button that used to
+ * read the same object beside this list (a redundant second `runStep` entry
+ * point; Gabe: "awkward navigation"), so each row's own button is now the
+ * only way this card starts a step. There is no verdict invented here and no
+ * second implementation of a run — the firmware and the planner are the
+ * authorities, and the doing cards own the doing.
  *
  * Five states, not two, and the pair that matters is `no card` versus `not
  * yet`: a Capture card the operator removed and a Capture card whose run
@@ -255,13 +283,24 @@ function MacroLine(props: { tool: number; read: MacroRead }) {
 export function ShapingStatusBody(props: { ctx: CardCtx }) {
 	const svc = props.ctx.service("shaping");
 	const tools = createMemo(() => props.ctx.om.om.tools.filter(t => t !== null));
+	/** The one row the table shows: `svc.tool()`'s, resolved against what the
+	 *  machine actually reports rather than assumed present. Empty when the
+	 *  selection names no real tool — a fresh session before the object model
+	 *  has settled, or a machine whose tools do not start at 0 — which is a
+	 *  different fact from "this machine has no tools" and the table's fallback
+	 *  says so rather than conflating them. */
+	const shownTool = createMemo(() => tools().find(t => t.number === svc.tool()) ?? null);
+	/** The table's rows, as an array of zero or one — `<For>` needs a list,
+	 *  and this is the one place that turns the single lookup above into one. */
+	const shownRows = createMemo((): ReadonlyArray<NonNullable<ReturnType<typeof shownTool>>> => {
+		const t = shownTool();
+		return t === null ? [] : [t];
+	});
 	const shaping = (): Shaping => props.ctx.om.om.move.shaping;
 	const selected = (): ToolResults => svc.results();
 	// The card file the store could not read outranks a failed action: it is the
 	// one that makes everything else on screen wrong.
 	const message = (): string => svc.store.error() || svc.problem();
-
-	const cfg = (): ShapingConfig => props.ctx.config.config.shaping;
 
 	const inputsFor = (spec: StepSpec): StepInputs => ({
 		refusal: svc.gate(),
@@ -280,11 +319,14 @@ export function ShapingStatusBody(props: { ctx: CardCtx }) {
 		products: products(),
 	});
 
-	// ONE readiness pass per render, for the whole card. The prominent button
-	// and the five rows read the same objects out of this — `workflow().next`
-	// is reference-identical to its row — so a primary action cannot point at a
-	// step the list beside it shows as blocked (shaping/steps.ts,
-	// `next-step-comes-from-the-readiness-it-shows`).
+	// ONE readiness pass per render, for the whole card: `nextStep` runs once
+	// and the five step rows below all read their entry out of the same
+	// `workflow()` call, rather than each recomputing readiness for its own
+	// step (shaping/steps.ts, `next-step-comes-from-the-readiness-it-shows` —
+	// that invariant used to also cover a prominent "do this next" button
+	// reading `workflow().next`; GIT_90 round 4 removed the button as a
+	// redundant second `runStep` entry point, so the five rows are this
+	// card's only remaining reader).
 	/** The five products, from the one pure derivation (evidence/products.ts).
 	 *  A memo per body rather than a field on the service: the service is eager
 	 *  and every screen pays for what it drags, while this is only ever read
@@ -293,156 +335,8 @@ export function ShapingStatusBody(props: { ctx: CardCtx }) {
 
 	const workflow = createMemo(() => nextStep(inputsFor));
 
-	/** One walk per render, for the same reason there is one readiness pass:
-	 *  the list and the highlighted question come out of the same call, so the
-	 *  question shown as live cannot be one the list does not contain. */
-	const walk = createMemo(() => walkThrough(selected(), products()));
-
-	/**
-	 * The walk as a FIXED number of rows.
-	 *
-	 * The walk itself grows and shrinks — five open questions on a fresh tool,
-	 * eight lines once a stage has been done and has findings of its own. This
-	 * card is watched while the machine works, so what it renders cannot change
-	 * height as answers arrive. Six rows, always:
-	 *
-	 *   1   the most recent settled fact, or a dash before there is one;
-	 *   2-3 the live question with its remedy, which is why it gets two;
-	 *   4-6 the questions after it, one line each.
-	 *
-	 * Presentation only. `walkThrough` stays the whole picture and stays
-	 * node-testable; choosing what fits on a card is this component's job.
-	 */
-	const walkRows = createMemo((): ReadonlyArray<{ kind: string; text: string; full: string; live: boolean }> => {
-		const w = walk();
-		const settled = w.lines.filter(l => l.kind === "known");
-		const last = settled[settled.length - 1];
-		const opens = w.lines.filter(l => l.kind === "open");
-		const live = w.next;
-		const after = opens.filter(l => l !== live).slice(0, 3);
-		const rows = [
-			{ kind: "known", text: last === undefined ? NONE : last.text, full: last === undefined ? "" : last.text, live: false },
-			...(live === null
-				? [{ kind: "done", text: "everything this screen can measure has been measured", full: "", live: false }]
-				: [{ kind: "open", text: inquiryText(live.inquiry), full: inquiryText(live.inquiry), live: true }]),
-			...after.map(l => ({ kind: "open", text: l.inquiry.question, full: inquiryText(l.inquiry), live: false })),
-		];
-		// Pad to the declared row count so the block's height is the same in
-		// every state, including "nothing left to ask".
-		while (rows.length < 5) rows.push({ kind: "pad", text: "", full: "", live: false });
-		return rows;
-	});
-
-	/**
-	 * How big the next action is, in the numbers the plan would carry.
-	 *
-	 * Honest or silent. Measure and Sweep count the captures their run will
-	 * ACTUALLY take, by building the very plans the Capture card would arm
-	 * (`shaping/runPlan.ts`) and counting them — not by a second arithmetic over
-	 * the same settings. Rank counts the shaper table it scores; Verify and Apply
-	 * name the shaper they are about.
-	 *
-	 * With no envelope there are no plans, so both say nothing rather than a
-	 * number this screen made up — which is also the state in which the step is
-	 * refused, so the button carries the reason instead.
-	 */
-	const runScope = (req: RunRequest): StepScope => {
-		const env = cfg().envelope;
-		if (env === null) return { kind: "unknown" };
-		const n = plannedCaptureCount(runPlans(req, cfg().defaults, env, defaultPrefix(req.kind, svc.tool())));
-		return n > 0 ? { kind: "captures", n } : { kind: "unknown" };
-	};
-
-	const scopeFor = (step: ShapingStep): StepScope => {
-		switch (step) {
-			case "measure":
-				return runScope({ kind: "measure" });
-			case "sweep":
-				return runScope({ kind: "sweep" });
-			case "rank":
-				return { kind: "shapers", n: SHAPER_TYPES.length };
-			case "verify": {
-				const pick = selected().candidates[svc.candidateIndex()];
-				return pick === undefined ? { kind: "unknown" } : { kind: "shaper", name: shaperShort(pick.spec) };
-			}
-			case "apply": {
-				const made = recommendation(selected());
-				return made === null ? { kind: "unknown" } : { kind: "shaper", name: shaperShort(made.spec) };
-			}
-			default: {
-				const unhandled: never = step;
-				throw new Error(`unknown shaping step: ${String(unhandled)}`);
-			}
-		}
-	};
-
-	/** The one thing to do, as three values that always come from one place:
-	 *  every arm sets all three, so an enabled button with a refusal beside it
-	 *  is not expressible here either. */
-	const primary = createMemo((): { label: string; note: string; enabled: boolean; step: ShapingStep | null } => {
-		const pick = workflow().next;
-		if (pick === null) return { ...allDoneAction(svc.tool()), enabled: false, step: null };
-		return {
-			label: stepActionText(pick.spec, svc.tool(), scopeFor(pick.spec.step)),
-			note: pick.readiness.note,
-			enabled: pick.readiness.enabled,
-			step: pick.spec.step,
-		};
-	});
-
 	return (
 		<>
-			{/* The entry point. A fixed slot: a caption, one prominent action and
-			    one sentence, present in every state including "nothing left to
-			    do", so advancing a step never moves the list under it. */}
-			<div class="shp-next">
-				<div class="shp-next-row">
-					<span class="shp-cap">Next</span>
-					<button
-						class="fb-tool shp-next-go"
-						disabled={!primary().enabled}
-						onClick={() => {
-							const step = primary().step;
-							if (step !== null) svc.runStep(step);
-						}}
-					>
-						{primary().label}
-					</button>
-				</div>
-				{/* The wrapper is not decoration: the sentence has to be a FLEX
-				    ITEM with a declared zero width to stay out of this card's
-				    min-content WIDTH. Measured — as a plain block it put the
-				    column floor at 171 cells against a 156-cell card, i.e. a card
-				    you could drag narrower than its own contents. Same
-				    construction as .shp-step-note; see app.css for the mechanism. */}
-				<div class="shp-next-note">
-					<p class="shp-next-why" classList={{ "shp-next-ready": primary().enabled }}>{primary().note}</p>
-				</div>
-			</div>
-			{/* The walk: where this session has got to, and the next question.
-			    Replaces the single worst-caveat line, which was a fold over
-			    CAVEATS and therefore silent on a machine that had measured
-			    nothing — exactly the moment somebody most needs leading.
-
-			    Built from the STAGES first (evidence/walk.ts), so a freshly
-			    wiped tool still walks: five open questions with the first one
-			    live. Known lines carry their numbers so they can be checked
-			    against the card; open lines carry the question and the act that
-			    would settle it. */}
-			<div class="shp-walk">
-				<span class="shp-cap">Means</span>
-				<div class="shp-walk-note">
-					<ol class="shp-walk-list">
-						<For each={walkRows()}>
-							{row => (
-								<li class="shp-walk-line" data-kind={row.kind} classList={{ "shp-walk-now": row.live }}>
-									<span title={row.full}>{row.text}</span>
-								</li>
-							)}
-						</For>
-					</ol>
-				</div>
-			</div>
 			<p class="shp-active">
 				<span class="shp-cap">Running</span>
 				<Show
@@ -459,6 +353,38 @@ export function ShapingStatusBody(props: { ctx: CardCtx }) {
 			    card whose job is to be watched while the machine works. Hidden by
 			    visibility, so it occupies its row either way. */}
 			<p class="shp-msg" classList={{ "shp-msg-on": message() !== "" }}>{message()}</p>
+			{/* THE tool picker: the ONLY control on the whole screen that calls
+			    `svc.setTool` (GitHub #90; verified by grep — see the fix-round-1
+			    note in the file header). Sweep used to carry an identical chip
+			    row of its own, writing the same signal; it was removed in GIT_90
+			    fix round 1 per Gabe's "one picker for the entire screen" — this is
+			    what that markup (`.shp-tool-pick` / `.shp-tool-chip`) looked like,
+			    now singular rather than duplicated.
+
+			    Disabled, not omitted, at one tool or none — the row's height comes
+			    from `.shp-active`'s declared min-height, not from how many chips are
+			    in it or whether they answer to a click, so a 1-tool machine's card is
+			    the same height as a 4-tool one (Gabe, 2026-08-26). The `<For>`
+			    fallback (a single disabled placeholder chip) is what gives a
+			    zero-tool machine the same one-chip-tall row instead of an empty group
+			    collapsing to nothing. */}
+			<div class="shp-active">
+				<span class="shp-cap">Tool</span>
+				<div class="shp-tool-pick" role="group" aria-label="Tool being tuned">
+					<For each={tools()} fallback={<button class="shp-pick shp-tool-chip" disabled>{NONE}</button>}>
+						{t => (
+							<button
+								class="shp-pick shp-tool-chip"
+								aria-pressed={svc.tool() === t.number}
+								disabled={tools().length <= 1}
+								onClick={() => svc.setTool(t.number)}
+							>
+								T{t.number}
+							</button>
+						)}
+					</For>
+				</div>
+			</div>
 			<table class="shp-table shp-tools">
 				<colgroup>
 					<col class="shp-c-open" />
@@ -471,10 +397,26 @@ export function ShapingStatusBody(props: { ctx: CardCtx }) {
 					<tr><th /><th>Tool</th><th>X</th><th>Y</th><th>State</th></tr>
 				</thead>
 				<tbody>
-					<For each={tools()} fallback={<tr><td colspan="5" class="shp-nil">no tools on this machine</td></tr>}>
+					{/* One row: `svc.tool()`'s. The picker above is now the only way to
+					    look at another tool, so this row no longer needs a "pick" button
+					    of its own — a second control writing the same signal the picker
+					    writes would be the exact duplicate-write-site this screen's one
+					    service exists to rule out. The two fallbacks are two different
+					    facts: no tools on the machine, versus a selection that names none
+					    of the tools it does have. */}
+					<For
+						each={shownRows()}
+						fallback={
+							<tr>
+								<td colspan="5" class="shp-nil">
+									{tools().length === 0 ? "no tools on this machine" : `T${svc.tool()} is not a tool on this machine`}
+								</td>
+							</tr>
+						}
+					>
 						{tool => (
 							<>
-								<tr classList={{ "shp-on": svc.tool() === tool.number }}>
+								<tr class="shp-on">
 									<td>
 										{/* The macro line is a SEPARATE disclosure from selecting the
 										    tool: opening it costs a download, and picking a tool must
@@ -488,15 +430,7 @@ export function ShapingStatusBody(props: { ctx: CardCtx }) {
 											{svc.macroFor(tool.number).kind === "closed" ? "▸" : "▾"}
 										</button>
 									</td>
-									<td>
-										<button
-											class="shp-pick"
-											aria-pressed={svc.tool() === tool.number}
-											onClick={() => svc.setTool(tool.number)}
-										>
-											T{tool.number}
-										</button>
-									</td>
+									<td><span class="shp-pick">T{tool.number}</span></td>
 									<td><ModeCell mode={fingerprintOf(svc.resultsFor(tool.number))?.X ?? null} /></td>
 									<td><ModeCell mode={fingerprintOf(svc.resultsFor(tool.number))?.Y ?? null} /></td>
 									<td class="shp-state">{progressOf(svc.resultsFor(tool.number))}</td>
@@ -559,10 +493,18 @@ export function ShapingStatusBody(props: { ctx: CardCtx }) {
  * a single value. A card with two independent arms can sit with both live, and
  * then the next Enter or Space is one of two different things depending on
  * where focus happens to be.
+ *
+ * NEITHER variant carries a tool. `run` never did (`RunKind` is measure /
+ * sweep / verify, not a head); `save` did until GIT_90 round 3 — see
+ * `tool-change-disarms` (compose/services.ts, beside `setTool`). `save()`
+ * below reads `svc.tool()` at fire time instead, and `svc.setTool` disarms
+ * this whole slot on every tool change, so there is no second copy of "which
+ * tool" left in this file to compare against and no way to fire this arm
+ * for a tool other than the one on screen at the moment of the click.
  */
 type CaptureArm =
 	| { readonly kind: "run"; readonly run: RunKind }
-	| { readonly kind: "save"; readonly tool: number };
+	| { readonly kind: "save" };
 
 /**
  * The card that moves the machine.
@@ -827,20 +769,29 @@ export function ShapingCaptureBody(props: { ctx: CardCtx }) {
 	/**
 	 * Write what the run measured against the tool it was run for.
 	 *
-	 * No tool picker, unlike the Decay card's save bar, and that is the safer
-	 * shape here rather than a shortcut: the run addressed `accelByTool[tool()]`
-	 * — this tool's own sensor — so the head these captures belong to is not a
-	 * choice anybody has to make. The Decay card offers the picker because a
-	 * batch there can be any twelve files off the card.
+	 * No attribution choice here, and there never was one to remove: the run
+	 * addressed `accelByTool[tool()]` — this tool's own sensor — so the head
+	 * these captures belong to is not a choice anybody has to make; `tool` is
+	 * `svc.tool()` and nothing else could have run the capture. This card used
+	 * to be the contrast for the Decay card's save bar, which chose its
+	 * attribution tool independently of `svc.tool()` because a batch there can
+	 * be any twelve files off the card. Gabe's ruling 5 (2026-08-26, "filter it
+	 * too") closed that gap — Decay's attribution is `svc.tool()` now too — so
+	 * both save bars derive their target the same way, and neither is drawn
+	 * here as the other's exception.
 	 */
 	const save = (): void => {
-		const tool = svc.tool();
 		const now = armed();
-		if (now === null || now.kind !== "save" || now.tool !== tool) {
-			setArmed({ kind: "save", tool });
+		if (now === null || now.kind !== "save") {
+			setArmed({ kind: "save" });
 			return;
 		}
 		setArmed(null);
+		// Read fresh, at fire time — never carried in the arm (tool-change-
+		// disarms, compose/services.ts). A tool switch between arming and this
+		// click already cleared `armed` via `svc.setTool`, so reaching here at
+		// all means `svc.tool()` is still the tool the operator armed for.
+		const tool = svc.tool();
 		// Two writers, and which one is not a choice made here: the batch says
 		// what it is. A verify batch has no route to `saveMeasurement` and a
 		// baseline has none to `saveVerified` (compose/services.ts,
@@ -884,12 +835,15 @@ export function ShapingCaptureBody(props: { ctx: CardCtx }) {
 		const arm = armed();
 		if (arm !== null && arm.kind === "save") {
 			// What is about to be written depends on what the batch IS — a
-			// verify adds a comparison and leaves the fingerprint alone.
+			// verify adds a comparison and leaves the fingerprint alone. The
+			// tool is `svc.tool()`, read here rather than off `arm` — the arm
+			// no longer carries one (tool-change-disarms, compose/services.ts).
 			const run = svc.runState();
+			const tool = svc.tool();
 			return armedSaveText(
 				run.kind === "fitted" ? run.purpose : { kind: "baseline" },
-				arm.tool,
-				RESULTS_PATH(arm.tool),
+				tool,
+				RESULTS_PATH(tool),
 			);
 		}
 		if (arm !== null) {
@@ -1283,8 +1237,10 @@ export function ShapingDecayBody(props: { ctx: CardCtx }) {
 	 *  from here — a key naming no bucket reads as nothing lit. */
 	const [family, setFamily] = createSignal<string | null>(null);
 	const [selected, setSelected] = createSignal<ReadonlySet<string>>(new Set<string>());
-	const [target, setTarget] = createSignal<number | null>(null);
-	const [armed, setArmed] = createArmed<number>();
+	// `true`, not a tool number: the target is `svc.tool()`, read fresh at fire
+	// time (tool-change-disarms, compose/services.ts) — carrying a copy here
+	// is the exact duplicate that invariant exists to make unrepresentable.
+	const [armed, setArmed] = createArmed<true>();
 
 	/** Switching TO the board is the act that asks for the listing — never a
 	 *  render, and never on mount. 276 entries is several `rr_filelist` pages
@@ -1575,7 +1531,6 @@ export function ShapingDecayBody(props: { ctx: CardCtx }) {
 		svc.clearRun();
 	};
 
-	const tools = createMemo(() => props.ctx.om.om.tools.filter(t => t !== null));
 	/**
 	 * A fit that may be WRITTEN — not merely one that exists.
 	 *
@@ -1625,34 +1580,24 @@ export function ShapingDecayBody(props: { ctx: CardCtx }) {
 	});
 
 	/**
-	 * The armed tool, WRAPPED — because T0 is a number and `<Show when={0}>` is
-	 * a fallback.
-	 *
-	 * The button read "Confirm" while the line under it went on showing the
-	 * batch report, for the default tool and no other: `armed()` of 0 is falsy,
-	 * so the confirm sentence — the one that names the file about to be written
-	 * — never appeared for T0. An object is truthy whatever number it carries.
+	 * `armed()` is `true | null`, not a tool number, so there is no "T0 is
+	 * falsy" trap left to word around — this USED to wrap a `{tool}` object for
+	 * exactly that reason, back when the arm carried the tool at all. It no
+	 * longer does (tool-change-disarms, compose/services.ts): the target is
+	 * `svc.tool()`, read fresh below and in the confirm sentence, and
+	 * `svc.setTool` clears this arm outright on any tool change — reaching
+	 * `save()`'s fire branch at all already means `svc.tool()` is still the
+	 * tool this arm was made for.
 	 */
-	const arming = createMemo((): { tool: number } | null => {
-		const tool = armed();
-		return tool === null ? null : { tool };
-	});
-
-	const saveLabel = createMemo((): string => {
-		const tool = target();
-		if (arming() !== null) return "Confirm";
-		return tool === null ? "Save…" : `Save to T${tool}`;
-	});
+	const saveLabel = createMemo((): string => (armed() !== null ? "Confirm" : `Save to T${svc.tool()}`));
 
 	const save = (): void => {
-		const tool = target();
-		if (tool === null) return;
-		if (armed() === tool) {
-			setArmed(null);
-			void svc.saveMeasurement(tool);
+		if (armed() === null) {
+			setArmed(true);
 			return;
 		}
-		setArmed(tool);
+		setArmed(null);
+		void svc.saveMeasurement(svc.tool());
 	};
 
 	const onFiles = (event: Event & { currentTarget: HTMLInputElement }): void => {
@@ -1947,11 +1892,19 @@ export function ShapingDecayBody(props: { ctx: CardCtx }) {
 			</table>
 			</div>
 			{/*
-			  The attribution bar. The tool is a deliberate choice with no default:
-			  `svc.tool()` is where the SCREEN is looking, which is not the same as
-			  what the operator meant to measure, and on a four-head machine those
-			  two being confused is unrecoverable from the file afterwards. Save
-			  arms first (control/armed.ts, so Escape backs out).
+			  The attribution bar. Attribution FOLLOWS the screen's shared tool
+			  (Gabe, 2026-08-26, GIT_90 fix round 1) — "filter it too" — reversing
+			  the deliberate independence this comment used to argue for: a select
+			  here used to let the operator view one tool while filing a batch
+			  under another, on the reasoning that `svc.tool()` was merely "where
+			  the screen is looking". That reasoning is exactly what "one picker
+			  for the entire screen so everything implicitly uses the chosen tool"
+			  rules out — a second place to name a tool was a second answer to the
+			  same question the picker exists to make singular. There is nothing
+			  left here that can go stale: `svc.tool()` is read fresh, never
+			  snapshotted into a local signal, so a tool switch elsewhere on the
+			  screen cannot leave this bar pointed at a tool the screen has moved
+			  on from. Save arms first (control/armed.ts, so Escape backs out).
 			*/}
 			<div class="shp-batch">
 				<button class="fb-tool shp-pick-n" disabled={rows().length === 0 || rows().length > MAX_BATCH} onClick={selectShown}>
@@ -1965,33 +1918,22 @@ export function ShapingDecayBody(props: { ctx: CardCtx }) {
 				>
 					Fit {chosen().length}
 				</button>
-				<label class="shp-target">
+				<span class="shp-target">
 					<span class="shp-cap">Tool</span>
-					<select
-						class="filament-pick"
-						aria-label="Tool to attribute this fingerprint to"
-						value={target() === null ? "" : String(target())}
-						onChange={e => {
-							setArmed(null);
-							setTarget(e.currentTarget.value === "" ? null : Number(e.currentTarget.value));
-						}}
-					>
-						<option value="">— choose —</option>
-						<For each={tools()}>{t => <option value={String(t.number)}>T{t.number}</option>}</For>
-					</select>
-				</label>
+					<span class="shp-mono">T{svc.tool()}</span>
+				</span>
 				<button
 					class="fb-tool shp-save"
 					classList={{ "shp-arming": armed() !== null }}
-					disabled={attributable() === null || target() === null}
+					disabled={attributable() === null}
 					onClick={save}
 				>
 					{saveLabel()}
 				</button>
 			</div>
 			<p class="shp-batch-note" classList={{ "shp-warn-inline": svc.runState().kind === "failed" }}>
-				<Show when={arming()} fallback={batchReport()}>
-					{a => <>Confirm: write T{a().tool}&apos;s fingerprint to {RESULTS_PATH(a().tool)}. Escape cancels.</>}
+				<Show when={armed() !== null} fallback={batchReport()}>
+					<>Confirm: write T{svc.tool()}&apos;s fingerprint to {RESULTS_PATH(svc.tool())}. Escape cancels.</>
 				</Show>
 			</p>
 		</>
@@ -2041,9 +1983,11 @@ export function ShapingDecayBody(props: { ctx: CardCtx }) {
  */
 export function ShapingSweepBody(props: { ctx: CardCtx }) {
 	const svc = props.ctx.service("shaping");
-	const tools = createMemo(() => props.ctx.om.om.tools.filter(t => t !== null));
 	const [pick, setPick] = createSignal<string>("");
-	const [armed, setArmed] = createArmed<number>();
+	// `true`, not a tool number: the target is `svc.tool()`, read fresh at fire
+	// time (tool-change-disarms, compose/services.ts) — same reasoning as
+	// Decay's save bar, which carried the identical defect until GIT_90 round 3.
+	const [armed, setArmed] = createArmed<true>();
 
 	const sweep = (): SweepMatrix | null => svc.results().sweep;
 
@@ -2097,45 +2041,34 @@ export function ShapingSweepBody(props: { ctx: CardCtx }) {
 		];
 	});
 
-	/** The armed tool, wrapped: T0 is 0 and `<Show when={0}>` renders the
-	 *  fallback, so the confirm sentence would never appear for the default
-	 *  tool. Same defect the Decay card's save bar had. */
-	const arming = createMemo((): { tool: number } | null => {
-		const tool = armed();
-		return tool === null ? null : { tool };
-	});
-
+	/** `armed()` is `true | null` — no tool-shaped value to wrap against the
+	 *  "T0 is falsy" trap this card and Decay's save bar both used to have.
+	 *  `svc.saveSweep()` reads `svc.tool()` itself; `svc.setTool` disarms this
+	 *  slot on any tool change (tool-change-disarms, compose/services.ts). */
 	const save = (): void => {
-		const n = svc.tool();
-		if (armed() === n) {
-			setArmed(null);
-			void svc.saveSweep();
+		if (armed() === null) {
+			setArmed(true);
 			return;
 		}
-		setArmed(n);
+		setArmed(null);
+		void svc.saveSweep();
 	};
 
 	return (
 		<>
-			{/* Which tool this sweep is about — the SHARED selection, so picking
-			    here moves every other card on the screen with it. Eight cards
-			    disagreeing about which head is being tuned is the failure the one
-			    service exists to prevent (compose/services.ts). */}
+			{/* Which tool this sweep is about — read, not picked, here. Until
+			    GIT_90 fix round 1 this card carried its OWN chip row writing
+			    `svc.setTool`, on the reasoning that the shared selection meant
+			    "two cards cannot disagree", which is true but was not the whole
+			    of what Gabe asked for — his words: "one picker for the entire
+			    screen so everything implicitly uses the chosen tool." A second
+			    control that reaches the same signal is still a second control,
+			    and the shaping-status card's picker is now the ONLY one. This
+			    stays a plain read of `svc.tool()`, never snapshotted, so it can
+			    never disagree with whatever the picker last set. */}
 			<div class="shp-sweep-bar">
 				<span class="shp-cap">Tool</span>
-				<div class="shp-tool-pick" role="group" aria-label="Tool being tuned">
-					<For each={tools()} fallback={<span class="shp-nil">no tools</span>}>
-						{t => (
-							<button
-								class="shp-pick shp-tool-chip"
-								aria-pressed={svc.tool() === t.number}
-								onClick={() => { setArmed(null); svc.setTool(t.number); }}
-							>
-								T{t.number}
-							</button>
-						)}
-					</For>
-				</div>
+				<span class="shp-mono">T{svc.tool()}</span>
 				<span class="shp-sweep-step" classList={{ "shp-warn-inline": !step().known }} title={stepText()}>
 					{stepText()}
 				</span>
@@ -2199,8 +2132,8 @@ export function ShapingSweepBody(props: { ctx: CardCtx }) {
 			    the operator reading a black band is looking at this chart. */}
 			<CardCaveat evidence={productsFor(svc.results(), svc.machineNow(), sp => cmd.inputShaping(sp as never)).sweep} />
 			<p class="shp-sweep-note" classList={{ "shp-warn-inline": svc.sweepState().kind === "failed" }}>
-				<Show when={arming()} fallback={sweepStateText(svc.sweepState())}>
-					{a => <>Confirm: write T{a().tool}&apos;s results, this sweep included, to {RESULTS_PATH(a().tool)}. Escape cancels.</>}
+				<Show when={armed() !== null} fallback={sweepStateText(svc.sweepState())}>
+					<>Confirm: write T{svc.tool()}&apos;s results, this sweep included, to {RESULTS_PATH(svc.tool())}. Escape cancels.</>
 				</Show>
 			</p>
 		</>

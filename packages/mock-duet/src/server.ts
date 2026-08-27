@@ -1,6 +1,7 @@
 import http from "node:http";
 import { Buffer } from "node:buffer";
 import { Machine } from "./machine.ts";
+import type { ConfigSeedVersion } from "./files.ts";
 import type { Om } from "./snapshot.ts";
 import { SessionManager } from "./sessions.ts";
 import { buildModelResponse } from "./model-query.ts";
@@ -38,6 +39,14 @@ export interface MockServerOptions {
 	 * the /machine WebSocket push loop, alongside the rr_ dialect.
 	 */
 	dsf?: boolean;
+	/**
+	 * Which shape of `0:/sys/dwc-ng-config.json` to seed (files.ts
+	 * `ConfigSeedVersion`). Defaults to 3 (current) — 1 and 2 stay
+	 * selectable so the pre-v3 migration path a real board's SD can still
+	 * present is reachable on a live mock, not only in the UI's own
+	 * synthetic parser tests (GIT_92 requirement 3).
+	 */
+	configVersion?: ConfigSeedVersion;
 }
 
 export interface MockServer {
@@ -63,7 +72,7 @@ export function createMockServer(options: MockServerOptions = {}): MockServer {
 	const tickMs = options.tickMs ?? 250;
 	const emulated = options.emulated ?? false;
 
-	const machine = new Machine(scenario, options.model);
+	const machine = new Machine(scenario, options.model, options.configVersion);
 	const sessions = new SessionManager({
 		maxSessions: options.maxSessions ?? 4,
 		sessionTimeout: options.sessionTimeout ?? 8000,

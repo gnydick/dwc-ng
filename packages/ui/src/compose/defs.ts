@@ -537,7 +537,42 @@ export const CARD_DEFS = {
 		// minimum width, which had this card's floor 15 cells WIDER than the
 		// card itself (see .shp-step-note in app.css). 125 is now the tools
 		// table's declared tracks and nothing else.
-		size: { colSpan: 156, rowSpan: 156 },
+		//
+		// 156 -> 158 for the tool picker (GIT_90): a `.shp-active` row (5u
+		// declared) between the message line and the table, present whether the
+		// machine reports four tools or one. Re-measured via contentRowSpan()
+		// against `shaping-measured` (unchanged, still four tools): row stop 158,
+		// unchanged across the 720 / 400 / 200 px probes, body worth 143 of it,
+		// no child moved. colStop held at 125 — the picker's row is shorter than
+		// the tools table it sits above, so it set no new floor. Scale sweep
+		// 158/158 rows, 125/125 cols, both deltas 0. The table itself now
+		// contributes exactly ONE row (or the one-row fallback) rather than up to
+		// four, which is most of why the net cost of an entire new control is
+		// two rows and not more: the picker adds 5u, the table gives back most
+		// of what it used to cost with several tools' rows open.
+		//
+		// 158 -> 139 for the removal of the "Next" region (GIT_90 fix round 4,
+		// Gabe: "awkward navigation" — a second, redundant `runStep` entry point
+		// beside the per-step list's own). Re-measured via contentRowSpan()
+		// against `shaping-measured`: row stop 139, unchanged across the
+		// 720 / 400 / 200 px probes, body worth 124 of it, no child moved.
+		// colStop held at 125 — the removed block never set the column floor,
+		// only the tools table did. The walk block is now the card's first
+		// child; nothing above the step list has height that varies with
+		// `workflow()`'s progress, so the list's own positions do not move as
+		// steps complete (verified live: identical row `top` offsets before and
+		// after a step's readiness text changed entirely, and before and after
+		// running one).
+		//
+		// 139 -> 108 for the removal of the "Means" walk (GIT_90 fix round 5,
+		// Gabe: "there's a big section above the picker that we don't need in the
+		// shaping card" — a deliberate override of the walk's own rationale, not
+		// an accident; see the file-header note in ShapingCards.tsx). Re-measured
+		// via contentRowSpan() against `shaping-measured`: row stop 108, unchanged
+		// across the 720 / 400 / 200 px probes (reproduced twice), body worth 93
+		// of it, no child moved. colStop held at 125 — the walk never set the
+		// column floor, only the tools table did.
+		size: { colSpan: 156, rowSpan: 108 },
 	}),
 	/** The test motion: the box it may move in, the sensor, the moves it will
 	 *  make, and the armed control that makes them. */

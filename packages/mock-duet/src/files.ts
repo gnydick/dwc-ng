@@ -50,8 +50,8 @@ export class VirtualSD {
 	fileInfo = new Map<string, GCodeFileInfo>();
 	thumbnails = new Map<string, string>();
 
-	constructor() {
-		seed(this);
+	constructor(configVersion: ConfigSeedVersion = 3) {
+		seed(this, configVersion);
 	}
 
 	/** "0:/gcodes/x.g" | "/gcodes/x.g" -> ["gcodes","x.g"]; null for other volumes. */
@@ -254,7 +254,78 @@ function buildSquareGcodeBody(): string {
 	return lines.join("\n") + "\n";
 }
 
-function seed(sd: VirtualSD) {
+/**
+ * Which shape of `0:/sys/dwc-ng-config.json` to seed.
+ *
+ * 3 ("current", the default) is what a real board writes today: stamped for
+ * this mock's own machine id (its mainboard's uniqueId, snapshot.ts /
+ * om-snapshot-2026-07-12.json), carrying the accelerometer mapping the
+ * Shaping workflow's Capture step needs to arm at all — GIT_90 round 5,
+ * Gabe: the step buttons were disabled because this file had none.
+ *
+ * 1 and 2 stay selectable (`--config-version`) rather than being replaced
+ * outright: GIT_92 requirement 3 is that every state the real UI must
+ * handle — including "the SD still carries a pre-v3 file" — has a way to
+ * be presented on purpose, not just in the UI's own synthetic unit tests
+ * (config-parse.test.ts, config-migrate-v3.test.ts), which exercise the
+ * PARSER but never a live mock a person can point the running app at. 1 is
+ * byte-for-byte what this file always seeded, so a machine mid-upgrade
+ * exercises the same content it always did; 2 carries the current overlay
+ * shape (v2 and v3 read identically here — config/parse.ts's
+ * `parseOverlayPayload` only transforms `screens.layouts`/`screens.custom`
+ * columns for v1, and neither seed sets `screens`) under the pre-split
+ * version number, so `version !== CONFIG_VERSION` still fires without a
+ * second overlay shape invented for it.
+ */
+export type ConfigSeedVersion = 1 | 2 | 3;
+
+const MACHINE_ID = "b.0JDAM-9F6NU-F05S0-7JKDJ-3SD6T-1SWQ1";
+
+/**
+ * Tool number to accelerometer address ("board.device", M955/M956 P), for
+ * the four TOOL1LC boards this snapshot's toolchanger carries — CAN
+ * 20/21/22/23, one accelerometer each (om-snapshot-2026-07-12.json
+ * `boards`, matching the real 2026-07-15 capture). Device 0: each TOOL1LC
+ * carries exactly one.
+ */
+const ACCEL_BY_TOOL = { "0": "20.0", "1": "21.0", "2": "22.0", "3": "23.0" };
+
+/** The overlay both current-shape versions (2 and 3) share — see the
+ *  version doc comment above for why 2 does not need a shape of its own. */
+function currentOverlay(): Record<string, unknown> {
+	return {
+		// U/V/W drive the three individual Z leadscrew motors
+		// (M584 U1.0 V1.1 W1.2); C is the tool coupler (C0.2).
+		axisRoles: { U: "Z motor 1", V: "Z motor 2", W: "Z motor 3", C: "Coupler" },
+		// Tools 0..3 report dock presence on gpIn 10..13 (1 = docked).
+		dockSensors: { "0": { gpIn: 10 }, "1": { gpIn: 11 }, "2": { gpIn: 12 }, "3": { gpIn: 13 } },
+		shaping: { accelByTool: ACCEL_BY_TOOL },
+	};
+}
+
+function buildConfigSeed(configVersion: ConfigSeedVersion): string {
+	if (configVersion === 1) {
+		// Unchanged from every seed before GIT_90 round 5: no accelByTool
+		// (the gate this round's default closes), no machineId (v1 predates
+		// the stamp), no shaping section at all.
+		return JSON.stringify({
+			version: 1,
+			overlay: {
+				axisRoles: { U: "Z motor 1", V: "Z motor 2", W: "Z motor 3", C: "Coupler" },
+				dockSensors: { "0": { gpIn: 10 }, "1": { gpIn: 11 }, "2": { gpIn: 12 }, "3": { gpIn: 13 } },
+			},
+		}, null, "\t");
+	}
+	if (configVersion === 2) {
+		// No machineId: only a v3 payload is stamped and checked
+		// (config/migrateStorage.ts readStampedMachineOverlay) — a v2 file
+		// never carried one to begin with.
+		return JSON.stringify({ version: 2, overlay: currentOverlay() }, null, "\t");
+	}
+	return JSON.stringify({ version: 3, machineId: MACHINE_ID, overlay: currentOverlay() }, null, "\t");
+}
+
+function seed(sd: VirtualSD, configVersion: ConfigSeedVersion) {
 	const dirs = ["filaments", "firmware", "gcodes", "macros", "menu", "sys", "www"];
 	for (const d of dirs) sd.mkdir(`0:/${d}`, SEED_DATE);
 
@@ -295,16 +366,8 @@ function seed(sd: VirtualSD) {
 		// they render only when the SD carries this mapping — so seeding it
 		// keeps them working out of the box and across restarts (the SD is
 		// rebuilt from this seed on every start). See packages/ui config store.
-		"dwc-ng-config.json": JSON.stringify({
-			version: 1,
-			overlay: {
-				// U/V/W drive the three individual Z leadscrew motors
-				// (M584 U1.0 V1.1 W1.2); C is the tool coupler (C0.2).
-				axisRoles: { U: "Z motor 1", V: "Z motor 2", W: "Z motor 3", C: "Coupler" },
-				// Tools 0..3 report dock presence on gpIn 10..13 (1 = docked).
-				dockSensors: { "0": { gpIn: 10 }, "1": { gpIn: 11 }, "2": { gpIn: 12 }, "3": { gpIn: 13 } },
-			},
-		}, null, "\t"),
+		// Shape picked by `configVersion` — see buildConfigSeed above.
+		"dwc-ng-config.json": buildConfigSeed(configVersion),
 	};
 	for (const [name, content] of Object.entries(sysFiles)) {
 		sd.write(`0:/sys/${name}`, text(content), SEED_DATE);

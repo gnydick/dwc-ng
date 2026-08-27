@@ -3,6 +3,7 @@ import process from "node:process";
 import { createMockServer } from "./server.ts";
 import { scenarios } from "./scenarios/index.ts";
 import { loadCaptureFile } from "./capture.ts";
+import type { ConfigSeedVersion } from "./files.ts";
 
 const { values } = parseArgs({
 	options: {
@@ -18,6 +19,10 @@ const { values } = parseArgs({
 		"reply-expiry": { type: "string", default: "3000" },
 		"no-auth": { type: "boolean", default: false },
 		dsf: { type: "boolean", default: false },
+		// "3" (current) by default; "1"/"2" stay selectable so the pre-v3
+		// migration a real board's SD can carry is reachable on a live mock,
+		// not only in the UI's own synthetic parser tests (GIT_92 req. 3).
+		"config-version": { type: "string", default: "3" },
 		list: { type: "boolean", default: false },
 		help: { type: "boolean", short: "h", default: false },
 	},
@@ -41,6 +46,8 @@ Options:
       --no-auth           Don't require X-Session-Key (handy for curl).
       --dsf               Also serve the DSF (SBC) surface: /machine/* REST
                           routes and the /machine WebSocket push loop.
+      --config-version <v> Seed shape for 0:/sys/dwc-ng-config.json:
+                          1, 2, or 3/current (default: 3).
       --list              List scenarios and exit.`);
 	process.exit(0);
 }
@@ -58,6 +65,13 @@ if (scenario === undefined) {
 	process.exit(1);
 }
 
+const CONFIG_VERSIONS = ["1", "2", "3"] as const;
+if (!(CONFIG_VERSIONS as readonly string[]).includes(values["config-version"])) {
+	console.error(`--config-version must be one of ${CONFIG_VERSIONS.join(", ")}, got "${values["config-version"]}"`);
+	process.exit(1);
+}
+const configVersion = Number(values["config-version"]) as ConfigSeedVersion;
+
 const model = values.snapshot !== "" ? loadCaptureFile(values.snapshot) : undefined;
 
 const mock = createMockServer({
@@ -69,6 +83,7 @@ const mock = createMockServer({
 	replyExpiryMs: parseInt(values["reply-expiry"], 10),
 	requireAuth: !values["no-auth"],
 	dsf: values.dsf,
+	configVersion,
 });
 
 const port = await mock.listen(parseInt(values.port, 10));
@@ -80,6 +95,7 @@ if (model !== undefined) {
 }
 if (values["no-auth"]) console.log("auth disabled (--no-auth): X-Session-Key not required");
 if (values.dsf) console.log(`DSF mode (--dsf): REST http://127.0.0.1:${port}/machine/*, push ws://127.0.0.1:${port}/machine`);
+console.log(`dwc-ng-config.json seed: version ${configVersion}${configVersion === 3 ? " (current)" : ""}`);
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
 	process.on(signal, () => {

@@ -69,6 +69,7 @@ import type { CardId } from "./defs.ts";
 import { useEngine } from "../shaping/useEngine.ts";
 import { ACCEL_DIR, type BoardListingState, boardRef, byNewest, captureLiveness, captureNameParts, type CaptureRef, createCaptureLoader, type ImportedCapture, importedCount, importRef, isCaptureFile, type Liveness, MAX_BATCH, MAX_SWEEP, speedFamilies, type SweepFamily } from "../shaping/captures.ts";
 import { parseAccelAddr } from "../control/commands.ts";
+import { disarmAll } from "../control/armed.ts";
 import { type FileListEntry, FileNotFoundError } from "@dwc-ng/connector";
 import { aggregate, type Axis, type Fingerprint, type Mode, type NoFit } from "../shaping/engine/fit.ts";
 import { type FullStep, fullStepPerMm } from "../shaping/fullStep.ts";
@@ -390,9 +391,17 @@ const RANKED_KEPT = 40;
  *
  * The results themselves come off the SD card through the store's single
  * reader (shaping/store.ts `results-persist-through-one-writer`), loaded for
- * every tool the machine reports rather than only the selected one: the status
- * card's whole job is the per-tool table, and a table where four of five rows
- * say "not measured" because nobody downloaded them is a lie, not a blank.
+ * every tool the machine reports rather than only the selected one — even
+ * though the status card's own table now shows just the one row `tool()`
+ * names (GitHub #90; the all-tools table this paragraph used to justify is
+ * gone). The reason to keep loading all of them is the PICKER, not the
+ * table: it is one click, on the status card, and every one of the other
+ * seven cards is `tool()` alone — a switch that then had to wait on a
+ * download would put a fetch, and a fetch's own failure mode, on the single
+ * gesture this screen exists to make cheap. Paying for every tool once, up
+ * front, is what lets the picker cost nothing per click; `loaded` below is
+ * what keeps that a once-per-tool-per-connection cost rather than a repeat
+ * of it.
  *
  * Loading is gated on the connection being READY, for the same reason the
  * height map is: mounting races rr_connect, and a download sent before the
@@ -661,11 +670,19 @@ function shapingService(base: ServiceBaseCtx) {
 	};
 
 	/**
-	 * Write a fitted batch against a tool. The tool is an ARGUMENT and there is
-	 * no default: `svc.tool()` is where the screen is looking, which is not the
-	 * same as what the operator meant to attribute a measurement to, and on a
-	 * four-head machine those two being confused is unrecoverable from the
-	 * file afterwards.
+	 * Write a fitted batch against a tool. The tool is an ARGUMENT rather than
+	 * read off `svc.tool()` in here — API shape, not a safety guard. Until
+	 * Gabe's ruling 5 (2026-08-26, "filter it too") this mattered for safety
+	 * too: the Decay card's save bar chose its attribution tool independently
+	 * of `svc.tool()`, so taking an explicit argument was what let a call site
+	 * pass the batch's OWN target instead of whatever the screen happened to
+	 * be showing. Ruling 5 removed that independence — every caller (Capture's
+	 * and Decay's save bars, `ShapingCards.tsx`) now derives `tool` from
+	 * `svc.tool()` itself, so the argument can no longer drift from it, by
+	 * construction of the callers rather than of this function. It stays an
+	 * argument regardless, because this and `saveVerified` are the two
+	 * writers, and a signature that read the signal internally would force
+	 * both of them, and any future caller, through it to get one.
 	 */
 	const saveMeasurement = async (tool: number): Promise<void> => {
 		const run = runState();
@@ -742,10 +759,12 @@ function shapingService(base: ServiceBaseCtx) {
 	 *    distance ÷ speed and nothing in a capture file records how far the
 	 *    carriage went. One setting, two readers, no third opinion.
 	 *
-	 * The tool is `tool()` at the moment of the call — the Sweep card carries
-	 * the tool picker itself, so the head this is attributed to is the one on
-	 * screen beside the button. Nothing is written to the card here; `saveSweep`
-	 * is the separate, explicit act, for the same reason `saveMeasurement` is.
+	 * The tool is `tool()` at the moment of the call — read fresh, not carried
+	 * in from an argument, so the head this is attributed to is always
+	 * whichever one the shaping-status card's picker currently shows (GIT_90
+	 * fix round 1 moved the picker there; the Sweep card had its own until
+	 * then). Nothing is written to the card here; `saveSweep` is the separate,
+	 * explicit act, for the same reason `saveMeasurement` is.
 	 */
 	const buildSweep = async (family: SweepFamily): Promise<void> => {
 		const state = sweepState().kind;
@@ -814,12 +833,47 @@ function shapingService(base: ServiceBaseCtx) {
 		}
 	};
 
-	/** Changing tool changes which captures exist, so the selections reset with
-	 *  it — a stale one would select a different capture, not no capture. */
+	/**
+	 * Changing tool changes which captures exist, so the selections reset with
+	 * it — a stale one would select a different capture, not no capture.
+	 *
+	 * @invariant tool-change-disarms
+	 * @rung 6  choke point — `setTool` is the sole route to a tool change a
+	 *          card can reach (it is the only member of `SERVICES.shaping`'s
+	 *          returned object that writes `tool`; `setToolNow` itself is a
+	 *          closure-local `const`, never returned, so no card can call it
+	 *          directly — a TypeScript compile error, not a convention), and
+	 *          it now calls `disarmAll()` (control/armed.ts) UNCONDITIONALLY,
+	 *          every time, on every caller — there is no `next !== tool()`
+	 *          guard to word around. `disarmAll` iterates the same `disarmers`
+	 *          Set `createArmed` is the ONLY way to join (test/armed.test.ts
+	 *          walks src for a bypass), so a card that arms via `createArmed`
+	 *          — which is every two-step control in this codebase, by that
+	 *          same walk — is disarmed by construction of calling it, not by
+	 *          a comparison someone remembered to write. Falsified in
+	 *          test/tool-change-disarms.test.ts: arm, call the REAL
+	 *          `svc.setTool`, assert disarmed — including the same-tool case,
+	 *          which a conditional disarm would have missed.
+	 * @why before this, an arm payload carrying its OWN tool (`{ kind:
+	 *      "save", tool }`) was how a stale arm was DETECTED — `save()`
+	 *      compared `armed().tool` against `svc.tool()` on every click. The
+	 *      review that closed GIT_90 round 2 traced every such comparison and
+	 *      found no reachable mis-save, but the mismatch was still
+	 *      REPRESENTABLE: two copies of "which tool" existed in the running
+	 *      code, and only careful reading kept them from disagreeing. Gabe,
+	 *      invoking cant-break-by-design: "it shouldn't be possible to
+	 *      mismatch tool identification in the same active code." Removing
+	 *      the second copy (the arm payloads no longer carry a tool at all —
+	 *      ShapingCards.tsx's Decay/Sweep/Capture save arms) and disarming on
+	 *      every tool change makes a stale arm impossible to CLICK rather
+	 *      than merely unprofitable to click: by the time a second click
+	 *      could fire a write, the control has already reverted to unarmed.
+	 */
 	const setTool = (next: number): void => {
 		setToolNow(next);
 		setCapturePick(null);
 		setCandidateIndex(0);
+		disarmAll();
 	};
 
 	/**

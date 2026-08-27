@@ -204,6 +204,18 @@ export function scenarioModel(id: ScenarioId): ObjectModel {
 			// session in the results file below is measured and verified but NOT
 			// applied, which is the state where seven of the eight cards have
 			// something to say.
+			//
+			// Four tools, off, T0-T3: this arm changes nothing about `model.tools`
+			// because `base()` (above) already set it — the toolchanger's own
+			// topology, not something this scenario has to add. Noted explicitly
+			// (GIT_90 fix round 4) because a diagnosis read this arm on its own,
+			// saw it did not populate tools, and concluded the Shaping card's
+			// tool picker would render empty here — it does not: the picker shows
+			// T0-T3, and switching between them filters the card, both confirmed
+			// live. If this scenario ever needs a DIFFERENT tool set than
+			// `base()`'s, set `model.tools` here explicitly, the same way
+			// `heater-fault` and `multi-tool` do, rather than leaving the next
+			// reader to re-trace `base()` to find out.
 			return model;
 		case "multi-tool":
 			model.state.currentTool = 2;

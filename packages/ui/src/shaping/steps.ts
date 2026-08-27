@@ -29,10 +29,15 @@
  *          and the array is built once, here. A caller cannot compute
  *          readiness a second time and get a different answer, because it has
  *          no reason to compute it at all — the answer arrives attached
- * @why the status card now says "do this next" in a prominent button. A second
- *      expression choosing that step would be the same drift as the caption
- *      above, one level up, and its failure mode is worse: a primary action
- *      pointing at a step the list beside it shows as blocked
+ * @why until GIT_90 round 4 (2026-08-26) the status card said "do this next"
+ *      in a prominent button reading this field directly — removed as a
+ *      second, redundant `runStep` entry point beside the per-step list's own
+ *      (Gabe: "awkward navigation"). The invariant survives the button:
+ *      `next` stays part of `Workflow`'s public contract, asserted against
+ *      `byStep` by test/shaping-steps.test.ts, and it is what marks exactly
+ *      one row `status: "next"` in the list — a second expression computing
+ *      that mark on its own would risk the drift this invariant exists to
+ *      rule out, one level down from where the button used to read it
  */
 import { stepNoteText } from "./copy.ts";
 import type { CardId } from "../compose/defs.ts";
@@ -299,8 +304,8 @@ export interface Workflow {
 	 * The one to act on now, or null when every step's product is already on
 	 * the card — the only state in which there is genuinely nothing next.
 	 *
-	 * Reference-identical to its entry in `steps`, so the prominent button and
-	 * the row it corresponds to cannot show different readiness.
+	 * Reference-identical to its entry in `byStep`, so the row and the
+	 * workflow cannot disagree about its readiness.
 	 */
 	readonly next: StepState | null;
 }
