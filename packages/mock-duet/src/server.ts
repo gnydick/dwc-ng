@@ -70,6 +70,18 @@ export interface MockServerOptions {
 	 * purpose).
 	 */
 	frozenScreen?: boolean;
+	/**
+	 * Serve a machine the UI CANNOT identify: no `boards[].uniqueId`, no
+	 * interface MAC (snapshot.ts `stripIdentity`).
+	 *
+	 * Off by default, and deliberately so — this is a degraded machine. It
+	 * exists because closing GIT_92's requirements 1 and 2 made the
+	 * unidentified path unreachable on the mock, and the UI has real behaviour
+	 * for it that nothing could otherwise drive: the identity card's
+	 * unidentified branch, and `nullCanvasKeys`, the canvas that writes
+	 * nowhere. Composes with every other option; see docs/mock-parity.md.
+	 */
+	unidentified?: boolean;
 }
 
 export interface MockServer {
@@ -100,7 +112,7 @@ export function createMockServer(options: MockServerOptions = {}): MockServer {
 	const tickMs = options.tickMs ?? 250;
 	const emulated = options.emulated ?? false;
 
-	const machine = new Machine(scenario, options.model, options.configVersion, options.frozenScreen);
+	const machine = new Machine(scenario, options.model, options.configVersion, options.frozenScreen, options.unidentified);
 	// No path, no store, no write: this is the only construction of a
 	// StateStore in the package, and the only fs write in it happens inside one
 	// (persist.ts). Restoring here — before any hook is wired and before

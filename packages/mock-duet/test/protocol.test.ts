@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { startMock, fetchStitched } from "./helpers.ts";
 import { POLLED_KEYS } from "../src/snapshot.ts";
+import { loadCaptureFile } from "../src/capture.ts";
 
 test("rr_connect returns a session (err 0, apiLevel >= 1, sessionKey)", async t => {
 	const mock = await startMock();
@@ -180,4 +181,77 @@ test("move.axes is truncated in a move fetch when it exceeds reportedAxes", asyn
 
 	const full = await fetchStitched(mock, key, "move.axes", "d99vno");
 	assert.equal(full.length, 10, "move.axes key fetch pages through all axes");
+});
+
+// ---- GIT_92 requirement 3: the unidentified machine, on purpose ----------
+//
+// The UI resolves identity from `boards[].uniqueId`, falling back to the first
+// interface MAC (ui config/machineId.ts `resolveMachineId`), and returns
+// `unidentified` only when BOTH are absent. Giving the default mock machine an
+// id (requirements 1 and 2) therefore made that branch unreachable by any flag
+// — the exact "a mock easier than the board hides the defects UAT is for"
+// failure this ticket's design constraint names.
+
+test("--unidentified strips BOTH identity routes, so the UI cannot key this machine", async t => {
+	const mock = await startMock({ unidentified: true });
+	t.after(() => mock.close());
+	const key = await mock.connect();
+
+	const boards = (await mock.getJson("rr_model?key=boards&flags=d99", key) as { result: unknown }).result as Array<Record<string, unknown>>;
+	assert.ok(boards.length > 0, "the machine still HAS boards — it just cannot be identified by them");
+	for (const board of boards) {
+		assert.equal("uniqueId" in board, false, "no board carries a uniqueId");
+	}
+
+	const network = (await mock.getJson("rr_model?key=network&flags=d99", key) as { result: unknown }).result as { interfaces: Array<Record<string, unknown>> };
+	assert.ok(network.interfaces.length > 0, "the interface is still there — only its MAC is gone");
+	for (const iface of network.interfaces) {
+		assert.equal("mac" in iface, false, "no interface carries a MAC");
+	}
+});
+
+test("the default machine IS identified — --unidentified is opt-in, never the default", async t => {
+	const mock = await startMock();
+	t.after(() => mock.close());
+	const key = await mock.connect();
+
+	const boards = (await mock.getJson("rr_model?key=boards&flags=d99", key) as { result: unknown }).result as Array<Record<string, unknown>>;
+	const main = boards.find(b => (b.canAddress ?? 0) === 0);
+	assert.ok(typeof main?.uniqueId === "string" && main.uniqueId !== "");
+});
+
+test("--unidentified composes with a multi-tool snapshot and a seeded config", async t => {
+	// The point of the flag, and the thing a strip-at-serve-time implementation
+	// would have got wrong: an unidentified machine that is otherwise ordinary.
+	// This combination presents "claimed, not adopted" — a settings file on the
+	// card stamped for a machine this one cannot prove it is.
+	const mock = await startMock({ unidentified: true, model: loadCaptureFile(new URL("../captures/om-snapshot-2026-07-12.json", import.meta.url)) });
+	t.after(() => mock.close());
+	const key = await mock.connect();
+
+	const tools = (await mock.getJson("rr_model?key=tools&flags=d99", key) as { result: unknown }).result as unknown[];
+	assert.ok(tools.length >= 4, `the toolchanger's tools survive the strip (got ${tools.length})`);
+
+	const boards = (await mock.getJson("rr_model?key=boards&flags=d99", key) as { result: unknown }).result as Array<Record<string, unknown>>;
+	for (const board of boards) assert.equal("uniqueId" in board, false);
+
+	const down = await mock.getRaw("rr_download?name=0:/sys/dwc-ng-config.json", key);
+	const parsed = JSON.parse(await down.text()) as { machineId?: string };
+	assert.ok(typeof parsed.machineId === "string", "the config is still stamped — that is what makes it CLAIMED");
+});
+
+test("a scenario reset does not hand the identity back", async t => {
+	// Stripping is done on the PRISTINE model, before `om` is cloned from it,
+	// precisely so a reset cannot undo it. Stripping at any serve site would
+	// leave this path open.
+	const mock = await startMock({ unidentified: true });
+	t.after(() => mock.close());
+	const key = await mock.connect();
+
+	mock.machine.reset();
+	// A reset is a BOARD reset: it drops every session, so the old key 401s.
+	// Reconnecting is part of modelling the thing, not a workaround.
+	const afterReset = await mock.connect();
+	const boards = (await mock.getJson("rr_model?key=boards&flags=d99", afterReset) as { result: unknown }).result as Array<Record<string, unknown>>;
+	for (const board of boards) assert.equal("uniqueId" in board, false, "still unidentified after a reset");
 });

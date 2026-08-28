@@ -21,6 +21,53 @@ export const POLLED_KEYS = [
 
 const AMBIENT = 22.5;
 
+/**
+ * Strip every identity the UI can key a machine to — `boards[].uniqueId` and
+ * every network interface's `mac`.
+ *
+ * The UI's `resolveMachineId` (config/machineId.ts) returns `unidentified` only
+ * when BOTH are absent, so removing one is not enough and removing them from
+ * the served snapshot is not enough either: the same model must be stripped
+ * before it reaches `pristine`, or a scenario reset would hand the identity
+ * back mid-session.
+ *
+ * This is a DEGRADED machine on purpose. GIT_92 requirement 3: the mock exists
+ * to make a wrong UI observable, so every state the UI must handle needs a way
+ * to be presented deliberately — and closing requirements 1 and 2 (giving the
+ * default machine a uniqueId and a MAC) made this one unreachable by any flag,
+ * which is exactly the failure this ticket's design constraint warned about. A
+ * mock that is EASIER than the real board hides the defects UAT is for.
+ *
+ * What it makes reachable: the machine-identity card's unidentified branch, and
+ * `nullCanvasKeys` — the in-memory canvas that writes nowhere while
+ * unidentified, so a drag made in that state vanishes when identity resolves
+ * (GIT_86 finding 1). Verified live 2026-08-28: the card reads "Not identified
+ * — no board uniqueId and no network interface MAC", and the browser holds
+ * ZERO `dwc-ng.m.*` keys.
+ *
+ * It does NOT present "claimed, not adopted", though the stamped v3 seed makes
+ * that look likely: `loadFromMachine` takes its `handle === null` branch while
+ * unidentified and sets no claim at all (config/store.ts). A claim needs an
+ * IDENTIFIED machine reading a file stamped for a DIFFERENT one, which nothing
+ * here can present — recorded as a known gap in docs/mock-parity.md rather
+ * than left as a plausible-sounding assumption.
+ *
+ * Composes with everything else — it edits the model in place and reads no
+ * other option — so an unidentified FOUR-TOOL machine with a seeded config is
+ * a legal combination, which the parity list (docs/mock-parity.md) records as
+ * the point of the flag rather than an accident of it.
+ */
+export function stripIdentity(model: Om): Om {
+	for (const board of (model.boards ?? []) as Om[]) {
+		if (board !== null && typeof board === "object") delete board.uniqueId;
+	}
+	const network = model.network as Om | undefined;
+	for (const iface of ((network?.interfaces ?? []) as Om[])) {
+		if (iface !== null && typeof iface === "object") delete iface.mac;
+	}
+	return model;
+}
+
 export function createBaseModel(): Om {
 	return {
 		boards: [

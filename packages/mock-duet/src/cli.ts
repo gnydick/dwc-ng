@@ -39,6 +39,10 @@ const { values } = parseArgs({
 		// screen saved with two of its coded cards and no tombstones. Off by
 		// default because it is a deliberately degraded machine.
 		"frozen-screen": { type: "boolean", default: false },
+		// A machine the UI cannot identify: no boards[].uniqueId, no interface
+		// MAC. Off by default because it is a deliberately degraded machine —
+		// see snapshot.ts stripIdentity and docs/mock-parity.md.
+		unidentified: { type: "boolean", default: false },
 		list: { type: "boolean", default: false },
 		help: { type: "boolean", short: "h", default: false },
 	},
@@ -70,6 +74,16 @@ Options:
                           routes and the /machine WebSocket push loop.
       --config-version <v> Seed shape for 0:/sys/dwc-ng-config.json:
                           1, 2, or 3/current (default: 3).
+      --state <file>      Persist the SD tree and machine state to this file and
+                          restore it at startup. Omitted = the mock forgets on
+                          exit, which is the default on purpose.
+      --frozen-screen     Seed a pre-#86 screens.layouts override (the Machine
+                          screen saved with a SUBSET of its coded cards, no
+                          tombstones) so the composition merge is observable.
+      --unidentified      Serve a machine with no boards[].uniqueId and no
+                          interface MAC, so the UI's unidentified path (identity
+                          card, in-memory canvas) is reachable. Composes with
+                          --snapshot and --config-version.
       --list              List scenarios and exit.`);
 	process.exit(0);
 }
@@ -110,6 +124,7 @@ const mock = createMockServer({
 	configVersion,
 	statePath: values.state !== "" ? values.state : undefined,
 	frozenScreen: values["frozen-screen"],
+	unidentified: values.unidentified,
 });
 
 const port = await mock.listen(parseInt(values.port, 10));
@@ -133,6 +148,7 @@ if (mock.stateRestore === null) {
 }
 console.log(`dwc-ng-config.json seed: version ${configVersion}${configVersion === 3 ? " (current)" : ""}`);
 if (values["frozen-screen"]) console.log("frozen screen (--frozen-screen): screens.layouts.machine holds a pre-#86 subset override");
+if (values.unidentified) console.log("unidentified (--unidentified): no boards[].uniqueId, no interface MAC — the UI cannot key this machine");
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
 	process.on(signal, () => {
