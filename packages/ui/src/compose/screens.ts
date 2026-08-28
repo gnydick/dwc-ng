@@ -14,8 +14,8 @@
  * carried before the conversion. User screens (overlay entries with minted
  * stable ids) join this list in phase A7b.
  */
-import { parseComposition, slotsOf, toSlotRect, type Composition, type CustomCardId } from "./composition.ts";
-import { readCanvasOrientation, readCanvasState, writeCanvasState, type CanvasState } from "../shell/panelCanvas.ts";
+import { mergeComposition, parseComposition, parseTombstones, slotsOf, toSlotRect, type Composition, type CustomCardId } from "./composition.ts";
+import { layoutBasis, readCanvasOrientation, readCanvasState, restampCanvas, writeCanvasState, type CanvasState } from "../shell/panelCanvas.ts";
 import type { OrientationState } from "../shell/panelOrientation.ts";
 import { LAB_ROUTE } from "../shell/router.ts";
 import { isUserScreenId, type SlotRect, type UiConfig, type UserScreenId } from "../config/types.ts";
@@ -183,17 +183,16 @@ export const BED_COMPOSITION: Composition = {
  * column instead of sitting side by side, which is also what makes column 2
  * the tallest: Decay's chart (189) is not squeezed to balance the others.
  *
- * BALANCE: col 0 status+candidates+apply = 156+75+50 = 281. col 1
- * capture+custom+verify = 140+71+62 = 273. col 2 decay+sweep = 189+118 =
- * 307. Range 34 rows (12% of the 287 average) over 3 columns of 2-3 cards
- * each, with the chart column allowed to run long on purpose — tighter
- * would mean either shrinking Decay below its content or breaking the
- * workflow-order property above.
+ * BALANCE: col 0 status+candidates+apply = 102+75+50 = 227 (156 -> 102 for
+ * shaping-status, #98 — the row that used to reserve space for a message).
+ * col 1 capture+custom+verify = 140+71+62 = 273. col 2 decay+sweep = 189+118
+ * = 307. Range 80 rows (30% of the 269 average), wider than before #98's
+ * shrink — #94 already tracks this drift and nothing here rebalances it.
  */
 export const SHAPING_COMPOSITION: Composition = {
-	"shaping-status": { col: 0, row: 0, colSpan: 156, rowSpan: 108 },
-	"shaping-candidates": { col: 0, row: 108, colSpan: 156, rowSpan: 75 },
-	"shaping-apply": { col: 0, row: 183, colSpan: 156, rowSpan: 50 },
+	"shaping-status": { col: 0, row: 0, colSpan: 156, rowSpan: 102 },
+	"shaping-candidates": { col: 0, row: 102, colSpan: 156, rowSpan: 75 },
+	"shaping-apply": { col: 0, row: 177, colSpan: 156, rowSpan: 50 },
 	"shaping-capture": { col: 156, row: 0, colSpan: 156, rowSpan: 140 },
 	"shaping-custom": { col: 156, row: 140, colSpan: 156, rowSpan: 71 },
 	"shaping-verify": { col: 156, row: 211, colSpan: 156, rowSpan: 62 },
@@ -283,17 +282,25 @@ export function screenList(config: UiConfig): ScreenEntry[] {
 		.filter(([id]) => !screens.hidden.includes(id))
 		.map(([id, def]): ScreenEntry => {
 			const override = screens.layouts[id];
-			const overridden = override !== undefined ? parseComposition(override, customCards) : null;
 			return {
 				id,
 				builtin: true,
 				def: {
 					name: screens.renames[id] ?? def.name,
 					class: def.class,
-					// An override that parsed to nothing (all slots dropped) falls
-					// back to the built-in composition — a screen is never blank
-					// because of stale stored data.
-					composition: overridden !== null && Object.keys(overridden).length > 0 ? overridden : def.composition,
+					// The coded composition MERGED with the override, minus what the
+					// operator removed (#86). The old "an override that parsed to
+					// nothing falls back to the coded composition" special case is
+					// gone because the merge subsumes it and gets the case the
+					// fallback got WRONG: stale or garbled stored data yields no
+					// slots and no tombstones, so the merge is the coded set exactly
+					// as before — but an operator who removed every card now gets an
+					// empty screen instead of all of them back.
+					composition: mergeComposition(
+						def.composition,
+						parseComposition(override, customCards),
+						parseTombstones(override, customCards),
+					),
 				},
 			};
 		});
@@ -425,7 +432,13 @@ export function replaceScreenLayout(store: LayoutStore, machineStore: MachineSto
 	for (const [id, rect] of Object.entries(rects)) {
 		if (rect.orientation !== undefined) orientations[id] = rect.orientation;
 	}
-	writeCanvasState(machineStore, screenId, rects, orientations);
+	// The basis is derived from the overlay AFTER the write, through the same
+	// projection a mount will use (savedScreenLayout) — so the canvas record
+	// names exactly what the next mount will compare it against. Deriving it
+	// from `rects` instead would be subtly wrong: replaceAllScreenCards can
+	// carry tombstones forward (#86), so what lands in the overlay is not
+	// always what was passed in.
+	writeCanvasState(machineStore, screenId, rects, orientations, layoutBasis(savedScreenLayout(store.config, screenId)));
 }
 
 /** The orientations an imported/replacement layout carries. */
@@ -460,6 +473,11 @@ export function captureScreenGeometry(store: LayoutStore, machineStore: MachineS
 			});
 		}
 		store.replaceAllScreenCards(entry.id, cards);
+		// A Save reconciles the two stores, so it says so. Without this the
+		// canvas still names the layout it was BUILT from, the next mount reads
+		// that as a stale browser, and the operator is told a layout was
+		// dropped when the two copies are identical (#87).
+		restampCanvas(machineStore, entry.id, layoutBasis(savedScreenLayout(store.config, entry.id)));
 	}
 }
 
@@ -486,7 +504,11 @@ export function screensUsing(config: UiConfig, cardId: CustomCardId): ScreenUse[
 	const screens = config.screens;
 	for (const [id, def] of Object.entries(BUILTIN_SCREENS) as Array<[BuiltinScreenId, ScreenDef]>) {
 		const override = screens.layouts[id];
-		if (override !== undefined && Object.hasOwn(override, cardId)) {
+		// `!= null` and not `hasOwn`: a tombstoned card is recorded on this
+		// screen but is not ON it, and counting it would tell the operator a
+		// card they removed is still placed — in the one report whose whole job
+		// is the blast radius of deleting it (#86).
+		if (override !== undefined && override[cardId] != null) {
 			uses.push({ id, name: screens.renames[id] ?? def.name, hidden: screens.hidden.includes(id) });
 		}
 	}

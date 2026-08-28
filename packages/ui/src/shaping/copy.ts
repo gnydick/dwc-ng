@@ -36,7 +36,7 @@ import type { Provenance, Supersede } from "./evidence/evidence.ts";
 import type { StepBlock, StepNeed, StepStatus } from "./steps.ts";
 import type { MotionOutcome, MotionState } from "./motionRun.ts";
 import type { RunKind, RunRequest } from "./runPlan.ts";
-import type { BatchPurpose } from "../compose/services.ts";
+import type { BatchPurpose } from "../compose/shapingService.ts";
 import type { ApplyHow, ApplyIntent, ApplyState } from "./applyRun.ts";
 import type { SweepState } from "./sweepRun.ts";
 
@@ -109,6 +109,16 @@ export function refusalText(r: Refusal): string {
 			return "the machine is not reporting a travel acceleration — set one with M204 and try again";
 		case "no-sample-rate":
 			return "the accelerometer did not report a sampling rate — check the board's M955 configuration";
+		case "tool-unknown":
+			// A machine fact and a connection fact at once, so the sentence names
+			// the thing that is missing rather than a remedy this screen could be
+			// wrong about. Nothing on the Shaping screen sets it.
+			return "the machine is not reporting which tool is on the carriage — reconnect and try again";
+		case "no-such-tool":
+			// The tool is named because the operator chose it: the shaping screen
+			// is per-tool, and the fix is to pick a head this machine has or to
+			// define it in config.g.
+			return `this machine does not have a tool ${r.tool} — pick another head, or define it in config.g`;
 		case "capture-too-long":
 			// Both numbers, because the ratio is what says how much slower the
 			// run is than the board can record — and the remedy follows from it.
@@ -782,4 +792,15 @@ export function applyStateText(s: ApplyState): string {
 			throw new Error(`unknown apply state: ${String((unhandled as { kind: unknown }).kind)}`);
 		}
 	}
+}
+
+/**
+ * The status card's one message line, picked from two independent sources
+ * that never both matter equally: a results file this build could not parse
+ * outranks a failed rank or run, because the unreadable file makes everything
+ * else the card shows suspect. Empty when neither has anything to say, which
+ * is the ordinary case and the one #98 stopped reserving a row for.
+ */
+export function statusMessageText(storeError: string, problem: string): string {
+	return storeError || problem;
 }

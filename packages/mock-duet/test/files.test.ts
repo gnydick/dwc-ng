@@ -111,6 +111,39 @@ test("--config-version 2 carries the current overlay shape under the pre-split v
 	assert.equal(parsed.overlay.shaping.accelByTool["0"], "20.0");
 });
 
+test("--frozen-screen seeds a pre-#86 screen override, and the default seeds none", async t => {
+	// #86: a built-in screen's saved layout used to REPLACE its coded
+	// composition, so an operator who ever pressed Save never saw a card
+	// shipped to that screen again. The state only exists for a machine whose
+	// SD carries an override, so a fresh mock cannot show the fix at all —
+	// this flag is how the degraded machine is presented ON PURPOSE (GIT_92's
+	// own rule about reachable states).
+	const mock = await startMock({ frozenScreen: true });
+	t.after(() => mock.close());
+	const key = await mock.connect();
+
+	const down = await mock.getRaw("rr_download?name=0:/sys/dwc-ng-config.json", key);
+	const parsed = JSON.parse(await down.text());
+	const machine = parsed.overlay.screens.layouts.machine;
+	assert.deepEqual(Object.keys(machine).sort(), ["position", "tools-heaters"]);
+	// The whole point of the pre-#86 shape: no tombstone anywhere. An override
+	// written before they existed cannot carry one, and seeding one would be
+	// testing the NEW path while claiming to be the old state.
+	for (const value of Object.values(machine)) {
+		assert.notEqual(value, null, "a pre-tombstone override holds rects only");
+	}
+});
+
+test("the default mock seeds NO screen override, so nothing is frozen out of the box", async t => {
+	const mock = await startMock();
+	t.after(() => mock.close());
+	const key = await mock.connect();
+
+	const down = await mock.getRaw("rr_download?name=0:/sys/dwc-ng-config.json", key);
+	const parsed = JSON.parse(await down.text());
+	assert.equal(parsed.overlay.screens, undefined, "the ordinary machine is not degraded");
+});
+
 test("rr_filelist reports err 1 (unmounted) and err 2 (missing)", async t => {
 	const mock = await startMock();
 	t.after(() => mock.close());

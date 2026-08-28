@@ -7,6 +7,7 @@ import { createDsfModel, type DsfModel, type DsfDigest } from "./dsfModel.ts";
 import { isEmergencyStop } from "./emergency.ts";
 import { isPlainObject } from "./safeObject.ts";
 import { realClock, type Clock, type TimerHandle } from "./clock.ts";
+import { SessionSlot, sessionRefusal, assertGoodbyeDelivered, GOODBYE_TIMEOUT_MS, type SessionRefusal } from "./session.ts";
 
 // --- platform-timer shadow (invariant connector/clock-seam) -----------------
 // Module-scoped shadows of the platform's timers: `setTimeout(...)` in this
@@ -84,9 +85,16 @@ export class DsfConnector implements Connector {
 	/** Every deferral below runs on THIS, never on the platform (clock.ts). */
 	private readonly clock: Clock;
 
+	/**
+	 * The one session this connector may hold (session.ts). Taking a new key
+	 * through it IS handing the old one back, which is what stops a flapping
+	 * link from eating every slot on the board (GIT_110).
+	 */
+	private readonly session: SessionSlot<string>;
 	/** DSF session key (numeric on the wire; kept as header text). Null =
-	 *  sessionless (no password set, or a pre-3.4-b4 DSF without connect). */
-	private sessionKey: string | null = null;
+	 *  sessionless (no password set, or a pre-3.4-b4 DSF without connect).
+	 *  Read-only on purpose: the slot owns the write side. */
+	private get sessionKey(): string | null { return this.session.key; }
 	/** The one live push socket. Per-socket state (model, lastSeen) lives in
 	 *  openSocket's closure, NOT here — see the C8 note there. */
 	private sock: WebSocket | null = null;
@@ -103,6 +111,18 @@ export class DsfConnector implements Connector {
 		this.requestTimeoutMs = options.requestTimeoutMs ?? 5000;
 		this.events = options.events ?? {};
 		this.clock = options.clock ?? realClock;
+		this.session = new SessionSlot<string>(async key => assertGoodbyeDelivered(await fetch(this.machineUrl("disconnect"), {
+			headers: { "X-Session-Key": key },
+			// The goodbye must outlive the page that sends it: an ordinary
+			// fetch is cancelled the instant the document unloads, which is
+			// precisely the moment releaseSessionWhileHidden fires one.
+			keepalive: true,
+			// Its OWN budget, deliberately shorter than a request's: a
+			// reconnect waits behind this, so a dead network must cost the
+			// ladder a second at most (requirement 2 — best effort, never a
+			// block). Derived, not a new knob.
+			signal: this.clock.timeoutSignal(Math.min(this.requestTimeoutMs, GOODBYE_TIMEOUT_MS)),
+		})));
 	}
 
 	// ---------- lifecycle ----------
@@ -128,19 +148,9 @@ export class DsfConnector implements Connector {
 		this.deliberate = true;
 		this.stopReconnect();
 		this.teardownSocket();
-		if (this.sessionKey !== null) {
-			// Best effort: the WS unpin already lets the session idle out, so a
-			// failed goodbye costs nothing.
-			try {
-				await fetch(this.machineUrl("disconnect"), {
-					headers: { "X-Session-Key": this.sessionKey },
-					signal: this.clock.timeoutSignal(this.requestTimeoutMs),
-				});
-			} catch {
-				// nothing to recover
-			}
-		}
-		this.sessionKey = null;
+		// Best effort inside the slot: the WS unpin already lets the session
+		// idle out, so a failed goodbye costs nothing but time we do not spend.
+		await this.session.release();
 		this.setStatus("disconnected");
 	}
 
@@ -151,8 +161,27 @@ export class DsfConnector implements Connector {
 	 * versions before 3.4-b4 that have no connect route at all. A truly
 	 * dead server then surfaces at the WebSocket, not here.
 	 */
-	private async openSession(): Promise<void> {
-		this.sessionKey = null;
+	private openSession(): Promise<void> {
+		// Acquiring through the slot RELEASES the key being replaced first —
+		// the ladder cannot outrun the board's ability to free what the last
+		// attempt took, because freeing it is on the critical path of the next
+		// one (GIT_110 requirement 4).
+		return this.session.acquire(() => this.fetchSessionKey());
+	}
+
+	/**
+	 * The same negotiation, for the case where the board has just REFUSED the
+	 * key we held. No goodbye: a 401/403 is the board saying that session is
+	 * already gone, and the `refusal` token is what keeps this route from
+	 * being a general way to skip one (session.ts).
+	 */
+	private reopenSession(refusal: SessionRefusal): Promise<void> {
+		return this.session.reauth(refusal, () => this.fetchSessionKey());
+	}
+
+	/** The bare negotiation. Returns the key to hold, or null for sessionless
+	 *  parity; the slot is the only thing that stores it. */
+	private async fetchSessionKey(): Promise<string | null> {
 		let res: Response;
 		try {
 			res = await fetch(
@@ -160,7 +189,7 @@ export class DsfConnector implements Connector {
 				{ signal: this.clock.timeoutSignal(this.requestTimeoutMs) },
 			);
 		} catch {
-			return; // sessionless parity
+			return null; // sessionless parity
 		}
 		if (res.status === 401 || res.status === 403) throw new InvalidPasswordError();
 		// 404 alone is the sessionless fallback: DSF before 3.4-b4 has no
@@ -170,13 +199,14 @@ export class DsfConnector implements Connector {
 		// the seam's later 401 replay retry connect, fail again, and finally
 		// throw InvalidPasswordError, telling the operator the password was
 		// wrong when DCS was simply down.
-		if (res.status === 404) return;
+		if (res.status === 404) return null;
 		if (!res.ok) throw new OperationFailedError(`/machine/connect: HTTP ${res.status}`);
 		const body = await res.json().catch(() => null) as unknown;
 		if (isPlainObject(body)) {
 			const key = body["sessionKey"];
-			if (typeof key === "number" || typeof key === "string") this.sessionKey = String(key);
+			if (typeof key === "number" || typeof key === "string") return String(key);
 		}
+		return null;
 	}
 
 	/**
@@ -401,9 +431,10 @@ export class DsfConnector implements Connector {
 		} catch (err) {
 			throw new OperationFailedError(`emergency stop: ${(err as Error).message}`);
 		}
-		if ((res.status === 401 || res.status === 403) && !retried) {
+		const refusal = sessionRefusal(res.status);
+		if (refusal !== null && !retried) {
 			try {
-				await this.openSession();
+				await this.reopenSession(refusal);
 			} catch {
 				// Even a bad password must not stop the re-fire attempt; the
 				// re-POST below reports the truth either way.
@@ -569,12 +600,13 @@ export class DsfConnector implements Connector {
 			throw new OperationFailedError(`${method} ${url}: ${(err as Error).message}`);
 		}
 		if (res.ok) return res;
-		if (res.status === 401 || res.status === 403) {
+		const refusal = sessionRefusal(res.status);
+		if (refusal !== null) {
 			if (retried) throw new InvalidPasswordError();
 			// Culled session (DCS restart, idle sweep): re-auth transparently
 			// and replay exactly once — bodies here are strings/bytes/params,
 			// all safely re-sendable.
-			await this.openSession();
+			await this.reopenSession(refusal);
 			return this.request(method, url, opts, true);
 		}
 		if (res.status === 404) throw new FileNotFoundError(opts.path ?? url);

@@ -572,7 +572,22 @@ export const CARD_DEFS = {
 		// across the 720 / 400 / 200 px probes (reproduced twice), body worth 93
 		// of it, no child moved. colStop held at 125 — the walk never set the
 		// column floor, only the tools table did.
-		size: { colSpan: 156, rowSpan: 108 },
+		//
+		// 108 -> 102 for the message row (#98, live UAT: "remove all of the dead
+		// space from the top of the Shaping card"). `.shp-msg` held 4.5u of
+		// line-height plus 1u of margin whether or not there was a message; it
+		// now renders only when `message()` is non-empty. Re-measured via
+		// contentRowSpan() against `shaping-measured` (empty message): row stop
+		// 102, reproduced twice, body worth 87 of it, no child moved across the
+		// 720 / 400 / 200 px probes. colStop held at 125 — the message row never
+		// set the column floor. A message toggling on or off does move the
+		// picker/table/steps by the row's own 5.5u once the card sits AT this
+		// floor with no slack left above content; toggled live at a taller Lab
+		// preview height it moved nothing below the Running line at all, because
+		// `.panel-body > .card-head`'s own `margin-bottom: auto` absorbed the
+		// 5.5u out of the free space between the header and the Running line —
+		// the same slack-absorption this file's floors are measured to ignore.
+		size: { colSpan: 156, rowSpan: 102 },
 	}),
 	/** The test motion: the box it may move in, the sensor, the moves it will
 	 *  make, and the armed control that makes them. */

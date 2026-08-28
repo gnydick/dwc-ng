@@ -8,6 +8,7 @@ import { buildModelResponse } from "./model-query.ts";
 import { crc32 } from "./crc32.ts";
 import { createDsfEndpoint, type DsfEndpoint } from "./dsf.ts";
 import { scenarios, type Scenario } from "./scenarios/index.ts";
+import { openStateStore, type RestoreResult, type StateStore } from "./persist.ts";
 
 export interface MockServerOptions {
 	scenario?: Scenario | string;
@@ -47,12 +48,51 @@ export interface MockServerOptions {
 	 * synthetic parser tests (GIT_92 requirement 3).
 	 */
 	configVersion?: ConfigSeedVersion;
+	/**
+	 * Persist this mock's state to this file, and restore from it at startup
+	 * (persist.ts). OMITTED BY DEFAULT, and that default is the feature: a mock
+	 * that forgets is a faithful model of a machine that can be wiped, and one
+	 * that silently remembers can hide a config-LOADING bug. Given a path, the
+	 * SD tree and the session's machine state are written as ONE snapshot after
+	 * every request that changed anything.
+	 */
+	statePath?: string;
+	/**
+	 * Seed `screens.layouts.machine` with a PRE-TOMBSTONE override holding a
+	 * subset of the Machine screen's coded cards — the state every operator
+	 * who ever pressed Save was in before #86.
+	 *
+	 * Off by default, because it is a deliberately DEGRADED machine: the point
+	 * of the state is that cards are missing. It exists so the fix is
+	 * observable on the mock at all — a fresh machine has no override, so
+	 * nothing was ever frozen and there is nothing to un-freeze (GIT_92's rule
+	 * that every state the UI must handle has a way to be presented on
+	 * purpose).
+	 */
+	frozenScreen?: boolean;
+	/**
+	 * Serve a machine the UI CANNOT identify: no `boards[].uniqueId`, no
+	 * interface MAC (snapshot.ts `stripIdentity`).
+	 *
+	 * Off by default, and deliberately so — this is a degraded machine. It
+	 * exists because closing GIT_92's requirements 1 and 2 made the
+	 * unidentified path unreachable on the mock, and the UI has real behaviour
+	 * for it that nothing could otherwise drive: the identity card's
+	 * unidentified branch, and `nullCanvasKeys`, the canvas that writes
+	 * nowhere. Composes with every other option; see docs/mock-parity.md.
+	 */
+	unidentified?: boolean;
 }
 
 export interface MockServer {
 	server: http.Server;
 	machine: Machine;
 	sessions: SessionManager;
+	/** The persistence handle, or null when no `statePath` was given. */
+	state: StateStore | null;
+	/** What startup made of the state file: "fresh" also covers no file at
+	 *  all, and "unreadable" carries the reason a damaged one was refused. */
+	stateRestore: RestoreResult | null;
 	listen(port?: number, host?: string): Promise<number>;
 	close(): Promise<void>;
 }
@@ -72,7 +112,14 @@ export function createMockServer(options: MockServerOptions = {}): MockServer {
 	const tickMs = options.tickMs ?? 250;
 	const emulated = options.emulated ?? false;
 
-	const machine = new Machine(scenario, options.model, options.configVersion);
+	const machine = new Machine(scenario, options.model, options.configVersion, options.frozenScreen, options.unidentified);
+	// No path, no store, no write: this is the only construction of a
+	// StateStore in the package, and the only fs write in it happens inside one
+	// (persist.ts). Restoring here — before any hook is wired and before
+	// listen() — means the replayed tool change emits no reply to a client
+	// that has not connected yet.
+	const state = options.statePath === undefined ? null : openStateStore(options.statePath);
+	const stateRestore = state === null ? null : state.restore(machine);
 	const sessions = new SessionManager({
 		maxSessions: options.maxSessions ?? 4,
 		sessionTimeout: options.sessionTimeout ?? 8000,
@@ -94,6 +141,15 @@ export function createMockServer(options: MockServerOptions = {}): MockServer {
 	let lastUploadErr = 0;
 
 	const server = http.createServer((req, res) => {
+		// The ONE flush site. Every mutation in both dialects — rr_ routes
+		// below and DSF's /machine/* routes, which are dispatched from here —
+		// arrives as an HTTP request, so persisting once per completed response
+		// covers all of them without a save() call sprinkled beside each
+		// mutator. "prefinish" fires inside res.end(), before the response
+		// reaches the socket: a client that got its answer knows the state file
+		// already has the change.
+		if (state !== null) res.on("prefinish", () => state.save(machine));
+
 		if (machine.outageActive) {
 			// Simulated network loss: kill the connection without a response
 			req.socket.destroy();
@@ -337,6 +393,8 @@ export function createMockServer(options: MockServerOptions = {}): MockServer {
 		server,
 		machine,
 		sessions,
+		state,
+		stateRestore,
 		listen(port = 0, host = "127.0.0.1"): Promise<number> {
 			return new Promise((resolve, reject) => {
 				server.once("error", reject);

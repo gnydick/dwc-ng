@@ -6,6 +6,8 @@ import { loadCaptureFile } from "../../mock-duet/src/capture.ts";
 import { PollConnector } from "../src/PollConnector.ts";
 import { probeTransport } from "../src/createConnector.ts";
 import { OperationFailedError, type ConnectionStatus } from "../src/types.ts";
+import { createVirtualClock, type VirtualClock } from "./virtualClock.ts";
+import { createLinkGate } from "./linkGate.ts";
 
 const CAPTURE = new URL("../../mock-duet/captures/om-snapshot-2026-07-12.json", import.meta.url);
 
@@ -614,6 +616,125 @@ test("standalone: a busy board outlasts the default ladder, and the deadline is 
 			(err: unknown) => err instanceof OperationFailedError,
 			"the widened ladder did not leak into the following call",
 		);
+	} finally {
+		await connector.disconnect().catch(() => undefined);
+		await gate.close();
+		await mock.close();
+	}
+});
+
+// ---- session slots across a flapping link (GIT_110) ----
+
+/** Move `clock` forward in steps until `cond` holds, letting real I/O run. */
+async function advanceUntil(
+	clock: VirtualClock, cond: () => boolean, label: string, stepMs = 5, maxMs = 4000,
+): Promise<void> {
+	let moved = 0;
+	while (!cond()) {
+		if (moved >= maxMs) throw new Error(`never held within ${maxMs} virtual ms: ${label}`);
+		await clock.advance(stepMs);
+		moved += stepMs;
+	}
+}
+
+/**
+ * The standalone half of GIT_110's headline test — the same claim the DSF side
+ * makes, on the transport CLAUDE.md's hard constraints are actually about
+ * ("very few concurrent connections"). The mock's own defaults are used
+ * deliberately: maxSessions 4, sessionTimeout 8000.
+ *
+ * The link is restored the instant "reconnecting" is observed and BEFORE the
+ * ladder's first attempt (attempts are clock-driven and the first is two poll
+ * intervals out, so no attempt can fire while the test is not advancing). That
+ * makes the board reachable at goodbye time, which is the case the slot count
+ * is a claim about: a reachable board that is never told the old session is
+ * finished with.
+ */
+test("standalone: a flapping link holds ONE session slot, however many reconnects", { timeout: 20_000 }, async () => {
+	const mock = createMockServer({ tickMs: 0, maxSessions: 4, sessionTimeout: 8000 });
+	const boardPort = await mock.listen(0);
+	const gate = createLinkGate(boardPort);
+	const gatePort = await gate.listen();
+	const clock = createVirtualClock();
+	const connector = new PollConnector({
+		baseUrl: `http://127.0.0.1:${gatePort}`,
+		pollIntervalMs: 50,
+		retryDelayMs: 5,
+		maxRetries: 1,
+		requestTimeoutMs: 2000,
+		clock,
+	});
+	try {
+		await connector.connect();
+		assert.equal(mock.sessions.size, 1, "one tab, one slot");
+
+		const slots: number[] = [];
+		let stalled: string | null = null;
+		for (let i = 0; i < 6; i++) {
+			gate.cut();
+			await advanceUntil(clock, () => connector.status === "reconnecting", `poll ${i + 1} noticed the cut`);
+			gate.restore();
+			try {
+				await advanceUntil(clock, () => connector.status === "connected", `reconnect ${i + 1} completed`);
+			} catch (err) {
+				stalled = (err as Error).message;
+				break;
+			}
+			slots.push(mock.sessions.size);
+		}
+
+		assert.equal(stalled, null,
+			`the ladder stopped recovering after ${slots.length} reconnects, with ${mock.sessions.size}/4 slots in use`);
+		assert.deepEqual(slots, [1, 1, 1, 1, 1, 1],
+			"steady-state slot usage for ONE browser tab is ONE, however many reconnects");
+	} finally {
+		await connector.disconnect().catch(() => undefined);
+		await gate.close();
+		await mock.close();
+	}
+});
+
+/**
+ * Requirement 2. A goodbye is best effort: when the link is genuinely dead the
+ * board never hears it, and that must cost the ladder NOTHING — not a stall,
+ * not a missed attempt, not a connector that never comes back. The orphaned
+ * session left behind is the accepted price, and the board's idle sweep is what
+ * collects it; what is not acceptable is the ladder waiting on a network that
+ * is not going to answer.
+ *
+ * The gate counts every connection offered to it, refused ones included, so
+ * "kept trying while the link was down" is asserted rather than assumed.
+ */
+test("standalone: a goodbye into a black hole neither stalls nor breaks the ladder", { timeout: 20_000 }, async () => {
+	const mock = createMockServer({ tickMs: 0, maxSessions: 4, sessionTimeout: 60_000 });
+	const boardPort = await mock.listen(0);
+	const gate = createLinkGate(boardPort);
+	const gatePort = await gate.listen();
+	const clock = createVirtualClock();
+	const connector = new PollConnector({
+		baseUrl: `http://127.0.0.1:${gatePort}`,
+		pollIntervalMs: 50,
+		retryDelayMs: 5,
+		maxRetries: 1,
+		requestTimeoutMs: 2000,
+		clock,
+	});
+	try {
+		await connector.connect();
+		assert.equal(mock.sessions.size, 1);
+
+		gate.blackhole();
+		await advanceUntil(clock, () => connector.status === "reconnecting", "the poll noticed the silence", 25, 20_000);
+		const attemptsAtCut = gate.attempts();
+
+		// Attempts now run against a dead link: each one tries to hand the old
+		// key back, fails, and must carry on to the connect anyway.
+		await advanceUntil(clock, () => gate.attempts() > attemptsAtCut + 1,
+			"the ladder kept attempting while the link was down", 25, 20_000);
+
+		gate.restore();
+		await advanceUntil(clock, () => connector.status === "connected", "recovered once the link returned", 25, 20_000);
+		assert.equal(connector.status, "connected");
 	} finally {
 		await connector.disconnect().catch(() => undefined);
 		await gate.close();

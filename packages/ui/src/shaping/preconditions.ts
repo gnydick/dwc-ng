@@ -16,7 +16,12 @@
 
 import type { AccelAddr } from "../control/commands.ts";
 import type { Envelope, ShapingConfig } from "../config/types.ts";
-import type { Accelerometer, ObjectModel, Shaping } from "../om/types.ts";
+import type { ObjectModel, Shaping } from "../om/types.ts";
+// The one definition lives in its own module so the EAGER Settings card can
+// reach it without dragging this file onto the critical path (#126). Re-
+// exported here because `read` below is its main caller and the run loop
+// reads it as part of this module's surface.
+import { accelerometerOf } from "./accelPresence.ts";
 import { mm, mmPerS2, type Mm, type MmPerS2 } from "./engine/units.ts";
 
 /**
@@ -63,7 +68,19 @@ export type Refusal =
 	/** A pass needs more accelerometer samples than one M956 can ask for. The
 	 *  cause is always a slow move over a long distance: recording time is
 	 *  distance ÷ speed, so halving the speed doubles the file. */
-	| { readonly kind: "capture-too-long"; readonly samples: number; readonly max: number };
+	| { readonly kind: "capture-too-long"; readonly samples: number; readonly max: number }
+	/** The object model did not report which head is on the carriage as a whole
+	 *  number. Refused rather than assumed, because both halves of #51 are
+	 *  built on that number: what the run must pick up, and what it must put
+	 *  back. A guess would make a run that changes tools unable to undo itself,
+	 *  and a fingerprint filed against a head nobody can name. */
+	| { readonly kind: "tool-unknown" }
+	/** The run is for a tool this machine does not have. RRF answers `T9` on a
+	 *  four-head machine by running `tfree` for the OLD tool and then selecting
+	 *  nothing (reference/duet-gcode.md, T: "Selecting a non-existent tool just
+	 *  does Steps 1-2"), so the machine ends up holding no tool at all and the
+	 *  run records a bare carriage under the name of a head. */
+	| { readonly kind: "no-such-tool"; readonly tool: number };
 
 /** An XY point in the user coordinates G90 + G1 speak. */
 export type Point = { readonly x: Mm; readonly y: Mm };
@@ -114,6 +131,21 @@ export class Preconditions {
 	readonly travelAccel: MmPerS2 | null;
 	/** `move.shaping` at read time — what `restore` must put back. */
 	readonly priorShaping: Shaping;
+	/**
+	 * `state.currentTool` at read time: the head ON THE CARRIAGE, `-1` for
+	 * none. An integer by construction — `read` refuses `tool-unknown`
+	 * otherwise — so the two things #51 needs it for are never a guess: the
+	 * change the run must make, and the change it must undo.
+	 */
+	readonly mountedTool: number;
+	/**
+	 * The tool numbers this machine reports, from `tools[].number` rather than
+	 * from the array index. M563 lets a configuration define tools 17, 29 and
+	 * 48 (reference/duet-gcode.md, T), so the index is not the number and a
+	 * run planned against the index would send a `T` for a head that is not
+	 * there.
+	 */
+	readonly toolNumbers: readonly number[];
 	/** The box from config, present by construction: `read` refuses without it. */
 	readonly envelope: Envelope;
 
@@ -124,6 +156,8 @@ export class Preconditions {
 		travelAccel: MmPerS2 | null,
 		priorShaping: Shaping,
 		envelope: Envelope,
+		mountedTool: number,
+		toolNumbers: readonly number[],
 	) {
 		this.#readAt = readAt;
 		this.position = position;
@@ -131,6 +165,8 @@ export class Preconditions {
 		this.travelAccel = travelAccel;
 		this.priorShaping = priorShaping;
 		this.envelope = envelope;
+		this.mountedTool = mountedTool;
+		this.toolNumbers = toolNumbers;
 	}
 
 	/** When this was read, in the caller's clock. `planProcedure` refuses one
@@ -146,6 +182,13 @@ export class Preconditions {
 	static read(om: ObjectModel, cfg: ShapingConfig, accel: AccelAddr, now: number): ReadResult {
 		const status = om.state.status;
 		if (status !== "idle") return { ok: false, refusal: { kind: "not-idle", status } };
+
+		// FIRST among the machine facts, because it is the one the whole of #51
+		// hangs on and it costs nothing: a run that cannot say which head is on
+		// the carriage can neither attribute what it measures nor undo the
+		// change it is about to make.
+		const mountedTool = mountedToolOf(om);
+		if (mountedTool === null) return { ok: false, refusal: { kind: "tool-unknown" } };
 
 		// One read per axis, and the SAME read decides both the refusal and the
 		// planned-from position — there is no second lookup that could disagree
@@ -182,7 +225,9 @@ export class Preconditions {
 
 		return {
 			ok: true,
-			pre: new Preconditions(now, { x, y }, accel, travelAcceleration(om), om.move.shaping, envelope),
+			pre: new Preconditions(
+				now, { x, y }, accel, travelAcceleration(om), om.move.shaping, envelope, mountedTool, toolNumbersOf(om),
+			),
 		};
 	}
 }
@@ -219,26 +264,6 @@ export function planarPosition(om: ObjectModel, letter: "X" | "Y"): Mm | null {
 }
 
 /**
- * The accelerometer at this address, or null when that board has none.
- *
- * Exported for the same reason as `planarPosition`: the run loop watches
- * `runs` on the SAME sensor `read` insisted was present, and a second board
- * lookup could pick a different one.
- *
- * The address is `board.device` (or the bare `0` the mainboard answers to), so
- * the board half is what selects the entry in `boards`. Matching on
- * `canAddress` rather than the array index is the point: the index is the
- * order the firmware happens to report boards in, and addressing a capture at
- * the wrong board produces a real-looking file from the wrong sensor.
- */
-export function accelerometerOf(om: ObjectModel, accel: AccelAddr): Accelerometer | null {
-	const boardAddress = Number(String(accel).split(".")[0]);
-	if (!Number.isInteger(boardAddress)) return null;
-	const board = om.boards.find((b) => b !== null && (b.canAddress ?? 0) === boardAddress);
-	return board?.accelerometer ?? null;
-}
-
-/**
  * Parse, don't trust: the declared type says `number | null`, but the live
  * d99fn patch route never meets `conformModelKey`, so the declaration is a
  * claim the store does not enforce. Widened back to `unknown` and re-checked,
@@ -253,4 +278,82 @@ export function accelerometerOf(om: ObjectModel, accel: AccelAddr): Acceleromete
 export function travelAcceleration(om: ObjectModel): MmPerS2 | null {
 	const raw: unknown = om.move.travelAcceleration;
 	return typeof raw === "number" && Number.isFinite(raw) && raw > 0 ? mmPerS2(raw) : null;
+}
+
+/**
+ * Which head is on the carriage, or null when the machine did not say.
+ *
+ * Parse, don't trust — the same second parse `travelAcceleration` makes and for
+ * the same reason: the live d99fn patch route never meets `conformModelKey`, so
+ * the declared `currentTool: number` is a claim the store does not enforce.
+ * `-1` is RRF's own spelling of "no tool" and is a perfectly good answer here;
+ * a string, a NaN or a fraction is not, and there is no safe stand-in for it.
+ */
+function mountedToolOf(om: ObjectModel): number | null {
+	const raw: unknown = om.state.currentTool;
+	return typeof raw === "number" && Number.isInteger(raw) ? raw : null;
+}
+
+/** The tool numbers the machine reports, from each tool's own `number`. */
+function toolNumbersOf(om: ObjectModel): readonly number[] {
+	const out: number[] = [];
+	for (const tool of om.tools) {
+		const n: unknown = tool?.number;
+		if (typeof n === "number" && Number.isInteger(n) && n >= 0) out.push(n);
+	}
+	return out;
+}
+
+// Declared, never exported, no runtime value: the brand lives in the type
+// system, which is where the guarantee is needed.
+declare const runPriorBrand: unique symbol;
+
+/**
+ * What the machine was holding when the RUN opened, and the head the run is
+ * for — the one value every leg of that run restores to.
+ *
+ * @invariant a-runs-prior-state-is-minted-once-from-its-opening-reading
+ * @rung 6  choke-point — `RunPrior` carries `runPriorBrand`, a `unique symbol`
+ *          declared here and never exported, so the type cannot be written as
+ *          an object literal anywhere else and `runPriorOf` is the only
+ *          expression in the program that produces one. `Procedure.plan`
+ *          requires one, and a mid-run `Preconditions` is no longer a
+ *          well-typed thing to pass it: before this, `runPrior` was a bare
+ *          `Shaping`, so leg 2's fresh reading compiled perfectly in the slot
+ *          that must hold leg 1's. What is NOT enforced is arity — nothing
+ *          stops a caller minting a second one inside the loop — so the
+ *          remaining discipline is that `runMotion` calls this once, above its
+ *          loop, from a reading taken before any code went out
+ * @why every leg re-reads the machine to be AUTHORISED, and the run's own codes
+ *      have been changing what those readings say. On the shaper this was
+ *      already a live bug (runner.ts): leg 1 states `none`, the poll catches
+ *      up, leg 2 reads `none` back as the thing to restore, and the operator's
+ *      shaper is silently gone. The mounted tool has exactly the same shape and
+ *      a worse ending — leg 2 would read the tool leg 1 PICKED UP as the tool
+ *      to put back, so the machine would be left holding the measured head and
+ *      the restore would report success
+ * @debt arity is convention, not construction: `runPriorOf` can be called
+ *       twice. Promote by making the run itself the producer — a run handle
+ *       minted from the opening reading that hands out procedures — so a second
+ *       prior has no expression rather than merely no call site
+ */
+export type RunPrior = {
+	/** `move.shaping` before the run sent anything. */
+	readonly shaping: Shaping;
+	/** The head on the carriage before the run sent anything; `-1` for none. */
+	readonly mountedTool: number;
+	/** The head this run is FOR — what it must pick up and what its captures
+	 *  are filed against. */
+	readonly tool: number;
+	readonly [runPriorBrand]: true;
+};
+
+/**
+ * The only expression in the program that produces a `RunPrior`.
+ *
+ * Takes a `Preconditions` rather than loose fields, so the state it records is
+ * a reading that passed every refusal rather than a bag a caller assembled.
+ */
+export function runPriorOf(pre: Preconditions, tool: number): RunPrior {
+	return { shaping: pre.priorShaping, mountedTool: pre.mountedTool, tool } as RunPrior;
 }

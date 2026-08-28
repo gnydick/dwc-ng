@@ -4475,20 +4475,23 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; appe
 	white-space: nowrap;
 }
 .shp-warn { margin: 0 0 calc(2 * var(--u)); color: var(--fault); font-size: calc(3.5 * var(--u)); }
-/* Always in the layout, only sometimes visible — the same discipline as
-   .fb-msg. This card is watched while the machine works, so a message arriving
-   must not push the table it sits above down the card. */
+/* Rendered only when there is a message (#98); no reserved height for the
+   ordinary case where there is none. Last child of the card on purpose —
+   nothing follows it, so its arrival or clearing moves nothing else on the
+   card (see the placement comment in ShapingCards.tsx). The top rule is the
+   same inset-shadow idiom `.shp-fact + .shp-fact` uses for a rule between
+   items, borrowed here to mark this as its own line rather than a sixth
+   step trailing the list above it. */
 .shp-msg {
-	margin: 0 0 calc(1 * var(--u));
-	min-height: calc(4.5 * var(--u));
+	margin: calc(2 * var(--u)) 0 0;
+	padding-top: calc(1.5 * var(--u));
+	box-shadow: inset 0 1px 0 var(--hairline);
 	font: 400 calc(3.5 * var(--u))/calc(4.5 * var(--u)) var(--font-body);
 	color: var(--fault);
 	white-space: nowrap;
 	overflow: hidden;
 	text-overflow: ellipsis;
-	visibility: hidden;
 }
-.shp-msg.shp-msg-on { visibility: visible; }
 .shp-warn-inline { color: var(--gold); }
 .shp-ok-inline { color: var(--ok); }
 
@@ -5140,30 +5143,45 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; appe
 	white-space: nowrap;
 }
 
-/* The map's box, declared HERE and not by the drawing. 46u because the plan is
-   a cross or an L inside a rectangle and the thing being read off it is the
+/* The map's box, declared by the STAGE and not by the drawing — the drawing is
+   fitted to the stage, never the other way round. 46u because the plan is a
+   cross or an L inside a rectangle and the thing being read off it is the
    SHAPE — where the moves are relative to the box — which a smaller stage
-   stops answering. The SVG fills this absolutely so its aspect ratio can never
-   reach the card's intrinsic width. */
+   stops answering. */
 .shp-map-stage {
 	flex: 0 0 auto;
 	position: relative;
-	/* Width DECLARED as well as height, which is the difference between this
-	   stage and the chart stages beside it. Those hold a canvas — one child, whose
-	   pixels the layout audit cannot see move — and may safely fill the card. This
-	   holds an SVG whose every leg is a DOM child, so a stage that grew with the
-	   card would move all thirteen of them on a resize: measured 9 moved children
-	   at a full-width stage, none at this one. It is the better drawing anyway —
-	   a map that means the same thing at every card width. */
-	width: calc(58 * var(--u));
-	height: calc(46 * var(--u));
+	/* A FIXED width as well as a fixed height, which is the difference between
+	   this stage and the chart stages beside it. Those hold a canvas — one child,
+	   whose pixels the layout audit cannot see move — and may safely fill the
+	   card. This holds an SVG whose every leg is a DOM child, so a stage that grew
+	   with the card would move all thirteen of them on a resize: measured 9 moved
+	   children at a full-width stage, none at this one. It is the better drawing
+	   anyway — a map that means the same thing at every card width.
+
+	   Both numbers are NOT declared here. They come from MAP_STAGE
+	   (charts/mapData.ts) as an inline style, because the same two numbers are
+	   what the viewBox is fitted to — declared in both places they would
+	   eventually disagree, and the symptom is the drawing hanging out of the
+	   box it was fitted for. The stylesheet keeps everything that is not a
+	   dimension. `border-box` so the padding is the SVG's breathing room
+	   INSIDE the declared box rather than something added to it. */
+	box-sizing: border-box;
 	margin-bottom: calc(1 * var(--u));
 	background: var(--mask-900);
 	box-shadow: inset 0 0 0 1px var(--hairline);
 	border-radius: var(--radius);
 	overflow: hidden;
 }
-.shp-map { position: absolute; inset: calc(1.5 * var(--u)); width: auto; height: auto; }
+/* The SVG IS the stage's content box, and says so. It used to be absolutely
+   positioned with all four insets and `width: auto; height: auto`, which reads
+   as "fill the inset box" and is not what a replaced element does: measured in
+   Chromium, such an SVG takes its width from the left/right insets and then
+   derives its HEIGHT from the ratio its viewBox implies, ignoring top and
+   bottom. A square viewBox made a 220 x 220 box in a 220 x 172 opening and the
+   bottom 48px went under `overflow: hidden`. Two percentages of an in-flow
+   block child have no such rule to get wrong. */
+.shp-map { display: block; width: 100%; height: 100%; }
 .shp-map-empty {
 	position: absolute;
 	inset: 0;

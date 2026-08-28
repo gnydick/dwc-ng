@@ -21,7 +21,7 @@ and invariant claim mentions 13 -> 23, so no mechanism was deleted and no
 claim was lost in the gap. From here the ratchets make a dropped rung visible
 in the diff that drops it.
 
-**Totals:** 153 invariants · 129 at rung 6 or above · 24 below rung 6 (ceiling 24).
+**Totals:** 170 invariants · 146 at rung 6 or above · 24 below rung 6 (ceiling 25).
 
 ## bed
 
@@ -93,6 +93,16 @@ in the diff that drops it.
 
 `packages/ui/src/charts/layerData.ts:18`
 
+### `charts/the-map-is-fitted-to-the-box-it-is-drawn-in` — rung 6
+
+**Mechanism.** sole route — ONE constant is both the stage's size and the aspect the viewBox is fitted to. The stage gets its dimensions from `MAP_STAGE_STYLE` and from nowhere else (app.css declares no width, height or padding for `.shp-map-stage`, and a test asserts it does not), and the aspect `mapView` fits to is NOT a parameter, so no call site can supply a different one. A viewBox whose aspect disagrees with the viewport it is drawn into is therefore not expressible through this module's surface, and `xMidYMid meet` letterboxes by zero: the drawing maps ONTO the visible box, so it is fully visible and centred at every envelope aspect ratio
+
+**Why.** the drawing is a concentric pair — the envelope outside, the capture ring inside — and the operator reads the run's SHAPE off it before arming moves that cross the bed at 200 mm/s. Before the two facts were related, a 400 x 400 envelope produced a 220 x 220 SVG box in a 220 x 172 opening and `overflow: hidden` took the envelope's bottom edge: measured -30.21 px of bottom margin against 17.79 px of top. A portrait envelope lost 198 px. Landscape was never concentric either (top 17.79, bottom 47.88) — it merely did not clip, which is why five months of landscape machines showed nothing
+
+**Debt — promotion.** a branded viewBox type minted only by `mapView`, so a hand-built `MapView` literal cannot carry an arbitrary aspect either; and a lint rather than a test for the stylesheet half
+
+`packages/ui/src/charts/mapData.ts:110`
+
 ## compose
 
 ### `compose/a-shaped-fingerprint-cannot-become-a-baseline` — rung 8
@@ -101,7 +111,7 @@ in the diff that drops it.
 
 **Why.** a baseline measured through a shaper ranks against modes that are not there, applies, and re-measures — nothing downstream can detect it and the output looks clean
 
-`packages/ui/src/compose/services.ts:327`
+`packages/ui/src/compose/shapingService.ts:152`
 
 ### `compose/additive-placement` — rung 7
 
@@ -111,13 +121,21 @@ in the diff that drops it.
 
 `packages/ui/src/compose/composition.ts:27`
 
+### `compose/builtin-composition-is-coded-merged-with-override` — rung 6
+
+**Mechanism.** choke-point — this is the only function that produces a built-in screen's composition, and `screenList` (compose/screens.ts, itself the ONE list nav/router/renderer read) is its only caller. There is no path from a stored override to a rendered screen that does not pass through here, so "the override replaced the coded set" is not a mistake a future reader has to catch — there is nowhere left to write it. Not rung 7: the three arguments are plain values and a second caller could assemble them differently; that residue is pinned by test/screen-composition-merge.test.ts
+
+**Why.** an override REPLACED the coded composition (`screens.ts:296` before this). So the moment an operator saved a built-in screen, its card set froze at that day's cards: every card shipped to that screen afterwards was invisible to them, permanently, with nothing on screen saying so. Shipping a card to a built-in screen did not put it there for anyone who had ever pressed Save @why-tombstones requirements 2 and 3 cannot both be met by inference — absence in the override meant BOTH "did not exist when I saved" and "I took it off". A heuristic over release dates or registry generations would resurrect deliberately removed cards on every release, which is user-visible and indistinguishable from a bug. So removal is written down (`SlotRect | null`) and absence means exactly one thing @limit an override written BEFORE tombstones existed carries no evidence either way, and is read as "never placed" — so its coded cards are added. That is the deliberate asymmetry: the other reading keeps the defect forever for every existing operator, silently, while this one can resurrect a pre-tombstone removal ONCE, visibly, after which removing it again holds. Pinned by name in the test file
+
+`packages/ui/src/compose/composition.ts:152`
+
 ### `compose/card-delete-carries-its-blast-radius` — rung 7
 
 **Mechanism.** sole-constructor type — the armed confirm holds a CardDeletePlan, and `planCardDelete` is its only producer, deriving the screens the card is on AND the message shown from the same id in one pass. The confirm deletes `plan.id`, so the report the operator read and the deletion performed cannot disagree
 
 **Why.** a delete that removes a card from every screen at once is exactly the action whose scope the operator must see before confirming — "delete this card?" cannot precede stripping it from screens they forgot it was on. The plan freezes usage at arm time; the studio is modal over composition edits, so the frozen report cannot go stale between the two clicks
 
-`packages/ui/src/compose/screens.ts:503`
+`packages/ui/src/compose/screens.ts:525`
 
 ### `compose/composition-degrades-per-slot` — rung 6
 
@@ -195,7 +213,7 @@ in the diff that drops it.
 
 **Why.** the run this screen starts sends a 200 mm/s G1 with nobody's hand on the jog wheel. Two of them interleaved would each be re-checking the carriage against ITS plan's expected position and finding the other one's move — every step refused, the machine moving anyway, and two restores racing at the end
 
-`packages/ui/src/compose/services.ts:1174`
+`packages/ui/src/compose/shapingService.ts:1020`
 
 ### `compose/one-service-instance-per-screen` — rung 8
 
@@ -241,13 +259,23 @@ in the diff that drops it.
 
 `packages/ui/src/compose/services.ts:40`
 
+### `compose/the-shaping-factory-is-provided-before-it-is-read` — rung 6
+
+**Mechanism.** choke-point. ONE writer — `compose/cards.tsx`'s `loadShapingLab`, which fills the slot after awaiting the Lab's chunk and BEFORE returning a component — and ONE reader, `SERVICES.shaping`. Every route to the reader goes through `ctx.service("shaping")`, and every call site of that is a Lab body, which Solid cannot render until that same loader has resolved. The factory it writes comes from ShapingCards.tsx's value re-export, so a registration that stopped happening would not compile. Not rung 7: nothing in the type system stops a NEW call site being added outside the Lab's chunk, which is why test/lazy-bundle.test.ts also asserts that no module in the eager import graph calls it synchronously
+
+**Why.** the alternative shapes are worse in ways that matter. An async `service()` moves the ordering problem to every card; a second pool inside the lazy chunk duplicates the memoization that IS the one-instance guarantee; and leaving the factory eager is the defect this exists to fix
+
+**Debt — promotion.** the slot is module-scoped, so it is one factory for the whole page rather than one per screen, and the throw below is rung 2 — the fallback, not the mechanism. Promote by having the loader hand the POOL a resolved factory instead of writing a module-level slot, which needs the pool to be constructible from the loader and is a bigger change than the deploy this is unblocking can carry.
+
+`packages/ui/src/compose/shapingSlot.ts:17`
+
 ### `compose/tool-change-disarms` — rung 6
 
 **Mechanism.** choke point — `setTool` is the sole route to a tool change a card can reach (it is the only member of `SERVICES.shaping`'s returned object that writes `tool`; `setToolNow` itself is a closure-local `const`, never returned, so no card can call it directly — a TypeScript compile error, not a convention), and it now calls `disarmAll()` (control/armed.ts) UNCONDITIONALLY, every time, on every caller — there is no `next !== tool()` guard to word around. `disarmAll` iterates the same `disarmers` Set `createArmed` is the ONLY way to join (test/armed.test.ts walks src for a bypass), so a card that arms via `createArmed` — which is every two-step control in this codebase, by that same walk — is disarmed by construction of calling it, not by a comparison someone remembered to write. Falsified in test/tool-change-disarms.test.ts: arm, call the REAL `svc.setTool`, assert disarmed — including the same-tool case, which a conditional disarm would have missed.
 
 **Why.** before this, an arm payload carrying its OWN tool (`{ kind: "save", tool }`) was how a stale arm was DETECTED — `save()` compared `armed().tool` against `svc.tool()` on every click. The review that closed GIT_90 round 2 traced every such comparison and found no reachable mis-save, but the mismatch was still REPRESENTABLE: two copies of "which tool" existed in the running code, and only careful reading kept them from disagreeing. Gabe, invoking cant-break-by-design: "it shouldn't be possible to mismatch tool identification in the same active code." Removing the second copy (the arm payloads no longer carry a tool at all — ShapingCards.tsx's Decay/Sweep/Capture save arms) and disarming on every tool change makes a stale arm impossible to CLICK rather than merely unprofitable to click: by the time a second click could fire a write, the control has already reverted to unarmed.
 
-`packages/ui/src/compose/services.ts:840`
+`packages/ui/src/compose/shapingService.ts:670`
 
 ## config
 
@@ -257,7 +285,7 @@ in the diff that drops it.
 
 **Why.** a claim names the board it was checked against ("written for b.A") by testing it against WHICHEVER machine was current at load time. Spec §3 explicitly anticipates identity changing under a live session (a mainboard swap, an SD card moved to another board) — a claim raised against B and left standing after re-resolving to C would let Adopt commit A's machine half (envelope included) into config now keyed to C: the exact cross-machine leak this campaign exists to make unrepresentable, reached THROUGH the confirm action rather than around it
 
-`packages/ui/src/config/store.ts:422`
+`packages/ui/src/config/store.ts:501`
 
 ### `config/claimed-not-adopted` — rung 6
 
@@ -265,7 +293,7 @@ in the diff that drops it.
 
 **Why.** spec §3: an SD card cloned or moved to another board must not have its settings silently adopted (a foreign envelope becomes the box the head is driven inside) or silently discarded (a real machine's real settings would be lost the first time its OWN card fails to round-trip through some other path). "Claimed, not adopted" is the third option this function exists to make the default
 
-`packages/ui/src/config/store.ts:874`
+`packages/ui/src/config/store.ts:1027`
 
 ### `config/claimed-not-reachable-without-adopt` — rung 6
 
@@ -273,7 +301,7 @@ in the diff that drops it.
 
 **Why.** `store.meta.claimedProfile` (exposed, reactive) carries only the origin and section NAMES — see ClaimedProfile's doc comment — so a caller reading it can never mistake a claimed fact for live config. The real values still have to live SOMEWHERE for Adopt to apply them; keeping them here, off the store entirely, is what makes "cannot be consumed as fact without an explicit act" true by construction rather than by a caller remembering to check a flag
 
-`packages/ui/src/config/store.ts:319`
+`packages/ui/src/config/store.ts:386`
 
 ### `config/config-section-scope` — rung 6
 
@@ -281,7 +309,7 @@ in the diff that drops it.
 
 **Why.** an unscoped section defaults to whichever half the code happens to write, and the half it must not default into is the machine one: that is how an envelope crosses machines
 
-`packages/ui/src/config/types.ts:352`
+`packages/ui/src/config/types.ts:367`
 
 ### `config/envelope-is-config-not-default` — rung 6
 
@@ -291,7 +319,7 @@ in the diff that drops it.
 
 **Debt — promotion.** promote to rung 7 by branding `Envelope` so a hand-written object literal is not assignable and a future writer physically cannot skip `asEnvelope`. Blocked on the brand having to survive JSON round-trips to the SD card; today the guarantee is "one gate, two callers".
 
-`packages/ui/src/config/types.ts:226`
+`packages/ui/src/config/types.ts:241`
 
 ### `config/id-namespace` — rung 7
 
@@ -299,7 +327,7 @@ in the diff that drops it.
 
 **Why.** "u-" ids must never collide with built-in screen ids or the lab route, and "c-" ids never with registry CardIds. A collision would silently shadow a built-in screen with a user one, and the user could not delete what they had not created
 
-`packages/ui/src/config/store.ts:1084`
+`packages/ui/src/config/store.ts:1237`
 
 ### `config/labels-never-travel` — rung 6
 
@@ -309,7 +337,7 @@ in the diff that drops it.
 
 **Debt — promotion.** the payload is a hand-built object literal, so a future field is one line away — `machineId` (Task 9) is exactly that field arriving. Promote by giving ConfigOverlay a single serialize that returns a branded ConfigPayload upload accepts, so what travels is decided by the overlay's own type rather than here.
 
-`packages/ui/src/config/store.ts:823`
+`packages/ui/src/config/store.ts:976`
 
 ### `config/legacy-key-single-mention` — rung 6
 
@@ -325,7 +353,7 @@ in the diff that drops it.
 
 **Why.** (Ruling 18) an earlier version wrote this half into whichever machine happened to be resolved by `machineStore()` at the synchronous instant `createConfigStore` runs — no stamp, no evidence, on data migrateStorage.ts's own header says "carries no such proof" and "must be DROPPED, never guessed at". That branch was unreachable in THIS app only because of incidental boot ordering (App.tsx constructs the config store before the machine session can resolve) — improbable, not impossible, and this project's standard is that a hazard must be unrepresentable, not merely unlikely today. There is nothing an operator could confirm a recovered half against either (the origin is unknowable in principle), so there is no "claimed, pending confirmation" state to offer instead — dropping it is the only correct answer The one-shot v2 → v3 backfill of the pre-split, origin-global legacy cache (spec §4, campaign #76 phase 1 task 8; see migrateStorage.ts for the exact key name — only that module may spell it). That legacy cache predates Task 6/7's split and, like the live overlay it once carried, proves nothing about which machine wrote its machine-scoped bytes — Ruling 17/18 apply the identical drop-unconditionally rule to its snapshots that the live overlay already follows. The drop is not silent (Ruling 19): every migrated snapshot that HAD a non-empty machine half is named in the returned `droppedMachineSections`, alongside the live overlay's own report, so the one channel the System card already reads (Task 11) carries both. Returns `null` when there was nothing to migrate — the common case on every boot after the first, since readAndClearLegacyPersonCache removes the key on the one read that finds it.
 
-`packages/ui/src/config/store.ts:1231`
+`packages/ui/src/config/store.ts:1384`
 
 ### `config/machine-identity-single-resolution` — rung 6
 
@@ -355,7 +383,7 @@ in the diff that drops it.
 
 **Debt — promotion.** this function's contract depends on its caller never fabricating a `MachineStore` for the wrong machine — nothing here re-checks that a `handle`'s `id` matches "the current machine" beyond what machineSession.ts already guarantees by construction.
 
-`packages/ui/src/config/store.ts:1394`
+`packages/ui/src/config/store.ts:1606`
 
 ### `config/no-unstamped-sd-write` — rung 6
 
@@ -363,7 +391,23 @@ in the diff that drops it.
 
 **Why.** identity resolves about one poll after boot (machineSession.ts). A save attempted in that window must not put an unattributable file on the card — the next machine to read it (even THIS one, on a later boot with a different resolution) would have no stamp to check and no way to tell "mine" from "nobody's"
 
-`packages/ui/src/config/store.ts:841`
+`packages/ui/src/config/store.ts:994`
+
+### `config/one-snapshot-order-and-revert-does-not-use-it` — rung 6
+
+**Mechanism.** choke-point — this getter is the only way out of the module for the backup list, so newest-first is the ONLY order a consumer can observe; the chronological array `meta.snapshots` is module-private. And the order cannot decide what a Restore click MEANS, because `revert` takes an id, not a position: there is no index for a re-ordering to invalidate. Not rung 7 — the id is a plain string a caller could invent, which the not-found branch answers by doing nothing
+
+**Why.** the list was chronological and the card renders into a fixed box that never scrolls (3 rows), so backup 9 of 10 landed below the fold and a save looked like it had not happened (#118, reported with eight backups already on the card). The obvious fix — reversing the render — would have made every Restore click restore the WRONG snapshot, silently, over the live overlay, because revert indexed the array positionally. Both halves are here so neither can be done without the other @why-storage-order-differs the stored array stays oldest-first because the MAX_SNAPSHOTS cap evicts with `slice(-MAX_SNAPSHOTS)` — the oldest must be at the front for the cap to drop the right end. Presentation is reversed once, here, rather than storage being reversed and every eviction site having to remember it
+
+`packages/ui/src/config/store.ts:595`
+
+### `config/open-tab-sees-other-tabs-history` — rung 6
+
+**Mechanism.** choke-point — `mergeSnapshots` is the one function that decides what the history IS, and both the writer (writePersonCache) and this re-hydrator go through it, so a tab's in-memory list and the record on disk cannot disagree about which entries exist. Not rung 7: nothing stops a future field being re-read here without the merge
+
+**Why.** without it the losing tab had to be reloaded before it could see a backup taken next door — and, before the merge above existed, its next commit destroyed that backup instead. The listener is what turns "the other tab wins the race" into "there is no race" @scope SNAPSHOTS ONLY. `overlay` and `dirty` are this instance's own unsaved work; adopting another tab's copy of them would discard an edit the operator is still typing. A `storage` event never fires in the document that caused it, so this can only ever be another tab.
+
+`packages/ui/src/config/store.ts:356`
 
 ### `config/overlay-writes-persist` — rung 6
 
@@ -373,7 +417,15 @@ in the diff that drops it.
 
 **Debt — promotion.** `commit` is closure-private, so this holds within the module and says nothing about a future module. Promotion to 7 is making the overlay a branded value only commit can produce, so a second store could not assign one either.
 
-`packages/ui/src/config/store.ts:366`
+`packages/ui/src/config/store.ts:445`
+
+### `config/person-cache-snapshots-only-grow` — rung 6
+
+**Mechanism.** choke-point, and the strong kind: `writePersonCache` is the ONLY function in the program that writes CONFIG_CACHE_KEY, and its `snapshots` field is not a parameter at all — it is COMPUTED here from the record already on disk. There is no argument a caller can pass, correct or otherwise, that expresses "the stored history is exactly this list", so an instance holding a stale or empty `meta.snapshots` cannot shorten what another instance saved. The rung is 6 rather than 7 because a future module could still call `localStorage.setItem(CONFIG_CACHE_KEY, …)` directly; that is what test/config-person-cache-merge.ts's sole-writer scan pins
+
+**Why.** `persistCache` used to hand `meta.snapshots` straight through, and that list is seeded once at createConfigStore and never re-read — so any tab built BEFORE a save persisted `snapshots: []` over the newer record and the next boot restored nothing (#120 defect A, reproduced with an in-browser setItem hook) @why-ordered ordering by `takenAt` rather than by arrival is what makes the merge idempotent: re-running it over its own output changes nothing, so a record that has been through several writers still reads oldest-first and `revert(i)` still means what the list shows. @why-stable ties are NOT broken by id. `mintSnapshotId` includes `Math.random()`, so an id tie-break REORDERS two backups taken in the same millisecond differently on every write — which is a real gesture (Save, rename, Save again) and made "the newest is last" false at random. Ties keep the order they already have (stored first, then this call's contribution), which `Array.prototype.sort`'s stability guarantees.
+
+`packages/ui/src/config/store.ts:1557`
 
 ### `config/revert-machine-half-scoped-to-current-machine` — rung 6
 
@@ -381,7 +433,7 @@ in the diff that drops it.
 
 **Why.** snapshot() (above) is the sole writer of a machine's own "snapshots" key and never writes under an id taken on a different machine, so `.find(e => e.id === snap.id)` coming up empty on machine B proves the snapshot was not taken on B — but that only tells you WHOSE machine half it isn't; it says nothing about what B's own machine half currently holds, and is no license to overwrite it
 
-`packages/ui/src/config/store.ts:758`
+`packages/ui/src/config/store.ts:908`
 
 ### `config/screen-layout-two-tier` — rung 6
 
@@ -391,7 +443,7 @@ in the diff that drops it.
 
 **Debt — promotion.** replaceAllScreenCards is still reachable from anywhere holding the store, and its name is the only thing saying the caller owes the second tier — which is naming, not prevention. Rung 7 is having it take a branded value that only compose/screens.ts can mint, so a bare Record cannot be passed. Rung 8 would be folding the canvas write in here so one tier alone has no encoding at all; that needs the config store to reach the canvas store, which is a bigger architectural change than this invariant alone justifies.
 
-`packages/ui/src/config/store.ts:164`
+`packages/ui/src/config/store.ts:191`
 
 ### `config/snapshot-cache-is-person-only` — rung 6
 
@@ -399,7 +451,7 @@ in the diff that drops it.
 
 **Why.** a snapshot used to clone the WHOLE joined overlay into this same record (Ruling 17) — reverting to one taken on machine A while pointed at machine B restored A's axis roles and envelope onto B, the exact inherited-envelope hazard this campaign exists to remove
 
-`packages/ui/src/config/store.ts:1149`
+`packages/ui/src/config/store.ts:1302`
 
 ### `config/sole-snapshot-producer` — rung 6
 
@@ -409,7 +461,15 @@ in the diff that drops it.
 
 **Debt — promotion.** promote by making ConfigSnapshot's label a branded SnapshotLabel this function is the sole producer of, so a snapshot assembled elsewhere cannot be pushed at all rather than merely not being.
 
-`packages/ui/src/config/store.ts:713`
+`packages/ui/src/config/store.ts:858`
+
+### `config/tombstones-outlive-a-geometry-write` — rung 6
+
+**Mechanism.** choke-point — this is the only wholesale write of a built-in's override, and it does not TAKE the tombstones: it carries forward every `null` already stored that the incoming record does not name. There is no argument a caller can pass that says "and the removals are gone", so a geometry writer cannot resurrect a removed card whether or not it remembered they exist. Not rung 7: `cards` is a plain record and a caller could still pass a rect for a tombstoned id, which is exactly the re-add gesture and is meant to work
+
+**Why.** `captureScreenGeometry` (Save to machine) rebuilds a screen's whole rect record from the canvas and calls this. Had it dropped tombstones, every Save would have resurrected every card the operator removed — #86's own defect, one layer down, in the one gesture that is supposed to make their layout permanent
+
+`packages/ui/src/config/store.ts:742`
 
 ### `config/untrusted-overlay-boundary` — rung 6
 
@@ -427,9 +487,9 @@ in the diff that drops it.
 
 **Why.** the three pieces (overlay, dirty, snapshots) are one fact about "what the user has unsaved". Persisting two and dropping the third is the dropped-snapshots bug: the overlay survived a reload while the history it belonged to did not, so revert offered nothing to revert to. Task 7 splits `overlay` itself across two records; a second, independently-timed write path to either one would reintroduce the same class of bug
 
-**Debt — promotion.** promote by making persistCache take one CacheRecord value assembled in one place, so a second call site physically cannot pass a subset.
+**Debt — promotion.** promote by making persistCache take one CacheRecord value assembled in one place, so a second call site physically cannot pass a subset. @note #120 A narrowed this invariant's scope rather than weakening it: overlay/dirty/snapshots still reach disk in ONE write, but the snapshot list is no longer this instance's copy — it is derived inside writePersonCache from the record on disk plus whatever this call contributes. "Written together" was always the invariant; "written from one tab's memory" was an unstated assumption riding along with it, and it was false the moment a second tab existed.
 
-`packages/ui/src/config/store.ts:339`
+`packages/ui/src/config/store.ts:406`
 
 ## connector
 
@@ -469,7 +529,7 @@ in the diff that drops it.
 
 **Debt — promotion.** the bypass is chosen by inspecting the code string. Promote by giving the e-stop its own method on the transport so "send this without a slot" is a distinct operation rather than a branch inside the general one, and cannot be reached by any other payload. One transparent re-auth on a culled session (also unqueued), then re-fire; any other failure surfaces to the button, which honestly reports "failed" rather than pretending.
 
-`packages/connector/src/PollConnector.ts:342`
+`packages/connector/src/PollConnector.ts:375`
 
 ### `connector/estop-vocabulary` — rung 6
 
@@ -498,6 +558,14 @@ in the diff that drops it.
 **Debt — promotion.** MEASURED 2026-08-02, and the previously filed promotion does not work. It said: move the connector into its own package, then shadow the global in @dwc-ng/ui with a d.ts declaring `fetch: never`, for rung 7. The package move is done. The shadow is not achievable: a global `declare const fetch: never` does not override lib.dom's declaration — tested directly, a `fetch(...)` call beside it compiles clean, and skipLibCheck hides the duplicate-identifier conflict that would otherwise be raised against the DECLARATION rather than against uses. Making it work needs either dropping "DOM" from ui's lib and re-declaring what the app actually uses, which is a large and fragile surface, or a lint rule — and the linter is a dependency, which is Gabe's call under the dependency policy rather than mine. Filed rather than guessed at: the scan stays, and it now guards a much smaller gap.
 
 `packages/connector/src/index.ts:4`
+
+### `connector/session-replacement-releases` — rung 7
+
+**Mechanism.** sole-constructor/sealed-field. `#key` is a JS private field with no setter and no other writer in the module, so "take a new session without releasing the old one" is not an expression a caller can write — outside this file it is a compile error AND a runtime TypeError. The one route that legitimately skips the goodbye, `reauth`, demands a `SessionRefusal`, a branded token whose sole constructor returns null for any status other than 401/403: a caller with no refusing response cannot reach that route at all. Both routes serialize on one internal chain, so two callers racing (a Connect click landing on top of a ladder attempt) cannot each open a session and leave one of them unowned. A goodbye that cannot be delivered is kept, not forgotten, so the next attempt on a live link still frees the board's slot.
+
+**Why.** a connector that leaks a slot per reconnect attempt starves itself off the machine and cannot recover on its own — and the number of slots on the target hardware is four, or fewer
+
+`packages/connector/src/session.ts:20`
 
 ### `connector/sole-construction` — rung 6
 
@@ -897,6 +965,32 @@ in the diff that drops it.
 
 `packages/mock-duet/src/accelerometer.ts:118`
 
+### `mock-duet/g28-axis-set-from-model` — rung 4
+
+**Mechanism.** static-analysis test (test/gcode-derivation.test.ts) reads this case's own source text and fails the suite if a quoted axis letter is reintroduced into it. Nothing in TypeScript forbids writing `letter === "X"` here, so the source scan is what is actually holding this today, not a decoration on top of it.
+
+**Why.** G28 used to filter a hardcoded ["X","Y","Z"] against the code's letters — a second, independent statement of "what axes exist" that inevitably disagreed with the object model on any machine with more axes (the bundled 7-axis toolchanger: X Y Z U V W C), and silently homed X/Y/Z for any letter it didn't recognise. Deriving the set from om.move.axes at the one call site removes the second statement instead of reconciling it (technique 8, derive-don't-duplicate) — there is nothing left to disagree with.
+
+**Debt — promotion.** promotion to 7 is a branded AxisLetter type mintable only by looking one up in om.move.axes, so a handler can never hold a letter value the model doesn't have; that closes the gap the source scan can only detect after the fact.
+
+`packages/mock-duet/src/gcode.ts:72`
+
+### `mock-duet/mock-state-atomic-replace` — rung 6
+
+**Mechanism.** choke-point. `writeAtomic` below is the only function in the package that opens a file for writing, and it writes a temp file in the destination's own directory, fsyncs it, and renames it over the destination. A reader therefore observes either the previous file or the new one, never a prefix of the new one — the mock is routinely killed with `Stop-Process -Force`, which can land between any two bytes. On top of that the file carries a CRC-32 of its payload, so a file damaged by anything OUTSIDE this writer is reported unreadable and the mock starts clean, rather than restoring half a machine
+
+**Why.** a state file that fails to load presents to the operator as data loss with extra steps, and a half-restored one is worse still: it looks like a UI bug
+
+`packages/mock-duet/src/persist.ts:35`
+
+### `mock-duet/mock-state-one-snapshot` — rung 7
+
+**Mechanism.** sole-constructor type. `MockSnapshot` carries a brand keyed on a module-private `unique symbol` (SNAPSHOT_BRAND, never exported), so no code outside this file can produce a value of that type — not by object literal, not by cast to a nameable type. `encodeSnapshot` and `applySnapshot` accept nothing else, and the only producer is `captureSnapshot`, which reads `machine.sd` and `machine.om` in the same expression. Persisting one store without the other is therefore a compile error, not a review note
+
+**Why.** the SD tree and the machine's own state are two stores. Persisted through two paths they drift, and a restored machine claims a homed axis with no file behind it (GIT_114 design constraint). One snapshot, one restore — and the type is what makes "one" true
+
+`packages/mock-duet/src/persist.ts:21`
+
 ### `mock-duet/one-parameter-reader` — rung 6
 
 **Mechanism.** choke-point — every parameter any code handler reads comes from `readParams`. The handlers receive a `Params` and have no access to the raw line, so a second, subtly different `P(\d+)` regex has nowhere to be written; adding an accessor here changes one grammar for every code at once
@@ -981,7 +1075,7 @@ in the diff that drops it.
 
 **Why.** RRF creates the file and then streams the samples into it off the CAN toolboard, so the directory entry exists long before its contents do. On 2026-08-23 a sweep took the name as proof, accepted pass 1 while the board was still writing it, and pass 2's M956 queued behind that write until the run died one capture in. A name proves a file was CREATED and says nothing about whether a capture FINISHED — and a half-written file fits to a confident, wrong frequency The budget comes off the WATCH, which got it from the same `CaptureTiming` that sized the M956. A flat budget was a false failure waiting for a longer recording: at 5,700 samples the file legitimately cannot exist for 4.2 s, and "no capture appeared" would have been reported for a run that was working.
 
-`packages/ui/src/shaping/procedure.ts:1662`
+`packages/ui/src/shaping/procedure.ts:1960`
 
 ### `shaping/a-filter-finds-rows-it-does-not-choose-them` — rung 6
 
@@ -1015,6 +1109,24 @@ in the diff that drops it.
 
 `packages/ui/src/shaping/runPlan.ts:20`
 
+### `shaping/a-runs-prior-state-is-minted-once-from-its-opening-reading` — rung 6
+
+**Mechanism.** choke-point — `RunPrior` carries `runPriorBrand`, a `unique symbol` declared here and never exported, so the type cannot be written as an object literal anywhere else and `runPriorOf` is the only expression in the program that produces one. `Procedure.plan` requires one, and a mid-run `Preconditions` is no longer a well-typed thing to pass it: before this, `runPrior` was a bare `Shaping`, so leg 2's fresh reading compiled perfectly in the slot that must hold leg 1's. What is NOT enforced is arity — nothing stops a caller minting a second one inside the loop — so the remaining discipline is that `runMotion` calls this once, above its loop, from a reading taken before any code went out
+
+**Why.** every leg re-reads the machine to be AUTHORISED, and the run's own codes have been changing what those readings say. On the shaper this was already a live bug (runner.ts): leg 1 states `none`, the poll catches up, leg 2 reads `none` back as the thing to restore, and the operator's shaper is silently gone. The mounted tool has exactly the same shape and a worse ending — leg 2 would read the tool leg 1 PICKED UP as the tool to put back, so the machine would be left holding the measured head and the restore would report success
+
+**Debt — promotion.** arity is convention, not construction: `runPriorOf` can be called twice. Promote by making the run itself the producer — a run handle minted from the opening reading that hands out procedures — so a second prior has no expression rather than merely no call site
+
+`packages/ui/src/shaping/preconditions.ts:315`
+
+### `shaping/a-selection-is-one-of-this-tools-own-results` — rung 7
+
+**Mechanism.** sole-constructor type — `Selection` carries `selectionBrand`, a `unique symbol` declared in this module and never exported, so an object literal of that type cannot be written anywhere else: a second route to a selection is a compile error, not a review catch. `made` is the only expression in the program that produces one, it is module-private, and both of its call sites are inside `selectionOf`. Neither can hand it a foreign spec: one passes what `findSpec` located inside the `ToolResults` argument, the other passes what `recommendation` returned, which is itself an element of `r.verified` or `r.candidates`. A `SpecKey` naming nothing in `r` — the previous tool's shaper, a spec dropped by a re-rank — resolves to the default rather than to itself, so the stale-key state has no representation to reach.
+
+**Why.** the selected spec becomes the `M593` line written into `tpost<N>.g`, at every future pickup of that head. A selection that outlived the results it was made against would install a shaper measured on a different tool, under the name of this one.
+
+`packages/ui/src/shaping/selection.ts:21`
+
 ### `shaping/a-verify-run-names-the-shaper-it-installs` — rung 8
 
 **Mechanism.** illegal state unrepresentable — `runPlans` takes this union, so a caller cannot ask for a verify without saying of what
@@ -1022,6 +1134,14 @@ in the diff that drops it.
 **Why.** a verify with no shaper is not a run that fails, it is a run that succeeds at the wrong thing: it re-measures the baseline and files the result as a verification of a candidate. The operator then reads a shaper as proved on hardware when nothing was installed for the measurement, which is the one claim this whole step exists to make
 
 `packages/ui/src/shaping/runPlan.ts:61`
+
+### `shaping/absence-of-a-file-is-not-evidence-about-memory` — rung 6
+
+**Mechanism.** disjoint containers behind a single load choke point — a tool's results live in TWO separately-held stores rather than one: `cards`, the mirror of what the results file said, and `staged`, the work this session produced and has not written. The load path is `loadFromCard`, a MODULE-LEVEL function outside createShapingStore's closure, and the only writer it is handed is a `put` that addresses the card mirror. `setStaged` is a closure-local `const` that is not in its scope at all, so a load that erased unsaved work is not a mistake to review for — the name does not resolve and the file does not compile. The empty value a missing file produces therefore has nowhere to land except the mirror, whatever anyone writes in loadFromCard later. NOT rung 7, and the distinction is the point: the compile barrier covers loadFromCard's BODY, not the whole invariant. The adapter `load` hands it as `put` is written inside the factory, where `setStaged` IS nameable, so editing that one line to clear staged compiles and reproduces GitHub #100 exactly. What stops that is test/shaping-results.test.ts, which is rung 3 doing the work at the seam. Rung 6 is the honest reading — one route, sealed against everything except its own adapter — and promotion to 7 means giving `put` a type only the card mirror's setter inhabits
+
+**Why.** `load()` ran `replace(tool, emptyResults(tool))` for every tool with no file on the card — the normal state of a tool nobody has measured — and that replaced the WHOLE entry. A sweep matrix built and not yet saved was destroyed by the Reload link on the same screen, and because Save's gate reads the matrix, the loss showed up as a permanently dead button rather than as lost work (GitHub #100, reported during UAT as "save is not working for sweep, ghosted"). The file being absent said nothing whatever about what was in memory, and the old shape could not tell the two apart because it stored them in the same place @limit the residue is the one-line adapter `load` passes as `put`, which is written inside the factory where both setters are nameable. It forwards and does nothing else, and every branch of the load path is pinned against it in test/shaping-results.test.ts — that is a BACKSTOP for those two lines, not the mechanism for the invariant, exactly as the `as VerifiedCandidate` residue is above
+
+`packages/ui/src/shaping/store.ts:39`
 
 ### `shaping/capture-text-has-one-loader` — rung 6
 
@@ -1213,7 +1333,7 @@ in the diff that drops it.
 
 **Debt — promotion.** the NUMBER is a reading of the wire format, not a measurement: RRF's source is not vendored here and its M956 docs state no bound. Promote by walking a real toolboard up until it refuses and pinning the value that came back, or by citing the firmware's own field width. Until then the claim is only that the UI refuses before the board does, which holds for any true bound at or below this one
 
-`packages/ui/src/shaping/procedure.ts:819`
+`packages/ui/src/shaping/procedure.ts:981`
 
 ### `shaping/one-answer-to-which-line-is-the-shaper` — rung 6
 
@@ -1229,7 +1349,7 @@ in the diff that drops it.
 
 **Why.** the constant this replaced was 1500 ms of dwell beside a free-floating `samples` setting, and on 2026-08-23 a sweep recorded 7.5 s against it — every following pass landed inside the previous pass's file. The two numbers had no way to know about each other, and neither knew about the move
 
-`packages/ui/src/shaping/procedure.ts:863`
+`packages/ui/src/shaping/procedure.ts:1025`
 
 ### `shaping/one-motion-field-table` — rung 6
 
@@ -1245,7 +1365,7 @@ in the diff that drops it.
 
 **Why.** the checks and the move must not be separable. A card that could assemble its own guard object would be free to omit the homed test, and an unhomed axis under a 200 mm/s G1 is a crash into the frame at full current — the failure this whole feature is built around
 
-`packages/ui/src/shaping/preconditions.ts:78`
+`packages/ui/src/shaping/preconditions.ts:95`
 
 ### `shaping/restore-is-structural` — rung 7
 
@@ -1253,7 +1373,7 @@ in the diff that drops it.
 
 **Why.** the machine's prior shaper is knowable only BEFORE the run changes it. A restore derived from live state after a verify pass would faithfully re-apply the candidate under test and leave the operator believing the machine was back to baseline — a wrong belief about a setting that changes every subsequent print @note `runPrior` is a PARAMETER and not `pre.priorShaping`, and the difference is a live bug in every multi-leg run. A Measure run is two legs (runPlan.ts, one ring per axis), each its own Procedure built from its own fresh `Preconditions.read` — and that read takes the shaper off the POLLED object model, which the run's own codes have been changing. Leg 1 states its shaper, the poll catches up during leg 1's several seconds of captures, and leg 2 reads that statement back as the thing to restore to: `none` after a baseline, so the operator's shaper is silently gone; the CANDIDATE after a verify leg, so an unproven shaper is left installed. Both end on "the machine's shaper is back as it was found" (copy.ts), because the restore was sent and sending it is all the screen can see. Making it an argument forces the caller to say WHICH reading it means, and a run has exactly one to give: the one from before it touched anything. @note the SHAPER is the whole of what this puts back, and the other thing a run touches — the accelerometer — is deliberately absent rather than forgotten (#43). RRF has no command that cancels an armed M956 (reference/duet-gcode.md, M956), so there is nothing this array could hold that would disarm one; a restore that "covers everything the run touched" cannot be written for the accelerometer, only for the shaper. What covers the accelerometer instead is `cmd.captureMove`: an arm and the move that consumes it are ONE command and one request, so a run cannot end with a pending capture on the board and there is no state left for a `finally` to undo. That is the stronger of the two mechanisms and the reason the weaker one is not attempted here — a cleanup built on a guess about what a second M956 does to a pending one would be a remediation nobody had verified, on a machine.
 
-`packages/ui/src/shaping/procedure.ts:300`
+`packages/ui/src/shaping/procedure.ts:367`
 
 ### `shaping/results-file-is-parsed-not-cast` — rung 6
 
@@ -1281,7 +1401,7 @@ in the diff that drops it.
 
 **Why.** `samples / rate` is the whole recording. M955's S parameter PERSISTS on the board (reference/duet-gcode.md, M955 notes: "These configuration settings persist until they are changed"), so the rate in force is whatever somebody last set — 1375 Hz on Gabe's toolboard, but nothing in this UI put it there. A constant here would silently mis-size every capture on any machine configured differently, and the error is proportional: at half the assumed rate every recording is twice as long as planned and the dwell derived from it covers half of it
 
-`packages/ui/src/shaping/procedure.ts:691`
+`packages/ui/src/shaping/procedure.ts:853`
 
 ### `shaping/shaping-motion-only-via-procedure` — rung 7
 
@@ -1289,7 +1409,7 @@ in the diff that drops it.
 
 **Why.** this is the feature's whole safety story. The lab sends 200 mm/s moves with nobody watching the axis, and the difference between a capture and a crash into the frame is whether those four facts were true at the moment of planning. A second way to build a run is a second place to forget one of them
 
-`packages/ui/src/shaping/procedure.ts:253`
+`packages/ui/src/shaping/procedure.ts:320`
 
 ### `shaping/step-readiness-has-one-answer` — rung 6
 
@@ -1299,13 +1419,21 @@ in the diff that drops it.
 
 `packages/ui/src/shaping/steps.ts:12`
 
-### `shaping/the-shaper-to-restore-is-read-once-per-run` — rung 5
+### `shaping/the-sentence-and-the-save-gate-are-one-value` — rung 8
 
-**Mechanism.** required argument — `Procedure.plan` takes `runPrior` and will not compile without it, and this file holds exactly one, captured from the FIRST leg's reading and never reassigned. The two invariants above and here pull in opposite directions on purpose and both are right: what AUTHORISES a leg must be as fresh as possible, and what the run PUTS BACK must be as old as the run.
+**Mechanism.** derived, not stored — `built` is the only arm that claims a matrix is held, and it is UNREACHABLE unless the `held` argument is a matrix. `held` is the same accessor the Save button's `disabled` reads (`svc.sweepHeld()`, compose/services.ts), so "the card says a sweep is held" and "Save is enabled" are two readings of one value rather than two states that have to be kept in step. There is no spelling for the disagreement: to write it, a caller would have to pass a matrix here and a different one to the button
 
-**Why.** every leg's reading takes the shaper from the polled object model, and the run's own codes change it. Leg 1 states its shaper; the poll catches up during leg 1's captures; leg 2's fresh reading returns that statement as the machine's "prior". Restoring to it leaves a baseline run with shaping switched off and a verify run with the unproven candidate still installed — under a screen that says the shaper is back as it was found
+**Why.** the failure this replaces was invisible as lost work and visible as a dead control, which is the worst arrangement of the two: the operator was told the sweep existed by the only line on the card that talks, and was refused by the only button that acts
 
-**Debt — promotion.** what actually holds the line today is a habit of this file — one variable, assigned once, never reassigned — and `runPrior` is typed the same as any other reading, so leg 2's fresh `Preconditions` is a perfectly well-typed thing to pass. A second call site, or one edit that "uses the reading we already have", compiles and produces exactly the wrong restore with nothing to point at. Promote by giving the prior its own branded type minted ONCE at run start from the opening reading, and making `Procedure.plan` require that brand: a mid-run reading then has no route to become a prior, so the mistake stops being expressible rather than merely not currently written
+`packages/ui/src/shaping/sweepRun.ts:67`
+
+### `shaping/the-state-to-restore-is-read-once-per-run` — rung 6
+
+**Mechanism.** choke-point — `Procedure.plan` takes a `RunPrior` (shaping/preconditions.ts), a branded type whose only producer is `runPriorOf`; a mid-run `Preconditions` is no longer a well-typed thing to pass into that slot, which it was while the parameter was a bare `Shaping`. This file mints exactly one, from a reading taken ABOVE the loop, before any code has gone out. The two invariants above and here pull in opposite directions on purpose and both are right: what AUTHORISES a leg must be as fresh as possible, and what the run PUTS BACK must be as old as the run
+
+**Why.** every leg's reading takes the shaper AND the mounted tool from the polled object model, and the run's own codes change both. Leg 1 states its shaper and picks up its head; the poll catches up during leg 1's captures; leg 2's fresh reading returns both of those as the machine's "prior". Restoring to it leaves a baseline run with shaping switched off, a verify run with the unproven candidate still installed, and — since #51 — the measured head still on the carriage, all under a screen that says the machine is back as it was found
+
+**Debt — promotion.** the brand fixes WHICH reading may become a prior, not HOW MANY: nothing stops a second `runPriorOf` inside the loop. Promote by making the run itself the producer — a handle minted from the opening reading that hands out procedures — so a second prior has no expression rather than merely no call site
 
 `packages/ui/src/shaping/runner.ts:32`
 
@@ -1318,6 +1446,14 @@ in the diff that drops it.
 `packages/ui/src/shaping/store.ts:7`
 
 ## shell
+
+### `shell/a-stored-canvas-carries-what-it-was-reconciled-against` — rung 6
+
+**Mechanism.** choke-point — every write of the "layout" key goes through `serializeCanvas`, which takes the basis as a REQUIRED argument rather than defaulting it, so a canvas cannot be persisted without saying which saved layout it was built from. Not rung 7: the argument is a plain string a caller could compute from the wrong seed; test/canvas-provenance.test.ts pins the call sites
+
+**Why.** the canvas record and the config overlay hold the same fact with no ordering between them, so "which is right" was decided by whichever path ran first. A browser carrying rects from before someone else saved a new layout to this machine kept them, and its next Save uploaded them over the good copy (#87). The basis is what turns "probably the same" into a question with an answer @why-not-a-counter a content digest needs no second field in the overlay to keep in step, and cannot drift from what it describes: it IS the layout, projected. A generation counter is a second writer's opportunity to be wrong @limit `null` (no saved layout at all) is deliberately NOT the digest of an empty layout — "the card has nothing for this screen" and "the card says this screen is empty" are different, and only the first means there is nothing for a local copy to be stale against
+
+`packages/ui/src/shell/panelCanvas.ts:876`
 
 ### `shell/copy-failure-is-observable` — rung 6
 
@@ -1347,6 +1483,14 @@ in the diff that drops it.
 
 `packages/ui/src/shell/panelCanvas.ts:109`
 
+### `shell/only-an-operator-gesture-reports-unsaved-work` — rung 6
+
+**Mechanism.** choke-point with a mandatory discriminator — `persist` is the only function that writes the "layout" key, `onLayoutChange` is named at exactly one line in the program (the one below), and `origin` has no default, so a geometry write that never decided whose act it was does not COMPILE. A new call site added by someone who read nothing still has to answer the only question that matters here. Not rung 7: the two origins are string literals a caller could still pick wrongly, which is what test/layout-dirty-origin.test.ts's per-call-site scan pins
+
+**Why.** one flag used to carry two different facts — "the operator rearranged the screen" and "the canvas emitted a geometry event". `ensureSlot`/`removeSlot` run from ComposedScreen's composition-sync effect, which fires as the screen is being brought up to date with a config change nobody dragged; routing those through the same notifier as a drag is what let a plain reload report unsaved work that did not exist (#120 defect B). The fix is NOT to stop marking dirty: geometry only reaches the overlay at save time (captureScreenGeometry) and Save is gated on the flag, so a canvas that never marks dirty is one whose rearrangement can never be saved at all @enumerated the geometry writers NOT on this route, and why: `reset()` REMOVES the key rather than writing one (the next mount re-seeds from defaults) and has never notified; the construction-time settle write at the top of this function is a deterministic repair, not an edit, and deliberately calls `keys.set` directly. Both are unchanged by #120 and neither can express a notify.
+
+`packages/ui/src/shell/panelCanvas.ts:1647`
+
 ### `shell/reflow-preserves-reading-order` — rung 6
 
 **Mechanism.** choke-point over a total order — cards are placed in reading order (row, then col, then id for determinism), so the topmost-leftmost card cannot be displaced and a card whose span just grew keeps its spot while neighbours yield. That FALLS OUT of the ordering; there is no "the grown one wins" branch to get wrong
@@ -1355,7 +1499,7 @@ in the diff that drops it.
 
 **Debt — promotion.** promote by making the placement order a value produced once and consumed by the loop, so a future caller cannot iterate the state directly and place out of order.
 
-`packages/ui/src/shell/panelCanvas.ts:1083`
+`packages/ui/src/shell/panelCanvas.ts:1178`
 
 ### `shell/reflow-terminates` — rung 3
 
@@ -1365,7 +1509,7 @@ in the diff that drops it.
 
 **Debt — promotion.** make the loop consume a bounded, strictly-increasing cursor rather than mutating a candidate in place — then "a push that advances nothing" has no encoding and the argument stops needing to be believed.
 
-`packages/ui/src/shell/panelCanvas.ts:1095`
+`packages/ui/src/shell/panelCanvas.ts:1190`
 
 ### `shell/stream-dies-with-its-element` — rung 7
 
@@ -1399,7 +1543,7 @@ in the diff that drops it.
 
 ### `ui/heavy-libraries-stay-behind-a-dynamic-import` — rung 4
 
-**Mechanism.** static analysis — test/lazy-bundle.test.ts walks src and checks both halves: that only editor/setup.ts, gcode/scene.ts and heightmap/surface3d.ts name a heavy package at all, and that every module on the DYNAMIC_ONLY list — those three plus the Shaping Lab's cards/ShapingCards.tsx and charts/DecayChart.tsx — is reached only by `import type` (erased, since verbatimModuleSyntax is on) or `import(...)`. A value import of scene.ts pulls Babylon in exactly as a direct import would, which is why one check is not enough
+**Mechanism.** static analysis — test/lazy-bundle.test.ts checks three things, and no two of them catch the same mistake. (1) Only editor/setup.ts, gcode/scene.ts and heightmap/surface3d.ts may name a heavy package at all. (2) Every module on the DYNAMIC_ONLY list — those three plus cards/ShapingCards.tsx, charts/DecayChart.tsx, shaping/resultsCodec.ts and compose/shapingService.ts — is reached only by `import type` (erased, since verbatimModuleSyntax is on) or `import(...)`; a value import of scene.ts pulls Babylon in exactly as a direct import would. (3) The transitive static-import closure of THIS file is walked, and the `src/shaping/**` modules it reaches must equal a committed list exactly — which is the only one of the three that catches a module nobody thought to name in advance @why-3 (1) and (2) are per-FILE text matches, so they can only stop a regrowth someone predicted. Twice they did not: GIT_108 added shaping/selection.ts and GIT_51 added shaping/preconditions.ts to compose/services.ts, each a one-line import in a module that was already eager, and between them they put 23 modules of `src/shaping/**` — 21,635 B minified — on every board load and made the uat branch undeployable (#126). The graph walk makes LAZY the default for a new shaping module and a place on the critical path a diff
 
 **Why.** CLAUDE.md's first hard constraint is that the board's HTTP server is weak and payload is expensive. Babylon is 232 KB gzipped — larger than the whole eager bundle — CodeMirror is comparable, and the eight shaping bodies were 32,589 B of a 483,328 B ceiling (measured 2026-08-23) for a screen that tunes a machine rather than runs one. The failure is silent in the worst way: one static import adds all of it back to what every load must serve, the app behaves identically on a dev machine, and the cost appears only as a slower first paint on hardware nobody profiles
 

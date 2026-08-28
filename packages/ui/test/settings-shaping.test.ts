@@ -154,7 +154,7 @@ test("envelope round-trip: set it, reload it from the overlay, same box", () => 
 		store.snapshot("round trip");
 		store.setShaping({ envelope: null });
 		assert.equal(store.config.shaping.envelope, null);
-		store.revert(0);
+		store.revert(store.snapshots[0]!.id);
 		assert.deepEqual(store.config.shaping.envelope, { x: [0, 300], y: [10, 290] });
 		// The fields the card would show are the fields that were typed.
 		assert.ok(sameDraft(draftOf(store.config.shaping.envelope), typed));

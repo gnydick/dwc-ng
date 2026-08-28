@@ -10,7 +10,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { batchSummaryText, captureSourceLabel, captureWhenText, livenessNote, refusalText, rescanNoteText } from "../src/shaping/copy.ts";
+import { batchSummaryText, captureSourceLabel, captureWhenText, livenessNote, refusalText, rescanNoteText, statusMessageText } from "../src/shaping/copy.ts";
 import { ACCEL_DIR, type Liveness, type Rescan } from "../src/shaping/captures.ts";
 import { RESULTS_PATH } from "../src/shaping/results.ts";
 import { prototypeFingerprint } from "./helpers/shaping.ts";
@@ -359,4 +359,18 @@ test("the liveness note is silent for a row that is fine and specific for one th
 	// The gone sentence has to say what SURVIVES as well as what is lost: the
 	// fit beside the row is a real measurement and stays on screen.
 	assert.match(livenessNote({ kind: "gone" }, "ring1_Xp0.csv"), /recorded numbers/);
+});
+
+// ---- status message (#98: the row this feeds is no longer always reserved) ----
+
+test("the status message is empty when the store and the last action both have nothing to say", () => {
+	assert.equal(statusMessageText("", ""), "", "the ordinary case — no row is reserved for this");
+});
+
+test("a results file this build could not parse outranks a failed rank or run", () => {
+	assert.equal(statusMessageText("tool0.json is not a shaping results file this build understands.", "ranking failed: worker crashed"), "tool0.json is not a shaping results file this build understands.");
+});
+
+test("a failed rank or run still shows when the store has nothing wrong to report", () => {
+	assert.equal(statusMessageText("", "ranking failed: worker crashed"), "ranking failed: worker crashed");
 });

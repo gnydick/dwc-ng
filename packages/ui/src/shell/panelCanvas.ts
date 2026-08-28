@@ -850,6 +850,58 @@ const CANVAS_FORMAT_VERSION = 4;
 interface StoredCanvasEnvelope {
 	v: number;
 	state: unknown;
+	/**
+	 * The overlay layout this record was last reconciled against — see
+	 * {@link layoutBasis}. Absent on every record written before #87, which is
+	 * exactly what "this copy has never been reconciled" looks like.
+	 */
+	basis?: string;
+	/** The operator RESET this canvas. See {@link readStoredCanvasRecord}. */
+	cleared?: true;
+}
+
+/** A stored canvas as the construction path needs to read it: the geometry,
+ *  plus the two facts about the record itself that decide whether it wins. */
+export interface StoredCanvasRecord {
+	/** Parsed and migrated geometry, or null when nothing was ever written. */
+	state: unknown;
+	basis: string | null;
+	cleared: boolean;
+}
+
+/**
+ * A digest of the layout the CARD holds for a screen — the thing a browser's
+ * canvas can be stale against.
+ *
+ * @invariant a-stored-canvas-carries-what-it-was-reconciled-against
+ * @rung 6  choke-point — every write of the "layout" key goes through
+ *          `serializeCanvas`, which takes the basis as a REQUIRED argument
+ *          rather than defaulting it, so a canvas cannot be persisted without
+ *          saying which saved layout it was built from. Not rung 7: the
+ *          argument is a plain string a caller could compute from the wrong
+ *          seed; test/canvas-provenance.test.ts pins the call sites
+ * @why the canvas record and the config overlay hold the same fact with no
+ *      ordering between them, so "which is right" was decided by whichever
+ *      path ran first. A browser carrying rects from before someone else
+ *      saved a new layout to this machine kept them, and its next Save
+ *      uploaded them over the good copy (#87). The basis is what turns
+ *      "probably the same" into a question with an answer
+ * @why-not-a-counter a content digest needs no second field in the overlay to
+ *      keep in step, and cannot drift from what it describes: it IS the
+ *      layout, projected. A generation counter is a second writer's
+ *      opportunity to be wrong
+ * @limit `null` (no saved layout at all) is deliberately NOT the digest of an
+ *      empty layout — "the card has nothing for this screen" and "the card
+ *      says this screen is empty" are different, and only the first means
+ *      there is nothing for a local copy to be stale against
+ */
+export function layoutBasis(seed: CanvasState | null): string {
+	if (seed === null) return "none";
+	const parts = Object.keys(seed).sort().map(id => {
+		const r = seed[id]!;
+		return `${id}:${r.col},${r.row},${r.colSpan},${r.rowSpan}`;
+	});
+	return parts.length === 0 ? "empty" : parts.join("|");
 }
 
 function isEnvelope(value: unknown): value is StoredCanvasEnvelope {
@@ -944,8 +996,51 @@ export function parseStoredCanvas(raw: string | null): unknown {
 	return migrateColGranularity(migrateRowGranularity(migrateLegacyDoubleWidth(parsed)));
 }
 
-export function serializeCanvas(state: CanvasState): string {
+/**
+ * `basis` is REQUIRED, not defaulted: a canvas written without saying which
+ * saved layout it was reconciled against is precisely the record #87 could not
+ * judge, and making it omittable would let the next writer recreate one.
+ */
+export function serializeCanvas(state: CanvasState, basis: string, cleared?: true): string {
+	return JSON.stringify({
+		v: CANVAS_FORMAT_VERSION, state, basis, ...(cleared === true ? { cleared } : {}),
+	} satisfies StoredCanvasEnvelope);
+}
+
+/**
+ * The stored record, geometry and provenance together.
+ *
+ * `cleared` is a POSITIVE fact and that is the whole point of it: `reset()`
+ * used to remove the key, so a deliberately cleared canvas was byte-identical
+ * to a browser that had never opened the screen — and the seed-from-overlay
+ * path then undid the reset on the next mount (#87 requirement 2). The same
+ * move as #86's tombstones, one layer down.
+ */
+/** The parked-spots record. Same envelope, no basis: parked rects describe
+ *  cards that are OFF the screen, so they are not a copy of the layout and
+ *  cannot be stale against the card's copy of one. */
+export function serializeParked(state: CanvasState): string {
 	return JSON.stringify({ v: CANVAS_FORMAT_VERSION, state } satisfies StoredCanvasEnvelope);
+}
+
+export function readStoredCanvasRecord(raw: string | null): StoredCanvasRecord {
+	const state = parseStoredCanvas(raw);
+	let basis: string | null = null;
+	let cleared = false;
+	if (raw !== null && raw !== "") {
+		try {
+			const parsed: unknown = JSON.parse(raw);
+			if (isEnvelope(parsed)) {
+				const e = parsed as StoredCanvasEnvelope;
+				if (typeof e.basis === "string") basis = e.basis;
+				cleared = e.cleared === true;
+			}
+		} catch {
+			// Same tolerance as parseStoredCanvas: unreadable storage is
+			// "nothing was written here", never a throw out of a mount.
+		}
+	}
+	return { state, basis, cleared };
 }
 
 /**
@@ -1278,6 +1373,21 @@ export function nullCanvasKeys(): CanvasKeys {
 	};
 }
 
+/**
+ * WHO moved the card — the distinction the dirty flag actually needs.
+ *
+ * `"operator-gesture"`: a person did this. A drag, a resize, an import, a
+ * reset of one slot. It is unsaved work, and Save to machine must light up.
+ *
+ * `"composition-reconcile"`: the canvas catching up to a fact the config
+ * already holds — a slot the composition gained or lost since this canvas was
+ * built (ComposedScreen's sync effect). The overlay edit that CAUSED it has
+ * already marked itself dirty through the config store's own `commit`, so
+ * reporting it a second time here can only ever be double-counting; at boot,
+ * where there was no edit at all, it is a plain falsehood.
+ */
+export type LayoutOrigin = "operator-gesture" | "composition-reconcile";
+
 export interface PanelCanvasController {
 	styleFor: (id: string) => Record<string, string>;
 	startMove: (id: string, event: PointerEvent) => void;
@@ -1312,9 +1422,13 @@ export interface PanelCanvasController {
 	/** Ids currently tracked (reactive). */
 	slotIds: () => string[];
 	/** Adopt a slot added after mount (composition editing) at the given rect;
-	 *  no-op if already tracked. Persists like a drop. */
+	 *  no-op if already tracked. Persists, but as a RECONCILE, never as a
+	 *  gesture: the composition edit that added the card already marked the
+	 *  config dirty through `setScreenCard` -> apply -> commit, and at boot
+	 *  there is no edit at all. See LayoutOrigin. */
 	ensureSlot: (id: string, rect: PanelRect) => void;
-	/** Forget a slot removed after mount. Persists like a drop. */
+	/** Forget a slot removed after mount. Persists as a RECONCILE — same
+	 *  reasoning as ensureSlot above. */
 	removeSlot: (id: string) => void;
 	/**
 	 * Rebuild the layout wholesale from `rects` — the live half of an import.
@@ -1352,11 +1466,16 @@ export function createPanelCanvas(
 	defaults: PanelDefault[],
 	isActive?: (id: string) => boolean,
 	/**
-	 * Called whenever this canvas's geometry changes. A screen passes the
-	 * config store's markLayoutDirty, because a moved card is an unsaved
-	 * change and Save to machine is gated on the dirty flag — without this a
-	 * rearranged screen could never be pushed to the SD card at all. Surfaces
-	 * whose geometry is device-only (the Card Lab) pass nothing.
+	 * Called when an OPERATOR changes this canvas's geometry — a drag, a
+	 * resize, an import, a per-slot reset. A screen passes the config store's
+	 * markLayoutDirty, because a moved card is an unsaved change and Save to
+	 * machine is gated on the dirty flag — without this a rearranged screen
+	 * could never be pushed to the SD card at all. Surfaces whose geometry is
+	 * device-only (the Card Lab) pass nothing.
+	 *
+	 * NOT called for a composition reconcile or for the construction-time
+	 * repair: see LayoutOrigin and `persist` below for why those two facts
+	 * had to stop sharing one notifier (#120 defect B).
 	 */
 	onLayoutChange?: () => void,
 	/**
@@ -1404,30 +1523,73 @@ export function createPanelCanvas(
 	 * other repaired canvas, not like a save.
 	 */
 	seedFromOverlay?: CanvasState | null,
+	/**
+	 * Called at construction when this browser's stored canvas was DISCARDED in
+	 * favour of the card's copy — never for an ordinary seed of a browser that
+	 * had nothing. #87 requirement 4: if a layout could not be carried across,
+	 * that is told to the operator through the same channel as the rest of the
+	 * campaign's dropped data, rather than being a silent correction.
+	 */
+	onLayoutSuperseded?: (why: string) => void,
 ): PanelCanvasController {
-	const storedRaw = parseStoredCanvas(keys.get("layout"));
+	const record = readStoredCanvasRecord(keys.get("layout"));
+	const storedRaw = record.state;
+	// The basis this canvas will be written under from now on: what the CARD
+	// currently says about this screen.
+	const basisNow = layoutBasis(seedFromOverlay ?? null);
 	// "No record at all" — nothing was ever persisted under this key, or it
 	// parsed to an object with zero entries. NOT "no entry for every default
 	// id": that finer-grained question is growToDefaults' own to answer, per
 	// id, via its ordinary stored-vs-added split — this seed only stands in
 	// for storage that was never written, so a canvas holding even one real
 	// entry is left alone rather than second-guessed.
-	const isWhollyEmpty = storedRaw === null
-		|| (typeof storedRaw === "object" && Object.keys(storedRaw as object).length === 0);
-	const effectiveStored = isWhollyEmpty && seedFromOverlay != null ? seedFromOverlay : storedRaw;
+	//
+	// `cleared` is excluded on purpose: a reset canvas HAS a record, it just
+	// has no rects, and treating it as empty is the bug (#87 requirement 2).
+	const isWhollyEmpty = !record.cleared && (storedRaw === null
+		|| (typeof storedRaw === "object" && Object.keys(storedRaw as object).length === 0));
+	// Is this browser's copy entitled to win?
+	//
+	// It is when there is nothing to be stale against (the card holds no layout
+	// for this screen), or when it was reconciled against the layout the card
+	// holds RIGHT NOW — in which case its rects are local edits made since that
+	// save, which must survive a reload or a drag could never be saved at all.
+	//
+	// It is not when it carries a different basis, or none: a record written
+	// before #87 cannot show it was ever reconciled, and #76's precedent for
+	// this campaign is that bytes with no proof of origin are dropped rather
+	// than guessed at.
+	const proofCarrying = seedFromOverlay != null;
+	const localIsCurrent = !proofCarrying || record.basis === basisNow;
+	const supersede = proofCarrying && !localIsCurrent && !isWhollyEmpty;
+	if (supersede) {
+		onLayoutSuperseded?.(
+			record.basis === null
+				? "a layout this browser saved before it tracked which saved layout it came from"
+				: "a layout this browser saved against an older version of this screen",
+		);
+	}
+	const effectiveStored = supersede || isWhollyEmpty
+		? (seedFromOverlay ?? storedRaw)
+		: record.cleared ? {} : storedRaw;
 	const [state, setState] = createSignal(
 		bench === true
 			? benchOrigin(growToDefaults(storedRaw, defaults).state)
 			: mergeCanvas(effectiveStored, defaults),
 	);
 	// Settle a redesign repair once rather than recomputing it on every load.
-	// Deliberately NOT persist(): that fires onLayoutChange -> markLayoutDirty,
-	// and a repair is not a user edit — nor is mutating the config store during
-	// signal initialisation safe. Correctness never depends on this landing:
+	// Deliberately NOT persist(): a repair is not a user edit, and mutating the
+	// config store during signal initialisation is not safe either. Kept as a
+	// direct keys.set even though persist(…, "composition-reconcile") would now
+	// also be silent — the second reason still stands on its own. Correctness never depends on this landing:
 	// growToDefaults + reflow are deterministic and idempotent, so a browser
 	// where the write no-ops (private mode, quota) rebuilds the identical
 	// layout every time.
-	keys.set("layout", serializeCanvas(state()));
+	// `cleared` is carried through: the settle write is a deterministic repair,
+	// not an edit, so it must not quietly retract the operator's reset. The flag
+	// is dropped by `persist` below — a drag IS an edit, and a canvas with rects
+	// the operator placed is no longer a cleared one.
+	keys.set("layout", serializeCanvas(state(), basisNow, record.cleared ? true : undefined));
 
 	// Stored wins (this browser's own toggles); otherwise seed from the
 	// composition, which is how orientation reaches a browser that has never
@@ -1476,13 +1638,44 @@ export function createPanelCanvas(
 	}
 	const persistParked = (next: CanvasState): void => {
 		setParked(next);
-		keys.set("parked", serializeCanvas(next));
+		keys.set("parked", serializeParked(next));
 	};
 
-	const persist = (next: CanvasState): void => {
+	/**
+	 * Write geometry, and say WHERE IT CAME FROM.
+	 *
+	 * @invariant only-an-operator-gesture-reports-unsaved-work
+	 * @rung 6  choke-point with a mandatory discriminator — `persist` is the
+	 *          only function that writes the "layout" key, `onLayoutChange` is
+	 *          named at exactly one line in the program (the one below), and
+	 *          `origin` has no default, so a geometry write that never decided
+	 *          whose act it was does not COMPILE. A new call site added by
+	 *          someone who read nothing still has to answer the only question
+	 *          that matters here. Not rung 7: the two origins are string
+	 *          literals a caller could still pick wrongly, which is what
+	 *          test/layout-dirty-origin.test.ts's per-call-site scan pins
+	 * @why one flag used to carry two different facts — "the operator
+	 *          rearranged the screen" and "the canvas emitted a geometry
+	 *          event". `ensureSlot`/`removeSlot` run from ComposedScreen's
+	 *          composition-sync effect, which fires as the screen is being
+	 *          brought up to date with a config change nobody dragged; routing
+	 *          those through the same notifier as a drag is what let a plain
+	 *          reload report unsaved work that did not exist (#120 defect B).
+	 *          The fix is NOT to stop marking dirty: geometry only reaches the
+	 *          overlay at save time (captureScreenGeometry) and Save is gated
+	 *          on the flag, so a canvas that never marks dirty is one whose
+	 *          rearrangement can never be saved at all
+	 * @enumerated the geometry writers NOT on this route, and why: `reset()`
+	 *          REMOVES the key rather than writing one (the next mount re-seeds
+	 *          from defaults) and has never notified; the construction-time
+	 *          settle write at the top of this function is a deterministic
+	 *          repair, not an edit, and deliberately calls `keys.set` directly.
+	 *          Both are unchanged by #120 and neither can express a notify.
+	 */
+	const persist = (next: CanvasState, origin: LayoutOrigin): void => {
 		setState(next);
-		keys.set("layout", serializeCanvas(next));
-		onLayoutChange?.();
+		keys.set("layout", serializeCanvas(next, basisNow));
+		if (origin === "operator-gesture") onLayoutChange?.();
 	};
 
 	// Hidden labels, stored as the EXCEPTION set rather than a value per card:
@@ -1559,7 +1752,7 @@ export function createPanelCanvas(
 				? { ...wanted, ...findFreePosition(occupied, wanted) }
 				: wanted;
 		}
-		persist({ ...state(), [id]: placed });
+		persist({ ...state(), [id]: placed }, "composition-reconcile");
 	};
 
 	const removeSlot = (id: string): void => {
@@ -1570,7 +1763,7 @@ export function createPanelCanvas(
 		persistParked({ ...parked(), [id]: rect });
 		const next = { ...state() };
 		delete next[id];
-		persist(next);
+		persist(next, "composition-reconcile");
 	};
 
 	/**
@@ -1747,12 +1940,12 @@ export function createPanelCanvas(
 				// without ever finding a legal delta. Persist the state as it
 				// stands rather than an empty patch, so the drop is still a
 				// no-op and not a write of stale rects.
-				persist(lastPatch === null ? state() : { ...state(), ...lastPatch });
+				persist(lastPatch === null ? state() : { ...state(), ...lastPatch }, "operator-gesture");
 				// The formation has landed. Keeping it lit would make the next
 				// unrelated drag pick all of them up again.
 				clearSelection();
 			} else {
-				persist({ ...state(), [id]: lastValid });
+				persist({ ...state(), [id]: lastValid }, "operator-gesture");
 			}
 		};
 		window.addEventListener("pointermove", onMove);
@@ -1912,14 +2105,23 @@ export function createPanelCanvas(
 			cardEl?.classList.remove("at-limit");
 			window.removeEventListener("pointermove", onMove);
 			window.removeEventListener("pointerup", onUp);
-			persist(state());
+			persist(state(), "operator-gesture");
 		};
 		window.addEventListener("pointermove", onMove);
 		window.addEventListener("pointerup", onUp);
 	};
 
 	const reset = (): void => {
-		keys.remove("layout");
+		// WRITTEN, not removed (#87 requirement 2). Removing the key made a
+		// deliberately cleared canvas byte-identical to a browser that had
+		// never opened this screen — and the seed-from-overlay path then
+		// restored the card's saved layout on the next mount, undoing the
+		// reset. `cleared` is the positive record of the operator's act, the
+		// same move #86 made for a removed card one layer up. It is written
+		// under the CURRENT basis, so a layout saved to the card after this
+		// reset still supersedes it, which is right: that is a newer fact
+		// about the screen than this clear.
+		keys.set("layout", serializeCanvas({}, basisNow, true));
 		setState(defaultCanvas(defaults));
 		keys.remove("orientation");
 		setOrientationState({});
@@ -1933,7 +2135,7 @@ export function createPanelCanvas(
 	// already in memory, because importing the screen you are LOOKING at does
 	// not change the route and so never remounts.
 	const adoptLayout = (rects: CanvasState, orientations?: OrientationState): void => {
-		persist(sanitizeCanvas(rects));
+		persist(sanitizeCanvas(rects), "operator-gesture");
 		persistParked({});
 		// The incoming layout brings its own directions; it does not inherit
 		// the replaced layout's, and it does not lose its own either.
@@ -1946,7 +2148,7 @@ export function createPanelCanvas(
 	const resetSlot = (id: string): void => {
 		const coded = defaults.find(d => d.id === id);
 		if (coded === undefined) return;
-		persist({ ...state(), [id]: clampRect({ col: coded.col, row: coded.row, colSpan: coded.colSpan, rowSpan: coded.rowSpan }) });
+		persist({ ...state(), [id]: clampRect({ col: coded.col, row: coded.row, colSpan: coded.colSpan, rowSpan: coded.rowSpan }) }, "operator-gesture");
 		// A slot's remembered hidden spot and its content direction are part of
 		// the deviation being undone, same as in reset() — but only this one's.
 		const nextParked = { ...parked() };
@@ -1986,9 +2188,27 @@ export function createPanelCanvas(
  * which writes this AND the config overlay together. A layout written to only
  * one of the two stores is the bug this exists to prevent.
  */
-export function writeCanvasState(store: MachineStore, screenId: string, rects: CanvasState, orientations?: OrientationState): void {
+/**
+ * Re-stamp a screen's stored canvas with the basis it has just been reconciled
+ * against, leaving its geometry alone.
+ *
+ * Save to machine (`captureScreenGeometry`) copies the canvas INTO the overlay,
+ * so afterwards the two stores agree — but the canvas record still names the
+ * older layout it was built from, and the next mount would read that as "this
+ * browser is stale", discard a canvas identical to the overlay, and tell the
+ * operator a layout was dropped when none was. Saving IS a reconciliation, so
+ * it records one.
+ */
+export function restampCanvas(store: MachineStore, screenId: string, basis: string): void {
 	const keys = machineCanvasKeys(store, screenId);
-	keys.set("layout", serializeCanvas(sanitizeCanvas(rects)));
+	const record = readStoredCanvasRecord(keys.get("layout"));
+	if (record.state === null && !record.cleared) return;
+	keys.set("layout", serializeCanvas(sanitizeCanvas(record.state), basis, record.cleared ? true : undefined));
+}
+
+export function writeCanvasState(store: MachineStore, screenId: string, rects: CanvasState, orientations: OrientationState | undefined, basis: string): void {
+	const keys = machineCanvasKeys(store, screenId);
+	keys.set("layout", serializeCanvas(sanitizeCanvas(rects), basis));
 	// Parked spots describe the layout being REPLACED — a hidden card's
 	// remembered position from the old layout would drop it somewhere
 	// arbitrary in the new one.

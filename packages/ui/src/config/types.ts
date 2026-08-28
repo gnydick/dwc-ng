@@ -149,8 +149,23 @@ export interface PinnedCommand {
  * MachineConfig. `custom`, `renames` and `hidden` are the operator's own
  * screens and naming/visibility preferences, carried in PersonConfig. This is
  * the one section that spans both halves — see `splitOverlay`.
+ *
+ * A card's value is its rect, or `null` — a TOMBSTONE, meaning the operator
+ * took this card off this screen. The union is what makes #86's merge safe:
+ * a built-in's composition is the coded one merged with this override, and
+ * without a positive record of removal, "absent from the override" would mean
+ * both "did not exist when I saved" and "I removed it". Those are different
+ * facts and one of them must be written down. Absence now means the first and
+ * only the first, so a card shipped to a coded screen later can be ADDED to a
+ * screen the operator has already saved — which it could not be before, for
+ * anyone, ever, silently.
+ *
+ * Tombstones exist for BUILT-IN screens only. A custom screen (`ScreenPrefs.custom`)
+ * has no coded composition underneath it, so its `cards` record is the whole
+ * truth and absence there is already unambiguous — see composition.ts's
+ * `mergeComposition`.
  */
-export type ScreenLayouts = Record<string, Record<string, SlotRect>>;
+export type ScreenLayouts = Record<string, Record<string, SlotRect | null>>;
 
 export interface ScreenPrefs {
 	custom: Record<UserScreenId, CustomScreen>;

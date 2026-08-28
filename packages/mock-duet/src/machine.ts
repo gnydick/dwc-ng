@@ -1,4 +1,4 @@
-import { createBaseModel, POLLED_KEYS, AMBIENT, type Om } from "./snapshot.ts";
+import { createBaseModel, stripIdentity, POLLED_KEYS, AMBIENT, type Om } from "./snapshot.ts";
 import { VirtualSD, type ConfigSeedVersion } from "./files.ts";
 import { executeGCode } from "./gcode.ts";
 import { AccelBank, advanceCaptures } from "./accelerometer.ts";
@@ -71,9 +71,15 @@ export class Machine {
 	private bootTime = Date.parse("2026-07-12T12:00:00");
 	private messageBoxSeq = 0;
 
-	constructor(scenario?: Scenario, baseModel?: Om, configVersion?: ConfigSeedVersion) {
-		this.sd = new VirtualSD(configVersion);
-		this.pristine = baseModel ?? createBaseModel();
+	constructor(scenario?: Scenario, baseModel?: Om, configVersion?: ConfigSeedVersion, frozenScreen?: boolean, unidentified?: boolean) {
+		this.sd = new VirtualSD(configVersion, frozenScreen);
+		// Stripped on the PRISTINE model, before `om` is cloned from it: every
+		// surface (rr_model, the DSF REST routes, the WS push loop) reads `om`,
+		// and a scenario reset re-clones from `pristine`, so stripping at any
+		// serve site would leave a path that hands the identity back.
+		this.pristine = unidentified === true
+			? stripIdentity(baseModel ?? createBaseModel())
+			: baseModel ?? createBaseModel();
 		this.om = structuredClone(this.pristine);
 		this.volSeqs = (this.om.volumes as Om[]).map(() => 0);
 		for (const key of POLLED_KEYS) this.seqs[key] = 1;

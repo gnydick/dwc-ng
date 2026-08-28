@@ -52,9 +52,20 @@ import { For, Match, Show, Switch, createEffect, createMemo, createSignal } from
 import { cmd } from "../control/commands.ts";
 import { copyText } from "../shell/copyText.ts";
 import { createArmed } from "../control/armed.ts";
-import { armedRunText, armedSaveText, batchSummaryText, type CaptureSource, captureSourceLabel, captureWhenText, livenessNote, motionStateText, refusalText, rescanNoteText, runKindText, stepStatusText, sweepStateText } from "../shaping/copy.ts";
+import { armedRunText, armedSaveText, batchSummaryText, type CaptureSource, captureSourceLabel, captureWhenText, livenessNote, motionStateText, refusalText, rescanNoteText, runKindText, statusMessageText, stepStatusText, sweepStateText } from "../shaping/copy.ts";
 import type { CardCtx } from "../compose/ctx.ts";
-import type { MacroRead } from "../compose/services.ts";
+import type { MacroRead } from "../compose/shapingService.ts";
+/**
+ * The Lab's service, re-exported so it travels in THIS chunk.
+ *
+ * A VALUE re-export and not a type one, deliberately, and it is doing two jobs.
+ * It puts `compose/shapingService.ts` in the same chunk as these eight bodies,
+ * so opening the screen is one request rather than two on a server CLAUDE.md's
+ * first constraint is about; and it is what `compose/cards.tsx`'s
+ * `loadShapingLab` hands to `provideShapingService`, so deleting this line does
+ * not quietly stop the registration — it fails to compile.
+ */
+export { shapingService } from "../compose/shapingService.ts";
 import { nextStep, SHAPING_STEPS, type StepInputs, type StepSpec } from "../shaping/steps.ts";
 import { productsFor } from "../shaping/evidence/products.ts";
 import { reportText } from "../shaping/accelReport.ts";
@@ -77,9 +88,10 @@ import { commitMotionField, MOTION_FIELDS } from "../shaping/motionFields.ts";
 import { motionBad, motionBusy, motionProgress } from "../shaping/motionRun.ts";
 import { fitCapturesOf, runMotion } from "../shaping/runner.ts";
 import { planarPosition, travelAcceleration } from "../shaping/preconditions.ts";
-import { mapPoint, mapSummary, mapView, type MapView } from "../charts/mapData.ts";
+import { MAP_STAGE_STYLE, mapPoint, mapSummary, mapView, type MapView } from "../charts/mapData.ts";
 import { capturesOf, fingerprintOf, RESULTS_PATH, type ToolResults } from "../shaping/results.ts";
 import type { VerifiedCandidate } from "../shaping/store.ts";
+import type { Selection } from "../shaping/selection.ts";
 import { DecayChart } from "../charts/DecayChart.tsx";
 import { SweepHeatmap } from "../charts/SweepHeatmap.tsx";
 import { fingerprintMarkers, type SweepMarker } from "../charts/sweepData.ts";
@@ -298,9 +310,7 @@ export function ShapingStatusBody(props: { ctx: CardCtx }) {
 	});
 	const shaping = (): Shaping => props.ctx.om.om.move.shaping;
 	const selected = (): ToolResults => svc.results();
-	// The card file the store could not read outranks a failed action: it is the
-	// one that makes everything else on screen wrong.
-	const message = (): string => svc.store.error() || svc.problem();
+	const message = (): string => statusMessageText(svc.store.error(), svc.problem());
 
 	const inputsFor = (spec: StepSpec): StepInputs => ({
 		refusal: svc.gate(),
@@ -348,11 +358,6 @@ export function ShapingStatusBody(props: { ctx: CardCtx }) {
 					</span>
 				</Show>
 			</p>
-			{/* ONE message line, always laid out. It was a <Show>, which meant the
-			    whole table jumped down the moment anything went wrong — on the
-			    card whose job is to be watched while the machine works. Hidden by
-			    visibility, so it occupies its row either way. */}
-			<p class="shp-msg" classList={{ "shp-msg-on": message() !== "" }}>{message()}</p>
 			{/* THE tool picker: the ONLY control on the whole screen that calls
 			    `svc.setTool` (GitHub #90; verified by grep — see the fix-round-1
 			    note in the file header). Sweep used to carry an identical chip
@@ -479,6 +484,23 @@ export function ShapingStatusBody(props: { ctx: CardCtx }) {
 					}}
 				</For>
 			</ol>
+			{/* Rendered only when there is something to say (#98), and placed LAST:
+			    nothing on this card follows it, so a message arriving or clearing
+			    moves nothing — not "usually nothing", an actual property of the
+			    position, verified at the card's real production height (the
+			    rowSpan comment in compose/defs.ts). It used to sit between the
+			    Running line and the tool picker, reserved and visibility-hidden
+			    whether or not there was a message; a review of that placement
+			    found two paths where the message CAN change while the carriage is
+			    moving — a rank failure, and a reconnect's forced re-load of every
+			    tool's file (compose/services.ts's revision effect) — which is why
+			    "moves nothing" replaced "moves rarely" rather than the reverse.
+			    The top rule (padding-top + inset box-shadow, `.shp-fact +
+			    .shp-fact`'s own idiom) marks it as its own line, not a sixth
+			    step. */}
+			<Show when={message() !== ""}>
+				<p class="shp-msg">{message()}</p>
+			</Show>
 		</>
 	);
 }
@@ -540,6 +562,10 @@ type CaptureArm =
  */
 export function ShapingCaptureBody(props: { ctx: CardCtx }) {
 	const svc = props.ctx.service("shaping");
+	// The accelerometer's rate, resolution and address are their own service
+	// (shaping/accelService.ts) because Settings needs them without the Lab —
+	// the same pool entry, so this card and that one see one sensor reading.
+	const accel = props.ctx.service("accel");
 	const cfg = (): ShapingConfig => props.ctx.config.config.shaping;
 	const defaults = (): ShapingDefaults => cfg().defaults;
 	const envelope = (): Envelope | null => cfg().envelope;
@@ -582,15 +608,16 @@ export function ShapingCaptureBody(props: { ctx: CardCtx }) {
 	 *
 	 * `kind()` is what the operator picked; a request is that plus whatever the
 	 * run needs. Only `verify` needs anything — the shaper to install — and it
-	 * takes the Candidates card's selection, which is the same one the Verify
-	 * step is about. With nothing ranked there is no verify to request, so this
-	 * falls back to the measure the card was already showing rather than
-	 * inventing a spec.
+	 * takes `svc.selection()`, the screen's ONE answer to which spec is being
+	 * acted on (compose/services.ts). The Apply card writes its line from the
+	 * same value, so a run verifies the spec that card would install. With
+	 * nothing ranked or verified there is nothing selected, so this falls back
+	 * to the measure the card was already showing rather than inventing a spec.
 	 */
 	const request = createMemo((): RunRequest => {
 		if (kind() !== "verify") return { kind: kind() === "sweep" ? "sweep" : "measure" };
-		const pick = svc.results().candidates[svc.candidateIndex()];
-		return pick === undefined ? { kind: "measure" } : { kind: "verify", spec: pick.spec };
+		const pick = svc.selection();
+		return pick === null ? { kind: "measure" } : { kind: "verify", spec: pick.spec };
 	});
 
 	const plans = createMemo((): readonly Plan[] => {
@@ -680,8 +707,8 @@ export function ShapingCaptureBody(props: { ctx: CardCtx }) {
 	createEffect(() => {
 		const n = svc.tool();
 		if (cfg().accelByTool[n] === undefined) return;
-		if (svc.accelReportFor(n) !== null) return;
-		void svc.readAccel(n);
+		if (accel.accelReportFor(n) !== null) return;
+		void accel.readAccel(n);
 	});
 
 	const saveable = createMemo((): boolean => {
@@ -705,8 +732,8 @@ export function ShapingCaptureBody(props: { ctx: CardCtx }) {
 			return;
 		}
 		setArmed(null);
-		const accel = svc.accelFor(svc.tool());
-		if (accel === null) return;
+		const addr = accel.accelFor(svc.tool());
+		if (addr === null) return;
 		const slot = svc.beginMotion();
 		if (slot === null) return;
 		// Read ONCE, here. The completion path below decides what the captures
@@ -720,7 +747,12 @@ export function ShapingCaptureBody(props: { ctx: CardCtx }) {
 				conn: props.ctx.connector,
 				om: () => props.ctx.om.om,
 				cfg,
-				accel,
+				accel: addr,
+				// The SAME `svc.tool()` the accelerometer address was chosen for
+				// and the capture prefix was spelled from. Read here rather than
+				// inside the run, so the head that gets picked up and the head the
+				// captures are named for cannot come from two reads a minute apart.
+				tool: svc.tool(),
 				prefix: safeName(),
 				report: slot.report,
 				signal: slot.signal,
@@ -899,8 +931,8 @@ export function ShapingCaptureBody(props: { ctx: CardCtx }) {
 				<div class="shp-fact">
 					<dt>Sampling</dt>
 					<dd>
-						<span class="shp-mono" title={reportText(svc.accelReportFor(svc.tool()))}>
-							{reportText(svc.accelReportFor(svc.tool()))}
+						<span class="shp-mono" title={reportText(accel.accelReportFor(svc.tool()))}>
+							{reportText(accel.accelReportFor(svc.tool()))}
 						</span>
 					</dd>
 				</div>
@@ -988,7 +1020,7 @@ export function ShapingCaptureBody(props: { ctx: CardCtx }) {
 
 			{/* The stage declares the drawing's box, so the map never sizes the
 			    card and the card never has to be resized when a plan changes. */}
-			<div class="shp-map-stage">
+			<div class="shp-map-stage" style={MAP_STAGE_STYLE}>
 				<Show
 					when={view()}
 					fallback={<p class="shp-map-empty">Draw the motion envelope in Settings › Input shaping — nothing may move until you do.</p>}
@@ -1989,7 +2021,11 @@ export function ShapingSweepBody(props: { ctx: CardCtx }) {
 	// Decay's save bar, which carried the identical defect until GIT_90 round 3.
 	const [armed, setArmed] = createArmed<true>();
 
-	const sweep = (): SweepMatrix | null => svc.results().sweep;
+	// The SAME accessor the card's status sentence is derived from
+	// (shaping/sweepRun.ts `sweepSentence`), not a second reading of the store
+	// that happens to be spelled the same way. The two cannot disagree because
+	// there is only one of them.
+	const sweep = (): SweepMatrix | null => svc.sweepHeld();
 
 	/**
 	 * The chosen family, resolved by ID against the current listing rather than
@@ -2146,6 +2182,11 @@ export function ShapingSweepBody(props: { ctx: CardCtx }) {
  * The ranked shapers. Residual is what the impulse model predicts is LEFT of
  * the ring; ±10 % is the same figure with the mode mistuned by a tenth, which
  * is the number that decides whether a shaper survives a tool change.
+ *
+ * Tapping a row SELECTS that spec, for the whole screen: the verify run uses
+ * it and the Apply card writes it. The pressed row is the recommendation until
+ * somebody taps another, and the Apply card says which of the two it is
+ * looking at (compose/services.ts `selection`).
  */
 export function ShapingCandidatesBody(props: { ctx: CardCtx }) {
 	const svc = props.ctx.service("shaping");
@@ -2187,13 +2228,13 @@ export function ShapingCandidatesBody(props: { ctx: CardCtx }) {
 				</thead>
 				<tbody>
 					<For each={candidates()}>
-						{(candidate, index) => (
-							<tr classList={{ "shp-on": svc.candidateIndex() === index() }}>
+						{candidate => (
+							<tr classList={{ "shp-on": svc.isSelected(candidate.spec) }}>
 								<td>
 									<button
 										class="shp-pick shp-pick-wide"
-										aria-pressed={svc.candidateIndex() === index()}
-										onClick={() => svc.setCandidateIndex(index())}
+										aria-pressed={svc.isSelected(candidate.spec)}
+										onClick={() => svc.select(candidate.spec)}
 									>
 										{specName(candidate.spec)}
 									</button>
@@ -2347,39 +2388,22 @@ export function ShapingVerifyBody(props: { ctx: CardCtx }) {
 
 /* ------------------------------------------------------------------- 8. apply */
 
-/** The largest share of the baseline ring left on any axis — the honest
- *  single number for "how well did this actually work". */
-const worstMeasured = (v: VerifiedCandidate): number => Math.max(0, ...Object.values(v.measured));
-
 /**
- * The line to put on the machine.
+ * The card that puts the line on the machine.
  *
- * A verified candidate that introduced no mode of its own beats anything
- * merely predicted, however good the prediction — that ordering IS the lesson
- * of the 2026-08-22 session, where the model's second-favourite shaper of any
- * type measured 167 % of the unshaped ring. Among those, the one that left
- * least behind, measured; and only with nothing verified at all does the
- * ranking's own top row stand in, labelled as the guess it is.
+ * It does NOT decide which line. `svc.selection()` is that decision, made once
+ * for the screen (compose/services.ts, shaping/selection.ts) and read here and
+ * by the verify run alike — the ordering that used to live in this file as a
+ * private `recommendation()` is now the DEFAULT selection, in
+ * shaping/selection.ts, unchanged. Deciding again here is what let this card
+ * offer row 1 while the operator had tapped row 3 and the verify run had gone
+ * and measured it.
  */
-function recommendation(r: ToolResults): { spec: ShaperSpec; basis: "verified" | "predicted" } | null {
-	// Clean means CHECKED and clean. A candidate whose artefact test could not
-	// run on an axis (no baseline mode to compare against) has not earned
-	// "measured on the machine, no new peaks" — that sentence would be claiming
-	// a result nobody established.
-	const clean = r.verified.filter(v => v.artefacts.length === 0 && v.unjudged.length === 0);
-	if (clean.length > 0) {
-		const best = clean.reduce((a, b) => (worstMeasured(b) < worstMeasured(a) ? b : a));
-		return { spec: best.spec, basis: "verified" };
-	}
-	const top = r.candidates[0];
-	return top === undefined ? null : { spec: top.spec, basis: "predicted" };
-}
-
 export function ShapingApplyBody(props: { ctx: CardCtx }) {
 	const svc = props.ctx.service("shaping");
 	const [copied, setCopied] = createSignal(false);
 	const [armed, setArmed] = createArmed<ApplyHow>();
-	const pick = createMemo(() => recommendation(svc.results()));
+	const pick = (): Selection | null => svc.selection();
 
 	const copy = async (line: string): Promise<void> => {
 		setCopied(await copyText(line));
@@ -2426,17 +2450,57 @@ export function ShapingApplyBody(props: { ctx: CardCtx }) {
 					<dt>Tool</dt>
 					<dd class="shp-mono">T{svc.tool()} · {toolMacroPath(svc.tool())}</dd>
 				</div>
+				{/* Where the line came from, in the operator's own terms: the
+				    machine's advice measured, the machine's advice predicted, or
+				    their own tap. The third exists so departing from the
+				    recommendation reads as a decision somebody made rather than
+				    as what the screen worked out. */}
 				<div class="shp-fact">
 					<dt>Basis</dt>
 					<dd>
 						<Show when={pick()} fallback={<span class="shp-nil">{NONE}</span>}>
 							{made => (
-								<Show
-									when={made().basis === "verified"}
-									fallback={<span class="shp-warn-inline">predicted only — not yet measured on the machine</span>}
-								>
-									<span class="shp-ok-inline">measured on the machine, no new peaks</span>
-								</Show>
+								<Switch>
+									<Match when={made().basis === "verified"}>
+										<span class="shp-ok-inline">measured on the machine, no new peaks</span>
+									</Match>
+									<Match when={made().basis === "predicted"}>
+										<span class="shp-warn-inline">predicted only — not yet measured on the machine</span>
+									</Match>
+									<Match when={made().basis === "override"}>
+										<Show
+											when={made().verified !== null}
+											fallback={<span class="shp-warn-inline">your pick — predicted only, not measured on the machine</span>}
+										>
+											<span class="shp-ok-inline">your pick — measured on the machine</span>
+										</Show>
+									</Match>
+								</Switch>
+							)}
+						</Show>
+					</dd>
+				</div>
+				{/* The best evidence that exists FOR THE SELECTED SPEC, which is
+				    the verify run's own numbers wherever one has been run — a
+				    tapped spec that was verified is described by what the machine
+				    did with it, never by what the model predicted it would do. */}
+				<div class="shp-fact">
+					<dt>Result</dt>
+					<dd class="shp-mono">
+						<Show when={pick()} fallback={<span class="shp-nil">{NONE}</span>}>
+							{made => (
+								<Switch fallback={<span class="shp-nil">{NONE}</span>}>
+									<Match when={made().verified}>
+										{v => (
+											<>X {pctOrNone(v().measured.X)} · Y {pctOrNone(v().measured.Y)} of baseline, measured</>
+										)}
+									</Match>
+									<Match when={made().candidate}>
+										{c => (
+											<>X {pctOrNone(c().residual.X)} · Y {pctOrNone(c().residual.Y)} · ±10% {pct0(c().worstRobust)}, predicted</>
+										)}
+									</Match>
+								</Switch>
 							)}
 						</Show>
 					</dd>
