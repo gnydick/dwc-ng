@@ -15,7 +15,7 @@
  * stable ids) join this list in phase A7b.
  */
 import { mergeComposition, parseComposition, parseTombstones, slotsOf, toSlotRect, type Composition, type CustomCardId } from "./composition.ts";
-import { readCanvasOrientation, readCanvasState, writeCanvasState, type CanvasState } from "../shell/panelCanvas.ts";
+import { layoutBasis, readCanvasOrientation, readCanvasState, restampCanvas, writeCanvasState, type CanvasState } from "../shell/panelCanvas.ts";
 import type { OrientationState } from "../shell/panelOrientation.ts";
 import { LAB_ROUTE } from "../shell/router.ts";
 import { isUserScreenId, type SlotRect, type UiConfig, type UserScreenId } from "../config/types.ts";
@@ -433,7 +433,13 @@ export function replaceScreenLayout(store: LayoutStore, machineStore: MachineSto
 	for (const [id, rect] of Object.entries(rects)) {
 		if (rect.orientation !== undefined) orientations[id] = rect.orientation;
 	}
-	writeCanvasState(machineStore, screenId, rects, orientations);
+	// The basis is derived from the overlay AFTER the write, through the same
+	// projection a mount will use (savedScreenLayout) — so the canvas record
+	// names exactly what the next mount will compare it against. Deriving it
+	// from `rects` instead would be subtly wrong: replaceAllScreenCards can
+	// carry tombstones forward (#86), so what lands in the overlay is not
+	// always what was passed in.
+	writeCanvasState(machineStore, screenId, rects, orientations, layoutBasis(savedScreenLayout(store.config, screenId)));
 }
 
 /** The orientations an imported/replacement layout carries. */
@@ -468,6 +474,11 @@ export function captureScreenGeometry(store: LayoutStore, machineStore: MachineS
 			});
 		}
 		store.replaceAllScreenCards(entry.id, cards);
+		// A Save reconciles the two stores, so it says so. Without this the
+		// canvas still names the layout it was BUILT from, the next mount reads
+		// that as a stale browser, and the operator is told a layout was
+		// dropped when the two copies are identical (#87).
+		restampCanvas(machineStore, entry.id, layoutBasis(savedScreenLayout(store.config, entry.id)));
 	}
 }
 

@@ -193,6 +193,13 @@ export function ComposedScreen(props: { screenId: string }) {
 					// handle), so this naturally yields null and every card sites at
 					// its coded default — nothing extra to gate here.
 					untrack(() => savedScreenLayout(app.config.config, props.screenId)),
+					// #87 requirement 4: a local layout DISCARDED in favour of the
+					// card's copy is told to the operator through the same channel as
+					// the rest of the campaign's dropped data (the machine-identity
+					// card renders it), rather than being a silent correction they
+					// find by noticing their cards moved. Never fires for an ordinary
+					// seed of a browser that had nothing — nothing was discarded there.
+					why => app.config.noteDroppedMachineSection(`the ${entry()?.def.name ?? props.screenId} screen's layout (${why})`),
 				);
 
 				// Composition edits → canvas slots. Adding a card adopts its
