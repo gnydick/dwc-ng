@@ -93,7 +93,7 @@ test("snapshot and revert restore an earlier overlay", () => {
 		store.setCameraPrefs({ pinned: true });
 		assert.equal(store.config.axisRoles["U"], "something wrong");
 
-		store.revert(0);
+		store.revert(store.snapshots[0]!.id);
 		assert.equal(store.config.axisRoles["U"], "Z motor 1");
 		assert.equal(store.config.cameraPrefs.pinned, false);
 		assert.equal(store.snapshots.length, 1, "reverting keeps the snapshot");
@@ -109,27 +109,34 @@ test("snapshot history is capped", () => {
 		store.snapshot(`snap ${i}`);
 	}
 	assert.equal(store.snapshots.length, 10);
-	assert.equal(store.snapshots[0]!.label, "snap 4", "oldest snapshots dropped");
+	// The getter presents newest-first (#118), so BOTH ends are named here:
+	// [0] proves the newest survived the cap, at(-1) proves which end the cap
+	// evicted. Asserting one end alone cannot tell a correct cap from a
+	// reversed one.
+	assert.equal(store.snapshots[0]!.label, "snap 13", "newest kept, and shown first");
+	assert.equal(store.snapshots.at(-1)!.label, "snap 4", "oldest snapshots dropped");
 });
 
 // --- named backups (USER_AUDIT line 20) -------------------------------------
 
 test("snapshot trims, defaults a blank label, and caps an over-long one", () => {
 	const store = createConfigStore({ machineStore: () => null });
+	// [0] throughout, not at(-1): the backup just taken is the NEWEST, and the
+	// getter presents newest-first (#118).
 	store.snapshot("  pre-CNC experiment  ");
-	assert.equal(store.snapshots.at(-1)!.label, "pre-CNC experiment", "surrounding whitespace trimmed");
+	assert.equal(store.snapshots[0]!.label, "pre-CNC experiment", "surrounding whitespace trimmed");
 
 	store.snapshot("");
-	assert.equal(store.snapshots.at(-1)!.label, "saved", "blank falls back");
+	assert.equal(store.snapshots[0]!.label, "saved", "blank falls back");
 
 	store.snapshot("   \t  ");
-	assert.equal(store.snapshots.at(-1)!.label, "saved", "whitespace-only is blank");
+	assert.equal(store.snapshots[0]!.label, "saved", "whitespace-only is blank");
 
 	// Enforced in snapshot() itself, not at the UI: the input's maxLength is a
 	// convenience, and a caller reaching the store directly must still be
 	// covered.
 	store.snapshot("x".repeat(MAX_LABEL_LEN + 40));
-	assert.equal(store.snapshots.at(-1)!.label.length, MAX_LABEL_LEN, "capped at MAX_LABEL_LEN");
+	assert.equal(store.snapshots[0]!.label.length, MAX_LABEL_LEN, "capped at MAX_LABEL_LEN");
 });
 
 test("a named save labels the backup and still clears dirty", async () => {
@@ -406,10 +413,13 @@ test("Save-to-machine backups (snapshots) survive a reload", () => {
 		// "Reload": a fresh store from the same localStorage AND machine.
 		const reloaded = createConfigStore({ machineStore: () => machine });
 		assert.equal(reloaded.snapshots.length, 2, "the backup history came back, not an empty set");
-		assert.equal(reloaded.snapshots.at(-1)!.label, "v2");
+		// v2 is the newer, so it is the TOP row of the newest-first list (#118).
+		assert.equal(reloaded.snapshots[0]!.label, "v2");
 
 		// The snapshot's overlay is intact — reverting to v1 undoes the V edit.
-		reloaded.revert(0);
+		// v1 is the OLDER of the two, so name it rather than indexing:
+		// the list is presented newest-first (#118).
+		reloaded.revert(reloaded.snapshots.find(s => s.label === "v1")!.id);
 		assert.equal(reloaded.config.axisRoles["U"], "Z motor 1");
 		assert.equal(reloaded.config.axisRoles["V"], undefined, "reverted to before V was set");
 	} finally {

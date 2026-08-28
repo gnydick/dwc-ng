@@ -217,7 +217,7 @@ test("Ruling 18: a legacy snapshot's machine half is dropped UNCONDITIONALLY —
 		assert.equal(store.snapshots[0]!.label, "old");
 		assert.deepEqual(store.snapshots[0]!.overlay, { thermalColors: { hot: "#f00" } }, "the snapshot record itself is person-only");
 
-		store.revert(0);
+		store.revert(store.snapshots[0]!.id);
 		assert.equal(
 			store.config.axisRoles.U, undefined,
 			"the machine half must NOT have been attributed to A — its origin is unknowable in principle, so A being connected right now proves nothing",
@@ -240,7 +240,7 @@ test("a legacy snapshot's machine half is dropped when no machine is known at mi
 		const store = createConfigStore({ machineStore: () => null });
 		assert.equal(store.snapshots.length, 1);
 
-		store.revert(0);
+		store.revert(store.snapshots[0]!.id);
 		assert.equal(store.config.axisRoles.U, undefined, "no machine was known at migration time — nothing to attribute the machine half to");
 		assert.ok(store.droppedMachineSections.includes('saved version "old"'), "the drop is reported here too, not only in the machine-known case");
 	});

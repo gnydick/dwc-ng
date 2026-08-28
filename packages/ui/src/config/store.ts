@@ -103,6 +103,21 @@ export interface ConfigStore {
 	readonly droppedMachineSections: readonly string[];
 
 	/**
+	 * The backup this session most recently took, or null if it has taken none.
+	 *
+	 * #118 requirement 1: ordering makes the newest backup REACHABLE, it does
+	 * not make a save VISIBLE — a card whose contents change below the fold has
+	 * told the operator nothing, which is exactly how a working save read as a
+	 * failed one. This is what the card says instead, and it carries the LABEL
+	 * as stored (trimmed, capped, defaulted) rather than as typed, so the
+	 * confirmation names a row that is really in the list.
+	 *
+	 * Session-scoped like `claimedProfile` and `revertNotice`: a fact about
+	 * what just happened here, never restored from the cache.
+	 */
+	readonly lastSaved: { readonly id: string; readonly label: string } | null;
+
+	/**
 	 * Report machine-scoped data this session could not carry forward, into the
 	 * same channel the v2 -> v3 migration uses (#87 requirement 4).
 	 *
@@ -262,8 +277,14 @@ export interface ConfigStore {
 	 * the SD file proves itself on download. Reverting on a different machine
 	 * (or with none identified) restores the person half only; the machine
 	 * half is silently left as-is rather than guessed at.
+	 *
+	 * Addressed BY ID, never by position: the list is presented newest-first
+	 * and the stored array is oldest-first, so a positional API would make the
+	 * meaning of a Restore click depend on which order the caller happened to
+	 * be holding — see the `snapshots` getter's invariant. An id naming no
+	 * snapshot is a no-op.
 	 */
-	revert(index: number): void;
+	revert(id: string): void;
 
 	/**
 	 * Persist the overlay to the machine's SD card (and the local cache).
@@ -312,6 +333,7 @@ export function createConfigStore(options: { machineStore: Accessor<MachineStore
 	const [meta, setMeta] = createStore<{
 		dirty: boolean; snapshots: ConfigSnapshot[]; droppedMachineSections: readonly string[];
 		claimedProfile: ClaimedProfile | null; revertNotice: string | null;
+		lastSaved: { readonly id: string; readonly label: string } | null;
 	}>({
 		dirty: cached?.dirty ?? false,
 		// Restore the backup history too, so it survives a reload.
@@ -324,6 +346,9 @@ export function createConfigStore(options: { machineStore: Accessor<MachineStore
 		// Same reasoning as claimedProfile: a fact about this session's own
 		// most recent revert, not this browser's history.
 		revertNotice: null,
+		// And the same again: what a PREVIOUS browser session saved is not
+		// something to announce on boot. Deliberately not in the person cache.
+		lastSaved: null,
 	});
 	/**
 	 * ANOTHER instance of this app, on this origin, appended a backup.
@@ -566,8 +591,33 @@ export function createConfigStore(options: { machineStore: Accessor<MachineStore
 			if (meta.dirty) return;
 			markDirty(true);
 		},
-		get snapshots() { return meta.snapshots; },
+		/**
+		 * @invariant one-snapshot-order-and-revert-does-not-use-it
+		 * @rung 6  choke-point — this getter is the only way out of the module
+		 *          for the backup list, so newest-first is the ONLY order a
+		 *          consumer can observe; the chronological array `meta.snapshots`
+		 *          is module-private. And the order cannot decide what a Restore
+		 *          click MEANS, because `revert` takes an id, not a position:
+		 *          there is no index for a re-ordering to invalidate. Not rung 7
+		 *          — the id is a plain string a caller could invent, which the
+		 *          not-found branch answers by doing nothing
+		 * @why the list was chronological and the card renders into a fixed box
+		 *      that never scrolls (3 rows), so backup 9 of 10 landed below the
+		 *      fold and a save looked like it had not happened (#118, reported
+		 *      with eight backups already on the card). The obvious fix —
+		 *      reversing the render — would have made every Restore click
+		 *      restore the WRONG snapshot, silently, over the live overlay,
+		 *      because revert indexed the array positionally. Both halves are
+		 *      here so neither can be done without the other
+		 * @why-storage-order-differs the stored array stays oldest-first because
+		 *      the MAX_SNAPSHOTS cap evicts with `slice(-MAX_SNAPSHOTS)` — the
+		 *      oldest must be at the front for the cap to drop the right end.
+		 *      Presentation is reversed once, here, rather than storage being
+		 *      reversed and every eviction site having to remember it
+		 */
+		get snapshots() { return [...meta.snapshots].reverse(); },
 		get droppedMachineSections() { return meta.droppedMachineSections; },
+		get lastSaved() { return meta.lastSaved; },
 		noteDroppedMachineSection(name) {
 			if (meta.droppedMachineSections.includes(name)) return;
 			setMeta("droppedMachineSections", sections => [...sections, name]);
@@ -833,6 +883,11 @@ export function createConfigStore(options: { machineStore: Accessor<MachineStore
 			const id = mintSnapshotId();
 			const taken: ConfigSnapshot = { id, takenAt: Date.now(), label: clean, overlay: structuredClone(person) };
 			setMeta("snapshots", snapshots => [...snapshots, taken].slice(-MAX_SNAPSHOTS));
+			// Recorded HERE, in the sole snapshot producer, and from `taken` —
+			// so the name the operator is shown is the name that went into the
+			// list, trimming and blank-fallback included. Reporting the raw
+			// argument would name a row that does not exist.
+			setMeta("lastSaved", { id, label: clean });
 			// The machine half goes behind whichever machine is CURRENTLY
 			// connected, in that machine's own store — never here, and never
 			// under `id` alone without one. No machine identified means nothing
@@ -889,8 +944,11 @@ export function createConfigStore(options: { machineStore: Accessor<MachineStore
 		 *      nothing about what B's own machine half currently holds, and is
 		 *      no license to overwrite it
 		 */
-		revert(index) {
-			const snap = meta.snapshots[index];
+		revert(id) {
+			const snap = meta.snapshots.find(s => s.id === id);
+			// An id naming no snapshot restores NOTHING. Revert replaces the live
+			// overlay, so "not found" must mean "do nothing" and never "restore
+			// emptiness" — the same reasoning as the machine-half guard below.
 			if (snap === undefined) return;
 			const handle = machineStore();
 			const found = handle !== null

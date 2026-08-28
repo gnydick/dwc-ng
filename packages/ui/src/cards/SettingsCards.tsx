@@ -655,14 +655,14 @@ export function SavedVersionsBody() {
 			    WHERE the settings live, and that is what the card's tip is for. */}
 			<Show when={app.config.snapshots.length} fallback={<p class="job-empty">No saved versions</p>}>
 				<For each={app.config.snapshots}>
-					{(snap, index) => (
+					{snap => (
 						<div class="field saved-version">
 							{/* Date AND time: a list of times alone cannot tell yesterday's
 							    backup from this morning's. Same format as the file
 							    browser's modified column. */}
 							<span class="field-label stamp">{formatTimestamp(snap.takenAt)}</span>
 							<span class="hint">{snap.label}</span>
-							<button class="link-btn" onClick={() => app.config.revert(index())}>Restore</button>
+							<button class="link-btn" onClick={() => app.config.revert(snap.id)}>Restore</button>
 						</div>
 					)}
 				</For>
@@ -721,10 +721,27 @@ export function ConfigSaveBody() {
 			    onto a second line and back again — a destructive control moving
 			    under the pointer as a side effect of starting a save. */}
 			<div class="save-actions">
+			{/* Precedence, worst news first: a failure, then unsaved work, then
+			    what this session actually saved, then the resting state.
+			    "Saved as X" sits BELOW dirty on purpose — a stale confirmation
+			    over unsaved work is a positive claim that is false, which is
+			    worse than no confirmation at all.
+
+			    This is #118 requirement 1, and it is the half that ordering
+			    cannot do: the card's list is fixed-height and never scrolled,
+			    so a ninth backup appearing in it told the operator nothing
+			    ("i saved to machine and nothing showed up", with eight already
+			    on the card and every save having worked). The name comes from
+			    the store as STORED — trimmed, capped, defaulted — so it names
+			    a row that is really in the list. */}
 			<Show
 				when={saveError()}
 				fallback={
-					<Show when={app.config.dirty} fallback={<span class="hint">All changes saved.</span>}>
+					<Show when={app.config.dirty} fallback={
+						<Show when={app.config.lastSaved} fallback={<span class="hint">All changes saved.</span>}>
+							{saved => <span class="hint">Saved as &ldquo;{saved().label}&rdquo;.</span>}
+						</Show>
+					}>
 						<span class="hint unsaved">Unsaved changes</span>
 					</Show>
 				}

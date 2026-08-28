@@ -128,7 +128,7 @@ test("reverting a snapshot taken on machine A does not carry its machine half on
 			setMs(B);
 			assert.equal(store.config.axisRoles.U, undefined, "B starts clean (hydrateMachine already covers this)");
 
-			store.revert(0);
+			store.revert(store.snapshots[0]!.id);
 			assert.equal(store.config.axisRoles.U, undefined, "A's axis role must not appear on B — the exact hazard Ruling 17 closes");
 			dispose();
 		});
@@ -145,7 +145,7 @@ test("reverting on the SAME machine that took the snapshot restores its machine 
 			store.snapshot("on A");
 			store.setAxisRole("U", "changed after the snapshot");
 
-			store.revert(0);
+			store.revert(store.snapshots[0]!.id);
 			assert.equal(store.config.axisRoles.U, "A's Z motor", "same machine — the entry is found in A's own store, which is the proof");
 			dispose();
 		});
@@ -162,7 +162,7 @@ test("a snapshot taken with no identified machine never carries a machine half, 
 			store.snapshot("no machine identified");
 
 			setMs(A); // hydrateMachine discards the pre-identity edit — unrelated to this snapshot
-			store.revert(0);
+			store.revert(store.snapshots[0]!.id);
 			assert.equal(store.config.axisRoles.U, undefined, "nothing was ever attributed to any machine — never guess on revert either");
 			dispose();
 		});
@@ -193,7 +193,7 @@ test("I1: reverting to a snapshot taken on a DIFFERENT machine does not erase th
 			store.setAxisRole("U", "B-role");
 			assert.equal(store.config.axisRoles.U, "B-role");
 
-			store.revert(0); // "on A" — not found in B's own snapshot record
+			store.revert(store.snapshots[0]!.id); // "on A" — not found in B's own snapshot record
 			assert.equal(store.config.axisRoles.U, "B-role", "B's own machine half must survive a miss, not be replaced with {}");
 
 			// And the erasure must not have been persisted to B's own storage
@@ -223,12 +223,16 @@ test("I1: revert() reports a partial restore via meta.revertNotice on a miss, an
 			assert.equal(store.meta.revertNotice, null, "nothing reverted yet this session");
 
 			setMs(B);
-			store.revert(0); // "on A" — a miss on B
+			// BY ID, and found by label: this test has TWO snapshots, so a
+			// positional call would have said something different under the
+			// newest-first ordering #118 introduced.
+			const onA = store.snapshots.find(s => s.label === "on A")!.id;
+			store.revert(onA); // "on A" — a miss on B
 			assert.notEqual(store.meta.revertNotice, null, "a miss must be reported, not silent");
 			assert.match(store.meta.revertNotice ?? "", /on A/, "names the snapshot that was only partially restored");
 
 			setMs(A);
-			store.revert(0); // same machine that took it — a hit
+			store.revert(onA); // same machine that took it — a hit
 			assert.equal(store.meta.revertNotice, null, "a hit clears any earlier notice");
 			dispose();
 		});
@@ -248,7 +252,7 @@ test("I1: revertNotice does not survive a re-identify to a different machine", (
 			store.snapshot("on A");
 
 			setMs(B);
-			store.revert(0); // a miss on B — sets the notice
+			store.revert(store.snapshots[0]!.id); // a miss on B — sets the notice
 			assert.notEqual(store.meta.revertNotice, null);
 
 			setMs(A); // re-identify: the notice named a fact about B, which is no longer current
