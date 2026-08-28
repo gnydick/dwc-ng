@@ -50,8 +50,8 @@ export class VirtualSD {
 	fileInfo = new Map<string, GCodeFileInfo>();
 	thumbnails = new Map<string, string>();
 
-	constructor(configVersion: ConfigSeedVersion = 3) {
-		seed(this, configVersion);
+	constructor(configVersion: ConfigSeedVersion = 3, frozenScreen = false) {
+		seed(this, configVersion, frozenScreen);
 	}
 
 	/** "0:/gcodes/x.g" | "/gcodes/x.g" -> ["gcodes","x.g"]; null for other volumes. */
@@ -292,8 +292,32 @@ const ACCEL_BY_TOOL = { "0": "20.0", "1": "21.0", "2": "22.0", "3": "23.0" };
 
 /** The overlay both current-shape versions (2 and 3) share — see the
  *  version doc comment above for why 2 does not need a shape of its own. */
-function currentOverlay(): Record<string, unknown> {
+/**
+ * The Machine screen as a browser that saved it BEFORE #86 left it: a
+ * `screens.layouts` override naming only two of the screen's coded cards, with
+ * no tombstones anywhere.
+ *
+ * That is the shape the defect lived in. The override REPLACED the coded
+ * composition, so this operator lost every other card on the screen
+ * permanently, and every card shipped to it afterwards was invisible to them.
+ * After the fix the same file must show the whole coded set again, with these
+ * two keeping the geometry recorded here — which is exactly what makes the
+ * change observable on a mock rather than only in unit tests.
+ *
+ * Deliberately NO `null` entries: an override written before tombstones
+ * existed cannot contain one, and seeding one would test the new path while
+ * claiming to be the old state.
+ */
+const FROZEN_MACHINE_SCREEN = {
+	machine: {
+		position: { col: 0, row: 0, colSpan: 156, rowSpan: 103 },
+		"tools-heaters": { col: 156, row: 0, colSpan: 156, rowSpan: 110 },
+	},
+};
+
+function currentOverlay(frozenScreen = false): Record<string, unknown> {
 	return {
+		...(frozenScreen ? { screens: { layouts: FROZEN_MACHINE_SCREEN } } : {}),
 		// U/V/W drive the three individual Z leadscrew motors
 		// (M584 U1.0 V1.1 W1.2); C is the tool coupler (C0.2).
 		axisRoles: { U: "Z motor 1", V: "Z motor 2", W: "Z motor 3", C: "Coupler" },
@@ -303,7 +327,7 @@ function currentOverlay(): Record<string, unknown> {
 	};
 }
 
-function buildConfigSeed(configVersion: ConfigSeedVersion): string {
+function buildConfigSeed(configVersion: ConfigSeedVersion, frozenScreen = false): string {
 	if (configVersion === 1) {
 		// Unchanged from every seed before GIT_90 round 5: no accelByTool
 		// (the gate this round's default closes), no machineId (v1 predates
@@ -320,12 +344,12 @@ function buildConfigSeed(configVersion: ConfigSeedVersion): string {
 		// No machineId: only a v3 payload is stamped and checked
 		// (config/migrateStorage.ts readStampedMachineOverlay) — a v2 file
 		// never carried one to begin with.
-		return JSON.stringify({ version: 2, overlay: currentOverlay() }, null, "\t");
+		return JSON.stringify({ version: 2, overlay: currentOverlay(frozenScreen) }, null, "\t");
 	}
-	return JSON.stringify({ version: 3, machineId: MACHINE_ID, overlay: currentOverlay() }, null, "\t");
+	return JSON.stringify({ version: 3, machineId: MACHINE_ID, overlay: currentOverlay(frozenScreen) }, null, "\t");
 }
 
-function seed(sd: VirtualSD, configVersion: ConfigSeedVersion) {
+function seed(sd: VirtualSD, configVersion: ConfigSeedVersion, frozenScreen: boolean) {
 	const dirs = ["filaments", "firmware", "gcodes", "macros", "menu", "sys", "www"];
 	for (const d of dirs) sd.mkdir(`0:/${d}`, SEED_DATE);
 
@@ -367,7 +391,7 @@ function seed(sd: VirtualSD, configVersion: ConfigSeedVersion) {
 		// keeps them working out of the box and across restarts (the SD is
 		// rebuilt from this seed on every start). See packages/ui config store.
 		// Shape picked by `configVersion` — see buildConfigSeed above.
-		"dwc-ng-config.json": buildConfigSeed(configVersion),
+		"dwc-ng-config.json": buildConfigSeed(configVersion, frozenScreen),
 	};
 	for (const [name, content] of Object.entries(sysFiles)) {
 		sd.write(`0:/sys/${name}`, text(content), SEED_DATE);

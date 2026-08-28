@@ -57,6 +57,19 @@ export interface MockServerOptions {
 	 * every request that changed anything.
 	 */
 	statePath?: string;
+	/**
+	 * Seed `screens.layouts.machine` with a PRE-TOMBSTONE override holding a
+	 * subset of the Machine screen's coded cards — the state every operator
+	 * who ever pressed Save was in before #86.
+	 *
+	 * Off by default, because it is a deliberately DEGRADED machine: the point
+	 * of the state is that cards are missing. It exists so the fix is
+	 * observable on the mock at all — a fresh machine has no override, so
+	 * nothing was ever frozen and there is nothing to un-freeze (GIT_92's rule
+	 * that every state the UI must handle has a way to be presented on
+	 * purpose).
+	 */
+	frozenScreen?: boolean;
 }
 
 export interface MockServer {
@@ -87,7 +100,7 @@ export function createMockServer(options: MockServerOptions = {}): MockServer {
 	const tickMs = options.tickMs ?? 250;
 	const emulated = options.emulated ?? false;
 
-	const machine = new Machine(scenario, options.model, options.configVersion);
+	const machine = new Machine(scenario, options.model, options.configVersion, options.frozenScreen);
 	// No path, no store, no write: this is the only construction of a
 	// StateStore in the package, and the only fs write in it happens inside one
 	// (persist.ts). Restoring here — before any hook is wired and before

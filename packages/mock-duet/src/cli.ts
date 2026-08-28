@@ -35,6 +35,10 @@ const { values } = parseArgs({
 		// which is the default on purpose: a mock that silently remembers can
 		// hide a config-loading bug.
 		state: { type: "string", default: "" },
+		// A machine whose SD carries a PRE-#86 screen override: the Machine
+		// screen saved with two of its coded cards and no tombstones. Off by
+		// default because it is a deliberately degraded machine.
+		"frozen-screen": { type: "boolean", default: false },
 		list: { type: "boolean", default: false },
 		help: { type: "boolean", short: "h", default: false },
 	},
@@ -105,6 +109,7 @@ const mock = createMockServer({
 	dsf: values.dsf,
 	configVersion,
 	statePath: values.state !== "" ? values.state : undefined,
+	frozenScreen: values["frozen-screen"],
 });
 
 const port = await mock.listen(parseInt(values.port, 10));
@@ -126,6 +131,8 @@ if (mock.stateRestore === null) {
 } else {
 	console.log(`state: ${values.state} (new file; written after the first change)`);
 }
+console.log(`dwc-ng-config.json seed: version ${configVersion}${configVersion === 3 ? " (current)" : ""}`);
+if (values["frozen-screen"]) console.log("frozen screen (--frozen-screen): screens.layouts.machine holds a pre-#86 subset override");
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
 	process.on(signal, () => {

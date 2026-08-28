@@ -672,21 +672,58 @@ export function createConfigStore(options: { machineStore: Accessor<MachineStore
 				screens.hidden = current;
 			});
 		},
+		/**
+		 * @invariant tombstones-outlive-a-geometry-write
+		 * @rung 6  choke-point — this is the only wholesale write of a built-in's
+		 *          override, and it does not TAKE the tombstones: it carries
+		 *          forward every `null` already stored that the incoming record
+		 *          does not name. There is no argument a caller can pass that
+		 *          says "and the removals are gone", so a geometry writer cannot
+		 *          resurrect a removed card whether or not it remembered they
+		 *          exist. Not rung 7: `cards` is a plain record and a caller
+		 *          could still pass a rect for a tombstoned id, which is exactly
+		 *          the re-add gesture and is meant to work
+		 * @why `captureScreenGeometry` (Save to machine) rebuilds a screen's
+		 *      whole rect record from the canvas and calls this. Had it dropped
+		 *      tombstones, every Save would have resurrected every card the
+		 *      operator removed — #86's own defect, one layer down, in the one
+		 *      gesture that is supposed to make their layout permanent
+		 */
 		replaceAllScreenCards(id, cards) {
 			apply(draft => {
 				const custom = isUserScreenId(id) ? draft.screens?.custom?.[id] : undefined;
-				if (custom !== undefined) custom.cards = cards;
-				else ((draft.screens ??= {}).layouts ??= {})[id] = cards;
+				// A custom screen has no coded composition beneath it, so absence
+				// there is already unambiguous and it carries no tombstones.
+				if (custom !== undefined) { custom.cards = cards; return; }
+				const layouts = ((draft.screens ??= {}).layouts ??= {});
+				const previous = layouts[id];
+				const next: Record<string, SlotRect | null> = { ...cards };
+				if (previous !== undefined) {
+					for (const [cardId, value] of safeEntries(previous)) {
+						if (value === null && !Object.hasOwn(next, cardId)) next[cardId] = null;
+					}
+				}
+				layouts[id] = next;
 			});
 		},
 		setScreenCard(screenId, cardId, rect) {
 			apply(draft => {
 				const custom = isUserScreenId(screenId) ? draft.screens?.custom?.[screenId] : undefined;
-				const target = custom !== undefined
-					? (custom.cards ??= {})
-					: (((draft.screens ??= {}).layouts ??= {})[screenId] ??= {});
-				if (rect === null) delete target[cardId];
-				else target[cardId] = rect;
+				if (custom !== undefined) {
+					// Custom screen: the record IS the composition, so dropping the
+					// key is the whole truth. A tombstone here would be a second
+					// spelling of the same fact.
+					const cards = (custom.cards ??= {});
+					if (rect === null) delete cards[cardId];
+					else cards[cardId] = rect;
+					return;
+				}
+				// Built-in: removal is WRITTEN DOWN (#86). Deleting the key would
+				// make it indistinguishable from a card that did not exist when
+				// this override was saved, and the merge would add it straight
+				// back on the next render.
+				const target = (((draft.screens ??= {}).layouts ??= {})[screenId] ??= {});
+				target[cardId] = rect;
 			});
 		},
 
