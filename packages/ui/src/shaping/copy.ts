@@ -109,6 +109,16 @@ export function refusalText(r: Refusal): string {
 			return "the machine is not reporting a travel acceleration — set one with M204 and try again";
 		case "no-sample-rate":
 			return "the accelerometer did not report a sampling rate — check the board's M955 configuration";
+		case "tool-unknown":
+			// A machine fact and a connection fact at once, so the sentence names
+			// the thing that is missing rather than a remedy this screen could be
+			// wrong about. Nothing on the Shaping screen sets it.
+			return "the machine is not reporting which tool is on the carriage — reconnect and try again";
+		case "no-such-tool":
+			// The tool is named because the operator chose it: the shaping screen
+			// is per-tool, and the fix is to pick a head this machine has or to
+			// define it in config.g.
+			return `this machine does not have a tool ${r.tool} — pick another head, or define it in config.g`;
 		case "capture-too-long":
 			// Both numbers, because the ratio is what says how much slower the
 			// run is than the board can record — and the remedy follows from it.

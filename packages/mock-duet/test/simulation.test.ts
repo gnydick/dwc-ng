@@ -308,6 +308,35 @@ test("G28 homes axes; T0/T-1 selects and deselects the tool", () => {
 	assert.equal(machine.om.tools[0].state, "off");
 });
 
+test("a tool change parks the carriage, and re-selecting the same tool does nothing", () => {
+	// The one consequence of a tool change anything driving this machine has to
+	// plan around: `tfree`/`tpre`/`tpost` take the head to the dock, so after a
+	// change it is NOT where it was. A mock that left the carriage put could not
+	// tell a caller that plans its own approach from one that assumes a tool
+	// change is free.
+	const machine = new Machine(scenarios["idle"]);
+	machine.execute("G28");
+	machine.execute("T0");
+	machine.execute("G90");
+	machine.execute("G1 X100 Y100");
+	const at = () => machine.om.move.axes
+		.filter((a: any) => a.letter === "X" || a.letter === "Y")
+		.map((a: any) => a.userPosition);
+	assert.deepEqual(at(), [100, 100]);
+
+	// Already active: RRF documents `T0` here as doing nothing at all.
+	machine.execute("T0");
+	assert.deepEqual(at(), [100, 100], "re-selecting the mounted tool moved the carriage");
+
+	// T-1 is a change like any other — RRF saves the coordinates and runs
+	// `tfree` for the outgoing tool — and this scenario has only one head.
+	machine.execute("T-1");
+	const max = machine.om.move.axes
+		.filter((a: any) => a.letter === "X" || a.letter === "Y")
+		.map((a: any) => a.max);
+	assert.deepEqual(at(), max, "a real tool change left the carriage where it was");
+});
+
 test("G28 bare homes every axis the object model declares, not a fixed three", () => {
 	const machine = new Machine(undefined, loadCaptureFile(TOOLCHANGER));
 	const axes = () => machine.om.move.axes as Array<{ letter: string; homed: boolean; userPosition: number; machinePosition: number; min: number }>;

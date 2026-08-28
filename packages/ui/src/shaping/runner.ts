@@ -29,39 +29,39 @@
  *      state a minute ago — the exact window `Preconditions` exists to close,
  *      reopened by the loop that uses it
  *
- * @invariant the-shaper-to-restore-is-read-once-per-run
- * @rung 5  required argument — `Procedure.plan` takes `runPrior` and will not
- *          compile without it, and this file holds exactly one, captured from
- *          the FIRST leg's reading and never reassigned. The two invariants
+ * @invariant the-state-to-restore-is-read-once-per-run
+ * @rung 6  choke-point — `Procedure.plan` takes a `RunPrior`
+ *          (shaping/preconditions.ts), a branded type whose only producer is
+ *          `runPriorOf`; a mid-run `Preconditions` is no longer a well-typed
+ *          thing to pass into that slot, which it was while the parameter was a
+ *          bare `Shaping`. This file mints exactly one, from a reading taken
+ *          ABOVE the loop, before any code has gone out. The two invariants
  *          above and here pull in opposite directions on purpose and both are
  *          right: what AUTHORISES a leg must be as fresh as possible, and what
- *          the run PUTS BACK must be as old as the run.
- * @why every leg's reading takes the shaper from the polled object model, and
- *      the run's own codes change it. Leg 1 states its shaper; the poll catches
- *      up during leg 1's captures; leg 2's fresh reading returns that statement
- *      as the machine's "prior". Restoring to it leaves a baseline run with
- *      shaping switched off and a verify run with the unproven candidate still
- *      installed — under a screen that says the shaper is back as it was found
- * @debt what actually holds the line today is a habit of this file — one
- *       variable, assigned once, never reassigned — and `runPrior` is typed the
- *       same as any other reading, so leg 2's fresh `Preconditions` is a
- *       perfectly well-typed thing to pass. A second call site, or one edit
- *       that "uses the reading we already have", compiles and produces exactly
- *       the wrong restore with nothing to point at. Promote by giving the prior
- *       its own branded type minted ONCE at run start from the opening reading,
- *       and making `Procedure.plan` require that brand: a mid-run reading then
- *       has no route to become a prior, so the mistake stops being expressible
- *       rather than merely not currently written
+ *          the run PUTS BACK must be as old as the run
+ * @why every leg's reading takes the shaper AND the mounted tool from the
+ *      polled object model, and the run's own codes change both. Leg 1 states
+ *      its shaper and picks up its head; the poll catches up during leg 1's
+ *      captures; leg 2's fresh reading returns both of those as the machine's
+ *      "prior". Restoring to it leaves a baseline run with shaping switched
+ *      off, a verify run with the unproven candidate still installed, and —
+ *      since #51 — the measured head still on the carriage, all under a screen
+ *      that says the machine is back as it was found
+ * @debt the brand fixes WHICH reading may become a prior, not HOW MANY: nothing
+ *       stops a second `runPriorOf` inside the loop. Promote by making the run
+ *       itself the producer — a handle minted from the opening reading that
+ *       hands out procedures — so a second prior has no expression rather than
+ *       merely no call site
  */
 import type { ConnectorReads, ConnectorWrites } from "@dwc-ng/connector";
 import type { ShapingConfig } from "../config/types.ts";
-import type { ObjectModel, Shaping } from "../om/types.ts";
+import type { ObjectModel } from "../om/types.ts";
 import type { AccelAddr } from "../control/commands.ts";
 import { captureNameParts } from "./captures.ts";
 import type { Axis, Mode, NoFit } from "./engine/fit.ts";
 import type { Seconds } from "./engine/units.ts";
 import type { MotionOutcome, MotionState } from "./motionRun.ts";
-import { Preconditions } from "./preconditions.ts";
+import { Preconditions, runPriorOf, type RunPrior } from "./preconditions.ts";
 import { conditionsOf, planProcedure, readSampleRate, type Plan, type ProcEvent, type SampleRate } from "./procedure.ts";
 import type { Conditions } from "./evidence/evidence.ts";
 import type { CaptureRecord } from "./results.ts";
@@ -81,6 +81,18 @@ export type RunDeps = {
 	readonly om: () => ObjectModel;
 	readonly cfg: () => ShapingConfig;
 	readonly accel: AccelAddr;
+	/**
+	 * The head this run is FOR — what it picks up, what it gives back, and what
+	 * its captures are filed against.
+	 *
+	 * An argument rather than something derived here, because there is exactly
+	 * one answer on the screen (`svc.tool()`, compose/services.ts) and every
+	 * other thing this run is given is already derived from it: `accel` is
+	 * `accelFor(tool)` and `prefix` is `t<n>_ring`. A second reading in here
+	 * would be a second chance for the tool that was measured and the tool the
+	 * sensor belongs to to disagree.
+	 */
+	readonly tool: number;
 	readonly prefix: string;
 	/** The one writer of the screen's motion slot (compose/services.ts). */
 	readonly report: (state: MotionState) => void;
@@ -163,7 +175,22 @@ export async function runMotion(req: RunRequest, deps: RunDeps): Promise<RunResu
 
 	const plans = runPlans(req, deps.cfg().defaults, envelope, deps.prefix);
 	expected = plannedCaptureCount(plans);
-	totalSteps = totalStepsOf(plans, kind);
+
+	/**
+	 * What the machine was holding before this run sent anything — the shaper
+	 * AND the head — minted ONCE, here, above the loop.
+	 *
+	 * Its own reading, taken before the first leg's, and that placement is the
+	 * mechanism: every later reading is of a machine this run has been writing
+	 * to, so there is no point inside the loop at which "what was here before?"
+	 * can still be answered. A refusal here is the refusal the first leg would
+	 * have given anyway, reached one step earlier and reported identically.
+	 */
+	const opening = Preconditions.read(deps.om(), deps.cfg(), deps.accel, Date.now());
+	if (!opening.ok) return finish({ kind: "refused", refusal: opening.refusal });
+	const runPrior: RunPrior = runPriorOf(opening.pre, deps.tool);
+
+	totalSteps = totalStepsOf(plans, runPrior);
 
 	/**
 	 * The board's accelerometer sampling rate: ONE M955 per run, read the first
@@ -186,25 +213,12 @@ export async function runMotion(req: RunRequest, deps: RunDeps): Promise<RunResu
 	 */
 	let rate: SampleRate | null = null;
 
-	/**
-	 * The shaper the machine had when this run began, and the only one it will
-	 * ever be restored to.
-	 *
-	 * Set from the first leg's reading, which is the last moment at which the
-	 * object model still describes a machine this run has not written to. Every
-	 * later leg re-reads the machine to be AUTHORISED — position, idle, homed —
-	 * and none of them gets to re-answer "what was here before?".
-	 */
-	let runPrior: Shaping | null = null;
-
 	for (const plan of plans) {
 		if (deps.signal.aborted) return finish({ kind: "cancelled" });
 
 		// FRESH, per leg. See the invariant at the top of this file.
 		const read = Preconditions.read(deps.om(), deps.cfg(), deps.accel, Date.now());
 		if (!read.ok) return finish({ kind: "refused", refusal: read.refusal });
-
-		runPrior ??= read.pre.priorShaping;
 
 		if (rate === null) {
 			rate = await readSampleRate(deps.conn, deps.accel);
@@ -310,7 +324,7 @@ export async function runMotion(req: RunRequest, deps: RunDeps): Promise<RunResu
  * from `plannedCaptureCount` rather than counted a second way, so the bar's
  * denominator and the button's promise are the same arithmetic.
  */
-function totalStepsOf(plans: readonly Plan[], kind: RunKind): number {
+function totalStepsOf(plans: readonly Plan[], prior: RunPrior): number {
 	// EVERY plan prepends exactly one step, whatever the run: `stepsFor` states
 	// the shaper before it records anything (#53), and a verify plan states its
 	// candidate where a ring and a sweep state `none`. So the total is one per
@@ -322,8 +336,15 @@ function totalStepsOf(plans: readonly Plan[], kind: RunKind): number {
 	// baseline had to disable shaping, and the bar went to "6 of 4": nothing
 	// clamps `state.step / state.steps` (motionRun.ts), so the fraction ran
 	// past 1.
-	void kind;
-	return plans.length + plannedCaptureCount(plans);
+	//
+	// #51 added a SECOND prepended step, and only sometimes: a leg picks the
+	// tool up when the run's head is not the one on the carriage. The condition
+	// is `runPrior`'s and not any leg's reading, which is exactly why it can be
+	// counted up front — the prior is fixed for the whole run, so every leg
+	// makes the same decision and the denominator is exact rather than a guess
+	// that the bar would then run past.
+	const perLeg = prior.tool === prior.mountedTool ? 1 : 2;
+	return plans.length * perLeg + plannedCaptureCount(plans);
 }
 
 /**

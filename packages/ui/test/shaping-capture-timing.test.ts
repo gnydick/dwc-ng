@@ -28,8 +28,8 @@ import { hz, mm, mmPerS, mmPerS2 } from "../src/shaping/engine/units.ts";
 import { runMotion } from "../src/shaping/runner.ts";
 import type { MotionState } from "../src/shaping/motionRun.ts";
 import {
-	M955_REPLY, NO_SHAPER, NOW, RATE, config, drain, errorOf, fakeBoard, freshPre, kinds,
-	modelWith, ringPlan, testClock,
+	M955_REPLY, NOW, RATE, config, drain, errorOf, fakeBoard, freshPre, kinds,
+	modelWith, ringPlan, testClock, priorOf,
 } from "./helpers/shapingMachine.ts";
 
 /** The machine the ticket's arithmetic was worked out against, and the one the
@@ -231,7 +231,7 @@ test("a reply with no rate in it is null, never a default", () => {
 // --- the refusals -----------------------------------------------------------
 
 test("a machine that reports no travel acceleration is refused, not guessed at", () => {
-	const r = planProcedure(ringPlan(), freshPre({ travelAcceleration: null }), config(), NOW, RATE, NO_SHAPER);
+	const r = planProcedure(ringPlan(), freshPre({ travelAcceleration: null }), config(), NOW, RATE, priorOf());
 	assert.equal(r.ok, false);
 	if (r.ok) return;
 	assert.deepEqual(r.refusal, { kind: "no-acceleration" });
@@ -242,7 +242,7 @@ test("a recording longer than one M956 can ask for is refused at plan time", () 
 	// Refused HERE rather than by the board mid-run, which would leave the
 	// carriage parked halfway through a plan with the lab's shaper still on.
 	const crawl = ringPlan({ start: { x: mm(50), y: mm(100) }, distMm: mm(200), speed: mmPerS(4) });
-	const r = planProcedure(crawl, freshPre(), config(), NOW, RATE, NO_SHAPER);
+	const r = planProcedure(crawl, freshPre(), config(), NOW, RATE, priorOf());
 	assert.equal(r.ok, false);
 	if (r.ok) return;
 	assert.equal(r.refusal.kind, "capture-too-long");
@@ -256,7 +256,7 @@ test("a speed too small for the move to have a duration refuses rather than thro
 	// input that could have broken that — 60 mm at 1e-320 mm/s overflows the
 	// cruise term to Infinity, which `seconds()` will not mint.
 	const crawl = ringPlan({ speed: mmPerS(1e-320) });
-	const r = planProcedure(crawl, freshPre(), config(), NOW, RATE, NO_SHAPER);
+	const r = planProcedure(crawl, freshPre(), config(), NOW, RATE, priorOf());
 	assert.equal(r.ok, false);
 	if (r.ok) return;
 	assert.deepEqual(r.refusal, { kind: "not-measurable" });
@@ -270,6 +270,7 @@ test("a run whose board will not report a rate refuses before it moves", async (
 		conn: fake.conn,
 		om: () => model,
 		cfg: () => config(),
+		tool: 0,
 		accel: freshPre().accel,
 		prefix: "t0_ring",
 		report: s => { states.push(s); },
@@ -368,7 +369,7 @@ test("a capture that takes longer than the old flat budget still succeeds", asyn
 	// the 12.2 s this capture's own recording earns it. Before GIT_63 this run
 	// reported "no capture appeared" while the board was working perfectly.
 	const model = modelWith();
-	const planned = planProcedure(ringPlan({ repeats: 1 }), freshPre(), config(), NOW, RATE, NO_SHAPER);
+	const planned = planProcedure(ringPlan({ repeats: 1 }), freshPre(), config(), NOW, RATE, priorOf());
 	assert.equal(planned.ok, true);
 	if (!planned.ok) return;
 	const fake = fakeBoard(model, { fileAfterPolls: 45 });
@@ -382,7 +383,7 @@ test("a capture that takes longer than the old flat budget still succeeds", asyn
 
 test("a capture that never arrives still fails, and says how long it waited", async () => {
 	const model = modelWith();
-	const planned = planProcedure(ringPlan({ repeats: 1 }), freshPre(), config(), NOW, RATE, NO_SHAPER);
+	const planned = planProcedure(ringPlan({ repeats: 1 }), freshPre(), config(), NOW, RATE, priorOf());
 	assert.equal(planned.ok, true);
 	if (!planned.ok) return;
 	const fake = fakeBoard(model, { fileAfterPolls: 100_000 });

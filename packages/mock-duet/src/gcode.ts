@@ -341,12 +341,45 @@ function stripComment(line: string): string {
 	return line;
 }
 
+/**
+ * `T<n>`, including the MOTION a tool change makes.
+ *
+ * A change runs `tfree`, `tpre` and `tpost` (reference/duet-gcode.md, T), which
+ * on a toolchanger send the carriage to the dock and back. The mock has no
+ * macro engine — `M98` is one of §1's silent no-ops — so what it models is the
+ * one consequence anything driving the machine has to plan around: after a
+ * change, the head is NOT where it was.
+ *
+ * That is deliberately the harder behaviour. A mock that left the carriage put
+ * could not tell a caller that plans its own approach from one that assumes a
+ * tool change is free, and #51 is exactly a feature whose correctness turns on
+ * that difference. Selecting the tool that is already active does nothing at
+ * all — no macros, no motion — which is what the firmware documents and what
+ * lets a caller skip a redundant `T` and still be right.
+ *
+ * The dock is the far corner of each planar axis's own declared travel, so a
+ * seven-axis capture and a three-axis scenario each park somewhere real for the
+ * machine they describe rather than at a number written down here. Unhomed axes
+ * are left alone: there is no position to move from.
+ */
+function parkAtDock(machine: Machine): void {
+	for (const axis of machine.om.move.axes) {
+		if (axis.letter !== "X" && axis.letter !== "Y") continue;
+		if (!axis.homed) continue;
+		axis.userPosition = axis.machinePosition = axis.max;
+	}
+}
+
 function selectTool(machine: Machine, n: number): string {
 	const om = machine.om;
 	const tool = om.tools[n];
 	if (n >= 0 && !tool) return `Error: Attempt to select non-existent tool ${n}`;
+	// RRF: "If Tn is used to select tool n but that tool is already active, the
+	// command does nothing."
+	if (om.state.currentTool === n) return "";
 	om.state.previousTool = om.state.currentTool;
 	om.state.currentTool = n >= 0 ? n : -1;
+	parkAtDock(machine);
 	for (const t of om.tools) {
 		if (t === null) continue;
 		t.state = t.number === n ? "active" : "off";

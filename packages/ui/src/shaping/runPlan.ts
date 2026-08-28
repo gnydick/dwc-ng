@@ -34,7 +34,7 @@ import type { Envelope, ShapingDefaults } from "../config/types.ts";
 import { mm, mmPerS } from "./engine/units.ts";
 import type { Point } from "./preconditions.ts";
 import type { Plan, RingPlan, SweepPlan } from "./procedure.ts";
-import { PLANAR_AXES } from "./procedure.ts";
+import { PLANAR_AXES, planStart } from "./procedure.ts";
 
 /** The two runs this card owns. Verify is work item G's, on its own card. */
 export type RunKind = "measure" | "sweep" | "verify";
@@ -314,18 +314,11 @@ export function defaultPrefix(kind: RunKind, tool: number): string {
  */
 export function runOrigin(plans: readonly Plan[]): Point | null {
 	const first = plans[0];
-	if (first === undefined) return null;
-	switch (first.kind) {
-		case "ring":
-		case "sweep":
-			return first.start;
-		case "verify":
-			return first.ring.start;
-		default: {
-			const unhandled: never = first;
-			throw new Error(`unknown plan kind: ${String((unhandled as { kind: unknown }).kind)}`);
-		}
-	}
+	// `planStart` and not a switch of its own: the tool step commands an
+	// approach to exactly this point (#51), and a second derivation of "where
+	// does this run start" would let the map promise one place and the machine
+	// go to another.
+	return first === undefined ? null : planStart(first);
 }
 
 /** The first and last file a run will write, for the card to state before it

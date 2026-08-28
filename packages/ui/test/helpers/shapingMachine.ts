@@ -4,11 +4,11 @@
 // shaping-procedure-run.test.ts (running) so the two halves are measured
 // against the SAME machine — a fixture that drifted between them would let a
 // plan pass here and a run fail there for reasons neither test could see.
-import { Preconditions } from "../../src/shaping/preconditions.ts";
+import { Preconditions, runPriorOf, type RunPrior } from "../../src/shaping/preconditions.ts";
 import { sampleRateFrom, type ProcEvent, type Procedure, type RingPlan, type RunConnector, type SampleRate } from "../../src/shaping/procedure.ts";
 import type { FileListEntry, GcodeCommand, SendCodeOptions } from "@dwc-ng/connector";
 import { accelAddr } from "../../src/control/commands.ts";
-import { emptyModel, type Axis, type Board, type ObjectModel, type Shaping } from "../../src/om/types.ts";
+import { emptyModel, type Axis, type Board, type ObjectModel, type Shaping, type Tool } from "../../src/om/types.ts";
 import type { Envelope, ShapingConfig } from "../../src/config/types.ts";
 import { mm, mmPerS } from "../../src/shaping/engine/units.ts";
 
@@ -66,14 +66,27 @@ export type ModelOverrides = {
 	boards?: (Board | null)[];
 	shaping?: Shaping;
 	travelAcceleration?: unknown;
+	/** How many heads this machine has. Four, like Gabe's changer, unless a
+	 *  test is about a machine with fewer. */
+	tools?: number;
+	/** Which head is on the carriage. `-1` is none, which is a real state a
+	 *  toolchanger sits in between jobs. */
+	currentTool?: number;
 };
 
-/** Idle, homed at X100 Y100, an accelerometer on CAN board 20, no shaper. */
+const toolNamed = (n: number): Tool => ({
+	number: n, name: `T${n}`, heaters: [], filamentExtruder: -1, active: [], standby: [], state: "off",
+});
+
+/** Idle, homed at X100 Y100, an accelerometer on CAN board 20, no shaper, four
+ *  heads with T0 on the carriage. */
 export function modelWith(over: ModelOverrides = {}): ObjectModel {
 	const m = emptyModel();
 	m.state.status = over.status ?? "idle";
 	m.move.axes = over.axes ?? [axis("X", true, 100), axis("Y", true, 100), axis("Z", true, 5)];
 	m.boards = over.boards ?? [board(0, false), board(20, true)];
+	m.tools = Array.from({ length: over.tools ?? 4 }, (_, n) => toolNamed(n));
+	m.state.currentTool = over.currentTool ?? 0;
 	const move = m.move as unknown as Record<string, unknown>;
 	move.shaping = over.shaping ?? NO_SHAPER;
 	move.travelAcceleration = "travelAcceleration" in over ? over.travelAcceleration : 3000;
@@ -90,6 +103,18 @@ export function freshPre(over: ModelOverrides = {}, cfg = config(), addr = TOOLB
 	if (!r.ok) throw new Error(`fixture refused: ${JSON.stringify(r.refusal)}`);
 	return r.pre;
 }
+
+/**
+ * The run-scoped prior a `Procedure` is planned against, for tests that care
+ * about the shaper and not about the tool.
+ *
+ * Minted through `runPriorOf` like every real one — there is no other producer
+ * — off a reading of a machine already holding the head being measured, so the
+ * plans these tests assert about carry no tool change and their wire is the
+ * one they were written for.
+ */
+export const priorOf = (shaping: Shaping = NO_SHAPER, tool = 0): RunPrior =>
+	runPriorOf(freshPre({ shaping, currentTool: tool }), tool);
 
 export const ringPlan = (over: Partial<RingPlan> = {}): RingPlan => ({
 	kind: "ring",
@@ -268,7 +293,26 @@ export type Fake = {
 	 * alone would report a perfectly finished run for a board left waiting.
 	 */
 	armed: () => boolean;
+	/**
+	 * The head the BOARD is holding right now. `model.state.currentTool` is the
+	 * UI's polled mirror of this and is allowed to lag it, exactly as
+	 * `move.shaping` does — a test asking "what was the machine left holding?"
+	 * has to ask here.
+	 */
+	currentTool: () => number;
 };
+
+/**
+ * Where this fake parks the carriage on a tool change.
+ *
+ * OUTSIDE the fixture envelope (BOX is 50..250) and deliberately so. A tool
+ * change is real motion — dock, undock, Z clearance — and a fake that left the
+ * head where it found it could not tell a procedure that plans its approach
+ * from one that assumes the carriage never moved. With this, every step after
+ * a tool change is checked against a machine that really did go somewhere
+ * else, which is the state the bug lives in.
+ */
+export const DOCK = { x: 20, y: 280 };
 
 export function fakeBoard(model: ObjectModel, opts: FakeOptions = {}): Fake {
 	const sent: string[] = [];
@@ -294,6 +338,9 @@ export function fakeBoard(model: ObjectModel, opts: FakeOptions = {}): Fake {
 	/** The firmware's own copy, which M593 changes at once. Starts agreeing with
 	 *  the mirror: a machine nobody has sent anything to is not out of date. */
 	let boardShaping: Shaping = model.move.shaping;
+	/** The same two-copy treatment for the head on the carriage: the board's
+	 *  own, which `T` changes at once, and the polled mirror below. */
+	let boardTool: number = model.state.currentTool;
 	const applyShaping = (code: string): void => {
 		const next = shapingAfterM593(code, boardShaping);
 		if (next !== null) boardShaping = next;
@@ -318,6 +365,26 @@ export function fakeBoard(model: ObjectModel, opts: FakeOptions = {}): Fake {
 		(model.move as unknown as Record<string, unknown>).shaping = boardShaping;
 	};
 
+	/** The same poll, for the head. */
+	const pollTool = (): void => {
+		model.state.currentTool = boardTool;
+	};
+
+	/**
+	 * `T<n>`, as RRF documents it (reference/duet-gcode.md, T).
+	 *
+	 * Selecting the tool that is already active does NOTHING — no macros, no
+	 * motion — which is precisely why a procedure may skip the send and still
+	 * have a correct restore. Any other selection runs the change macros, and
+	 * this fake models the one consequence the lab has to plan around: the
+	 * carriage ends up at the dock rather than where it was.
+	 */
+	const selectTool = (n: number): void => {
+		if (n === boardTool) return;
+		boardTool = n;
+		setAt(DOCK.x, DOCK.y);
+	};
+
 	/**
 	 * The capture the board is holding, waiting for a move to trigger it.
 	 *
@@ -333,6 +400,11 @@ export function fakeBoard(model: ObjectModel, opts: FakeOptions = {}): Fake {
 
 	/** One line of one request, the way the firmware would take it. */
 	const execute = (line: string): string => {
+		const tool = /^T(-?\d+)$/.exec(line);
+		if (tool !== null) {
+			selectTool(Number(tool[1]));
+			return "";
+		}
 		const arm = /^M956 .* F"(.+)"$/.exec(line);
 		if (arm !== null) armedFile = arm[1] ?? "";
 		const move = /^G1 X(-?[\d.]+) Y(-?[\d.]+) F/.exec(line);
@@ -370,6 +442,7 @@ export function fakeBoard(model: ObjectModel, opts: FakeOptions = {}): Fake {
 			// A listing is the run's own polling loop, and it is where the UI's
 			// copy of the machine catches up. See the note above the parser.
 			pollShaping();
+			pollTool();
 			const still: typeof pending = [];
 			for (const p of pending) {
 				if (p.appearIn > 0) {
@@ -399,6 +472,7 @@ export function fakeBoard(model: ObjectModel, opts: FakeOptions = {}): Fake {
 		conn, sent, deadlines, listed, downloaded, downloadedAfterListings,
 		shaping: () => boardShaping,
 		armed: () => armedFile !== null,
+		currentTool: () => boardTool,
 	};
 }
 

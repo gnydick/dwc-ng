@@ -22,9 +22,9 @@ import type { ObjectModel, Shaping } from "../om/types.ts";
 import { LEAD_IN_S, parseCapture } from "./engine/capture.ts";
 import { SHAPER_TYPES, type ShaperSpec, type ShaperType } from "./engine/shapers.ts";
 import { DECAY_FLOOR, FIT_DEFAULTS } from "./engine/fit.ts";
-import { hz, mm, seconds, type Hz, type Mm, type MmPerS, type MmPerS2, type Seconds } from "./engine/units.ts";
+import { hz, mm, mmPerS, seconds, type Hz, type Mm, type MmPerS, type MmPerS2, type Seconds } from "./engine/units.ts";
 import type { Conditions } from "./evidence/evidence.ts";
-import { accelerometerOf, inside, planarPosition, Preconditions, type Point, type Refusal } from "./preconditions.ts";
+import { accelerometerOf, inside, planarPosition, Preconditions, type Point, type Refusal, type RunPrior } from "./preconditions.ts";
 import { ACCEL_DIR } from "./captures.ts";
 
 /** A `Preconditions` read longer ago than this is refused as `stale`. One
@@ -36,6 +36,42 @@ const STALE_MS = 2000;
  *  capture is armed. Seven time constants of the slowest mode this machine has
  *  shown (18 Hz at zeta 0.127, tau = 70 ms). */
 const SETTLE_MS = 500;
+
+/**
+ * How long one code of a tool-change step may keep the transport busy.
+ *
+ * A tool change is the longest single thing this lab asks for: `tfree`,
+ * `tpre`, the dock cycle and `tpost` — which typically ends in an `M116` that
+ * waits for the new head to reach temperature (reference/duet-gcode.md, T,
+ * step 6). None of that fits the flat {@link SEND_FLOOR_MS} per-request
+ * budget, and it far exceeds the 5 s window that already forced `M400`,
+ * `M956` and `G1` apart.
+ *
+ * @debt this is a DECLARED CEILING, not a measurement: no tool change has been
+ *       timed on Gabe's machine from this build, so what is claimed is only
+ *       that a request is not abandoned before three minutes. Promote by
+ *       timing a cold-tool pickup on the real changer and pinning the number
+ *       that came back with the run it came from
+ */
+const TOOL_CHANGE_SEND_MS = 180_000;
+
+/**
+ * How long the step AFTER a tool change waits for the polled object model to
+ * show the carriage where the change left it.
+ *
+ * Two status polls at the connector's slowest cadence — the same window
+ * {@link STALE_MS} is derived from, for the same reason: two polls is the
+ * point past which the model would be describing a machine that is no longer
+ * in front of the operator. The tool step is the only moving step in a run
+ * with no capture wait behind it, so it is the only place a position check can
+ * outrun the poll that would have satisfied it.
+ */
+const TOOL_SETTLE_MS = 2_000;
+
+/** How often the position check re-reads the model while a settle budget is
+ *  running. Fast enough that an arrival costs at most this much, slow enough
+ *  that a two-second budget is not twenty reads. */
+const POSITION_POLL_MS = 250;
 
 /**
  * M956's A parameter, the value the wiki labels "start at the deceleration
@@ -161,33 +197,63 @@ type Step = {
 	readonly capture?: CaptureExpectation;
 	readonly label: string;
 	readonly expectPosition: Point;
+	/**
+	 * The per-call deadline every code in this step is sent with.
+	 *
+	 * It lived on {@link CaptureExpectation} until #51, under the argument that
+	 * "a long step that records nothing" was not a shape this type should be
+	 * able to hold. A tool change is exactly that shape: a dock cycle plus
+	 * whatever `tfree`/`tpre`/`tpost` do, recording nothing, and far longer
+	 * than the flat per-request budget. So the field moved up to the step,
+	 * where every producer must state it — rather than being duplicated beside
+	 * the capture one, which is the tripwire.
+	 *
+	 * PER STEP rather than per code, for the reason it always was: RRF executes
+	 * queued codes in order and answers each request when its code runs, so any
+	 * code in a step can be waiting on the whole of the work queued ahead of
+	 * it. On 2026-08-23 the request that timed out was not the longest code, it
+	 * was the one standing behind it.
+	 *
+	 * `undefined` is a real answer and not an omission: it means "the
+	 * connector's own flat per-request budget", which is the right budget for a
+	 * step that is one short code. The field is REQUIRED so that every producer
+	 * has to give one of the two answers; restating the connector's number here
+	 * would be that number written down twice.
+	 */
+	readonly sendBudgetMs: number | undefined;
+	/**
+	 * How long this step's `expectPosition` may take to APPEAR in the polled
+	 * object model before the mismatch is treated as real.
+	 *
+	 * Zero for every step whose predecessor either did not move (the shaper
+	 * statement) or spent seconds waiting for a capture file, by which time the
+	 * poll has long since caught up. Above zero for exactly one case: the step
+	 * after a tool change, which is the only moving step in the run with no
+	 * capture wait behind it. Without it the run would read a model still
+	 * describing the carriage at the dock and refuse a machine that had done
+	 * everything right.
+	 *
+	 * A budget and not a sleep: the check is retried until the model agrees or
+	 * the budget is spent, so a machine that arrived promptly costs nothing and
+	 * one that never arrives still fails.
+	 */
+	readonly settleMs: number;
 };
 
 /**
  * What a recording step is waiting for: the name M956 will write, and the two
  * budgets derived from that same recording's length.
  *
- * Both budgets, not one. `budgetMs` is how long the FILE is waited for after
- * the codes have gone out; `sendBudgetMs` is how long ONE of those codes may
- * keep the transport busy while they are going out. They are different waits
- * with different consumers, and collapsing them would make a change to either
+ * `budgetMs` is how long the FILE is waited for after the codes have gone out.
+ * Its sibling — how long one of those codes may keep the transport busy while
+ * they are going out — used to live here too, and moved up to `Step` in #51
+ * when a tool change turned out to be a long step that records nothing. The
+ * two are still one derivation (`captureTiming`), so a change to either cannot
  * silently move the other.
  */
 type CaptureExpectation = {
 	readonly file: string;
 	readonly budgetMs: number;
-	/**
-	 * The per-call deadline every code in this step is sent with.
-	 *
-	 * PER STEP rather than per code, because that is what the failure said. RRF
-	 * executes queued codes in order and answers each request when its code
-	 * runs, so ANY code in a recording step can be waiting on the whole of the
-	 * work queued ahead of it — on 2026-08-23 the request that timed out was
-	 * not the longest code, it was the one standing behind it. A per-code
-	 * deadline would have to model RRF's attribution of that wait; a per-step
-	 * one does not have to, because the step is the unit of queued work.
-	 */
-	readonly sendBudgetMs: number;
 };
 
 /**
@@ -350,7 +416,7 @@ export class Procedure {
 	 *      a cleanup built on a guess about what a second M956 does to a pending
 	 *      one would be a remediation nobody had verified, on a machine.
 	 */
-	readonly #restore: readonly GcodeCommand[];
+	readonly #restore: Restore;
 
 	/** The reading this was planned from — the run loop re-checks positions
 	 *  against it rather than against anything it reads for itself. Carries no
@@ -365,7 +431,7 @@ export class Procedure {
 	readonly #stepViews: readonly StepView[];
 	readonly #preview: readonly string[];
 
-	private constructor(plannedAt: number, steps: readonly Step[], restore: readonly GcodeCommand[], pre: Preconditions) {
+	private constructor(plannedAt: number, steps: readonly Step[], restore: Restore, pre: Preconditions) {
 		this.#plannedAt = plannedAt;
 		this.#steps = steps;
 		this.#restore = restore;
@@ -373,7 +439,7 @@ export class Procedure {
 		this.#stepViews = Object.freeze(steps.map((s) =>
 			Object.freeze(s.capture === undefined ? { label: s.label } : { label: s.label, expectFile: s.capture.file }),
 		));
-		this.#preview = Object.freeze([...steps.flatMap((s) => s.codes.map(String)), ...restore.map(String)]);
+		this.#preview = Object.freeze([...steps.flatMap((s) => s.codes.map(String)), ...restore.codes.map(String)]);
 	}
 
 	get plannedAt(): number {
@@ -421,12 +487,24 @@ export class Procedure {
 	 */
 	async *run(conn: RunConnector, om: () => ObjectModel, opts: RunOptions = {}): AsyncGenerator<ProcEvent, void, void> {
 		const clock: Clock = { sleep: opts.sleep ?? realSleep, now: opts.now ?? Date.now, signal: opts.signal };
+		// A function, not a narrowed read: the same question is asked again after
+		// an await, and TypeScript would otherwise carry the first answer forward.
+		const cancelled = (): boolean => opts.signal?.aborted === true;
 		try {
 			for (const [index, step] of this.#steps.entries()) {
-				if (opts.signal?.aborted === true) return;
+				if (cancelled()) return;
 
 				const where = `step ${index + 1} of ${this.#steps.length} (${step.label})`;
-				const mismatch = positionMismatch(om(), step.expectPosition);
+				// Retried, not slept through: a machine already where it should be
+				// costs one read, and one that never arrives still fails. Only the
+				// step after a tool change carries a budget above zero.
+				let mismatch = positionMismatch(om(), step.expectPosition);
+				const deadline = clock.now() + step.settleMs;
+				while (mismatch !== null && clock.now() < deadline) {
+					if (cancelled()) return;
+					await clock.sleep(POSITION_POLL_MS);
+					mismatch = positionMismatch(om(), step.expectPosition);
+				}
 				if (mismatch !== null) {
 					yield { kind: "failed", error: `${where}: ${mismatch}` };
 					return;
@@ -441,11 +519,12 @@ export class Procedure {
 					yield { kind: "failed", error: `${where}: ${noCounter(this.pre.accel)}` };
 					return;
 				}
-				// A recording step's codes carry the deadline the SAME recording
-				// produced: the transport may stay busy with any one of them for
-				// as long as this pass's queued work takes. A step that records
-				// nothing has no long code in it and keeps the flat default.
-				const rejected = await sendAll(conn, step.codes, step.capture?.sendBudgetMs);
+				// Every step carries its own deadline, because "how long may one of
+				// these codes hold the transport" is a property of the WORK, not
+				// of whether it records: a recording step gets the budget its own
+				// recording produced, a tool change gets a dock cycle's worth, and
+				// a step that only states a shaper keeps the flat default.
+				const rejected = await sendAll(conn, step.codes, step.sendBudgetMs);
 
 				if (watching.kind === "none") {
 					if (rejected === null) continue;
@@ -474,7 +553,7 @@ export class Procedure {
 			// suspends at the yield, whether or not anyone is still listening.
 			// Nothing here consults `signal`, because a cancelled run is exactly
 			// the case that must still be undone.
-			const problem = await sendAll(conn, this.#restore);
+			const problem = await sendAll(conn, this.#restore.codes, this.#restore.sendBudgetMs);
 			if (problem === null) yield { kind: "restored" };
 			else yield { kind: "failed", error: `restore failed: ${describeSend(problem)}` };
 		}
@@ -486,7 +565,7 @@ export class Procedure {
 	 * the class body, and a module-level function would have to be handed a
 	 * seam to bypass.
 	 */
-	static plan(plan: Plan, pre: Preconditions, cfg: ShapingConfig, now: number, rate: SampleRate, runPrior: Shaping): PlanResult {
+	static plan(plan: Plan, pre: Preconditions, cfg: ShapingConfig, now: number, rate: SampleRate, runPrior: RunPrior): PlanResult {
 		// First, because it is about the REQUEST and needs no machine to answer:
 		// a plan that measures nothing is refused before the reading is even
 		// consulted. This is also what keeps `plan` total — a zero speed would
@@ -517,10 +596,39 @@ export class Procedure {
 		// geometry. A pass whose capture cannot be expressed as an M956 is refused
 		// here rather than sent and rejected mid-run, which would leave the
 		// carriage parked halfway through a plan with a shaper still applied.
-		const timed = timedPasses(plan, pre, rate);
+		// WHAT THE RUN DOES ABOUT THE TOOL, decided here and used three times:
+		// by the step that picks it up, by the origin every later step chains
+		// from, and by the restore that gives it back. One decision, because a
+		// second reading of "does this run change tools" is a second chance to
+		// answer it differently — and the two wrong answers are a run that
+		// picks up without putting back, and a plan whose positions assume a
+		// carriage that went to the dock never moved.
+		const change = toolChangeFor(runPrior);
+		// Only when a `T` is actually going out. A run measuring the head that is
+		// already on the carriage has no tool to look up and no reason to be
+		// refused over one — and `state.currentTool` naming it is a better proof
+		// that the tool exists than the `tools` array is, since the firmware put
+		// it there. What this catches is the send: `T9` on a four-head machine is
+		// not an error RRF reports, it runs `tfree` for the OLD tool and then
+		// selects nothing (reference/duet-gcode.md, T), so the run would carry on
+		// and record a BARE CARRIAGE under the name of a head.
+		if (change.kind === "change" && !pre.toolNumbers.includes(change.select)) {
+			return { ok: false, refusal: { kind: "no-such-tool", tool: change.select } };
+		}
+		const origin = change.kind === "none" ? pre.position : planStart(plan);
+
+		const timed = timedPasses(plan, pre, rate, origin);
 		if (!timed.ok) return { ok: false, refusal: timed.refusal };
 
-		return { ok: true, proc: new Procedure(now, stepsFor(plan, pre, timed.passes), restoreFor(runPrior), pre) };
+		return {
+			ok: true,
+			proc: new Procedure(
+				now,
+				stepsFor(plan, pre, timed.passes, change, origin),
+				restoreFor(runPrior, change, pre.position, feedOf(topSpeed(plan))),
+				pre,
+			),
+		};
 	}
 }
 
@@ -594,6 +702,59 @@ const sameEnvelope = (a: Envelope, b: Envelope): boolean =>
  *  unchanged, which is what keeps every commanded move axis-aligned. */
 const along = (from: Point, axis: "X" | "Y", dist: Mm): Point =>
 	axis === "X" ? { x: mm(from.x + dist), y: from.y } : { x: from.x, y: mm(from.y + dist) };
+
+/**
+ * Where this plan's FIRST measured pass begins — the point the run is centred
+ * on, and therefore the point a tool change has to hand the carriage back at.
+ *
+ * The one derivation of "where does this run start". `runOrigin` (runPlan.ts)
+ * is this function over the first plan of a list, so the map the operator
+ * approves, the approach the tool step commands and the position every later
+ * step is checked against are three readings of one answer.
+ *
+ * Total over the plan union with a `never` arm: a plan kind that cannot say
+ * where it starts does not compile.
+ */
+export function planStart(plan: Plan): Point {
+	switch (plan.kind) {
+		case "ring":
+		case "sweep":
+			return plan.start;
+		case "verify":
+			return plan.ring.start;
+		default: {
+			const unhandled: never = plan;
+			throw new Error(`unknown plan kind: ${String((unhandled as { kind: unknown }).kind)}`);
+		}
+	}
+}
+
+/**
+ * The fastest speed this plan already commands.
+ *
+ * What the approach and the return leg are driven at. Deliberately not a new
+ * setting: a travel feed of its own would be a second number meaning "how fast
+ * the lab moves", and it would be the only speed in the run the operator never
+ * saw. Taking the plan's own top speed means the approach introduces no
+ * velocity the run was not going to reach anyway.
+ *
+ * Total, and safe: `measurable` has already refused a plan with no positive
+ * finite speed, so `Math.max` here is over a non-empty list of real numbers.
+ */
+function topSpeed(plan: Plan): MmPerS {
+	switch (plan.kind) {
+		case "ring":
+			return plan.speed;
+		case "verify":
+			return plan.ring.speed;
+		case "sweep":
+			return mmPerS(Math.max(...plan.speeds));
+		default: {
+			const unhandled: never = plan;
+			throw new Error(`unknown plan kind: ${String((unhandled as { kind: unknown }).kind)}`);
+		}
+	}
+}
 
 /**
  * Every point the machine will be commanded to. Moves between them are
@@ -1042,12 +1203,12 @@ type TimedResult =
  * must not invent: an acceleration the board never reported, and a recording
  * longer than one M956 can ask for.
  */
-function timedPasses(plan: Plan, pre: Preconditions, rate: SampleRate): TimedResult {
+function timedPasses(plan: Plan, pre: Preconditions, rate: SampleRate, origin: Point): TimedResult {
 	const accel = pre.travelAccel;
 	if (accel === null) return { ok: false, refusal: { kind: "no-acceleration" } };
 	const mode = modeOf(plan);
 	const out: TimedPass[] = [];
-	for (const pass of passesFor(plan, pre.position)) {
+	for (const pass of passesFor(plan, origin)) {
 		const timing = captureTiming(captureWindow(passDistance(pass), pass.speed, accel, mode), rate);
 		if (timing.samples > MAX_CAPTURE_SAMPLES) {
 			return { ok: false, refusal: { kind: "capture-too-long", samples: timing.samples, max: MAX_CAPTURE_SAMPLES } };
@@ -1246,9 +1407,15 @@ function captureStep(pass: Pass, addr: AccelAddr, timing: CaptureTiming): Step {
 			cmd.waitMoves(),
 			cmd.dwell(timing.dwellMs),
 		],
-		capture: { file: pass.file, budgetMs: timing.budgetMs, sendBudgetMs: timing.sendBudgetMs },
+		capture: { file: pass.file, budgetMs: timing.budgetMs },
 		label: pass.label,
 		expectPosition: pass.at,
+		sendBudgetMs: timing.sendBudgetMs,
+		// Zero: every capture step is preceded either by the shaper statement,
+		// which does not move, or by another capture, whose file wait ran the
+		// poll several times over. There is no step here whose position could
+		// still be in flight.
+		settleMs: 0,
 	};
 }
 
@@ -1264,8 +1431,59 @@ function captureStep(pass: Pass, addr: AccelAddr, timing: CaptureTiming): Step {
  * passes are to be recorded through. Everything else is the pass list, one
  * capture step each.
  */
-function stepsFor(plan: Plan, pre: Preconditions, timed: readonly TimedPass[]): readonly Step[] {
-	return [shaperStep(plan, pre), ...timed.map((t) => captureStep(t.pass, pre.accel, t.timing))];
+function stepsFor(
+	plan: Plan,
+	pre: Preconditions,
+	timed: readonly TimedPass[],
+	change: ToolChange,
+	origin: Point,
+): readonly Step[] {
+	const captures = timed.map((t) => captureStep(t.pass, pre.accel, t.timing));
+	// The tool FIRST, before the shaper, and that order is a firmware fact
+	// rather than a preference: a tool change runs `tpost<N>.g`, which on this
+	// machine is exactly the file the Apply card writes an `M593` line into
+	// (shaping/toolMacro.ts). Stating the shaper first would have it overwritten
+	// by the change, and a baseline would be recorded through the tool's own
+	// installed shaper — the #53 failure, reintroduced by the fix for #51.
+	if (change.kind === "none") return [shaperStep(plan, origin, 0), ...captures];
+	const feed = feedOf(topSpeed(plan));
+	return [toolStep(change, pre.position, origin, feed), shaperStep(plan, origin, TOOL_SETTLE_MS), ...captures];
+}
+
+/**
+ * Pick the tool up, and hand the carriage back where the plan starts.
+ *
+ * ONE step, and the second half is what makes the first safe. A tool change is
+ * real motion — `tfree`/`tpre`/`tpost` run, the carriage goes to the dock and
+ * back, and RRF applies the new tool's G10 offsets on the way out — so after
+ * it the head is somewhere this UI has no way to name: the dock is not in the
+ * object model. Every later step declares the position it must START from, so
+ * a run whose first step left the carriage in an unknown place would refuse
+ * itself. The approach makes the unknown position knowable by COMMANDING one,
+ * in the new tool's own frame, at the plan's own start.
+ *
+ * It is not a correction and it is not a rescue: nothing here reads where the
+ * head ended up. It commands a point `plan` has already proved is inside the
+ * envelope (`visitedPoints`), and the very next step's position check is what
+ * decides whether the machine actually got there. A change that jammed halfway
+ * ends the run before anything is armed, with the restore going out.
+ */
+function toolStep(change: Extract<ToolChange, { kind: "change" }>, from: Point, to: Point, feed: number): Step {
+	return {
+		codes: [
+			cmd.selectTool(change.select),
+			cmd.absolute(),
+			cmd.moveTo(xy(to), feed),
+			cmd.waitMoves(),
+		],
+		label: `select T${change.select}`,
+		// Where the head IS, which `Preconditions.read` has already refused if
+		// it were outside the envelope (#49) — a re-read of a fact that was true
+		// a moment ago rather than a new gate.
+		expectPosition: from,
+		sendBudgetMs: TOOL_CHANGE_SEND_MS,
+		settleMs: 0,
+	};
 }
 
 /**
@@ -1303,11 +1521,14 @@ function stepsFor(plan: Plan, pre: Preconditions, timed: readonly TimedPass[]): 
  * (failure, cancel, abandonment) and needs no change: it already restores from
  * `pre.priorShaping`, read before any of this went out.
  */
-function shaperStep(plan: Plan, pre: Preconditions): Step {
+function shaperStep(plan: Plan, at: Point, settleMs: number): Step {
 	const spec = measuredThrough(plan);
+	// The connector's own flat budget: one `M593` is one short code, and there
+	// is nothing about this step for a number of its own to describe.
+	const common = { expectPosition: at, sendBudgetMs: undefined, settleMs };
 	return spec === null
-		? { codes: [cmd.shapingOff()], label: "shaper none", expectPosition: pre.position }
-		: { codes: [cmd.inputShaping(spec)], label: `shaper ${spec.type}`, expectPosition: pre.position };
+		? { codes: [cmd.shapingOff()], label: "shaper none", ...common }
+		: { codes: [cmd.inputShaping(spec)], label: `shaper ${spec.type}`, ...common };
 }
 
 /**
@@ -1386,6 +1607,47 @@ export function measuredThrough(plan: Plan): ShaperSpec | null {
 	}
 }
 
+// --- the tool -----------------------------------------------------------------
+
+/**
+ * What a run does about the tool: nothing, or a change with its undo.
+ *
+ * A union rather than a tool number plus a flag, because "selected a tool and
+ * has nothing to put back" and "put a tool back that it never selected" are
+ * the two states this whole ticket is about, and neither has a spelling here.
+ * `restore` sits in the same arm as `select` and is not optional, so a
+ * procedure that picks a head up cannot be built without saying which head it
+ * gives back — `-1` included, which is RRF's own word for none and a perfectly
+ * good thing to have been holding.
+ */
+type ToolChange =
+	| { readonly kind: "none" }
+	| { readonly kind: "change"; readonly select: number; readonly restore: number };
+
+/**
+ * The change this run needs, from what the run FOUND rather than from what the
+ * machine says now.
+ *
+ * `runPrior`, not `pre`, and that is the whole of the multi-leg answer. A
+ * measure run is two legs, each planned from its own fresh reading, and by the
+ * time leg 2 reads the machine the carriage is holding the tool leg 1 picked
+ * up. Deciding from that reading would make leg 2 believe there was nothing to
+ * put back and leave the operator's head in the dock, under a screen saying
+ * the machine was restored.
+ *
+ * No change when the run's own tool is already mounted, which is the ordinary
+ * case: the operator measures the head that is on the machine. RRF documents
+ * `T<n>` on an already-active tool as doing nothing (reference/duet-gcode.md,
+ * T), so this is not a shortcut past the firmware — it is what makes the
+ * RESTORE right. A run that sent a no-op `T` would have nothing to undo and no
+ * way to know that.
+ */
+function toolChangeFor(prior: RunPrior): ToolChange {
+	return prior.tool === prior.mountedTool
+		? { kind: "none" }
+		: { kind: "change", select: prior.tool, restore: prior.mountedTool };
+}
+
 // --- restore ----------------------------------------------------------------
 
 /**
@@ -1400,7 +1662,42 @@ export function measuredThrough(plan: Plan): ShaperSpec | null {
  * switching shaping off, because there is nothing to put back and leaving the
  * lab's own shaper in place would be worse than a clean disable.
  */
-function restoreFor(prior: Shaping): readonly GcodeCommand[] {
+/**
+ * The restore, and the deadline it must be sent with — one value, because the
+ * thing that makes the restore slow is the same thing that makes it long. A
+ * restore that gives a tool back is a dock cycle; one that only puts a shaper
+ * back is a single `M593`, and a three-minute deadline on that would hang a
+ * broken link for three minutes at the end of every run.
+ */
+type Restore = { readonly codes: readonly GcodeCommand[]; readonly sendBudgetMs: number | undefined };
+
+function restoreFor(prior: RunPrior, change: ToolChange, back: Point, feed: number): Restore {
+	const shaper = shaperRestore(prior.shaping);
+	if (change.kind === "none") return { codes: shaper, sendBudgetMs: undefined };
+	return { sendBudgetMs: TOOL_CHANGE_SEND_MS, codes: [
+		// The TOOL first, and the shaper after it — the mirror of the order the
+		// steps go out in, and the same firmware fact: putting a tool back runs
+		// its `tpost<N>.g`, which is where this app writes `M593` lines. Restore
+		// the shaper first and the tool change overwrites it, leaving the
+		// machine on the head's own installed shaper under a screen that says
+		// the operator's was put back.
+		change.restore < 0 ? cmd.deselectTool() : cmd.selectTool(change.restore),
+		// And back to where the carriage was FOUND. Motion in a restore is only
+		// here because the restore's own tool change is motion: giving the tool
+		// back parks the head at the dock, which on this machine is outside the
+		// envelope, and the next run would refuse `head-outside-envelope` on a
+		// machine nobody had touched. The point is `pre.position`, which
+		// `Preconditions.read` already proved is inside the box, expressed in
+		// the frame of the tool that has just been put back.
+		cmd.absolute(),
+		cmd.moveTo(xy(back), feed),
+		cmd.waitMoves(),
+		...shaper,
+	] };
+}
+
+/** The shaper half, unchanged: three cases in order of fidelity. */
+function shaperRestore(prior: Shaping): readonly GcodeCommand[] {
 	if (prior.type === "none") return [cmd.shapingOff()];
 	if (isNamedShaper(prior.type) && Number.isFinite(prior.frequency) && prior.frequency > 0 && Number.isFinite(prior.damping)) {
 		return [cmd.inputShaping({ type: prior.type, F: hz(prior.frequency), S: prior.damping })];

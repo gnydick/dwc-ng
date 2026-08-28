@@ -21,7 +21,7 @@ and invariant claim mentions 13 -> 23, so no mechanism was deleted and no
 claim was lost in the gap. From here the ratchets make a dropped rung visible
 in the diff that drops it.
 
-**Totals:** 168 invariants · 143 at rung 6 or above · 25 below rung 6 (ceiling 25).
+**Totals:** 169 invariants · 145 at rung 6 or above · 24 below rung 6 (ceiling 25).
 
 ## bed
 
@@ -1065,7 +1065,7 @@ in the diff that drops it.
 
 **Why.** RRF creates the file and then streams the samples into it off the CAN toolboard, so the directory entry exists long before its contents do. On 2026-08-23 a sweep took the name as proof, accepted pass 1 while the board was still writing it, and pass 2's M956 queued behind that write until the run died one capture in. A name proves a file was CREATED and says nothing about whether a capture FINISHED — and a half-written file fits to a confident, wrong frequency The budget comes off the WATCH, which got it from the same `CaptureTiming` that sized the M956. A flat budget was a false failure waiting for a longer recording: at 5,700 samples the file legitimately cannot exist for 4.2 s, and "no capture appeared" would have been reported for a run that was working.
 
-`packages/ui/src/shaping/procedure.ts:1662`
+`packages/ui/src/shaping/procedure.ts:1959`
 
 ### `shaping/a-filter-finds-rows-it-does-not-choose-them` — rung 6
 
@@ -1098,6 +1098,16 @@ in the diff that drops it.
 **Why.** the map on the card is a promise about where the carriage will go. A second arithmetic for "where does this run start" — one for the drawing, one for the moving — is a promise that can be broken silently
 
 `packages/ui/src/shaping/runPlan.ts:20`
+
+### `shaping/a-runs-prior-state-is-minted-once-from-its-opening-reading` — rung 6
+
+**Mechanism.** choke-point — `RunPrior` carries `runPriorBrand`, a `unique symbol` declared here and never exported, so the type cannot be written as an object literal anywhere else and `runPriorOf` is the only expression in the program that produces one. `Procedure.plan` requires one, and a mid-run `Preconditions` is no longer a well-typed thing to pass it: before this, `runPrior` was a bare `Shaping`, so leg 2's fresh reading compiled perfectly in the slot that must hold leg 1's. What is NOT enforced is arity — nothing stops a caller minting a second one inside the loop — so the remaining discipline is that `runMotion` calls this once, above its loop, from a reading taken before any code went out
+
+**Why.** every leg re-reads the machine to be AUTHORISED, and the run's own codes have been changing what those readings say. On the shaper this was already a live bug (runner.ts): leg 1 states `none`, the poll catches up, leg 2 reads `none` back as the thing to restore, and the operator's shaper is silently gone. The mounted tool has exactly the same shape and a worse ending — leg 2 would read the tool leg 1 PICKED UP as the tool to put back, so the machine would be left holding the measured head and the restore would report success
+
+**Debt — promotion.** arity is convention, not construction: `runPriorOf` can be called twice. Promote by making the run itself the producer — a run handle minted from the opening reading that hands out procedures — so a second prior has no expression rather than merely no call site
+
+`packages/ui/src/shaping/preconditions.ts:330`
 
 ### `shaping/a-selection-is-one-of-this-tools-own-results` — rung 7
 
@@ -1313,7 +1323,7 @@ in the diff that drops it.
 
 **Debt — promotion.** the NUMBER is a reading of the wire format, not a measurement: RRF's source is not vendored here and its M956 docs state no bound. Promote by walking a real toolboard up until it refuses and pinning the value that came back, or by citing the firmware's own field width. Until then the claim is only that the UI refuses before the board does, which holds for any true bound at or below this one
 
-`packages/ui/src/shaping/procedure.ts:819`
+`packages/ui/src/shaping/procedure.ts:980`
 
 ### `shaping/one-answer-to-which-line-is-the-shaper` — rung 6
 
@@ -1329,7 +1339,7 @@ in the diff that drops it.
 
 **Why.** the constant this replaced was 1500 ms of dwell beside a free-floating `samples` setting, and on 2026-08-23 a sweep recorded 7.5 s against it — every following pass landed inside the previous pass's file. The two numbers had no way to know about each other, and neither knew about the move
 
-`packages/ui/src/shaping/procedure.ts:863`
+`packages/ui/src/shaping/procedure.ts:1024`
 
 ### `shaping/one-motion-field-table` — rung 6
 
@@ -1345,7 +1355,7 @@ in the diff that drops it.
 
 **Why.** the checks and the move must not be separable. A card that could assemble its own guard object would be free to omit the homed test, and an unhomed axis under a 200 mm/s G1 is a crash into the frame at full current — the failure this whole feature is built around
 
-`packages/ui/src/shaping/preconditions.ts:78`
+`packages/ui/src/shaping/preconditions.ts:90`
 
 ### `shaping/restore-is-structural` — rung 7
 
@@ -1353,7 +1363,7 @@ in the diff that drops it.
 
 **Why.** the machine's prior shaper is knowable only BEFORE the run changes it. A restore derived from live state after a verify pass would faithfully re-apply the candidate under test and leave the operator believing the machine was back to baseline — a wrong belief about a setting that changes every subsequent print @note `runPrior` is a PARAMETER and not `pre.priorShaping`, and the difference is a live bug in every multi-leg run. A Measure run is two legs (runPlan.ts, one ring per axis), each its own Procedure built from its own fresh `Preconditions.read` — and that read takes the shaper off the POLLED object model, which the run's own codes have been changing. Leg 1 states its shaper, the poll catches up during leg 1's several seconds of captures, and leg 2 reads that statement back as the thing to restore to: `none` after a baseline, so the operator's shaper is silently gone; the CANDIDATE after a verify leg, so an unproven shaper is left installed. Both end on "the machine's shaper is back as it was found" (copy.ts), because the restore was sent and sending it is all the screen can see. Making it an argument forces the caller to say WHICH reading it means, and a run has exactly one to give: the one from before it touched anything. @note the SHAPER is the whole of what this puts back, and the other thing a run touches — the accelerometer — is deliberately absent rather than forgotten (#43). RRF has no command that cancels an armed M956 (reference/duet-gcode.md, M956), so there is nothing this array could hold that would disarm one; a restore that "covers everything the run touched" cannot be written for the accelerometer, only for the shaper. What covers the accelerometer instead is `cmd.captureMove`: an arm and the move that consumes it are ONE command and one request, so a run cannot end with a pending capture on the board and there is no state left for a `finally` to undo. That is the stronger of the two mechanisms and the reason the weaker one is not attempted here — a cleanup built on a guess about what a second M956 does to a pending one would be a remediation nobody had verified, on a machine.
 
-`packages/ui/src/shaping/procedure.ts:300`
+`packages/ui/src/shaping/procedure.ts:366`
 
 ### `shaping/results-file-is-parsed-not-cast` — rung 6
 
@@ -1381,7 +1391,7 @@ in the diff that drops it.
 
 **Why.** `samples / rate` is the whole recording. M955's S parameter PERSISTS on the board (reference/duet-gcode.md, M955 notes: "These configuration settings persist until they are changed"), so the rate in force is whatever somebody last set — 1375 Hz on Gabe's toolboard, but nothing in this UI put it there. A constant here would silently mis-size every capture on any machine configured differently, and the error is proportional: at half the assumed rate every recording is twice as long as planned and the dwell derived from it covers half of it
 
-`packages/ui/src/shaping/procedure.ts:691`
+`packages/ui/src/shaping/procedure.ts:852`
 
 ### `shaping/shaping-motion-only-via-procedure` — rung 7
 
@@ -1389,7 +1399,7 @@ in the diff that drops it.
 
 **Why.** this is the feature's whole safety story. The lab sends 200 mm/s moves with nobody watching the axis, and the difference between a capture and a crash into the frame is whether those four facts were true at the moment of planning. A second way to build a run is a second place to forget one of them
 
-`packages/ui/src/shaping/procedure.ts:253`
+`packages/ui/src/shaping/procedure.ts:319`
 
 ### `shaping/step-readiness-has-one-answer` — rung 6
 
@@ -1407,13 +1417,13 @@ in the diff that drops it.
 
 `packages/ui/src/shaping/sweepRun.ts:67`
 
-### `shaping/the-shaper-to-restore-is-read-once-per-run` — rung 5
+### `shaping/the-state-to-restore-is-read-once-per-run` — rung 6
 
-**Mechanism.** required argument — `Procedure.plan` takes `runPrior` and will not compile without it, and this file holds exactly one, captured from the FIRST leg's reading and never reassigned. The two invariants above and here pull in opposite directions on purpose and both are right: what AUTHORISES a leg must be as fresh as possible, and what the run PUTS BACK must be as old as the run.
+**Mechanism.** choke-point — `Procedure.plan` takes a `RunPrior` (shaping/preconditions.ts), a branded type whose only producer is `runPriorOf`; a mid-run `Preconditions` is no longer a well-typed thing to pass into that slot, which it was while the parameter was a bare `Shaping`. This file mints exactly one, from a reading taken ABOVE the loop, before any code has gone out. The two invariants above and here pull in opposite directions on purpose and both are right: what AUTHORISES a leg must be as fresh as possible, and what the run PUTS BACK must be as old as the run
 
-**Why.** every leg's reading takes the shaper from the polled object model, and the run's own codes change it. Leg 1 states its shaper; the poll catches up during leg 1's captures; leg 2's fresh reading returns that statement as the machine's "prior". Restoring to it leaves a baseline run with shaping switched off and a verify run with the unproven candidate still installed — under a screen that says the shaper is back as it was found
+**Why.** every leg's reading takes the shaper AND the mounted tool from the polled object model, and the run's own codes change both. Leg 1 states its shaper and picks up its head; the poll catches up during leg 1's captures; leg 2's fresh reading returns both of those as the machine's "prior". Restoring to it leaves a baseline run with shaping switched off, a verify run with the unproven candidate still installed, and — since #51 — the measured head still on the carriage, all under a screen that says the machine is back as it was found
 
-**Debt — promotion.** what actually holds the line today is a habit of this file — one variable, assigned once, never reassigned — and `runPrior` is typed the same as any other reading, so leg 2's fresh `Preconditions` is a perfectly well-typed thing to pass. A second call site, or one edit that "uses the reading we already have", compiles and produces exactly the wrong restore with nothing to point at. Promote by giving the prior its own branded type minted ONCE at run start from the opening reading, and making `Procedure.plan` require that brand: a mid-run reading then has no route to become a prior, so the mistake stops being expressible rather than merely not currently written
+**Debt — promotion.** the brand fixes WHICH reading may become a prior, not HOW MANY: nothing stops a second `runPriorOf` inside the loop. Promote by making the run itself the producer — a handle minted from the opening reading that hands out procedures — so a second prior has no expression rather than merely no call site
 
 `packages/ui/src/shaping/runner.ts:32`
 

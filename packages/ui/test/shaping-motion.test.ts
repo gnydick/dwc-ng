@@ -176,6 +176,7 @@ function harness(over: {
 			conn: board.conn,
 			om: () => model,
 			cfg: () => cfg,
+			tool: 0,
 			accel: ADDR,
 			prefix: "t0_ring",
 			report: (s) => { states.push(s); },

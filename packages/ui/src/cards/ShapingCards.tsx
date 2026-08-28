@@ -733,6 +733,11 @@ export function ShapingCaptureBody(props: { ctx: CardCtx }) {
 				om: () => props.ctx.om.om,
 				cfg,
 				accel,
+				// The SAME `svc.tool()` the accelerometer address was chosen for
+				// and the capture prefix was spelled from. Read here rather than
+				// inside the run, so the head that gets picked up and the head the
+				// captures are named for cannot come from two reads a minute apart.
+				tool: svc.tool(),
 				prefix: safeName(),
 				report: slot.report,
 				signal: slot.signal,

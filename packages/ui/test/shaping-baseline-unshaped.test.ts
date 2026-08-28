@@ -33,7 +33,7 @@ import { hz, mm, mmPerS } from "../src/shaping/engine/units.ts";
 import type { ShaperSpec } from "../src/shaping/engine/shapers.ts";
 import {
 	EI2_PRIOR, NOW, RATE,
-	config, freshPre, modelWith, ringPlan, sentBy,
+	config, freshPre, modelWith, ringPlan, sentBy, priorOf,
 } from "./helpers/shapingMachine.ts";
 
 /** The shaper Gabe's machine actually had installed when this bug bit. */
@@ -56,7 +56,7 @@ const verifyPlan = (): VerifyPlan => ({ kind: "verify", spec: SPEC, ring: ringPl
  *  exercised too — the disable must not be what the machine is left in. */
 async function wireOf(plan: Parameters<typeof planProcedure>[0]): Promise<string[]> {
 	const model = modelWith(SHAPED);
-	const r = planProcedure(plan, freshPre(SHAPED), config(), NOW, RATE, EI2_PRIOR);
+	const r = planProcedure(plan, freshPre(SHAPED), config(), NOW, RATE, priorOf(EI2_PRIOR));
 	assert.equal(r.ok, true, "the plan must be accepted — this suite is about what it SENDS");
 	if (!r.ok) throw new Error("unreachable");
 	return await sentBy(r.proc, model);

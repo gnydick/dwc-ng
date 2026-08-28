@@ -40,7 +40,13 @@ this section leads the file.
 
 **Executed** (`src/gcode.ts`): `G0 G1 G28 G90 G91 M0 M2 M24 M25 M32 M82 M83 M104
 M106 M107 M109 M112 M114 M115 M118 M120 M121 M140 M190 M220 M221 M291 M292 M486
-M550 M562 M568 M593 M701 M702 M703 M955 M956 M999`.
+M550 M562 M568 M593 M701 M702 M703 M955 M956 M999`, plus `T<n>` — which the
+`case` scan below cannot see, because tool selection is matched by a regexp
+above the switch rather than by a case label. That is a hole in the
+machine-check, not in the mock: a `T` the UI emitted would be executed here and
+still be invisible to `mock-parity.test.ts`. Section 1's tables are about the
+switch; `T` is described under § 6 with the rest of what the mock models on
+purpose.
 
 **Emitted by the UI and NOT executed by the mock** — verified against
 `packages/ui/src/control/commands.ts`:
@@ -173,6 +179,25 @@ unreachable. **Do not remove one to make the default machine tidier.**
 | `--busy-every`, `--max-sessions`, `--session-timeout` | A server as scarce as the real one |
 | `-s heater-fault`, `-s disconnect`, `-s mid-print`, `-s shaping` | Fault, outage, an active job, and a shaping run with synthesised accelerometer CSVs |
 
+### Tool changes, and the one thing they model
+
+`T<n>` is executed (§ 1), and since #51 it also PARKS THE CARRIAGE: a change
+that really changes the tool moves X and Y to the far end of their own declared
+travel and leaves them there. `tfree`/`tpre`/`tpost` are not run — the mock has
+no macro engine, `M98` is one of § 1's no-ops — so this is a stand-in for the
+dock trip, not a simulation of it.
+
+It is deliberately the harder behaviour, and belongs in this section for the
+reason the section exists: a mock that left the carriage put would make a
+caller that plans its own approach after a change indistinguishable from one
+that assumes a tool change is free, and the Shaping Lab's correctness turns on
+exactly that. Selecting the tool that is ALREADY active does nothing at all —
+no state change, no motion — which is what RRF documents and what lets a caller
+skip a redundant `T` and still have a correct restore.
+
+What it does not model is in § 7: how long a change takes, and every way one
+can fail.
+
 **Combinations are legal and are the interesting cases** — an unidentified
 four-tool machine with a seeded config is one call, and the flags read no state
 from each other by design.
@@ -209,3 +234,12 @@ Read this before reporting anything as "verified on the mock":
 6. Whether the real firmware accepts a G-code's exact spelling. The mock parses
    what it was taught; `reference/dwc` and the board are the authorities, per
    `CLAUDE.md`.
+7. What a tool change COSTS. The mock changes tools instantly (§ 6); on the real
+   changer a `T` is tens of seconds of dock cycle plus whatever `tpost<N>.g`
+   waits for, which is the reason the Shaping Lab sends one with a three-minute
+   request deadline (`shaping/procedure.ts`, `TOOL_CHANGE_SEND_MS`). A mock run
+   cannot tell you whether that ceiling is generous or mean.
+8. Whether a tool change can FAIL. The mock's only refusal is a tool the machine
+   does not have; a real changer can jam, drop a head, or decline a cold tool.
+   A run that survives a tool change here has not been shown to survive one
+   there.

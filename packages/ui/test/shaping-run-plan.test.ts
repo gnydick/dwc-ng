@@ -21,7 +21,7 @@ import {
 import type { RunRequest } from "../src/shaping/runPlan.ts";
 import { mm } from "../src/shaping/engine/units.ts";
 import type { Envelope, ShapingDefaults } from "../src/config/types.ts";
-import { BOX, config, freshPre, NO_SHAPER, NOW, RATE } from "./helpers/shapingMachine.ts";
+import { BOX, config, freshPre, NOW, RATE , priorOf } from "./helpers/shapingMachine.ts";
 
 const DEFAULTS: ShapingDefaults = { distMm: 60, speedMmS: 200, repeats: 3 };
 const at = (x: number, y: number): { x: number; y: number } => ({ x, y });
@@ -94,7 +94,7 @@ test("a move longer than the box is planned anyway — and refused, naming the c
 	// for.
 	const long: ShapingDefaults = { ...DEFAULTS, distMm: 400 };
 	const plans = runPlans({ kind: "measure" }, long, BOX, "r");
-	const planned = planProcedure(plans[0]!, freshPre(), config(), NOW, RATE, NO_SHAPER);
+	const planned = planProcedure(plans[0]!, freshPre(), config(), NOW, RATE, priorOf());
 	assert.equal(planned.ok, false);
 	if (planned.ok) return;
 	assert.equal(planned.refusal.kind, "plan-leaves-envelope");
@@ -170,7 +170,7 @@ test("the segments' file names are the procedure's own capture names, in order",
 			// The reading a leg is planned from decides where its steps EXPECT the
 			// carriage; it has no bearing on what the captures are called, which is
 			// the whole of what this test is about.
-			const planned = planProcedure(plan, pre, config(), NOW, RATE, NO_SHAPER);
+			const planned = planProcedure(plan, pre, config(), NOW, RATE, priorOf());
 			assert.equal(planned.ok, true, `${kind}: ${JSON.stringify(planned)}`);
 			if (!planned.ok) return;
 			for (const step of planned.proc.steps) {

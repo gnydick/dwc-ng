@@ -31,8 +31,8 @@ import type { ObjectModel } from "../src/om/types.ts";
 import { hz, mm, mmPerS, mmPerS2 } from "../src/shaping/engine/units.ts";
 import type { ShaperSpec } from "../src/shaping/engine/shapers.ts";
 import {
-	EI2_PRIOR, FAKE_CSV, NO_SHAPER, NOW, RATE, board, config, drain, errorOf, fakeBoard, freshPre, kinds,
-	modelWith, ringPlan, testClock, type Fake, type FakeOptions,
+	EI2_PRIOR, FAKE_CSV, NOW, RATE, board, config, drain, errorOf, fakeBoard, freshPre, kinds,
+	modelWith, ringPlan, testClock, type Fake, type FakeOptions, priorOf,
 } from "./helpers/shapingMachine.ts";
 import { operatorTyped } from "../src/control/commands.ts";
 
@@ -49,7 +49,7 @@ function ready(fake: FakeOptions = {}, over: Partial<RingPlan> = {}): Fake & { p
 }
 
 function plannedRing(over: Partial<RingPlan> = {}) {
-	const planned = planProcedure(ringPlan({ repeats: 1, ...over }), freshPre(), config(), NOW, RATE, NO_SHAPER);
+	const planned = planProcedure(ringPlan({ repeats: 1, ...over }), freshPre(), config(), NOW, RATE, priorOf());
 	if (!planned.ok) throw new Error(`fixture refused: ${JSON.stringify(planned.refusal)}`);
 	return planned.proc;
 }
@@ -64,7 +64,7 @@ function plannedRing(over: Partial<RingPlan> = {}) {
  */
 function readyShaped(fake: FakeOptions = {}): Fake & { proc: ReturnType<typeof plannedRing>; model: ObjectModel } {
 	const model = modelWith({ shaping: EI2_PRIOR });
-	const planned = planProcedure(ringPlan({ repeats: 1 }), freshPre({ shaping: EI2_PRIOR }), config(), NOW, RATE, EI2_PRIOR);
+	const planned = planProcedure(ringPlan({ repeats: 1 }), freshPre({ shaping: EI2_PRIOR }), config(), NOW, RATE, priorOf(EI2_PRIOR));
 	if (!planned.ok) throw new Error(`fixture refused: ${JSON.stringify(planned.refusal)}`);
 	return { proc: planned.proc, model, ...fakeBoard(model, fake) };
 }
@@ -199,7 +199,7 @@ test("a download without the board's trailer is not a finished capture", async (
 test("a board reporting no accelerometer run counter refuses BEFORE it is moved", async () => {
 	const boards = [board(0, false), board(20, true, null)];
 	const model = modelWith({ boards });
-	const planned = planProcedure(ringPlan({ repeats: 1 }), freshPre({ boards }), config(), NOW, RATE, NO_SHAPER);
+	const planned = planProcedure(ringPlan({ repeats: 1 }), freshPre({ boards }), config(), NOW, RATE, priorOf());
 	assert.equal(planned.ok, true);
 	if (!planned.ok) return;
 	const fake = fakeBoard(model);
@@ -253,7 +253,7 @@ test("every code of a recording step carries the deadline that recording produce
 test("a verify plan's shaper step records nothing, so it keeps the flat budget", async () => {
 	const model = modelWith({ shaping: EI2_PRIOR });
 	const verify: VerifyPlan = { kind: "verify", spec: EI2_SPEC, ring: ringPlan({ repeats: 1, namePrefix: "ver" }) };
-	const planned = planProcedure(verify, freshPre({ shaping: EI2_PRIOR }), config(), NOW, RATE, EI2_PRIOR);
+	const planned = planProcedure(verify, freshPre({ shaping: EI2_PRIOR }), config(), NOW, RATE, priorOf(EI2_PRIOR));
 	assert.equal(planned.ok, true);
 	if (!planned.ok) return;
 	const fake = fakeBoard(model);
@@ -306,7 +306,7 @@ test("a position mismatch before the second capture step fails the run WITHOUT s
 test("a mismatch on the very first step still restores, and sends nothing else", async () => {
 	const model = modelWith({ shaping: EI2_PRIOR });
 	const proc = (() => {
-		const planned = planProcedure(ringPlan({ repeats: 1 }), freshPre({ shaping: EI2_PRIOR }), config(), NOW, RATE, EI2_PRIOR);
+		const planned = planProcedure(ringPlan({ repeats: 1 }), freshPre({ shaping: EI2_PRIOR }), config(), NOW, RATE, priorOf(EI2_PRIOR));
 		if (!planned.ok) throw new Error("fixture refused");
 		return planned.proc;
 	})();
@@ -330,7 +330,7 @@ test("a machine that stops reporting a homed position fails the run rather than 
 
 test("a send that throws on the third capture step still gets the restore out", async () => {
 	const model = modelWith();
-	const planned = planProcedure(ringPlan({ repeats: 2 }), freshPre(), config(), NOW, RATE, NO_SHAPER);
+	const planned = planProcedure(ringPlan({ repeats: 2 }), freshPre(), config(), NOW, RATE, priorOf());
 	assert.equal(planned.ok, true);
 	if (!planned.ok) return;
 	// The shaper statement is attempt 0, so the third capture step's codes are
@@ -408,7 +408,7 @@ test("an aborted signal stops before the next step and restores", async () => {
 test("a verify run applies the candidate first and hands the machine back to the prior shaper", async () => {
 	const model = modelWith({ shaping: EI2_PRIOR });
 	const verify: VerifyPlan = { kind: "verify", spec: EI2_SPEC, ring: ringPlan({ repeats: 1, namePrefix: "ver" }) };
-	const planned = planProcedure(verify, freshPre({ shaping: EI2_PRIOR }), config(), NOW, RATE, EI2_PRIOR);
+	const planned = planProcedure(verify, freshPre({ shaping: EI2_PRIOR }), config(), NOW, RATE, priorOf(EI2_PRIOR));
 	assert.equal(planned.ok, true);
 	if (!planned.ok) return;
 	const fake = fakeBoard(model);
