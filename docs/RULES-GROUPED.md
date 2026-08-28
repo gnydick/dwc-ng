@@ -54,6 +54,7 @@ from git blame rather than writing it by hand.
 - [Proving a change against something that behaves like the machine](#proving-a-change-against-something-that-behaves-like-the-machine) 🟢
 - [Dispatching work — who does it, and where it runs](#dispatching-work--who-does-it-and-where-it-runs) 🟢
 - [Claiming what the tooling can do](#claiming-what-the-tooling-can-do) 🟢
+- [Persisted layouts across releases](#persisted-layouts-across-releases) 🟢
 
 ---
 
@@ -217,3 +218,28 @@ precisely why they read as reliable.
 **Enforcement:** none mechanical, and none is available — no artefact records
 that a claim was made without checking. Held by authorship discipline, like the
 other verification-discipline rules.
+
+---
+
+## Persisted layouts across releases 🟢
+
+**What binds these:** all three are one decision about the boundary between a
+RELEASE and the layout state that outlives it. A layout lives in three places at
+once — code defaults, the SD card, and browser `localStorage` — and a release can
+change what a layout MEANS while all three still hold bytes written under the old
+meaning. These rules fix which copy is authoritative at that moment (the card),
+what happens to the copy that is not (discarded, not reconciled), and what the
+browser is allowed to see while the rewrite is in flight (nothing).
+
+No wobble: dictated by Gabe on 2026-08-28 as an ARD, and amended by him within
+the minute to strike the "if migration is needed" conditional. The amendment is
+what makes the first row enforceable — the conditional form left a judgement call
+that no check could catch, and the unconditional form reduces it to arithmetic.
+Both the original dictation and the amendment are quoted verbatim in the spec.
+
+
+| Date | Rule | Cites |
+|---|---|---|
+| 2026-08-28 | Every release ships a migration that rewrites ALL layouts stored on the SD card to the current version — unconditionally, the floor case being a migration whose only effect is to raise the version stamp. Enforced as arithmetic: the layout stamp must be strictly greater than the previous release's, against a committed baseline in the `eager-budget.json` / `debt-ceiling.json` shape. | `docs/superpowers/specs/2026-08-28-layout-migration-design.md` § The design constraint — what must be unrepresentable |
+| 2026-08-28 | When the UI detects that a migration has happened, it discards its local storage and re-seeds from the card. At a version boundary the card wins outright; GIT_87's `basis` reconciliation governs only the non-migration case. | `docs/superpowers/specs/2026-08-28-layout-migration-design.md` § The four obligations |
+| 2026-08-28 | During a migration the served entry document is temporarily replaced by an "Upgrade in process" page, so no browser loads the app mid-migration. Because migrations are unconditional, this window is entered on EVERY release. | `docs/superpowers/specs/2026-08-28-layout-migration-design.md` § The four obligations |

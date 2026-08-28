@@ -28,3 +28,11 @@ Disposition: filed — Dispatching work — who does it, and where it runs (CLAU
 RULE: stop guessing at capabilities, check first
 
 Disposition: filed — Claiming what the tooling can do (CLAUDE.md § Working rules (verification discipline))
+
+## 2026-08-28 (manual capture — ARD, not hook-captured; `.claude/hooks/rule_capture.py` matches a `RULE:` prefix and Gabe prefixed this one `ARD:`)
+
+ARD (verbatim): "ARD: we have to honor smooth migration path when there are updates. when the user interface is newer than the layout on the sd card, there has to be a migration to update the layouts stored on the card to the current version of the software. so every release needs a migration, if migration is needed, to modify the all layouts saved on the sdcard. if the UI sees a migration has happened, it trashes it's local storage and updates it with what's on the sdcard. we should also do a temp replacement of index.html with a simple 'Upgrade in process' so the web page is never loaded during a migration."
+
+AMENDMENT (verbatim, seconds later): "change that to remove the 'if migration is needed'  all migrations will be at least a version upgrade in the layout files"
+
+Disposition: filed — Solo rules, by area § Persisted layouts across releases (docs/superpowers/specs/2026-08-28-layout-migration-design.md). Implementation ticket pair filed separately; NOT implemented in this pass.
