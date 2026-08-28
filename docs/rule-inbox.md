@@ -10,3 +10,15 @@ Disposition: filed — Proving a change against something that behaves like the 
 RULE: deploy to mock with each code complete iteration for UAT
 
 Disposition: filed — Proving a change against something that behaves like the machine (CLAUDE.md § Working rules (development environment))
+
+## 2026-08-28T19:24:11Z a5e32e49-b5e0-40ee-ab12-5bd93dc627cc
+
+RULE: nothing runs in the main agent conserve tokens and keep conversation context tight
+
+Disposition: filed — Dispatching work — who does it, and where it runs (CLAUDE.md § Working rules (work topology))
+
+## 2026-08-28 (manual capture — RECONSTRUCTED from the conversation of 2026-08-28, not hook-captured; these rulings were given conversationally rather than RULE:-prefixed, so `.claude/hooks/rule_capture.py` never fired on them)
+
+RULE (reconstructed): agent topology. There are FOUR agent classes — effort, review, test, rule-intake (Gabe: "we should have 4 types then, union of the types"). Serial WITHIN a class: one agent in flight per class. Concurrent ACROSS classes: at most four agents at once, and only when each is in a DIFFERENT worktree. At most ONE agent per worktree, not waivable by an agent's own reading of its brief; sharing happens only when Gabe explicitly requests it. A review or test of work in flight targets that branch and gets its OWN worktree of it, created if the branch has none. Agents are NAMED BY CLASS AND TARGET at spawn — `effort: GIT_118`, `review: GIT_87`, `test: uat`, `rule-intake: agent topology` (Gabe: "naming convention is good") — because the harness refers to agents only by opaque ids like `a147f359d45f0a51e`, so without the convention a running agent's class is invisible and a serial-per-class rule cannot be followed at a glance.
+
+Disposition: filed — Dispatching work — who does it, and where it runs (CLAUDE.md § Working rules (work topology))

@@ -224,3 +224,40 @@ Adopted 2026-08-26 (Gabe, via `RULE:` intake).
   EARLY and often; the printer deploy still waits for Gabe's word. Batching UAT
   to the end is how a wrong reading of a requirement survives three fix rounds
   before anyone who knows the machine looks at it.
+
+## Working rules (work topology)
+
+Adopted 2026-08-28 (Gabe, ruled in conversation). The two subsections above
+fire on an ARTEFACT — a claim already written. These fire earlier, on the
+decision to DISPATCH: they govern who does a piece of work and where it runs,
+before any of it exists.
+
+- **The main agent does no work.** Verbatim: "nothing runs in the main agent
+  conserve tokens and keep conversation context tight". The main agent holds
+  conversation, adjudication and relay; everything else is delegated to an
+  agent. The line is intent, not file count: reading a file to ANSWER a
+  question is conversation; reading it to CHANGE it is work, and work is
+  dispatched. The cost being conserved is main-loop context — tool output an
+  agent would have absorbed and returned as a summary — not model spend.
+- **Four agent classes: effort, review, test, rule-intake.** Every dispatch
+  belongs to exactly one of them. (*effort* = implementation and research;
+  *review* = reading work for defects; *test* = exercising it, including UAT;
+  *rule-intake* = governance filing.) A new class is named by Gabe, not
+  inferred by an agent that wants a second slot.
+- **Serial WITHIN a class, concurrent ACROSS classes.** One agent in flight
+  per class, so at most four at once — and only when each is in a DIFFERENT
+  worktree.
+- **At most ONE agent per worktree.** Two agents in one checkout collide:
+  each sees the other's half-written files as the tree it is reasoning about,
+  and neither can attribute or undo a change it did not make. This is not
+  waivable by an agent's own reading of its brief — a brief that says "do not
+  touch the tree" is a promise, not a mechanism. Sharing a worktree happens
+  only when Gabe explicitly requests it.
+- **A review or test of work in flight targets that branch, in its own
+  worktree of it.** Not the main checkout, and not the worktree the effort
+  agent is writing in. If the branch has no second worktree, create one.
+- **Agents are named by CLASS and TARGET at spawn** — `effort: GIT_118`,
+  `review: GIT_87`, `test: uat`, `rule-intake: agent topology`. The harness
+  refers to a running agent only by an opaque id (`a147f359d45f0a51e`), so
+  without the convention the class of a live agent is invisible and the
+  serial-per-class rule cannot be followed at a glance.

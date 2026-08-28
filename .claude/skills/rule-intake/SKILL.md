@@ -10,14 +10,24 @@ adjudicates a rule.** This skill PREPARES a filing — it never self-files.
 Capture is a hook (`.claude/hooks/rule_capture.py`); the machine checks are
 `scripts/register_check.py`. If this skill never runs, no rule is silently
 lost — the inbox entry just sits `Disposition: PENDING` and
-`register_check.py --fast` keeps reporting it. **There is no pre-commit hook
-in this project enforcing that today** (see
-`docs/superpowers/2026-08-26-register-check-port.md` for why: this repo's
-existing gates — the invariants ledger, the unit-lengths lint — are also run
-by hand or via `pnpm test`, not by a git hook or CI, and this port followed
-that precedent rather than inventing a new one). Running the check and acting
-on it is still a discipline this skill exists to make easy to follow, not one
-the tooling can force yet.
+`register_check.py --fast` keeps reporting it.
+
+**A pre-commit hook DOES gate this repo** — `.githooks/pre-commit`, activated
+per clone by `pnpm hooks:install` (which sets `core.hooksPath` to `.githooks`).
+It runs `python scripts/register_check.py --fast` whenever a commit touches
+`docs/RULES-GROUPED.md`, `docs/rule-inbox.md`, `CLAUDE.md`, `docs/LEARNINGS.md`
+or `scripts/register_check.py`, and exits 1 on a violation — so a PENDING inbox
+entry blocks the commit that touches any of those paths. What this project
+genuinely lacks is CI: there is no `.github/workflows` directory at all, and the
+hook lives behind an explicit opt-in, so a clone that never ran
+`pnpm hooks:install` is completely ungated, as is any commit that touches none
+of the five paths above. The full check (the group/circle scan the fast mode
+skips) still runs only by hand, via `pnpm register:check`.
+See `docs/superpowers/2026-08-26-register-check-port.md` for the port's history.
+
+So running the FULL check, and acting on what it says, is still a discipline
+this skill exists to make easy to follow — the hook forces only the fast half,
+and only for someone who installed it.
 
 The register CITES, it never ORIGINATES. Every step below either writes the
 rule to its durable home or points the register at that home — never the
@@ -68,8 +78,9 @@ reverse.
    file § heading>)` (or `not a rule — <reason>` if Gabe dismisses it).
    Commit the durable home, the register, and the inbox together. Run
    `python scripts/register_check.py` (full mode, not just `--fast`) before
-   calling it done — it is not wired to block the commit automatically here,
-   so this step is the only thing that catches a bad filing.
+   calling it done. The pre-commit hook runs `--fast` on these paths and will
+   block a PENDING inbox entry, but the group/circle scan is fast mode's blind
+   spot and nothing but this step catches a bad filing there.
 
 ## Red flags
 

@@ -52,6 +52,7 @@ from git blame rather than writing it by hand.
 - [Confirmation discipline — a local check is not a general one](#confirmation-discipline--a-local-check-is-not-a-general-one) 🟢
 - [Acting outside the working tree](#acting-outside-the-working-tree) 🟢
 - [Proving a change against something that behaves like the machine](#proving-a-change-against-something-that-behaves-like-the-machine) 🟢
+- [Dispatching work — who does it, and where it runs](#dispatching-work--who-does-it-and-where-it-runs) 🟢
 
 ---
 
@@ -134,3 +135,43 @@ reading or by unit tests.
 claim without a UAT note fails the second rule on its face, which is
 reviewable by eye where "did you run the mock" is not. `packages/mock-duet`
 runs via `pnpm mock`.
+
+---
+
+## Dispatching work — who does it, and where it runs 🟢
+
+**What binds these:** the groups above fire on an artefact that already exists
+— a claim, a diagnosis, a completion note. These fire one step earlier, at the
+moment work is HANDED OUT: who executes it, how many executors may be alive at
+once, and which checkout each one owns. Two questions, one generator — the main
+agent's context is a scarce shared resource, and so is a working tree; both are
+protected by deciding the topology before dispatch rather than discovering the
+contention afterwards.
+
+No wobble: both rules are Gabe's, ruled 2026-08-28, and the second refines
+rather than contradicts the first.
+
+| Date | Rule | Cites |
+|---|---|---|
+| 2026-08-28 | The main agent does no work: it holds conversation, adjudication and relay, and delegates everything else. Reading a file to answer a question is conversation; reading it to change it is work. | `CLAUDE.md` § Working rules (work topology) |
+| 2026-08-28 | Four agent classes — effort, review, test, rule-intake. Serial WITHIN a class (one in flight each), concurrent ACROSS classes, so at most four at once and only when each is in a different worktree. | `CLAUDE.md` § Working rules (work topology) |
+| 2026-08-28 | At most ONE agent per worktree, not waivable by an agent's own reading of its brief; a review or test of work in flight targets that branch in its OWN worktree of it, created if none exists. | `CLAUDE.md` § Working rules (work topology) |
+| 2026-08-28 | Agents are named by class and target at spawn (`effort: GIT_118`, `review: GIT_87`, `test: uat`, `rule-intake: agent topology`), because the harness identifies a running agent only by an opaque id. | `CLAUDE.md` § Working rules (work topology) |
+
+**Evidence:** the worktree rule needs no incident to justify it — two agents
+writing one checkout each read the other's half-written files as the state they
+are reasoning about, and neither can attribute or undo a change it did not
+make. No such collision is recorded in this repository's history; a candidate
+anecdote was deliberately left out because it could not be corroborated from
+either repo. The naming rule's evidence is visible in any transcript: the
+harness reports agents as ids like `a147f359d45f0a51e`, which carry no class.
+
+**Enforcement: none, and none is proposed.** Gabe, 2026-08-28: "it's worked
+well as a guiding principle." A survey found no mechanism for agent topology in
+this project or the sibling it borrows conventions from, and the honest reason
+is structural: an agent is not a process this repo can probe, and a worktree
+does not know how many agents are inside it. There is no artefact a checker
+could read that would reveal a violation. So this group is held by discipline
+alone — a weaker footing than the register's other groups, stated here rather
+than papered over. The circle is 🟢 because the RULING is settled, not because
+anything enforces it.
