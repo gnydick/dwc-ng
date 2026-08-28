@@ -121,22 +121,26 @@ test("snapshot history is capped", () => {
 
 test("snapshot trims, defaults a blank label, and caps an over-long one", () => {
 	const store = createConfigStore({ machineStore: () => null });
-	// [0] throughout, not at(-1): the backup just taken is the NEWEST, and the
-	// getter presents newest-first (#118).
+	// [0], not at(-1): the backup just taken is the NEWEST, and the getter
+	// presents newest-first (#118). Read it through `newest()` rather than
+	// inline — `assert.equal` carries an assertion signature, so repeating the
+	// identical expression narrows it to the intersection of every literal
+	// already asserted, and the second one would leave `label` as `never`.
+	const newest = (): string => store.snapshots[0]!.label;
 	store.snapshot("  pre-CNC experiment  ");
-	assert.equal(store.snapshots[0]!.label, "pre-CNC experiment", "surrounding whitespace trimmed");
+	assert.equal(newest(), "pre-CNC experiment", "surrounding whitespace trimmed");
 
 	store.snapshot("");
-	assert.equal(store.snapshots[0]!.label, "saved", "blank falls back");
+	assert.equal(newest(), "saved", "blank falls back");
 
 	store.snapshot("   \t  ");
-	assert.equal(store.snapshots[0]!.label, "saved", "whitespace-only is blank");
+	assert.equal(newest(), "saved", "whitespace-only is blank");
 
 	// Enforced in snapshot() itself, not at the UI: the input's maxLength is a
 	// convenience, and a caller reaching the store directly must still be
 	// covered.
 	store.snapshot("x".repeat(MAX_LABEL_LEN + 40));
-	assert.equal(store.snapshots[0]!.label.length, MAX_LABEL_LEN, "capped at MAX_LABEL_LEN");
+	assert.equal(newest().length, MAX_LABEL_LEN, "capped at MAX_LABEL_LEN");
 });
 
 test("a named save labels the backup and still clears dirty", async () => {
