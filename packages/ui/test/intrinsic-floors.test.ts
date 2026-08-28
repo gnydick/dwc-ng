@@ -164,26 +164,36 @@ test("the chart component supplies --legend-rows from its series count", () => {
 });
 
 /**
- * An AUTO margin is slack, not content.
+ * AN AUTO MARGIN IS SLACK, NOT CONTENT — and contentRowSpan no longer has to
+ * know that, because there is no longer one to discount.
  *
  * getComputedStyle resolves `margin: auto` to its USED value, so when
  * .card-head took `margin-bottom: auto` to push card contents to the bottom,
  * contentRowSpan began adding each card's own free space to its own content
  * sum — 333px of it on the sensors card. The reported minimum then equalled the
- * card's current height and cards would grow but never shrink back.
+ * card's current height and cards would grow but never shrink back. A
+ * `--absorbs-slack: 1` marker beside the margin bought that back by hand; this
+ * test used to assert the pairing.
  *
- * The keyword cannot be recovered from the used value, so the rule that creates
- * the slack declares it. These two assertions are the pairing: every auto
- * margin in a card body carries the marker, and the measurement honours it.
+ * #128 deleted the margin instead (card content is anchored to the TOP, slack
+ * accumulates below it), so the marker had nothing left to mark and went with
+ * it. contentRowSpan now sums margins unconditionally, which is correct exactly
+ * as long as no direct child of a body carries a vertical auto margin —
+ * test/panel-anchoring.test.ts is what holds that, and this assertion is the
+ * measurement half of the same pairing, kept here so the two halves cannot be
+ * deleted independently.
  */
-test("a slack-absorbing auto margin declares itself and is not counted", () => {
-	const head = ruleBody(".panel-body > .card-head");
-	assert.match(head, /margin-bottom:\s*auto/, "the header is expected to absorb the slack");
-	assert.match(head, /--absorbs-slack:\s*1/,
-		"an auto margin in a card body MUST declare --absorbs-slack, or contentRowSpan counts it as content");
+test("contentRowSpan sums margins unconditionally, and no slack marker survives", () => {
+	// The rule was deleted outright, so there may be no block at all — which is
+	// the strongest form of the assertion, not a scanner failure.
+	const heads = [...appCss.matchAll(/(^|[,}])\s*\.panel-body > \.card-head\s*\{([^}]*)\}/g)];
+	for (const m of heads) {
+		assert.doesNotMatch(m[2]!, /margin-bottom:\s*auto/,
+			"the header must not absorb the card's free space above the body (#128)");
+	}
 
 	const canvas = readFileSync(
 		fileURLToPath(new URL("../src/shell/panelCanvas.ts", import.meta.url)), "utf8");
-	assert.match(canvas, /--absorbs-slack/,
-		"contentRowSpan must honour the marker, or declaring it achieves nothing");
+	assert.doesNotMatch(canvas, /getPropertyValue\("--absorbs-slack"\)/,
+		"a marker read here with nothing in the sheet setting it is a route back to the defect");
 });

@@ -390,67 +390,78 @@ export function ShapingStatusBody(props: { ctx: CardCtx }) {
 					</For>
 				</div>
 			</div>
-			<table class="shp-table shp-tools">
-				<colgroup>
-					<col class="shp-c-open" />
-					<col class="shp-c-tool" />
-					<col class="shp-c-mode" />
-					<col class="shp-c-mode" />
-					<col class="shp-c-state" />
-				</colgroup>
-				<thead>
-					<tr><th /><th>Tool</th><th>X</th><th>Y</th><th>State</th></tr>
-				</thead>
-				<tbody>
-					{/* One row: `svc.tool()`'s. The picker above is now the only way to
-					    look at another tool, so this row no longer needs a "pick" button
-					    of its own — a second control writing the same signal the picker
-					    writes would be the exact duplicate-write-site this screen's one
-					    service exists to rule out. The two fallbacks are two different
-					    facts: no tools on the machine, versus a selection that names none
-					    of the tools it does have. */}
-					<For
-						each={shownRows()}
-						fallback={
-							<tr>
-								<td colspan="5" class="shp-nil">
-									{tools().length === 0 ? "no tools on this machine" : `T${svc.tool()} is not a tool on this machine`}
-								</td>
-							</tr>
-						}
-					>
-						{tool => (
-							<>
-								<tr class="shp-on">
-									<td>
-										{/* The macro line is a SEPARATE disclosure from selecting the
-										    tool: opening it costs a download, and picking a tool must
-										    not. */}
-										<button
-											class="shp-open"
-											aria-expanded={svc.macroFor(tool.number).kind !== "closed"}
-											aria-label={`Show ${toolMacroPath(tool.number)}`}
-											onClick={() => svc.toggleMacro(tool.number)}
-										>
-											{svc.macroFor(tool.number).kind === "closed" ? "▸" : "▾"}
-										</button>
+			{/* The tools table lives in a region of DECLARED height (.shp-tools-region,
+			    app.css) rather than sizing itself from its rows. Opening the tpost
+			    disclosure below adds a <tr> INSIDE that box, so it changes the card's
+			    content size by nothing at all and the "Steps" list under it does not
+			    move — the same construction .om-inspector / .om-tree already use for
+			    the object-model tree, which is the app's only other disclosure and has
+			    never had this defect. Reported by Gabe 2026-08-28 (#128): "the whole
+			    card should be fixed size so expanding the tool row doesn't change the
+			    contents size." */}
+			<div class="shp-tools-region">
+				<table class="shp-table shp-tools">
+					<colgroup>
+						<col class="shp-c-open" />
+						<col class="shp-c-tool" />
+						<col class="shp-c-mode" />
+						<col class="shp-c-mode" />
+						<col class="shp-c-state" />
+					</colgroup>
+					<thead>
+						<tr><th /><th>Tool</th><th>X</th><th>Y</th><th>State</th></tr>
+					</thead>
+					<tbody>
+						{/* One row: `svc.tool()`'s. The picker above is now the only way to
+						    look at another tool, so this row no longer needs a "pick" button
+						    of its own — a second control writing the same signal the picker
+						    writes would be the exact duplicate-write-site this screen's one
+						    service exists to rule out. The two fallbacks are two different
+						    facts: no tools on the machine, versus a selection that names none
+						    of the tools it does have. */}
+						<For
+							each={shownRows()}
+							fallback={
+								<tr>
+									<td colspan="5" class="shp-nil">
+										{tools().length === 0 ? "no tools on this machine" : `T${svc.tool()} is not a tool on this machine`}
 									</td>
-									<td><span class="shp-pick">T{tool.number}</span></td>
-									<td><ModeCell mode={fingerprintOf(svc.resultsFor(tool.number))?.X ?? null} /></td>
-									<td><ModeCell mode={fingerprintOf(svc.resultsFor(tool.number))?.Y ?? null} /></td>
-									<td class="shp-state">{progressOf(svc.resultsFor(tool.number))}</td>
 								</tr>
-								<Show when={svc.macroFor(tool.number).kind !== "closed"}>
-									<tr class="shp-macro-row">
-										<td />
-										<td colspan="4"><MacroLine tool={tool.number} read={svc.macroFor(tool.number)} /></td>
+							}
+						>
+							{tool => (
+								<>
+									<tr class="shp-on">
+										<td>
+											{/* The macro line is a SEPARATE disclosure from selecting the
+											    tool: opening it costs a download, and picking a tool must
+											    not. */}
+											<button
+												class="shp-open"
+												aria-expanded={svc.macroFor(tool.number).kind !== "closed"}
+												aria-label={`Show ${toolMacroPath(tool.number)}`}
+												onClick={() => svc.toggleMacro(tool.number)}
+											>
+												{svc.macroFor(tool.number).kind === "closed" ? "▸" : "▾"}
+											</button>
+										</td>
+										<td><span class="shp-pick">T{tool.number}</span></td>
+										<td><ModeCell mode={fingerprintOf(svc.resultsFor(tool.number))?.X ?? null} /></td>
+										<td><ModeCell mode={fingerprintOf(svc.resultsFor(tool.number))?.Y ?? null} /></td>
+										<td class="shp-state">{progressOf(svc.resultsFor(tool.number))}</td>
 									</tr>
-								</Show>
-							</>
-						)}
-					</For>
-				</tbody>
-			</table>
+									<Show when={svc.macroFor(tool.number).kind !== "closed"}>
+										<tr class="shp-macro-row">
+											<td />
+											<td colspan="4"><MacroLine tool={tool.number} read={svc.macroFor(tool.number)} /></td>
+										</tr>
+									</Show>
+								</>
+							)}
+						</For>
+					</tbody>
+				</table>
+			</div>
 			<p class="shp-active shp-steps-cap">
 				<span class="shp-cap">Steps</span>
 				<span class="shp-mono">T{svc.tool()}</span>
