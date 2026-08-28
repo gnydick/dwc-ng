@@ -135,7 +135,7 @@ in the diff that drops it.
 
 **Why.** a delete that removes a card from every screen at once is exactly the action whose scope the operator must see before confirming — "delete this card?" cannot precede stripping it from screens they forgot it was on. The plan freezes usage at arm time; the studio is modal over composition edits, so the frozen report cannot go stale between the two clicks
 
-`packages/ui/src/compose/screens.ts:525`
+`packages/ui/src/compose/screens.ts:527`
 
 ### `compose/composition-degrades-per-slot` — rung 6
 
@@ -689,7 +689,7 @@ in the diff that drops it.
 
 **Debt — promotion.** the sweep is manual, exactly like card-floor-independent-of-size above — promote by running it headless in CI over the registry, the same CDP driver already used for that sweep would suffice here too
 
-`packages/ui/src/dev/layoutAudit.ts:225`
+`packages/ui/src/dev/layoutAudit.ts:250`
 
 ### `dev/guard-follows-the-declaration` — rung 7
 
@@ -707,7 +707,7 @@ in the diff that drops it.
 
 **Debt — promotion.** violations are reported by POSITION, so the panel gives counts rather than naming the culprit element — a reader still has to hunt. Promote by reporting a stable path to the drifting node, and by running the sweep headless in CI as with card-floor-independent-of-size. FALSE BY CONSTRUCTION for a slot containing wrapping text, so cards that legitimately reflow are excluded BY NAME rather than by fudging the comparison — an exclusion list is debt, and is filed as such. NOT a discovered property — there is no prior art naming it and no component-level analogue to Cumulative Layout Shift, which is page-level and time-windowed. It is this project's positional-stability requirement, expressed as something checkable. It is FALSE BY CONSTRUCTION for a slot containing wrapping text, so cards that legitimately reflow must be excluded by name rather than by fudging the comparison.
 
-`packages/ui/src/dev/layoutAudit.ts:169`
+`packages/ui/src/dev/layoutAudit.ts:194`
 
 ### `dev/write-guard-is-dev-only` — rung 0
 
@@ -1453,7 +1453,7 @@ in the diff that drops it.
 
 **Why.** the canvas record and the config overlay hold the same fact with no ordering between them, so "which is right" was decided by whichever path ran first. A browser carrying rects from before someone else saved a new layout to this machine kept them, and its next Save uploaded them over the good copy (#87). The basis is what turns "probably the same" into a question with an answer @why-not-a-counter a content digest needs no second field in the overlay to keep in step, and cannot drift from what it describes: it IS the layout, projected. A generation counter is a second writer's opportunity to be wrong @limit `null` (no saved layout at all) is deliberately NOT the digest of an empty layout — "the card has nothing for this screen" and "the card says this screen is empty" are different, and only the first means there is nothing for a local copy to be stale against
 
-`packages/ui/src/shell/panelCanvas.ts:876`
+`packages/ui/src/shell/panelCanvas.ts:878`
 
 ### `shell/copy-failure-is-observable` — rung 6
 
@@ -1489,7 +1489,7 @@ in the diff that drops it.
 
 **Why.** one flag used to carry two different facts — "the operator rearranged the screen" and "the canvas emitted a geometry event". `ensureSlot`/`removeSlot` run from ComposedScreen's composition-sync effect, which fires as the screen is being brought up to date with a config change nobody dragged; routing those through the same notifier as a drag is what let a plain reload report unsaved work that did not exist (#120 defect B). The fix is NOT to stop marking dirty: geometry only reaches the overlay at save time (captureScreenGeometry) and Save is gated on the flag, so a canvas that never marks dirty is one whose rearrangement can never be saved at all @enumerated the geometry writers NOT on this route, and why: `reset()` REMOVES the key rather than writing one (the next mount re-seeds from defaults) and has never notified; the construction-time settle write at the top of this function is a deterministic repair, not an edit, and deliberately calls `keys.set` directly. Both are unchanged by #120 and neither can express a notify.
 
-`packages/ui/src/shell/panelCanvas.ts:1647`
+`packages/ui/src/shell/panelCanvas.ts:1649`
 
 ### `shell/reflow-preserves-reading-order` — rung 6
 
@@ -1499,7 +1499,7 @@ in the diff that drops it.
 
 **Debt — promotion.** promote by making the placement order a value produced once and consumed by the loop, so a future caller cannot iterate the state directly and place out of order.
 
-`packages/ui/src/shell/panelCanvas.ts:1178`
+`packages/ui/src/shell/panelCanvas.ts:1180`
 
 ### `shell/reflow-terminates` — rung 3
 
@@ -1509,7 +1509,7 @@ in the diff that drops it.
 
 **Debt — promotion.** make the loop consume a bounded, strictly-increasing cursor rather than mutating a candidate in place — then "a push that advances nothing" has no encoding and the argument stops needing to be believed.
 
-`packages/ui/src/shell/panelCanvas.ts:1190`
+`packages/ui/src/shell/panelCanvas.ts:1192`
 
 ### `shell/stream-dies-with-its-element` — rung 7
 

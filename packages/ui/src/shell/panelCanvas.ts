@@ -686,23 +686,25 @@ export function contentRowSpan(
 		const grows = (parseFloat(style.flexGrow) || 0) > 0;
 		const floor = parseFloat(style.minHeight);
 		const height = grows ? (Number.isFinite(floor) ? floor : 0) : rect.height;
-		// An AUTO margin is slack, not content, and must contribute nothing.
+		// Margins are summed UNCONDITIONALLY, and that is only safe because no
+		// direct child of a body can carry a vertical `auto` one.
 		//
-		// getComputedStyle resolves `margin: auto` to its USED value, so once the
-		// card header took `margin-bottom: auto` to push contents to the bottom,
-		// this loop started adding the card's own free space to its own content
-		// sum — 333px of it on the sensors card. The reported minimum then equalled
-		// the card's current height, so cards grew and would not shrink back
-		// (reported 2026-07-30). That is exactly the self-reference Invariant A
-		// exists to detect, introduced hours after the detector was built.
+		// getComputedStyle resolves `margin: auto` to its USED value — the card's
+		// own free space — so when the card header carried `margin-bottom: auto`
+		// to push contents to the bottom, this loop added 333px of the sensors
+		// card's slack to the sensors card's own minimum. The reported minimum
+		// then equalled the card's current height and cards grew but would not
+		// shrink back (reported 2026-07-30). A `--absorbs-slack: 1` marker beside
+		// the margin bought that back by hand.
 		//
-		// The keyword is unrecoverable from the used value, so the rule that
-		// creates the slack DECLARES it: --absorbs-slack: 1 travels with the
-		// `margin: auto` in the same declaration block, and the two cannot drift
-		// apart the way a selector list here would.
-		const absorbsSlack = style.getPropertyValue("--absorbs-slack").trim() === "1";
+		// #128 deleted the margin instead: card content is anchored to the TOP and
+		// slack accumulates below it, so there is no auto margin here to discount
+		// and the marker went with it (app.css, "card contents sit at the TOP").
+		// test/panel-anchoring.test.ts fails the suite if one is written back,
+		// which is what makes the unconditional sum above correct rather than
+		// merely currently true.
 		contentBottom += height
-			+ (absorbsSlack ? 0 : (parseFloat(style.marginTop) || 0) + (parseFloat(style.marginBottom) || 0));
+			+ (parseFloat(style.marginTop) || 0) + (parseFloat(style.marginBottom) || 0);
 	}
 	const bodyStyle = getComputedStyle(body);
 	// The gaps a flex/grid body puts BETWEEN its children are part of the stack.

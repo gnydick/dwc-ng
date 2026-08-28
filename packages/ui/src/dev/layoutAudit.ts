@@ -160,6 +160,31 @@ export interface DriftSample {
 	id: string;
 	main: number;
 	cross: number;
+	/** Whether this element FILLS: `flex-grow > 0`, so it is meant to take the
+	 *  card's free space. Only the row-axis pair sets it — see growPrefix. */
+	grows?: boolean;
+}
+
+/**
+ * The samples that precede the first FILLING one, which is as far as a row-axis
+ * drift check can honestly reach.
+ *
+ * Resizing a card along the row axis legitimately moves whatever sits BELOW a
+ * flex-grow child: a chart, a viewer or a console history is supposed to take
+ * the free space, and the input under it is supposed to follow the bottom edge.
+ * Comparing those would report every such card as drifting and drown the real
+ * finding, which is the mistake that keeps a diagnostic from being read.
+ *
+ * Everything ABOVE the first filler has no such excuse. With the body packing
+ * to flex-start, free space cannot appear before a filler, so any movement up
+ * there is the card's own slack being placed above its content — #128 exactly,
+ * and the reason this prefix is the right window rather than a convenient one.
+ * A card with no filler at all yields the whole list, which is the strictest
+ * case and the common one.
+ */
+export function growPrefix(samples: readonly DriftSample[]): DriftSample[] {
+	const first = samples.findIndex(s => s.grows === true);
+	return first === -1 ? [...samples] : samples.slice(0, first);
 }
 
 /**
