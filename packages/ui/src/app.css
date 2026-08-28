@@ -4230,37 +4230,53 @@ input[type="checkbox"].fw-check { accent-color: var(--accent); width: calc(3.75 
 .lab-main .lab-bar,
 .lab-main .layout-audit-bar { justify-content: flex-end; }
 
-/* ---------- card contents sit at the BOTTOM ---------- */
+/* ---------- card contents sit at the TOP, and there is no rule here ---------
 
-/* Slack goes ABOVE the content, not below it, so a card's rows sit against its
-   bottom edge whatever size the card is.
+   THIS SECTION IS DELIBERATELY EMPTY. It records a decision by naming what may
+   never be written, because the defect it prevents is not reachable from any
+   card's markup — only from a rule in this file.
 
-   Two rules because two cases. justify-content covers a card with no header;
-   the auto margin covers the rest and is what keeps the header at the TOP —
-   free space is absorbed immediately after it, so the head stays parked
-   against the padding edge (it is sticky) while everything below is pushed
-   down. An auto margin beats justify-content wherever both apply, which is why
-   the pair does not fight.
+   .panel-body is a flex COLUMN (app.css:338). A flex column with no auto
+   margins and no justify-content packs its items to flex-start, so a card's
+   free space accumulates at the BOTTOM, below the content, and no child's
+   offset from the body's top depends on how tall the card happens to be. That
+   is `no-child-drift-on-resize` (Invariant B, src/dev/layoutAudit.ts:165) on
+   the row axis, and it holds by the absence of a declaration rather than by
+   the presence of one.
 
-   Cards whose body already fills — a flex-grow chart, viewer or log — have no
-   free space to move, so nothing about them changes. */
-/* NO justify-content here, and that is load-bearing. .panel-body is a SCROLL
-   container: with `justify-content: flex-end` its overflow escapes off the TOP,
-   where scrollTop cannot reach it, so a card whose content outgrew it simply
-   could not be scrolled — reported on Sensors in portrait, but it applied to
-   every card on the canvas.
-   The auto margin below does the whole job and has no such failure mode: an
-   auto margin absorbs POSITIVE free space only, so the moment content overflows
-   it resolves to 0 and scrolling behaves normally. */
-.panel-body > .card-head {
-	margin-bottom: auto;
-	/* Declares that the margin above is SLACK, so contentRowSpan does not count
-	   it as content. getComputedStyle resolves `auto` to its used value, so
-	   without this the card's own free space is summed into its own minimum and
-	   the card can grow but never shrink. Kept in the SAME block as the margin
-	   it describes — a separate rule could be deleted on its own. */
-	--absorbs-slack: 1;
-}
+   TWO RULES HAVE BEEN TRIED HERE AND BOTH FAILED, by different routes:
+
+   · `justify-content: flex-end` on .panel-body. .panel-body is a SCROLL
+     container, so its overflow escaped off the TOP, where scrollTop cannot
+     reach it: a card whose content outgrew it simply could not be scrolled.
+     Reported on Sensors in portrait; it applied to every card on the canvas.
+
+   · `.panel-body > .card-head { margin-bottom: auto }`, the survivor of that
+     pair, plus a `--absorbs-slack: 1` marker so contentRowSpan would not sum
+     the resolved margin into the card's own minimum. It has no overflow
+     failure mode — an auto margin absorbs POSITIVE free space only — but it
+     fails the invariant directly: the card's free space is placed ABOVE the
+     content, so the content moves whenever the card's height changes. Measured
+     on Shaping, 2026-08-28 (#128): expand a tool row, drag the card 120px
+     taller to fit it, collapse the row again, and the tools table that had sat
+     129px down the body sat 249px down it — while the tail, anchored to the
+     bottom edge, never moved at all. Growth was linear and unbounded: three
+     further +150px probes moved every child down 150px each. Because the
+     selector is unqualified and Panel.tsx:107 puts a .card-head in every
+     panel, the affected set was every card in the registry that is ever taller
+     than its content.
+
+   Gabe, 2026-08-28, overruling the "contents sit at the BOTTOM" decision:
+   "it should stay pinned where it is at the top".
+
+   Both routes are held shut by test/panel-anchoring.test.ts, which fails the
+   suite for a vertical auto margin or a non-flex-start justify-content under
+   .panel-body or .card-head anywhere in this sheet — including inside a media
+   query. `--absorbs-slack` went with the margin: a marker for slack that can
+   no longer exist is an invitation to create some.
+
+   Cards whose body already fills — a flex-grow chart, viewer or log — had no
+   free space to move and are unaffected either way. */
 
 /* ---------- number inputs carry no spinners ---------- */
 
@@ -4450,13 +4466,59 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; appe
    the rule: Decay and Candidates each reported a column floor two stored cells
    wider at 0.75 than at 1.5, failing card-floor-scale-invariant on the one
    axis their content is otherwise entirely declared in u. */
-.shp-scroll {
+/* ONE declaration block for both fixed regions, so the four rules above cannot
+   drift apart between two boxes that are supposed to behave identically. Only
+   the declared height differs, and it differs per region below.
+
+   `.shp-tools-region` wraps the Shaping card's tools table (ShapingCards.tsx).
+   Same construction as `.om-inspector` / `.om-tree` (app.css:2863, 2873), which
+   is why expanding a node in the object-model tree — the app's only other
+   aria-expanded disclosure — has never had #128's defect: the disclosure opens
+   INSIDE a box whose height is a constant of this stylesheet, so no sibling can
+   move and the card cannot need to grow. */
+.shp-scroll,
+.shp-tools-region {
 	flex: 0 0 auto;
-	max-height: calc(60 * var(--u));
 	overflow-y: auto;
 	scrollbar-width: none;
 }
-.shp-scroll::-webkit-scrollbar { display: none; }
+.shp-scroll::-webkit-scrollbar,
+.shp-tools-region::-webkit-scrollbar { display: none; }
+
+.shp-scroll { max-height: calc(60 * var(--u)); }
+
+/* 28u, MEASURED rather than picked (headless Edge, Card Lab, scenario "Shaping
+   measured", --u: 4px, 2026-08-28). The table shows exactly ONE tool row —
+   `shownRows()` resolves `svc.tool()` and nothing else — so its tallest
+   possible state is bounded and countable:
+
+       thead                            23px  (5.75u)
+       the tool row      .shp-tools td   44px  (11u, app.css:4404)
+       the tpost macro row, open         44px  (11u, same rule)
+                                       ------
+                                        111px (27.75u)  -> declared 28u
+
+   `height`, not `max-height`, and that is the difference between requirement 2
+   and requirement 3. A max-height only bounds the region's growth: measured
+   here first, the box still sized itself from its rows (67px shut, 111px open)
+   and the Steps list below it still moved 44px on every disclosure. A declared
+   height makes the region the SAME box in both states, so opening the row
+   changes the size of nothing — Gabe, 2026-08-28: "the whole card should be
+   fixed size so expanding the tool row doesn't change the contents size."
+
+   Declaring the OPEN height, not the closed one, is the second half of that: at
+   28u the disclosure opens with everything already visible, so the operator
+   never has to resize the card and the macro line never becomes a hidden scroll
+   target. The cost is 11u of reserved space while the row is shut, which is
+   exactly the trade compose/defs.ts used to argue against and Gabe overruled.
+
+   ONE bound, in one place. `max-height` alongside would be a second declaration
+   of the same number, and the two would disagree the first time either moved.
+
+   A row that gains a field, or a machine whose fallback line wraps, scrolls
+   inside the region instead of resizing the card — which is the whole reason
+   the height is declared and not derived. */
+.shp-tools-region { height: calc(28 * var(--u)); }
 
 /* What the machine is running now. Always present, so gaining or losing a
    shaper cannot reflow the table under it. */

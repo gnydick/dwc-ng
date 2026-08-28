@@ -183,16 +183,18 @@ export const BED_COMPOSITION: Composition = {
  * column instead of sitting side by side, which is also what makes column 2
  * the tallest: Decay's chart (189) is not squeezed to balance the others.
  *
- * BALANCE: col 0 status+candidates+apply = 102+75+50 = 227 (156 -> 102 for
- * shaping-status, #98 — the row that used to reserve space for a message).
- * col 1 capture+custom+verify = 140+71+62 = 273. col 2 decay+sweep = 189+118
- * = 307. Range 80 rows (30% of the 269 average), wider than before #98's
- * shrink — #94 already tracks this drift and nothing here rebalances it.
+ * BALANCE: col 0 status+candidates+apply = 116+75+50 = 241 (102 -> 116 for
+ * shaping-status, #128 — the tools table moved into a region of declared
+ * height, plus the two rows every card gained when the header's auto margin
+ * stopped being excluded from its own floor). col 1 capture+custom+verify =
+ * 140+71+62 = 273. col 2 decay+sweep = 189+118 = 307. Range 66 rows (24% of
+ * the 274 average) — #94 already tracks this drift and nothing here
+ * rebalances it.
  */
 export const SHAPING_COMPOSITION: Composition = {
-	"shaping-status": { col: 0, row: 0, colSpan: 156, rowSpan: 102 },
-	"shaping-candidates": { col: 0, row: 102, colSpan: 156, rowSpan: 75 },
-	"shaping-apply": { col: 0, row: 177, colSpan: 156, rowSpan: 50 },
+	"shaping-status": { col: 0, row: 0, colSpan: 156, rowSpan: 116 },
+	"shaping-candidates": { col: 0, row: 116, colSpan: 156, rowSpan: 75 },
+	"shaping-apply": { col: 0, row: 191, colSpan: 156, rowSpan: 50 },
 	"shaping-capture": { col: 156, row: 0, colSpan: 156, rowSpan: 140 },
 	"shaping-custom": { col: 156, row: 140, colSpan: 156, rowSpan: 71 },
 	"shaping-verify": { col: 156, row: 211, colSpan: 156, rowSpan: 62 },

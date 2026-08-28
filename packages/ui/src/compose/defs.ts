@@ -520,11 +520,18 @@ export const CARD_DEFS = {
 		ariaLabel: "Shaping status",
 		tip: "M593 · M955 · M956",
 		// Four tool rows of two lines each, the running-shaper line, the
-		// next-step region and the five-step workflow list. MEASURED with every
-		// tpost row COLLAPSED, which is how the card opens: one open row needs
-		// ~11 more and all four need ~44, and reserving that for a disclosure
-		// most sessions use once is worse than letting the body scroll while it
-		// is open.
+		// next-step region and the five-step workflow list.
+		//
+		// The tools table used to be MEASURED with every tpost row COLLAPSED,
+		// on the argument that reserving ~11u for a disclosure most sessions use
+		// once was worse than letting the body scroll while it was open. #128
+		// overruled that outright (Gabe: "the whole card should be fixed size so
+		// expanding the tool row doesn't change the contents size"), so the note
+		// arguing for it is gone rather than left standing beside a design that
+		// no longer works that way. The table now lives in `.shp-tools-region`,
+		// whose height is DECLARED at 28u — enough for the header, the tool row
+		// and the open macro row — so this floor is the same number whether the
+		// disclosure is open or shut, which is the whole point of the number.
 		//
 		// 138 -> 156 for the next-step region (GIT_37): the caption+action row
 		// declares 8.5u, its sentence 5u on one line, and the rule and margins
@@ -580,14 +587,36 @@ export const CARD_DEFS = {
 		// contentRowSpan() against `shaping-measured` (empty message): row stop
 		// 102, reproduced twice, body worth 87 of it, no child moved across the
 		// 720 / 400 / 200 px probes. colStop held at 125 — the message row never
-		// set the column floor. A message toggling on or off does move the
-		// picker/table/steps by the row's own 5.5u once the card sits AT this
-		// floor with no slack left above content; toggled live at a taller Lab
-		// preview height it moved nothing below the Running line at all, because
-		// `.panel-body > .card-head`'s own `margin-bottom: auto` absorbed the
-		// 5.5u out of the free space between the header and the Running line —
-		// the same slack-absorption this file's floors are measured to ignore.
-		size: { colSpan: 156, rowSpan: 102 },
+		// set the column floor.
+		//
+		// 102 -> 116 for #128, and the +14 is two separate numbers.
+		//
+		// +2 is UNIVERSAL and is a correction, not a cost: `.card-head` declares
+		// `margin-bottom: calc(2 * var(--u))`, which `margin-bottom: auto`
+		// overrode and `--absorbs-slack: 1` then excluded from contentRowSpan's
+		// sum entirely. With the auto margin deleted the real 8px is counted, so
+		// every one of the 53 cards in the Card Lab sweep reported exactly +2
+		// rows — measured before and after on 2026-08-28. Nothing renders
+		// differently; the stored pins were simply two rows short of their own
+		// content, which is a finding for #94 and is not fixed here.
+		//
+		// +12 is this card's: `.shp-tools-region` is 28u where the shut table
+		// measured 16.75u. That reservation is what buys the fixed size. Note
+		// what it is NOT — it is not 102 bumped until the open row fits, which
+		// the ticket forbids on sight as a number correct until the next scale
+		// step. 116 is the floor of a card whose content size does not vary:
+		// re-measured via "Audit this card" against `shaping-measured`, row stop
+		// 116 with the disclosure SHUT and 116 with it OPEN, unchanged across the
+		// 720 / 400 / 200 px probes, body worth 99 of it, no child moved on
+		// either axis. Scale sweep 116/116 rows, 125/125 cols, both deltas 0.
+		//
+		// The message row's old caveat is void with it: it noted that a message
+		// toggling on or off moved the picker/table/steps only when the card sat
+		// AT its floor, because the head's auto margin absorbed the change
+		// anywhere else. There is no such absorption now — content is anchored to
+		// the top at every card height, so a toggle moves what is below it and
+		// nothing above it, whatever size the card is.
+		size: { colSpan: 156, rowSpan: 116 },
 	}),
 	/** The test motion: the box it may move in, the sensor, the moves it will
 	 *  make, and the armed control that makes them. */

@@ -3,7 +3,7 @@ import { For, Match, Show, Switch, createSignal } from "solid-js";
 import {
 	AUDIT_HEADINGS, AXIS_COL_TAUTOLOGY, AXIS_PASS_LABEL, CHILD_COUNT_CHANGED,
 	SCALE_FAIL_LABEL, SCALE_PASS_LABEL, SCALE_TOLERANCE_CELLS,
-	judgeAxis, judgeDrift, judgeFloor, judgeScaleInvariance,
+	growPrefix, judgeAxis, judgeDrift, judgeFloor, judgeScaleInvariance,
 	type AxisProbe, type AxisVerdict, type DriftSample, type FloorVerdict,
 } from "./layoutAudit.ts";
 import { contentRowSpan, contentColSpan, headerColSpan, unitPx } from "../shell/panelCanvas.ts";
@@ -108,7 +108,12 @@ function sampleChildren(cardEl: HTMLElement, axis: "row" | "col"): DriftSample[]
 			// main = the axis being resized; cross = the one that must not move.
 			return axis === "col"
 				? { id: `${i}:${el.className || el.tagName}`, main: Math.round(r.x - origin.x), cross: Math.round(r.y - origin.y) }
-				: { id: `${i}:${el.className || el.tagName}`, main: Math.round(r.y - origin.y), cross: Math.round(r.x - origin.x) };
+				: {
+					id: `${i}:${el.className || el.tagName}`,
+					main: Math.round(r.y - origin.y),
+					cross: Math.round(r.x - origin.x),
+					grows: (parseFloat(getComputedStyle(el).flexGrow) || 0) > 0,
+				};
 		});
 }
 
@@ -131,6 +136,16 @@ export function auditCard(id: string, title: string, cardEl: HTMLElement): CardR
 	const wide = probeAt(cardEl, "col", COL_PROBES[0]!, () => sampleChildren(cardEl, "col"));
 	const narrow = probeAt(cardEl, "col", COL_PROBES[1]!, () => sampleChildren(cardEl, "col"));
 
+	// Invariant B on the ROW axis, which the audit did not probe until #128 —
+	// and which is the axis Gabe's report was on. Two heights, both offsets
+	// compared (not just the cross one): under flex-start packing a card's own
+	// free space lands BELOW its content, so growing it must move nothing at
+	// all up to the first filling child. growPrefix is what excludes the cards
+	// that legitimately reflow, by construction rather than by an exclusion
+	// list — see its comment.
+	const tall = probeAt(cardEl, "row", ROW_PROBES[0]!, () => sampleChildren(cardEl, "row"));
+	const short = probeAt(cardEl, "row", ROW_PROBES[1]!, () => sampleChildren(cardEl, "row"));
+
 	const rowStop = contentRowSpan(cardEl, gutterRow);
 
 	return {
@@ -142,11 +157,28 @@ export function auditCard(id: string, title: string, cardEl: HTMLElement): CardR
 		floor: judgeFloor(rowStop, chromeRowSpan(cardEl, gutterRow)),
 		axisRow: judgeAxis("row", rowProbes),
 		axisCol: judgeAxis("col", colProbes),
-		drift: judgeDrift(
-			wide.map(s => ({ ...s, main: 0 })),
-			narrow.map(s => ({ ...s, main: 0 })),
+		// ONE drift verdict covering BOTH axes, deliberately: a second field
+		// would need a second column, a second rank term and a second render
+		// site, and the one that got forgotten would be the one carrying the
+		// finding. A card is stable if nothing moved on either probe.
+		drift: mergeDrift(
+			judgeDrift(
+				wide.map(s => ({ ...s, main: 0 })),
+				narrow.map(s => ({ ...s, main: 0 })),
+			),
+			judgeDrift(growPrefix(tall), growPrefix(short)),
 		),
 	};
+}
+
+/** Two drift verdicts as one. Stable only if both are; moved ids deduplicated,
+ *  since a child that moves on both axes is one finding, not two. */
+function mergeDrift(
+	a: { stable: boolean; moved: string[] },
+	b: { stable: boolean; moved: string[] },
+): { stable: boolean; moved: string[] } {
+	const moved = [...new Set([...a.moved, ...b.moved])];
+	return { stable: a.stable && b.stable, moved };
 }
 
 /**

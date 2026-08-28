@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
 	AXIS_PASS_LABEL, CHILD_COUNT_CHANGED, EMPTY_BODY_ROWS, SCALE_FAIL_LABEL, SCALE_PASS_LABEL,
-	judgeAxis, judgeDrift, judgeFloor, judgeScaleInvariance,
+	growPrefix, judgeAxis, judgeDrift, judgeFloor, judgeScaleInvariance,
 } from "../src/dev/layoutAudit.ts";
 
 /**
@@ -64,6 +64,62 @@ test("judgeDrift: a child that wrapped to a new line is reported by id", () => {
 	const v = judgeDrift(before, after);
 	assert.equal(v.stable, false);
 	assert.deepEqual(v.moved, ["1"]);
+});
+
+/**
+ * THE SAME-AXIS CASE, which is the one #128 was.
+ *
+ * The panel only ever fed this judge a CROSS-axis pair — resize the width,
+ * assert nothing moved vertically — so the defect Gabe reported was invisible
+ * to the audit that exists to name it: resize the HEIGHT, and every child below
+ * the header moved down by the card's whole gain, because `.card-head` carried
+ * `margin-bottom: auto` and the free space landed above the content.
+ *
+ * The numbers are the measurement, headless Edge over CDP, Card Lab, scenario
+ * "Shaping measured", 2026-08-28: `.shp-active` 44 -> 164 and `.shp-table`
+ * 129 -> 249 across a +120px grow and a collapse, while `.shp-steps` (anchored
+ * to the bottom edge) did not move at all. The judge must call the first two
+ * and only the first two.
+ */
+test("judgeDrift: content pushed down by the card's own free space is reported by id", () => {
+	const before = [
+		{ id: "0:card-head", main: 6, cross: 0 },
+		{ id: "1:shp-active", main: 44, cross: 0 },
+		{ id: "2:shp-table", main: 129, cross: 0 },
+		{ id: "3:shp-steps", main: 356, cross: 0 },
+	];
+	const after = [
+		{ id: "0:card-head", main: 6, cross: 0 },
+		{ id: "1:shp-active", main: 164, cross: 0 },
+		{ id: "2:shp-table", main: 249, cross: 0 },
+		{ id: "3:shp-steps", main: 356, cross: 0 },
+	];
+	const v = judgeDrift(before, after);
+	assert.equal(v.stable, false);
+	assert.deepEqual(v.moved, ["1:shp-active", "2:shp-table"]);
+});
+
+/**
+ * The window the row-axis check is allowed to look at. A chart, viewer or
+ * console history is SUPPOSED to take the card's free space, and whatever sits
+ * under it is supposed to follow the bottom edge — comparing those would report
+ * every such card as drifting. Everything above the first filler has no excuse.
+ */
+test("growPrefix: everything, when nothing in the body fills", () => {
+	const s = [
+		{ id: "0:card-head", main: 6, cross: 0, grows: false },
+		{ id: "1:shp-table", main: 44, cross: 0, grows: false },
+	];
+	assert.deepEqual(growPrefix(s), s);
+});
+
+test("growPrefix: stops at the first filling child, which may legitimately move things", () => {
+	const s = [
+		{ id: "0:card-head", main: 6, cross: 0, grows: false },
+		{ id: "1:console-history", main: 44, cross: 0, grows: true },
+		{ id: "2:console-input", main: 300, cross: 0, grows: false },
+	];
+	assert.deepEqual(growPrefix(s).map(x => x.id), ["0:card-head"]);
 });
 
 test("judgeDrift: a differing child count is a violation, not a crash", () => {
