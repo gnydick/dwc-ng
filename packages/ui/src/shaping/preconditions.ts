@@ -16,7 +16,12 @@
 
 import type { AccelAddr } from "../control/commands.ts";
 import type { Envelope, ShapingConfig } from "../config/types.ts";
-import type { Accelerometer, ObjectModel, Shaping } from "../om/types.ts";
+import type { ObjectModel, Shaping } from "../om/types.ts";
+// The one definition lives in its own module so the EAGER Settings card can
+// reach it without dragging this file onto the critical path (#126). Re-
+// exported here because `read` below is its main caller and the run loop
+// reads it as part of this module's surface.
+import { accelerometerOf } from "./accelPresence.ts";
 import { mm, mmPerS2, type Mm, type MmPerS2 } from "./engine/units.ts";
 
 /**
@@ -256,26 +261,6 @@ export function planarPosition(om: ObjectModel, letter: "X" | "Y"): Mm | null {
 	if (axis === undefined || !axis.homed) return null;
 	const p = axis.userPosition;
 	return typeof p === "number" && Number.isFinite(p) ? mm(p) : null;
-}
-
-/**
- * The accelerometer at this address, or null when that board has none.
- *
- * Exported for the same reason as `planarPosition`: the run loop watches
- * `runs` on the SAME sensor `read` insisted was present, and a second board
- * lookup could pick a different one.
- *
- * The address is `board.device` (or the bare `0` the mainboard answers to), so
- * the board half is what selects the entry in `boards`. Matching on
- * `canAddress` rather than the array index is the point: the index is the
- * order the firmware happens to report boards in, and addressing a capture at
- * the wrong board produces a real-looking file from the wrong sensor.
- */
-export function accelerometerOf(om: ObjectModel, accel: AccelAddr): Accelerometer | null {
-	const boardAddress = Number(String(accel).split(".")[0]);
-	if (!Number.isInteger(boardAddress)) return null;
-	const board = om.boards.find((b) => b !== null && (b.canAddress ?? 0) === boardAddress);
-	return board?.accelerometer ?? null;
 }
 
 /**

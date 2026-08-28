@@ -10,7 +10,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { armedRunText, armedSaveText } from "../src/shaping/copy.ts";
 import { defaultPrefix, runPlans, type RunRequest } from "../src/shaping/runPlan.ts";
-import type { BatchPurpose } from "../src/compose/services.ts";
+import type { BatchPurpose } from "../src/compose/shapingService.ts";
 import type { ShaperSpec } from "../src/shaping/engine/shapers.ts";
 import type { Envelope, ShapingDefaults } from "../src/config/types.ts";
 import type { Fingerprint, Mode } from "../src/shaping/engine/fit.ts";

@@ -40,6 +40,7 @@ import { ConsoleBody } from "../shell/ConsolePanel.tsx";
 import { CameraBody, CameraHideAction } from "../shell/CameraPanel.tsx";
 import type { CardId } from "./defs.ts";
 import type { CardCtx } from "./ctx.ts";
+import { provideShapingService } from "./shapingSlot.ts";
 
 /**
  * The Shaping Lab's eight bodies, behind ONE dynamic import.
@@ -69,8 +70,32 @@ import type { CardCtx } from "./ctx.ts";
  * `heavy-libraries-stay-behind-a-dynamic-import`, declared on main.tsx, which
  * is the root of the eager bundle and therefore where the claim belongs.
  */
+/**
+ * The Lab's chunk: its eight bodies AND its service, resolved together.
+ *
+ * The pairing is the mechanism, not a convenience. `compose/services.ts` is
+ * eager and may not import `compose/shapingService.ts` (that is #126 — 23
+ * modules of `shaping/**` on every cold load), so the registry holds a slot
+ * (`compose/shapingSlot.ts`) that has to be filled before any Lab card asks for
+ * the service. Filling it HERE, after the await and before returning a
+ * component, is what guarantees that: every body renders through this loader,
+ * so there is no second route where the ordering could come out differently.
+ * `shapingService` rides in the same chunk as the bodies — ShapingCards.tsx
+ * re-exports it — so this costs the board no extra request.
+ */
+async function loadShapingLab(): Promise<typeof import("../cards/ShapingCards.tsx")> {
+	const bodies = await import("../cards/ShapingCards.tsx");
+	// The SOLE writer of the slot, and it runs before this function returns —
+	// so Solid cannot render a body, and therefore no card can reach
+	// `ctx.service("shaping")`, until the factory is in place. `shapingService`
+	// is re-exported by ShapingCards.tsx, which is what keeps it in this one
+	// chunk and makes a missing registration a compile error.
+	provideShapingService(bodies.shapingService);
+	return bodies;
+}
+
 const lazyShaping = <K extends keyof typeof import("../cards/ShapingCards.tsx")>(name: K) =>
-	lazy(async () => ({ default: (await import("../cards/ShapingCards.tsx"))[name] as (props: { ctx: CardCtx }) => JSX.Element }));
+	lazy(async () => ({ default: (await loadShapingLab())[name] as (props: { ctx: CardCtx }) => JSX.Element }));
 
 const ShapingStatusBody = lazyShaping("ShapingStatusBody");
 const ShapingCaptureBody = lazyShaping("ShapingCaptureBody");
@@ -199,7 +224,16 @@ export const CARD_RENDER: Record<CardId, CardRender> = {
 		// Re-read this tool's results file. It lives on the SD card beside
 		// config.g, so the operator can put one there or edit one out from under
 		// the screen — the same reason the height map carries a Reload.
-		actions: ctx => <button class="link-btn" onClick={() => ctx.service("shaping").reload()}>Reload</button>,
+		// Through `loadShapingLab` and not straight at the service: this header
+		// action is EAGER (the chrome is on screen before the body's chunk has
+		// landed), and the service cannot be built until that chunk has filled
+		// the slot. Awaiting the same already-in-flight import means an early
+		// click reloads a beat later instead of throwing.
+		actions: ctx => (
+			<button class="link-btn" onClick={() => void loadShapingLab().then(() => ctx.service("shaping").reload())}>
+				Reload
+			</button>
+		),
 	},
 	"shaping-capture": { body: ctx => <Lazy component={ShapingCaptureBody} ctx={ctx} /> },
 	"shaping-decay": { body: ctx => <Lazy component={ShapingDecayBody} ctx={ctx} /> },

@@ -36,7 +36,7 @@ import type { Provenance, Supersede } from "./evidence/evidence.ts";
 import type { StepBlock, StepNeed, StepStatus } from "./steps.ts";
 import type { MotionOutcome, MotionState } from "./motionRun.ts";
 import type { RunKind, RunRequest } from "./runPlan.ts";
-import type { BatchPurpose } from "../compose/services.ts";
+import type { BatchPurpose } from "../compose/shapingService.ts";
 import type { ApplyHow, ApplyIntent, ApplyState } from "./applyRun.ts";
 import type { SweepState } from "./sweepRun.ts";
 
