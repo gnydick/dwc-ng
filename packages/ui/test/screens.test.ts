@@ -43,12 +43,20 @@ test("the screen list is never empty even with every builtin hidden", () => {
 	assert.ok(list.length >= 1, "the shell always has a screen to land on");
 });
 
-test("replaceAllScreenCards overrides a builtin's composition; garbage falls back", () => {
+test("replaceAllScreenCards overrides a builtin's geometry and MERGES with its coded cards; garbage falls back", () => {
+	// Rewritten for #86. This used to assert `Object.keys(overridden)` was
+	// exactly `["position"]` — i.e. that saving one card's geometry silently
+	// took every other coded card off the screen forever. That was the defect,
+	// asserted as the contract.
 	const store = createConfigStore({ machineStore: () => null });
 	store.replaceAllScreenCards("machine", { position: { col: 0, row: 0, colSpan: 24, rowSpan: 95 } });
 	const overridden = resolveScreen(store.config, "machine")!.def.composition;
-	assert.deepEqual(Object.keys(overridden), ["position"]);
-	assert.equal(overridden.position!.colSpan, 24);
+	assert.deepEqual(
+		Object.keys(overridden).sort(),
+		Object.keys(BUILTIN_SCREENS.machine.composition).sort(),
+		"the coded cards are all still there — a saved rect is not a removal",
+	);
+	assert.equal(overridden.position!.colSpan, 24, "and the saved geometry wins for the card it names");
 
 	// An override whose every slot is bogus parses to nothing → the builtin
 	// composition returns, never a blank screen.

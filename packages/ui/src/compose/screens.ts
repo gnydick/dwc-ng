@@ -14,7 +14,7 @@
  * carried before the conversion. User screens (overlay entries with minted
  * stable ids) join this list in phase A7b.
  */
-import { parseComposition, slotsOf, toSlotRect, type Composition, type CustomCardId } from "./composition.ts";
+import { mergeComposition, parseComposition, parseTombstones, slotsOf, toSlotRect, type Composition, type CustomCardId } from "./composition.ts";
 import { readCanvasOrientation, readCanvasState, writeCanvasState, type CanvasState } from "../shell/panelCanvas.ts";
 import type { OrientationState } from "../shell/panelOrientation.ts";
 import { LAB_ROUTE } from "../shell/router.ts";
@@ -283,17 +283,25 @@ export function screenList(config: UiConfig): ScreenEntry[] {
 		.filter(([id]) => !screens.hidden.includes(id))
 		.map(([id, def]): ScreenEntry => {
 			const override = screens.layouts[id];
-			const overridden = override !== undefined ? parseComposition(override, customCards) : null;
 			return {
 				id,
 				builtin: true,
 				def: {
 					name: screens.renames[id] ?? def.name,
 					class: def.class,
-					// An override that parsed to nothing (all slots dropped) falls
-					// back to the built-in composition — a screen is never blank
-					// because of stale stored data.
-					composition: overridden !== null && Object.keys(overridden).length > 0 ? overridden : def.composition,
+					// The coded composition MERGED with the override, minus what the
+					// operator removed (#86). The old "an override that parsed to
+					// nothing falls back to the coded composition" special case is
+					// gone because the merge subsumes it and gets the case the
+					// fallback got WRONG: stale or garbled stored data yields no
+					// slots and no tombstones, so the merge is the coded set exactly
+					// as before — but an operator who removed every card now gets an
+					// empty screen instead of all of them back.
+					composition: mergeComposition(
+						def.composition,
+						parseComposition(override, customCards),
+						parseTombstones(override, customCards),
+					),
 				},
 			};
 		});
@@ -486,7 +494,11 @@ export function screensUsing(config: UiConfig, cardId: CustomCardId): ScreenUse[
 	const screens = config.screens;
 	for (const [id, def] of Object.entries(BUILTIN_SCREENS) as Array<[BuiltinScreenId, ScreenDef]>) {
 		const override = screens.layouts[id];
-		if (override !== undefined && Object.hasOwn(override, cardId)) {
+		// `!= null` and not `hasOwn`: a tombstoned card is recorded on this
+		// screen but is not ON it, and counting it would tell the operator a
+		// card they removed is still placed — in the one report whose whole job
+		// is the blast radius of deleting it (#86).
+		if (override !== undefined && override[cardId] != null) {
 			uses.push({ id, name: screens.renames[id] ?? def.name, hidden: screens.hidden.includes(id) });
 		}
 	}

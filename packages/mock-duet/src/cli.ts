@@ -23,6 +23,10 @@ const { values } = parseArgs({
 		// migration a real board's SD can carry is reachable on a live mock,
 		// not only in the UI's own synthetic parser tests (GIT_92 req. 3).
 		"config-version": { type: "string", default: "3" },
+		// A machine whose SD carries a PRE-#86 screen override: the Machine
+		// screen saved with two of its coded cards and no tombstones. Off by
+		// default because it is a deliberately degraded machine.
+		"frozen-screen": { type: "boolean", default: false },
 		list: { type: "boolean", default: false },
 		help: { type: "boolean", short: "h", default: false },
 	},
@@ -84,6 +88,7 @@ const mock = createMockServer({
 	requireAuth: !values["no-auth"],
 	dsf: values.dsf,
 	configVersion,
+	frozenScreen: values["frozen-screen"],
 });
 
 const port = await mock.listen(parseInt(values.port, 10));
@@ -96,6 +101,7 @@ if (model !== undefined) {
 if (values["no-auth"]) console.log("auth disabled (--no-auth): X-Session-Key not required");
 if (values.dsf) console.log(`DSF mode (--dsf): REST http://127.0.0.1:${port}/machine/*, push ws://127.0.0.1:${port}/machine`);
 console.log(`dwc-ng-config.json seed: version ${configVersion}${configVersion === 3 ? " (current)" : ""}`);
+if (values["frozen-screen"]) console.log("frozen screen (--frozen-screen): screens.layouts.machine holds a pre-#86 subset override");
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
 	process.on(signal, () => {

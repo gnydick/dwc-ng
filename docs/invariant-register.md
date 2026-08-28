@@ -21,7 +21,7 @@ and invariant claim mentions 13 -> 23, so no mechanism was deleted and no
 claim was lost in the gap. From here the ratchets make a dropped rung visible
 in the diff that drops it.
 
-**Totals:** 153 invariants · 129 at rung 6 or above · 24 below rung 6 (ceiling 24).
+**Totals:** 155 invariants · 131 at rung 6 or above · 24 below rung 6 (ceiling 24).
 
 ## bed
 
@@ -111,13 +111,21 @@ in the diff that drops it.
 
 `packages/ui/src/compose/composition.ts:27`
 
+### `compose/builtin-composition-is-coded-merged-with-override` — rung 6
+
+**Mechanism.** choke-point — this is the only function that produces a built-in screen's composition, and `screenList` (compose/screens.ts, itself the ONE list nav/router/renderer read) is its only caller. There is no path from a stored override to a rendered screen that does not pass through here, so "the override replaced the coded set" is not a mistake a future reader has to catch — there is nowhere left to write it. Not rung 7: the three arguments are plain values and a second caller could assemble them differently; that residue is pinned by test/screen-composition-merge.test.ts
+
+**Why.** an override REPLACED the coded composition (`screens.ts:296` before this). So the moment an operator saved a built-in screen, its card set froze at that day's cards: every card shipped to that screen afterwards was invisible to them, permanently, with nothing on screen saying so. Shipping a card to a built-in screen did not put it there for anyone who had ever pressed Save @why-tombstones requirements 2 and 3 cannot both be met by inference — absence in the override meant BOTH "did not exist when I saved" and "I took it off". A heuristic over release dates or registry generations would resurrect deliberately removed cards on every release, which is user-visible and indistinguishable from a bug. So removal is written down (`SlotRect | null`) and absence means exactly one thing @limit an override written BEFORE tombstones existed carries no evidence either way, and is read as "never placed" — so its coded cards are added. That is the deliberate asymmetry: the other reading keeps the defect forever for every existing operator, silently, while this one can resurrect a pre-tombstone removal ONCE, visibly, after which removing it again holds. Pinned by name in the test file
+
+`packages/ui/src/compose/composition.ts:152`
+
 ### `compose/card-delete-carries-its-blast-radius` — rung 7
 
 **Mechanism.** sole-constructor type — the armed confirm holds a CardDeletePlan, and `planCardDelete` is its only producer, deriving the screens the card is on AND the message shown from the same id in one pass. The confirm deletes `plan.id`, so the report the operator read and the deletion performed cannot disagree
 
 **Why.** a delete that removes a card from every screen at once is exactly the action whose scope the operator must see before confirming — "delete this card?" cannot precede stripping it from screens they forgot it was on. The plan freezes usage at arm time; the studio is modal over composition edits, so the frozen report cannot go stale between the two clicks
 
-`packages/ui/src/compose/screens.ts:503`
+`packages/ui/src/compose/screens.ts:515`
 
 ### `compose/composition-degrades-per-slot` — rung 6
 
@@ -265,7 +273,7 @@ in the diff that drops it.
 
 **Why.** spec §3: an SD card cloned or moved to another board must not have its settings silently adopted (a foreign envelope becomes the box the head is driven inside) or silently discarded (a real machine's real settings would be lost the first time its OWN card fails to round-trip through some other path). "Claimed, not adopted" is the third option this function exists to make the default
 
-`packages/ui/src/config/store.ts:874`
+`packages/ui/src/config/store.ts:911`
 
 ### `config/claimed-not-reachable-without-adopt` — rung 6
 
@@ -281,7 +289,7 @@ in the diff that drops it.
 
 **Why.** an unscoped section defaults to whichever half the code happens to write, and the half it must not default into is the machine one: that is how an envelope crosses machines
 
-`packages/ui/src/config/types.ts:352`
+`packages/ui/src/config/types.ts:367`
 
 ### `config/envelope-is-config-not-default` — rung 6
 
@@ -291,7 +299,7 @@ in the diff that drops it.
 
 **Debt — promotion.** promote to rung 7 by branding `Envelope` so a hand-written object literal is not assignable and a future writer physically cannot skip `asEnvelope`. Blocked on the brand having to survive JSON round-trips to the SD card; today the guarantee is "one gate, two callers".
 
-`packages/ui/src/config/types.ts:226`
+`packages/ui/src/config/types.ts:241`
 
 ### `config/id-namespace` — rung 7
 
@@ -299,7 +307,7 @@ in the diff that drops it.
 
 **Why.** "u-" ids must never collide with built-in screen ids or the lab route, and "c-" ids never with registry CardIds. A collision would silently shadow a built-in screen with a user one, and the user could not delete what they had not created
 
-`packages/ui/src/config/store.ts:1084`
+`packages/ui/src/config/store.ts:1121`
 
 ### `config/labels-never-travel` — rung 6
 
@@ -309,7 +317,7 @@ in the diff that drops it.
 
 **Debt — promotion.** the payload is a hand-built object literal, so a future field is one line away — `machineId` (Task 9) is exactly that field arriving. Promote by giving ConfigOverlay a single serialize that returns a branded ConfigPayload upload accepts, so what travels is decided by the overlay's own type rather than here.
 
-`packages/ui/src/config/store.ts:823`
+`packages/ui/src/config/store.ts:860`
 
 ### `config/legacy-key-single-mention` — rung 6
 
@@ -325,7 +333,7 @@ in the diff that drops it.
 
 **Why.** (Ruling 18) an earlier version wrote this half into whichever machine happened to be resolved by `machineStore()` at the synchronous instant `createConfigStore` runs — no stamp, no evidence, on data migrateStorage.ts's own header says "carries no such proof" and "must be DROPPED, never guessed at". That branch was unreachable in THIS app only because of incidental boot ordering (App.tsx constructs the config store before the machine session can resolve) — improbable, not impossible, and this project's standard is that a hazard must be unrepresentable, not merely unlikely today. There is nothing an operator could confirm a recovered half against either (the origin is unknowable in principle), so there is no "claimed, pending confirmation" state to offer instead — dropping it is the only correct answer The one-shot v2 → v3 backfill of the pre-split, origin-global legacy cache (spec §4, campaign #76 phase 1 task 8; see migrateStorage.ts for the exact key name — only that module may spell it). That legacy cache predates Task 6/7's split and, like the live overlay it once carried, proves nothing about which machine wrote its machine-scoped bytes — Ruling 17/18 apply the identical drop-unconditionally rule to its snapshots that the live overlay already follows. The drop is not silent (Ruling 19): every migrated snapshot that HAD a non-empty machine half is named in the returned `droppedMachineSections`, alongside the live overlay's own report, so the one channel the System card already reads (Task 11) carries both. Returns `null` when there was nothing to migrate — the common case on every boot after the first, since readAndClearLegacyPersonCache removes the key on the one read that finds it.
 
-`packages/ui/src/config/store.ts:1231`
+`packages/ui/src/config/store.ts:1268`
 
 ### `config/machine-identity-single-resolution` — rung 6
 
@@ -355,7 +363,7 @@ in the diff that drops it.
 
 **Debt — promotion.** this function's contract depends on its caller never fabricating a `MachineStore` for the wrong machine — nothing here re-checks that a `handle`'s `id` matches "the current machine" beyond what machineSession.ts already guarantees by construction.
 
-`packages/ui/src/config/store.ts:1394`
+`packages/ui/src/config/store.ts:1431`
 
 ### `config/no-unstamped-sd-write` — rung 6
 
@@ -363,7 +371,7 @@ in the diff that drops it.
 
 **Why.** identity resolves about one poll after boot (machineSession.ts). A save attempted in that window must not put an unattributable file on the card — the next machine to read it (even THIS one, on a later boot with a different resolution) would have no stamp to check and no way to tell "mine" from "nobody's"
 
-`packages/ui/src/config/store.ts:841`
+`packages/ui/src/config/store.ts:878`
 
 ### `config/overlay-writes-persist` — rung 6
 
@@ -381,7 +389,7 @@ in the diff that drops it.
 
 **Why.** snapshot() (above) is the sole writer of a machine's own "snapshots" key and never writes under an id taken on a different machine, so `.find(e => e.id === snap.id)` coming up empty on machine B proves the snapshot was not taken on B — but that only tells you WHOSE machine half it isn't; it says nothing about what B's own machine half currently holds, and is no license to overwrite it
 
-`packages/ui/src/config/store.ts:758`
+`packages/ui/src/config/store.ts:795`
 
 ### `config/screen-layout-two-tier` — rung 6
 
@@ -399,7 +407,7 @@ in the diff that drops it.
 
 **Why.** a snapshot used to clone the WHOLE joined overlay into this same record (Ruling 17) — reverting to one taken on machine A while pointed at machine B restored A's axis roles and envelope onto B, the exact inherited-envelope hazard this campaign exists to remove
 
-`packages/ui/src/config/store.ts:1149`
+`packages/ui/src/config/store.ts:1186`
 
 ### `config/sole-snapshot-producer` — rung 6
 
@@ -409,7 +417,15 @@ in the diff that drops it.
 
 **Debt — promotion.** promote by making ConfigSnapshot's label a branded SnapshotLabel this function is the sole producer of, so a snapshot assembled elsewhere cannot be pushed at all rather than merely not being.
 
-`packages/ui/src/config/store.ts:713`
+`packages/ui/src/config/store.ts:750`
+
+### `config/tombstones-outlive-a-geometry-write` — rung 6
+
+**Mechanism.** choke-point — this is the only wholesale write of a built-in's override, and it does not TAKE the tombstones: it carries forward every `null` already stored that the incoming record does not name. There is no argument a caller can pass that says "and the removals are gone", so a geometry writer cannot resurrect a removed card whether or not it remembered they exist. Not rung 7: `cards` is a plain record and a caller could still pass a rect for a tombstoned id, which is exactly the re-add gesture and is meant to work
+
+**Why.** `captureScreenGeometry` (Save to machine) rebuilds a screen's whole rect record from the canvas and calls this. Had it dropped tombstones, every Save would have resurrected every card the operator removed — #86's own defect, one layer down, in the one gesture that is supposed to make their layout permanent
+
+`packages/ui/src/config/store.ts:634`
 
 ### `config/untrusted-overlay-boundary` — rung 6
 

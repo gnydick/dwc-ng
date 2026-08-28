@@ -60,6 +60,30 @@ function rectRecord(raw: unknown): Record<string, SlotRect> | undefined {
 	return Object.keys(out).length > 0 ? out : undefined;
 }
 
+/**
+ * A BUILT-IN screen's override: the same rect record, plus tombstones.
+ *
+ * A literal `null` survives as a null — the operator removed that card (#86).
+ * Everything else that is not a rect still drops per-key, exactly as
+ * `rectRecord` drops it, so a garbled value cannot masquerade as a removal:
+ * only the one value that means removal produces one.
+ *
+ * Kept apart from `rectRecord` rather than folded into it because custom
+ * screens must NOT gain tombstones — they have no coded composition beneath
+ * them, so absence there is already unambiguous and a null would be a second
+ * way to say the same thing.
+ */
+function layoutRecord(raw: unknown): Record<string, SlotRect | null> | undefined {
+	if (!isPlainObject(raw)) return undefined;
+	const out: Record<string, SlotRect | null> = {};
+	for (const [key, value] of safeEntries(raw)) {
+		if (value === null) { out[key] = null; continue; }
+		const rect = asSlotRect(value);
+		if (rect !== null) out[key] = rect;
+	}
+	return Object.keys(out).length > 0 ? out : undefined;
+}
+
 function parseAxisRoles(raw: unknown): ConfigOverlay["axisRoles"] {
 	return stringRecord(raw);
 }
@@ -254,9 +278,9 @@ function parseScreens(raw: unknown): ConfigOverlay["screens"] {
 		if (hidden.length > 0) out.hidden = hidden;
 	}
 	if (isPlainObject(raw.layouts)) {
-		const layouts: Record<string, Record<string, SlotRect>> = {};
+		const layouts: Record<string, Record<string, SlotRect | null>> = {};
 		for (const [id, cards] of safeEntries(raw.layouts)) {
-			const rects = rectRecord(cards);
+			const rects = layoutRecord(cards);
 			if (rects !== undefined) layouts[id] = rects;
 		}
 		if (Object.keys(layouts).length > 0) out.layouts = layouts;

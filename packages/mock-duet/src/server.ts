@@ -47,6 +47,19 @@ export interface MockServerOptions {
 	 * synthetic parser tests (GIT_92 requirement 3).
 	 */
 	configVersion?: ConfigSeedVersion;
+	/**
+	 * Seed `screens.layouts.machine` with a PRE-TOMBSTONE override holding a
+	 * subset of the Machine screen's coded cards — the state every operator
+	 * who ever pressed Save was in before #86.
+	 *
+	 * Off by default, because it is a deliberately DEGRADED machine: the point
+	 * of the state is that cards are missing. It exists so the fix is
+	 * observable on the mock at all — a fresh machine has no override, so
+	 * nothing was ever frozen and there is nothing to un-freeze (GIT_92's rule
+	 * that every state the UI must handle has a way to be presented on
+	 * purpose).
+	 */
+	frozenScreen?: boolean;
 }
 
 export interface MockServer {
@@ -72,7 +85,7 @@ export function createMockServer(options: MockServerOptions = {}): MockServer {
 	const tickMs = options.tickMs ?? 250;
 	const emulated = options.emulated ?? false;
 
-	const machine = new Machine(scenario, options.model, options.configVersion);
+	const machine = new Machine(scenario, options.model, options.configVersion, options.frozenScreen);
 	const sessions = new SessionManager({
 		maxSessions: options.maxSessions ?? 4,
 		sessionTimeout: options.sessionTimeout ?? 8000,

@@ -71,8 +71,8 @@ export class Machine {
 	private bootTime = Date.parse("2026-07-12T12:00:00");
 	private messageBoxSeq = 0;
 
-	constructor(scenario?: Scenario, baseModel?: Om, configVersion?: ConfigSeedVersion) {
-		this.sd = new VirtualSD(configVersion);
+	constructor(scenario?: Scenario, baseModel?: Om, configVersion?: ConfigSeedVersion, frozenScreen?: boolean) {
+		this.sd = new VirtualSD(configVersion, frozenScreen);
 		this.pristine = baseModel ?? createBaseModel();
 		this.om = structuredClone(this.pristine);
 		this.volSeqs = (this.om.volumes as Om[]).map(() => 0);
