@@ -21,7 +21,7 @@ and invariant claim mentions 13 -> 23, so no mechanism was deleted and no
 claim was lost in the gap. From here the ratchets make a dropped rung visible
 in the diff that drops it.
 
-**Totals:** 169 invariants · 145 at rung 6 or above · 24 below rung 6 (ceiling 25).
+**Totals:** 170 invariants · 146 at rung 6 or above · 24 below rung 6 (ceiling 25).
 
 ## bed
 
@@ -111,7 +111,7 @@ in the diff that drops it.
 
 **Why.** a baseline measured through a shaper ranks against modes that are not there, applies, and re-measures — nothing downstream can detect it and the output looks clean
 
-`packages/ui/src/compose/services.ts:328`
+`packages/ui/src/compose/shapingService.ts:152`
 
 ### `compose/additive-placement` — rung 7
 
@@ -213,7 +213,7 @@ in the diff that drops it.
 
 **Why.** the run this screen starts sends a 200 mm/s G1 with nobody's hand on the jog wheel. Two of them interleaved would each be re-checking the carriage against ITS plan's expected position and finding the other one's move — every step refused, the machine moving anyway, and two restores racing at the end
 
-`packages/ui/src/compose/services.ts:1236`
+`packages/ui/src/compose/shapingService.ts:1020`
 
 ### `compose/one-service-instance-per-screen` — rung 8
 
@@ -259,13 +259,23 @@ in the diff that drops it.
 
 `packages/ui/src/compose/services.ts:40`
 
+### `compose/the-shaping-factory-is-provided-before-it-is-read` — rung 6
+
+**Mechanism.** choke-point. ONE writer — `compose/cards.tsx`'s `loadShapingLab`, which fills the slot after awaiting the Lab's chunk and BEFORE returning a component — and ONE reader, `SERVICES.shaping`. Every route to the reader goes through `ctx.service("shaping")`, and every call site of that is a Lab body, which Solid cannot render until that same loader has resolved. The factory it writes comes from ShapingCards.tsx's value re-export, so a registration that stopped happening would not compile. Not rung 7: nothing in the type system stops a NEW call site being added outside the Lab's chunk, which is why test/lazy-bundle.test.ts also asserts that no module in the eager import graph calls it synchronously
+
+**Why.** the alternative shapes are worse in ways that matter. An async `service()` moves the ordering problem to every card; a second pool inside the lazy chunk duplicates the memoization that IS the one-instance guarantee; and leaving the factory eager is the defect this exists to fix
+
+**Debt — promotion.** the slot is module-scoped, so it is one factory for the whole page rather than one per screen, and the throw below is rung 2 — the fallback, not the mechanism. Promote by having the loader hand the POOL a resolved factory instead of writing a module-level slot, which needs the pool to be constructible from the loader and is a bigger change than the deploy this is unblocking can carry.
+
+`packages/ui/src/compose/shapingSlot.ts:17`
+
 ### `compose/tool-change-disarms` — rung 6
 
 **Mechanism.** choke point — `setTool` is the sole route to a tool change a card can reach (it is the only member of `SERVICES.shaping`'s returned object that writes `tool`; `setToolNow` itself is a closure-local `const`, never returned, so no card can call it directly — a TypeScript compile error, not a convention), and it now calls `disarmAll()` (control/armed.ts) UNCONDITIONALLY, every time, on every caller — there is no `next !== tool()` guard to word around. `disarmAll` iterates the same `disarmers` Set `createArmed` is the ONLY way to join (test/armed.test.ts walks src for a bypass), so a card that arms via `createArmed` — which is every two-step control in this codebase, by that same walk — is disarmed by construction of calling it, not by a comparison someone remembered to write. Falsified in test/tool-change-disarms.test.ts: arm, call the REAL `svc.setTool`, assert disarmed — including the same-tool case, which a conditional disarm would have missed.
 
 **Why.** before this, an arm payload carrying its OWN tool (`{ kind: "save", tool }`) was how a stale arm was DETECTED — `save()` compared `armed().tool` against `svc.tool()` on every click. The review that closed GIT_90 round 2 traced every such comparison and found no reachable mis-save, but the mismatch was still REPRESENTABLE: two copies of "which tool" existed in the running code, and only careful reading kept them from disagreeing. Gabe, invoking cant-break-by-design: "it shouldn't be possible to mismatch tool identification in the same active code." Removing the second copy (the arm payloads no longer carry a tool at all — ShapingCards.tsx's Decay/Sweep/Capture save arms) and disarming on every tool change makes a stale arm impossible to CLICK rather than merely unprofitable to click: by the time a second click could fire a write, the control has already reverted to unarmed.
 
-`packages/ui/src/compose/services.ts:846`
+`packages/ui/src/compose/shapingService.ts:670`
 
 ## config
 
@@ -1065,7 +1075,7 @@ in the diff that drops it.
 
 **Why.** RRF creates the file and then streams the samples into it off the CAN toolboard, so the directory entry exists long before its contents do. On 2026-08-23 a sweep took the name as proof, accepted pass 1 while the board was still writing it, and pass 2's M956 queued behind that write until the run died one capture in. A name proves a file was CREATED and says nothing about whether a capture FINISHED — and a half-written file fits to a confident, wrong frequency The budget comes off the WATCH, which got it from the same `CaptureTiming` that sized the M956. A flat budget was a false failure waiting for a longer recording: at 5,700 samples the file legitimately cannot exist for 4.2 s, and "no capture appeared" would have been reported for a run that was working.
 
-`packages/ui/src/shaping/procedure.ts:1959`
+`packages/ui/src/shaping/procedure.ts:1960`
 
 ### `shaping/a-filter-finds-rows-it-does-not-choose-them` — rung 6
 
@@ -1107,7 +1117,7 @@ in the diff that drops it.
 
 **Debt — promotion.** arity is convention, not construction: `runPriorOf` can be called twice. Promote by making the run itself the producer — a run handle minted from the opening reading that hands out procedures — so a second prior has no expression rather than merely no call site
 
-`packages/ui/src/shaping/preconditions.ts:330`
+`packages/ui/src/shaping/preconditions.ts:315`
 
 ### `shaping/a-selection-is-one-of-this-tools-own-results` — rung 7
 
@@ -1323,7 +1333,7 @@ in the diff that drops it.
 
 **Debt — promotion.** the NUMBER is a reading of the wire format, not a measurement: RRF's source is not vendored here and its M956 docs state no bound. Promote by walking a real toolboard up until it refuses and pinning the value that came back, or by citing the firmware's own field width. Until then the claim is only that the UI refuses before the board does, which holds for any true bound at or below this one
 
-`packages/ui/src/shaping/procedure.ts:980`
+`packages/ui/src/shaping/procedure.ts:981`
 
 ### `shaping/one-answer-to-which-line-is-the-shaper` — rung 6
 
@@ -1339,7 +1349,7 @@ in the diff that drops it.
 
 **Why.** the constant this replaced was 1500 ms of dwell beside a free-floating `samples` setting, and on 2026-08-23 a sweep recorded 7.5 s against it — every following pass landed inside the previous pass's file. The two numbers had no way to know about each other, and neither knew about the move
 
-`packages/ui/src/shaping/procedure.ts:1024`
+`packages/ui/src/shaping/procedure.ts:1025`
 
 ### `shaping/one-motion-field-table` — rung 6
 
@@ -1355,7 +1365,7 @@ in the diff that drops it.
 
 **Why.** the checks and the move must not be separable. A card that could assemble its own guard object would be free to omit the homed test, and an unhomed axis under a 200 mm/s G1 is a crash into the frame at full current — the failure this whole feature is built around
 
-`packages/ui/src/shaping/preconditions.ts:90`
+`packages/ui/src/shaping/preconditions.ts:95`
 
 ### `shaping/restore-is-structural` — rung 7
 
@@ -1363,7 +1373,7 @@ in the diff that drops it.
 
 **Why.** the machine's prior shaper is knowable only BEFORE the run changes it. A restore derived from live state after a verify pass would faithfully re-apply the candidate under test and leave the operator believing the machine was back to baseline — a wrong belief about a setting that changes every subsequent print @note `runPrior` is a PARAMETER and not `pre.priorShaping`, and the difference is a live bug in every multi-leg run. A Measure run is two legs (runPlan.ts, one ring per axis), each its own Procedure built from its own fresh `Preconditions.read` — and that read takes the shaper off the POLLED object model, which the run's own codes have been changing. Leg 1 states its shaper, the poll catches up during leg 1's several seconds of captures, and leg 2 reads that statement back as the thing to restore to: `none` after a baseline, so the operator's shaper is silently gone; the CANDIDATE after a verify leg, so an unproven shaper is left installed. Both end on "the machine's shaper is back as it was found" (copy.ts), because the restore was sent and sending it is all the screen can see. Making it an argument forces the caller to say WHICH reading it means, and a run has exactly one to give: the one from before it touched anything. @note the SHAPER is the whole of what this puts back, and the other thing a run touches — the accelerometer — is deliberately absent rather than forgotten (#43). RRF has no command that cancels an armed M956 (reference/duet-gcode.md, M956), so there is nothing this array could hold that would disarm one; a restore that "covers everything the run touched" cannot be written for the accelerometer, only for the shaper. What covers the accelerometer instead is `cmd.captureMove`: an arm and the move that consumes it are ONE command and one request, so a run cannot end with a pending capture on the board and there is no state left for a `finally` to undo. That is the stronger of the two mechanisms and the reason the weaker one is not attempted here — a cleanup built on a guess about what a second M956 does to a pending one would be a remediation nobody had verified, on a machine.
 
-`packages/ui/src/shaping/procedure.ts:366`
+`packages/ui/src/shaping/procedure.ts:367`
 
 ### `shaping/results-file-is-parsed-not-cast` — rung 6
 
@@ -1391,7 +1401,7 @@ in the diff that drops it.
 
 **Why.** `samples / rate` is the whole recording. M955's S parameter PERSISTS on the board (reference/duet-gcode.md, M955 notes: "These configuration settings persist until they are changed"), so the rate in force is whatever somebody last set — 1375 Hz on Gabe's toolboard, but nothing in this UI put it there. A constant here would silently mis-size every capture on any machine configured differently, and the error is proportional: at half the assumed rate every recording is twice as long as planned and the dwell derived from it covers half of it
 
-`packages/ui/src/shaping/procedure.ts:852`
+`packages/ui/src/shaping/procedure.ts:853`
 
 ### `shaping/shaping-motion-only-via-procedure` — rung 7
 
@@ -1399,7 +1409,7 @@ in the diff that drops it.
 
 **Why.** this is the feature's whole safety story. The lab sends 200 mm/s moves with nobody watching the axis, and the difference between a capture and a crash into the frame is whether those four facts were true at the moment of planning. A second way to build a run is a second place to forget one of them
 
-`packages/ui/src/shaping/procedure.ts:319`
+`packages/ui/src/shaping/procedure.ts:320`
 
 ### `shaping/step-readiness-has-one-answer` — rung 6
 
@@ -1533,7 +1543,7 @@ in the diff that drops it.
 
 ### `ui/heavy-libraries-stay-behind-a-dynamic-import` — rung 4
 
-**Mechanism.** static analysis — test/lazy-bundle.test.ts walks src and checks both halves: that only editor/setup.ts, gcode/scene.ts and heightmap/surface3d.ts name a heavy package at all, and that every module on the DYNAMIC_ONLY list — those three plus the Shaping Lab's cards/ShapingCards.tsx and charts/DecayChart.tsx — is reached only by `import type` (erased, since verbatimModuleSyntax is on) or `import(...)`. A value import of scene.ts pulls Babylon in exactly as a direct import would, which is why one check is not enough
+**Mechanism.** static analysis — test/lazy-bundle.test.ts checks three things, and no two of them catch the same mistake. (1) Only editor/setup.ts, gcode/scene.ts and heightmap/surface3d.ts may name a heavy package at all. (2) Every module on the DYNAMIC_ONLY list — those three plus cards/ShapingCards.tsx, charts/DecayChart.tsx, shaping/resultsCodec.ts and compose/shapingService.ts — is reached only by `import type` (erased, since verbatimModuleSyntax is on) or `import(...)`; a value import of scene.ts pulls Babylon in exactly as a direct import would. (3) The transitive static-import closure of THIS file is walked, and the `src/shaping/**` modules it reaches must equal a committed list exactly — which is the only one of the three that catches a module nobody thought to name in advance @why-3 (1) and (2) are per-FILE text matches, so they can only stop a regrowth someone predicted. Twice they did not: GIT_108 added shaping/selection.ts and GIT_51 added shaping/preconditions.ts to compose/services.ts, each a one-line import in a module that was already eager, and between them they put 23 modules of `src/shaping/**` — 21,635 B minified — on every board load and made the uat branch undeployable (#126). The graph walk makes LAZY the default for a new shaping module and a place on the critical path a diff
 
 **Why.** CLAUDE.md's first hard constraint is that the board's HTTP server is weak and payload is expensive. Babylon is 232 KB gzipped — larger than the whole eager bundle — CodeMirror is comparable, and the eight shaping bodies were 32,589 B of a 483,328 B ceiling (measured 2026-08-23) for a screen that tunes a machine rather than runs one. The failure is silent in the worst way: one static import adds all of it back to what every load must serve, the app behaves identically on a dev machine, and the cost appears only as a slower first paint on hardware nobody profiles
 

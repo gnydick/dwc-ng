@@ -3,14 +3,26 @@
  * reachable from here by a static import is served on every board load.
  *
  * @invariant heavy-libraries-stay-behind-a-dynamic-import
- * @rung 4  static analysis — test/lazy-bundle.test.ts walks src and checks
- *          both halves: that only editor/setup.ts, gcode/scene.ts and
- *          heightmap/surface3d.ts name a heavy package at all, and that every
- *          module on the DYNAMIC_ONLY list — those three plus the Shaping
- *          Lab's cards/ShapingCards.tsx and charts/DecayChart.tsx — is reached
- *          only by `import type` (erased, since verbatimModuleSyntax is on) or
- *          `import(...)`. A value import of scene.ts pulls Babylon in exactly
- *          as a direct import would, which is why one check is not enough
+ * @rung 4  static analysis — test/lazy-bundle.test.ts checks three things, and
+ *          no two of them catch the same mistake. (1) Only editor/setup.ts,
+ *          gcode/scene.ts and heightmap/surface3d.ts may name a heavy package
+ *          at all. (2) Every module on the DYNAMIC_ONLY list — those three plus
+ *          cards/ShapingCards.tsx, charts/DecayChart.tsx, shaping/resultsCodec.ts
+ *          and compose/shapingService.ts — is reached only by `import type`
+ *          (erased, since verbatimModuleSyntax is on) or `import(...)`; a value
+ *          import of scene.ts pulls Babylon in exactly as a direct import
+ *          would. (3) The transitive static-import closure of THIS file is
+ *          walked, and the `src/shaping/**` modules it reaches must equal a
+ *          committed list exactly — which is the only one of the three that
+ *          catches a module nobody thought to name in advance
+ * @why-3 (1) and (2) are per-FILE text matches, so they can only stop a
+ *          regrowth someone predicted. Twice they did not: GIT_108 added
+ *          shaping/selection.ts and GIT_51 added shaping/preconditions.ts to
+ *          compose/services.ts, each a one-line import in a module that was
+ *          already eager, and between them they put 23 modules of
+ *          `src/shaping/**` — 21,635 B minified — on every board load and made
+ *          the uat branch undeployable (#126). The graph walk makes LAZY the default for
+ *          a new shaping module and a place on the critical path a diff
  * @why CLAUDE.md's first hard constraint is that the board's HTTP server is
  *      weak and payload is expensive. Babylon is 232 KB gzipped — larger than
  *      the whole eager bundle — CodeMirror is comparable, and the eight

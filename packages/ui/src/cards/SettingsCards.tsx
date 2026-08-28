@@ -16,7 +16,7 @@ import { useApp } from "../shell/context.ts";
 import { MAX_LABEL_LEN, DEFAULT_THERMAL_COLORS, type Envelope, type ThermalColors } from "../config/types.ts";
 import { commitMotionField, MOTION_FIELDS, type MotionField } from "../shaping/motionFields.ts";
 import { parseAccelAddr } from "../control/commands.ts";
-import { accelerometerOf } from "../shaping/preconditions.ts";
+import { accelerometerOf } from "../shaping/accelPresence.ts";
 import {
 	accelStatusText, draftEnvelope, draftOf, envelopeStatusText, judgeAccel, judgeDraft, sameDraft,
 	type EnvelopeAxis, type EnvelopeDraft, type EnvelopeVerdict,
@@ -345,7 +345,11 @@ export function ShapingBody(props: { ctx: CardCtx }) {
 	// service's business: it owns the address lookup the rest of this card
 	// already reads, and one owner is what keeps a rate shown here and a rate
 	// used by a run from being two different answers.
-	const shaping = props.ctx.service("shaping");
+	// The ACCEL service, not the Lab's. This card is eager (see compose/cards.tsx)
+	// and reaching the Lab's service from here is what put 23 modules of
+	// shaping/** on every cold load (#126). Same pool entry the Lab's Capture
+	// card takes, so the two cannot disagree about what the sensor reported.
+	const accel = props.ctx.service("accel");
 	const stored = (): Envelope | null => app.config.config.shaping.envelope;
 
 	// `edit` is null while the four fields MIRROR the store, and holds the
@@ -455,7 +459,7 @@ export function ShapingBody(props: { ctx: CardCtx }) {
 	const [rateArmed, setRateArmed] = createSignal<number | null>(null);
 
 	/** What the board last said, in its own words. */
-	const accelReport = (tool: number) => shaping.accelReportFor(tool);
+	const accelReport = (tool: number) => accel.accelReportFor(tool);
 
 	const applyRate = (tool: number): void => {
 		const rate = Number(rateEdit()[tool]);
@@ -466,7 +470,7 @@ export function ShapingBody(props: { ctx: CardCtx }) {
 			return;
 		}
 		setRateArmed(null);
-		void shaping.setAccelRate(tool, rate, bits);
+		void accel.setAccelRate(tool, rate, bits);
 	};
 
 	const commitAccel = (tool: number): void => {
@@ -626,7 +630,7 @@ export function ShapingBody(props: { ctx: CardCtx }) {
 									>
 										{rateArmed() === t().number ? "Confirm" : "Set"}
 									</button>
-									<button class="fb-tool" disabled={!accelPresent(t().number)} onClick={() => void shaping.readAccel(t().number)}>
+									<button class="fb-tool" disabled={!accelPresent(t().number)} onClick={() => void accel.readAccel(t().number)}>
 										Read
 									</button>
 									{/* The board's own words, reserved so four tools do not

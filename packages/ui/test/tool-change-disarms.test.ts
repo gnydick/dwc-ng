@@ -10,20 +10,24 @@
  * detected.
  *
  * This test exercises the actual fix through the REAL choke point — the
- * exported `SERVICES.shaping` factory and its `setTool`, not a reimplementation
+ * exported `shapingService` factory and its `setTool`, not a reimplementation
  * of either — so a future edit that quietly stops calling `disarmAll()` inside
  * `setTool` fails HERE, not just in a manual re-read.
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRoot } from "solid-js";
-import { SERVICES } from "../src/compose/services.ts";
+// The real factory, imported where it now lives (#126): the registry entry
+// `SERVICES.shaping` reads a slot the Lab's chunk fills at load time, and a
+// test that never loads that chunk has nothing to read. Constructing the
+// factory directly is the same object the registry hands a card.
+import { shapingService } from "../src/compose/shapingService.ts";
 import { createArmed } from "../src/control/armed.ts";
 import { stubShapingBase } from "./helpers/shaping.ts";
 
 test("svc.setTool disarms a control armed via createArmed, through the real service", () => {
 	createRoot(dispose => {
-		const svc = SERVICES.shaping(stubShapingBase());
+		const svc = shapingService(stubShapingBase());
 		// A card's own arm, minted the only way one can be (test/armed.test.ts
 		// already enforces that createArmed is the sole route) — this is NOT
 		// the shared tool signal, it is a SEPARATE control that happens to be
@@ -44,7 +48,7 @@ test("svc.setTool disarms EVERY armed control, not just the first one registered
 	// "every armed control", and this is the same loop (control/armed.ts
 	// disarmAll). One control passing is not evidence the loop is a loop.
 	createRoot(dispose => {
-		const svc = SERVICES.shaping(stubShapingBase());
+		const svc = shapingService(stubShapingBase());
 		const [a, setA] = createArmed<true>();
 		const [b, setB] = createArmed<true>();
 		const [c, setC] = createArmed<true>();
@@ -64,7 +68,7 @@ test("a tool switch to the SAME tool still disarms — the guarantee is uncondit
 	// against — so setTool must not skip the disarm because `next === tool()`.
 	// A conditional disarm is the same rung as the comparison this replaces.
 	createRoot(dispose => {
-		const svc = SERVICES.shaping(stubShapingBase());
+		const svc = shapingService(stubShapingBase());
 		const [armed, setArmed] = createArmed<true>();
 		setArmed(true);
 		const same = svc.tool();

@@ -24,7 +24,8 @@ import { SHAPER_TYPES, type ShaperSpec, type ShaperType } from "./engine/shapers
 import { DECAY_FLOOR, FIT_DEFAULTS } from "./engine/fit.ts";
 import { hz, mm, mmPerS, seconds, type Hz, type Mm, type MmPerS, type MmPerS2, type Seconds } from "./engine/units.ts";
 import type { Conditions } from "./evidence/evidence.ts";
-import { accelerometerOf, inside, planarPosition, Preconditions, type Point, type Refusal, type RunPrior } from "./preconditions.ts";
+import { inside, planarPosition, Preconditions, type Point, type Refusal, type RunPrior } from "./preconditions.ts";
+import { accelerometerOf } from "./accelPresence.ts";
 import { ACCEL_DIR } from "./captures.ts";
 
 /** A `Preconditions` read longer ago than this is refused as `stale`. One

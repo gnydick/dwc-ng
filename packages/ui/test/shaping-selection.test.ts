@@ -15,7 +15,11 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRoot } from "solid-js";
 import { readFileSync } from "node:fs";
-import { SERVICES } from "../src/compose/services.ts";
+// The real factory, imported where it now lives (#126): the registry entry
+// `SERVICES.shaping` reads a slot the Lab's chunk fills at load time, and a
+// test that never loads that chunk has nothing to read. Constructing the
+// factory directly is the same object the registry hands a card.
+import { shapingService } from "../src/compose/shapingService.ts";
 import { candidateFor, type Candidate } from "../src/shaping/engine/rank.ts";
 import { aggregate, type Fingerprint } from "../src/shaping/engine/fit.ts";
 import { hz, seconds } from "../src/shaping/engine/units.ts";
@@ -56,7 +60,7 @@ const stripComments = (text: string): string =>
 
 test("tapping the third candidate is the spec the acting cards get — through the real service", () => {
 	createRoot(dispose => {
-		const svc = SERVICES.shaping(stubShapingBase());
+		const svc = shapingService(stubShapingBase());
 		svc.store.setCandidates(svc.tool(), THREE);
 
 		svc.select(THREE[2]!.spec);
@@ -169,7 +173,7 @@ test("a key made against one tool's results selects the OTHER tool's own default
 
 test("svc.setTool drops the tap as well as the arm", () => {
 	createRoot(dispose => {
-		const svc = SERVICES.shaping(stubShapingBase());
+		const svc = shapingService(stubShapingBase());
 		svc.store.setCandidates(svc.tool(), THREE);
 		svc.select(THREE[2]!.spec);
 		assert.notEqual(svc.specPick(), null);

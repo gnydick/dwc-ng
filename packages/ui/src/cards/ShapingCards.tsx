@@ -54,7 +54,18 @@ import { copyText } from "../shell/copyText.ts";
 import { createArmed } from "../control/armed.ts";
 import { armedRunText, armedSaveText, batchSummaryText, type CaptureSource, captureSourceLabel, captureWhenText, livenessNote, motionStateText, refusalText, rescanNoteText, runKindText, statusMessageText, stepStatusText, sweepStateText } from "../shaping/copy.ts";
 import type { CardCtx } from "../compose/ctx.ts";
-import type { MacroRead } from "../compose/services.ts";
+import type { MacroRead } from "../compose/shapingService.ts";
+/**
+ * The Lab's service, re-exported so it travels in THIS chunk.
+ *
+ * A VALUE re-export and not a type one, deliberately, and it is doing two jobs.
+ * It puts `compose/shapingService.ts` in the same chunk as these eight bodies,
+ * so opening the screen is one request rather than two on a server CLAUDE.md's
+ * first constraint is about; and it is what `compose/cards.tsx`'s
+ * `loadShapingLab` hands to `provideShapingService`, so deleting this line does
+ * not quietly stop the registration — it fails to compile.
+ */
+export { shapingService } from "../compose/shapingService.ts";
 import { nextStep, SHAPING_STEPS, type StepInputs, type StepSpec } from "../shaping/steps.ts";
 import { productsFor } from "../shaping/evidence/products.ts";
 import { reportText } from "../shaping/accelReport.ts";
@@ -551,6 +562,10 @@ type CaptureArm =
  */
 export function ShapingCaptureBody(props: { ctx: CardCtx }) {
 	const svc = props.ctx.service("shaping");
+	// The accelerometer's rate, resolution and address are their own service
+	// (shaping/accelService.ts) because Settings needs them without the Lab —
+	// the same pool entry, so this card and that one see one sensor reading.
+	const accel = props.ctx.service("accel");
 	const cfg = (): ShapingConfig => props.ctx.config.config.shaping;
 	const defaults = (): ShapingDefaults => cfg().defaults;
 	const envelope = (): Envelope | null => cfg().envelope;
@@ -692,8 +707,8 @@ export function ShapingCaptureBody(props: { ctx: CardCtx }) {
 	createEffect(() => {
 		const n = svc.tool();
 		if (cfg().accelByTool[n] === undefined) return;
-		if (svc.accelReportFor(n) !== null) return;
-		void svc.readAccel(n);
+		if (accel.accelReportFor(n) !== null) return;
+		void accel.readAccel(n);
 	});
 
 	const saveable = createMemo((): boolean => {
@@ -717,8 +732,8 @@ export function ShapingCaptureBody(props: { ctx: CardCtx }) {
 			return;
 		}
 		setArmed(null);
-		const accel = svc.accelFor(svc.tool());
-		if (accel === null) return;
+		const addr = accel.accelFor(svc.tool());
+		if (addr === null) return;
 		const slot = svc.beginMotion();
 		if (slot === null) return;
 		// Read ONCE, here. The completion path below decides what the captures
@@ -732,7 +747,7 @@ export function ShapingCaptureBody(props: { ctx: CardCtx }) {
 				conn: props.ctx.connector,
 				om: () => props.ctx.om.om,
 				cfg,
-				accel,
+				accel: addr,
 				// The SAME `svc.tool()` the accelerometer address was chosen for
 				// and the capture prefix was spelled from. Read here rather than
 				// inside the run, so the head that gets picked up and the head the
@@ -916,8 +931,8 @@ export function ShapingCaptureBody(props: { ctx: CardCtx }) {
 				<div class="shp-fact">
 					<dt>Sampling</dt>
 					<dd>
-						<span class="shp-mono" title={reportText(svc.accelReportFor(svc.tool()))}>
-							{reportText(svc.accelReportFor(svc.tool()))}
+						<span class="shp-mono" title={reportText(accel.accelReportFor(svc.tool()))}>
+							{reportText(accel.accelReportFor(svc.tool()))}
 						</span>
 					</dd>
 				</div>
