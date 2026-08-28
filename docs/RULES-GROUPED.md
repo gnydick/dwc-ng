@@ -53,6 +53,7 @@ from git blame rather than writing it by hand.
 - [Acting outside the working tree](#acting-outside-the-working-tree) 🟢
 - [Proving a change against something that behaves like the machine](#proving-a-change-against-something-that-behaves-like-the-machine) 🟢
 - [Dispatching work — who does it, and where it runs](#dispatching-work--who-does-it-and-where-it-runs) 🟢
+- [Claiming what the tooling can do](#claiming-what-the-tooling-can-do) 🟢
 
 ---
 
@@ -175,3 +176,44 @@ could read that would reveal a violation. So this group is held by discipline
 alone — a weaker footing than the register's other groups, stated here rather
 than papered over. The circle is 🟢 because the RULING is settled, not because
 anything enforces it.
+
+---
+
+## Claiming what the tooling can do 🟢
+
+**What binds these:** the same generator as "Acting outside the working tree" —
+a fact taken from prose about the environment instead of from the environment —
+but pointed at a different kind of fact and caught at a different moment. That
+group fires before an ACTION LEAVING THE TREE and asks *which target*; this one
+fires before an ASSERTION and asks *what can that thing actually do*. A claim
+that a hook gates a commit, that a test would fail on a given input, that a
+flag or harness exists, is a claim about capability, and it is checkable in one
+command in almost every case. Kept separate rather than folded into the target
+rule because folding it in would widen that rule's trigger from "you are about
+to act" to "you are about to speak" and dilute its named checks; if Gabe
+prefers one group, the two merge cleanly.
+
+No wobble: dictated by Gabe on 2026-08-28 after the third false capability
+claim of the day.
+
+| Date | Rule | Cites |
+|---|---|---|
+| 2026-08-28 | Before asserting that a hook, test, gate, flag, script or harness exists or would catch something, run the falsifying check — `git config core.hooksPath` and the hook script, the test file's own assertion, `--help`, the `package.json` scripts block, a lockfile grep — rather than sourcing the claim from prose, this repo's own prose included. | `CLAUDE.md` § Working rules (verification discipline) |
+
+**Evidence:** three assertions on 2026-08-28, each sourced from a document that
+read authoritative, each false, each falsifiable by one command. (1) "There is
+no pre-commit hook in this project", taken from `.claude/skills/rule-intake/SKILL.md`'s
+own trust-property paragraph — `.githooks/pre-commit` exists, `core.hooksPath`
+is `.githooks`, and it fired on commit `b7dfbab` the same day; the skill text
+was corrected in that commit. (2) "`packages/ui/test/mock-parity.test.ts` will
+force the T-code issue" — that test scrapes `case "([GMT]\d+)"` labels out of
+the mock's switch, and the mock matches tool selection by a regexp ABOVE the
+switch, so `T` codes are invisible to the scan; the effort agent found this and
+documented the gap rather than inheriting the claim. (3) "This repo has no
+jsdom, so a layout assertion in the node suite is not available", taken from
+issue #95's context body. Gabe: "there are automated checks, they happen all of
+the time." Two of the three sources were this repository's own prose, which is
+precisely why they read as reliable.
+**Enforcement:** none mechanical, and none is available — no artefact records
+that a claim was made without checking. Held by authorship discipline, like the
+other verification-discipline rules.

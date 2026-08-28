@@ -187,6 +187,15 @@ them is `docs/RULES-GROUPED.md`.
   action leaving the working tree: `git remote -v` for a tracker, the
   configured host for a deploy, `rev-parse` for a branch. A document adapted
   from another project carries that project's identifiers.
+- **Check what the tooling can do; never assert it from prose.** Before
+  claiming that a hook, test, gate, flag, script or harness exists, blocks
+  something, or would catch a given defect, run the check that could FALSIFY
+  the claim: `git config core.hooksPath` plus reading the hook script; opening
+  the test file and finding the assertion that would fail on that input;
+  `--help` for a flag; the `scripts` block of `package.json` for a command; a
+  lockfile grep for a dependency. This repo's own prose is not exempt — it is
+  the most dangerous source, because it reads authoritative and goes stale
+  silently.
 
 ## Working rules (development environment)
 
