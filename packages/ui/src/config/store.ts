@@ -102,6 +102,18 @@ export interface ConfigStore {
 	 */
 	readonly droppedMachineSections: readonly string[];
 
+	/**
+	 * Report machine-scoped data this session could not carry forward, into the
+	 * same channel the v2 -> v3 migration uses (#87 requirement 4).
+	 *
+	 * Idempotent by text: a screen remounts on every route change and would
+	 * otherwise repeat its line, and the card renders a comma-joined list.
+	 * Session-scoped on purpose — `writePersonCache` does not persist this
+	 * field, so the notice describes what happened in THIS browser session and
+	 * does not follow the operator around after they have read it.
+	 */
+	noteDroppedMachineSection(name: string): void;
+
 	setAxisRole(letter: string, role: string): void;
 	clearAxisRole(letter: string): void;
 	/** Override one heater's chart line colour. Clearing returns it to the
@@ -556,6 +568,10 @@ export function createConfigStore(options: { machineStore: Accessor<MachineStore
 		},
 		get snapshots() { return meta.snapshots; },
 		get droppedMachineSections() { return meta.droppedMachineSections; },
+		noteDroppedMachineSection(name) {
+			if (meta.droppedMachineSections.includes(name)) return;
+			setMeta("droppedMachineSections", sections => [...sections, name]);
+		},
 		get meta() { return meta; },
 
 		adoptClaimedProfile() {

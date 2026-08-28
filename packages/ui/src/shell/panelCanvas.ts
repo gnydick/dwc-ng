@@ -850,6 +850,58 @@ const CANVAS_FORMAT_VERSION = 4;
 interface StoredCanvasEnvelope {
 	v: number;
 	state: unknown;
+	/**
+	 * The overlay layout this record was last reconciled against — see
+	 * {@link layoutBasis}. Absent on every record written before #87, which is
+	 * exactly what "this copy has never been reconciled" looks like.
+	 */
+	basis?: string;
+	/** The operator RESET this canvas. See {@link readStoredCanvasRecord}. */
+	cleared?: true;
+}
+
+/** A stored canvas as the construction path needs to read it: the geometry,
+ *  plus the two facts about the record itself that decide whether it wins. */
+export interface StoredCanvasRecord {
+	/** Parsed and migrated geometry, or null when nothing was ever written. */
+	state: unknown;
+	basis: string | null;
+	cleared: boolean;
+}
+
+/**
+ * A digest of the layout the CARD holds for a screen — the thing a browser's
+ * canvas can be stale against.
+ *
+ * @invariant a-stored-canvas-carries-what-it-was-reconciled-against
+ * @rung 6  choke-point — every write of the "layout" key goes through
+ *          `serializeCanvas`, which takes the basis as a REQUIRED argument
+ *          rather than defaulting it, so a canvas cannot be persisted without
+ *          saying which saved layout it was built from. Not rung 7: the
+ *          argument is a plain string a caller could compute from the wrong
+ *          seed; test/canvas-provenance.test.ts pins the call sites
+ * @why the canvas record and the config overlay hold the same fact with no
+ *      ordering between them, so "which is right" was decided by whichever
+ *      path ran first. A browser carrying rects from before someone else
+ *      saved a new layout to this machine kept them, and its next Save
+ *      uploaded them over the good copy (#87). The basis is what turns
+ *      "probably the same" into a question with an answer
+ * @why-not-a-counter a content digest needs no second field in the overlay to
+ *      keep in step, and cannot drift from what it describes: it IS the
+ *      layout, projected. A generation counter is a second writer's
+ *      opportunity to be wrong
+ * @limit `null` (no saved layout at all) is deliberately NOT the digest of an
+ *      empty layout — "the card has nothing for this screen" and "the card
+ *      says this screen is empty" are different, and only the first means
+ *      there is nothing for a local copy to be stale against
+ */
+export function layoutBasis(seed: CanvasState | null): string {
+	if (seed === null) return "none";
+	const parts = Object.keys(seed).sort().map(id => {
+		const r = seed[id]!;
+		return `${id}:${r.col},${r.row},${r.colSpan},${r.rowSpan}`;
+	});
+	return parts.length === 0 ? "empty" : parts.join("|");
 }
 
 function isEnvelope(value: unknown): value is StoredCanvasEnvelope {
@@ -944,8 +996,51 @@ export function parseStoredCanvas(raw: string | null): unknown {
 	return migrateColGranularity(migrateRowGranularity(migrateLegacyDoubleWidth(parsed)));
 }
 
-export function serializeCanvas(state: CanvasState): string {
+/**
+ * `basis` is REQUIRED, not defaulted: a canvas written without saying which
+ * saved layout it was reconciled against is precisely the record #87 could not
+ * judge, and making it omittable would let the next writer recreate one.
+ */
+export function serializeCanvas(state: CanvasState, basis: string, cleared?: true): string {
+	return JSON.stringify({
+		v: CANVAS_FORMAT_VERSION, state, basis, ...(cleared === true ? { cleared } : {}),
+	} satisfies StoredCanvasEnvelope);
+}
+
+/**
+ * The stored record, geometry and provenance together.
+ *
+ * `cleared` is a POSITIVE fact and that is the whole point of it: `reset()`
+ * used to remove the key, so a deliberately cleared canvas was byte-identical
+ * to a browser that had never opened the screen — and the seed-from-overlay
+ * path then undid the reset on the next mount (#87 requirement 2). The same
+ * move as #86's tombstones, one layer down.
+ */
+/** The parked-spots record. Same envelope, no basis: parked rects describe
+ *  cards that are OFF the screen, so they are not a copy of the layout and
+ *  cannot be stale against the card's copy of one. */
+export function serializeParked(state: CanvasState): string {
 	return JSON.stringify({ v: CANVAS_FORMAT_VERSION, state } satisfies StoredCanvasEnvelope);
+}
+
+export function readStoredCanvasRecord(raw: string | null): StoredCanvasRecord {
+	const state = parseStoredCanvas(raw);
+	let basis: string | null = null;
+	let cleared = false;
+	if (raw !== null && raw !== "") {
+		try {
+			const parsed: unknown = JSON.parse(raw);
+			if (isEnvelope(parsed)) {
+				const e = parsed as StoredCanvasEnvelope;
+				if (typeof e.basis === "string") basis = e.basis;
+				cleared = e.cleared === true;
+			}
+		} catch {
+			// Same tolerance as parseStoredCanvas: unreadable storage is
+			// "nothing was written here", never a throw out of a mount.
+		}
+	}
+	return { state, basis, cleared };
 }
 
 /**
@@ -1428,17 +1523,55 @@ export function createPanelCanvas(
 	 * other repaired canvas, not like a save.
 	 */
 	seedFromOverlay?: CanvasState | null,
+	/**
+	 * Called at construction when this browser's stored canvas was DISCARDED in
+	 * favour of the card's copy — never for an ordinary seed of a browser that
+	 * had nothing. #87 requirement 4: if a layout could not be carried across,
+	 * that is told to the operator through the same channel as the rest of the
+	 * campaign's dropped data, rather than being a silent correction.
+	 */
+	onLayoutSuperseded?: (why: string) => void,
 ): PanelCanvasController {
-	const storedRaw = parseStoredCanvas(keys.get("layout"));
+	const record = readStoredCanvasRecord(keys.get("layout"));
+	const storedRaw = record.state;
+	// The basis this canvas will be written under from now on: what the CARD
+	// currently says about this screen.
+	const basisNow = layoutBasis(seedFromOverlay ?? null);
 	// "No record at all" — nothing was ever persisted under this key, or it
 	// parsed to an object with zero entries. NOT "no entry for every default
 	// id": that finer-grained question is growToDefaults' own to answer, per
 	// id, via its ordinary stored-vs-added split — this seed only stands in
 	// for storage that was never written, so a canvas holding even one real
 	// entry is left alone rather than second-guessed.
-	const isWhollyEmpty = storedRaw === null
-		|| (typeof storedRaw === "object" && Object.keys(storedRaw as object).length === 0);
-	const effectiveStored = isWhollyEmpty && seedFromOverlay != null ? seedFromOverlay : storedRaw;
+	//
+	// `cleared` is excluded on purpose: a reset canvas HAS a record, it just
+	// has no rects, and treating it as empty is the bug (#87 requirement 2).
+	const isWhollyEmpty = !record.cleared && (storedRaw === null
+		|| (typeof storedRaw === "object" && Object.keys(storedRaw as object).length === 0));
+	// Is this browser's copy entitled to win?
+	//
+	// It is when there is nothing to be stale against (the card holds no layout
+	// for this screen), or when it was reconciled against the layout the card
+	// holds RIGHT NOW — in which case its rects are local edits made since that
+	// save, which must survive a reload or a drag could never be saved at all.
+	//
+	// It is not when it carries a different basis, or none: a record written
+	// before #87 cannot show it was ever reconciled, and #76's precedent for
+	// this campaign is that bytes with no proof of origin are dropped rather
+	// than guessed at.
+	const proofCarrying = seedFromOverlay != null;
+	const localIsCurrent = !proofCarrying || record.basis === basisNow;
+	const supersede = proofCarrying && !localIsCurrent && !isWhollyEmpty;
+	if (supersede) {
+		onLayoutSuperseded?.(
+			record.basis === null
+				? "a layout this browser saved before it tracked which saved layout it came from"
+				: "a layout this browser saved against an older version of this screen",
+		);
+	}
+	const effectiveStored = supersede || isWhollyEmpty
+		? (seedFromOverlay ?? storedRaw)
+		: record.cleared ? {} : storedRaw;
 	const [state, setState] = createSignal(
 		bench === true
 			? benchOrigin(growToDefaults(storedRaw, defaults).state)
@@ -1452,7 +1585,11 @@ export function createPanelCanvas(
 	// growToDefaults + reflow are deterministic and idempotent, so a browser
 	// where the write no-ops (private mode, quota) rebuilds the identical
 	// layout every time.
-	keys.set("layout", serializeCanvas(state()));
+	// `cleared` is carried through: the settle write is a deterministic repair,
+	// not an edit, so it must not quietly retract the operator's reset. The flag
+	// is dropped by `persist` below — a drag IS an edit, and a canvas with rects
+	// the operator placed is no longer a cleared one.
+	keys.set("layout", serializeCanvas(state(), basisNow, record.cleared ? true : undefined));
 
 	// Stored wins (this browser's own toggles); otherwise seed from the
 	// composition, which is how orientation reaches a browser that has never
@@ -1501,7 +1638,7 @@ export function createPanelCanvas(
 	}
 	const persistParked = (next: CanvasState): void => {
 		setParked(next);
-		keys.set("parked", serializeCanvas(next));
+		keys.set("parked", serializeParked(next));
 	};
 
 	/**
@@ -1537,7 +1674,7 @@ export function createPanelCanvas(
 	 */
 	const persist = (next: CanvasState, origin: LayoutOrigin): void => {
 		setState(next);
-		keys.set("layout", serializeCanvas(next));
+		keys.set("layout", serializeCanvas(next, basisNow));
 		if (origin === "operator-gesture") onLayoutChange?.();
 	};
 
@@ -1975,7 +2112,16 @@ export function createPanelCanvas(
 	};
 
 	const reset = (): void => {
-		keys.remove("layout");
+		// WRITTEN, not removed (#87 requirement 2). Removing the key made a
+		// deliberately cleared canvas byte-identical to a browser that had
+		// never opened this screen — and the seed-from-overlay path then
+		// restored the card's saved layout on the next mount, undoing the
+		// reset. `cleared` is the positive record of the operator's act, the
+		// same move #86 made for a removed card one layer up. It is written
+		// under the CURRENT basis, so a layout saved to the card after this
+		// reset still supersedes it, which is right: that is a newer fact
+		// about the screen than this clear.
+		keys.set("layout", serializeCanvas({}, basisNow, true));
 		setState(defaultCanvas(defaults));
 		keys.remove("orientation");
 		setOrientationState({});
@@ -2042,9 +2188,27 @@ export function createPanelCanvas(
  * which writes this AND the config overlay together. A layout written to only
  * one of the two stores is the bug this exists to prevent.
  */
-export function writeCanvasState(store: MachineStore, screenId: string, rects: CanvasState, orientations?: OrientationState): void {
+/**
+ * Re-stamp a screen's stored canvas with the basis it has just been reconciled
+ * against, leaving its geometry alone.
+ *
+ * Save to machine (`captureScreenGeometry`) copies the canvas INTO the overlay,
+ * so afterwards the two stores agree — but the canvas record still names the
+ * older layout it was built from, and the next mount would read that as "this
+ * browser is stale", discard a canvas identical to the overlay, and tell the
+ * operator a layout was dropped when none was. Saving IS a reconciliation, so
+ * it records one.
+ */
+export function restampCanvas(store: MachineStore, screenId: string, basis: string): void {
 	const keys = machineCanvasKeys(store, screenId);
-	keys.set("layout", serializeCanvas(sanitizeCanvas(rects)));
+	const record = readStoredCanvasRecord(keys.get("layout"));
+	if (record.state === null && !record.cleared) return;
+	keys.set("layout", serializeCanvas(sanitizeCanvas(record.state), basis, record.cleared ? true : undefined));
+}
+
+export function writeCanvasState(store: MachineStore, screenId: string, rects: CanvasState, orientations: OrientationState | undefined, basis: string): void {
+	const keys = machineCanvasKeys(store, screenId);
+	keys.set("layout", serializeCanvas(sanitizeCanvas(rects), basis));
 	// Parked spots describe the layout being REPLACED — a hidden card's
 	// remembered position from the old layout would drop it somewhere
 	// arbitrary in the new one.

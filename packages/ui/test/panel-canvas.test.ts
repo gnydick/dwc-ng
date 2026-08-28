@@ -449,7 +449,7 @@ test("mergeCanvas still KEEPS a legal overlap when nothing grew (hidden-card gua
 test("serializeCanvas round-trips through parseStoredCanvas and mergeCanvas", () => {
 	const defaults = [{ id: "a", col: 0, row: 0, colSpan: 4, rowSpan: 4 }];
 	const canvas = defaultCanvas(defaults);
-	assert.deepEqual(mergeCanvas(parseStoredCanvas(serializeCanvas(canvas)), defaults), canvas);
+	assert.deepEqual(mergeCanvas(parseStoredCanvas(serializeCanvas(canvas, "test-basis")), defaults), canvas);
 });
 
 // Every screen's layout is asserted in composition.test.ts against its
@@ -704,7 +704,7 @@ test("identity resolving is a clean swap: the in-memory canvas is discarded, the
 		// real machine this board turns out to be — from a previous session.
 		const store = openMachineStore({ kind: "board", uniqueId: "finding1-swap-test" });
 		const savedKeys = machineCanvasKeys(store, "test-screen");
-		savedKeys.set("layout", serializeCanvas({ "machine-identity": rect(0, 0, 12, 10), "other-card": rect(30, 30, 12, 10) }));
+		savedKeys.set("layout", serializeCanvas({ "machine-identity": rect(0, 0, 12, 10), "other-card": rect(30, 30, 12, 10) }, "test-basis"));
 
 		// AFTER: identity lands. ComposedScreen's keyed `<Show>` tears down the
 		// null-object branch and mounts a fresh createPanelCanvas against the
