@@ -140,10 +140,25 @@ export function HeaterColorsBody() {
 /** The cold → warm → hot ramp the temperature READINGS are keyed to. */
 export function ThermalColorsBody() {
 	const app = useApp();
+	/**
+	 * SYMBOLS, NOT PROSE, on the two outer bands (Gabe, 2026-08-28: "temp
+	 * gradient is shrinking below the prose horizontally, just change the last
+	 * row to '>160...' instead of the words, change first row to '<45...'").
+	 * "below 45 °C" and "160 °C and above" are wrappable prose whose longest
+	 * word still went into this card's width stop; the middle band was already
+	 * the compact range form and is left exactly as it was.
+	 *
+	 * `≥` rather than the `>` Gabe typed, on the hot band ONLY. The thresholds
+	 * these three strings describe are ToolsHeatersCard.tsx:473-474 — warm is
+	 * `>= 45 && < 160`, hot is `>= 160` — so 160.0 °C reads HOT, and "> 160 °C"
+	 * would be the one temperature at which the legend disagreed with the
+	 * colour beside it. Cold needs no such care: the band really is exclusive
+	 * at 45, so `<` is literal.
+	 */
 	const channels: Array<{ key: keyof ThermalColors; label: string; range: string }> = [
-		{ key: "cold", label: "Cold", range: "below 45 °C" },
+		{ key: "cold", label: "Cold", range: "< 45 °C" },
 		{ key: "warm", label: "Warm", range: "45 – 160 °C" },
-		{ key: "hot", label: "Hot", range: "160 °C and above" },
+		{ key: "hot", label: "Hot", range: "≥ 160 °C" },
 	];
 	const current = (): ThermalColors => app.config.config.thermalColors;
 	return (
@@ -609,59 +624,53 @@ export function AccelerometersBody(props: { ctx: CardCtx }) {
 
 	return (
 		<>
-			{/* No standing paragraph, for the reason the shaping card gives: prose
+			{/* ONE ROW PER TOOL (Gabe, 2026-08-28: "accelerometers card should have
+			    the rows combined, no need for 8 rows, each set of 4 tools twice").
+			    #140 shipped this card as two SECTIONS — Address, then Sampling —
+			    each with a row per tool, so a four-tool machine drew eight rows and
+			    said "T0…T3" twice. The tool is the thing the operator is looking
+			    for, and it was the one thing repeated.
+
+			    Nothing is dropped by the merge: the address field, its verdict, the
+			    rate, the resolution, the arming Set/Confirm, the Read, and the
+			    board's reply are all still here, in that order, on one line.
+
+			    The two section captions are gone with the sections. There is one
+			    group now, and the card's own title is what names it; a caption over
+			    a single list is a heading for nothing. What the captions used to
+			    say per COLUMN is carried by each control itself — the placeholders
+			    ("board.device", "Hz", "bits") and the aria-labels, which is what an
+			    assistive reader had to rely on inside a row anyway.
+
+			    No standing paragraph, for the reason the shaping card gives: prose
 			    rewraps as a card is resized, and everything it would say is said by
 			    the per-row status slots, which have to exist anyway. */}
-			<span class="set-cap">Address</span>
 			<Show when={app.om.om.tools.length} fallback={<p class="job-empty">Waiting…</p>}>
 				<For each={app.om.om.tools}>
 					{tool => (
 						<Show when={tool}>
 							{t => (
 								<div class="field">
+									{/* Once, not twice — the whole point of the merge. */}
 									<span class="field-label">T{t().number}</span>
 									<input
 										type="text"
 										class="accel-addr"
 										placeholder="board.device"
 										aria-label={`T${String(t().number)} accelerometer address`}
+										title={`T${String(t().number)} accelerometer address`}
 										value={accelField(t().number)}
 										onInput={e => setAccelEdit(prev => ({ ...prev, [t().number]: e.currentTarget.value }))}
 										onChange={() => commitAccel(t().number)}
 										onKeyDown={e => { if (e.key === "Enter") commitAccel(t().number); }}
 									/>
-									{/* Reserved, like the envelope's line: four tools that each
-									    gain and lose a sentence would reflow the card on every
-									    edit. */}
-									<span class="accel-status" role="status" title={accelStatus(t().number)}>
-										{accelStatus(t().number)}
-									</span>
-								</div>
-							)}
-						</Show>
-					)}
-				</For>
-			</Show>
-
-			{/* Sampling rate, beside the address because it is a property of the
-			    same sensor — and because the two failure modes look identical on
-			    a card that shows only one of them: no accelerometer, and an
-			    accelerometer sampling too slowly to see what you are asking it
-			    about.
-
-			    RRF adjusts the resolution to be no greater than R and then picks
-			    a rate supported AT that resolution, so what is typed here and
-			    what the sensor does are routinely different numbers. That is why
-			    the line under each row is the board's own reply and not an echo
-			    of the fields. */}
-			<span class="set-cap">Sampling</span>
-			<Show when={app.om.om.tools.length} fallback={<p class="job-empty">Waiting…</p>}>
-				<For each={app.om.om.tools}>
-					{tool => (
-						<Show when={tool}>
-							{t => (
-								<div class="field">
-									<span class="field-label">T{t().number}</span>
+									{/* Sampling, on the SAME row as the address because it is a
+									    property of the same sensor — and because the two failure
+									    modes look identical on a card that shows only one of
+									    them: no accelerometer, and an accelerometer sampling too
+									    slowly to see what you are asking it about. Merging the
+									    rows makes that pairing structural rather than a matter
+									    of scrolling between two sections. */}
 									<input
 										type="number"
 										class="accel-rate"
@@ -669,6 +678,7 @@ export function AccelerometersBody(props: { ctx: CardCtx }) {
 										min="1"
 										step="1"
 										aria-label={`T${String(t().number)} sample rate`}
+										title={`T${String(t().number)} sample rate`}
 										value={rateEdit()[t().number] ?? ""}
 										onInput={e => { setRateArmed(null); setRateEdit(prev => ({ ...prev, [t().number]: e.currentTarget.value })); }}
 									/>
@@ -679,6 +689,7 @@ export function AccelerometersBody(props: { ctx: CardCtx }) {
 										min="1"
 										step="1"
 										aria-label={`T${String(t().number)} resolution in bits`}
+										title={`T${String(t().number)} resolution in bits`}
 										value={bitsEdit()[t().number] ?? ""}
 										onInput={e => { setRateArmed(null); setBitsEdit(prev => ({ ...prev, [t().number]: e.currentTarget.value })); }}
 									/>
@@ -693,10 +704,65 @@ export function AccelerometersBody(props: { ctx: CardCtx }) {
 									<button class="fb-tool" disabled={!accelPresent(t().number)} onClick={() => void accel.readAccel(t().number)}>
 										Read
 									</button>
-									{/* The board's own words, reserved so four tools do not
-									    reflow the card as replies arrive. */}
-									<span class="accel-status" role="status" title={reportText(accelReport(t().number))}>
+									{/* The board's own words, kept as a SECOND reserved slot
+									    rather than folded into the verdict beside it. RRF adjusts
+									    the resolution to be no greater than R and then picks a
+									    rate supported AT that resolution, so what is typed here
+									    and what the sensor does are routinely different numbers,
+									    and this is the sensor's answer — not an echo of the
+									    fields and not a judgement on the address. One slot would
+									    need a precedence rule to decide which of the two to show
+									    when both have something to say ("not applied" standing
+									    over a reply from the address before it), and inventing
+									    that rule is this card deciding something. It decides
+									    nothing.
+
+									    BEFORE the verdict, and that order is load-bearing —
+									    see the verdict's own note below. */}
+									<span class="accel-status accel-reply" role="status" title={reportText(accelReport(t().number))}>
 										{reportText(accelReport(t().number))}
+									</span>
+									{/* The gate's verdict on the address, and the LAST thing in
+									    the row on purpose.
+
+									    Gabe, 2026-08-28: "the new accelerometer card has a huge
+									    artificial blank between input field columns 1 and 2".
+									    This slot used to sit immediately after the address it
+									    judges, and it is EMPTY whenever the mapping works — which
+									    is the ordinary state — so its reserved 144px rendered as
+									    a hole between two columns of inputs.
+
+									    Three things have to hold at once and only this position
+									    holds all three:
+
+									      · nothing else may move when a message appears or clears
+									        (four tool rows reflowing as the operator types is the
+									        reflow this slot was reserved to prevent in the first
+									        place);
+									      · the reservation may not show as blank when silent;
+									      · and it may not put its sentence into the card's
+									        min-content (#142).
+
+									    A reserved box that is LAST has no neighbour to its right,
+									    so the space it holds when silent is indistinguishable
+									    from the row's own trailing space — invisible — while
+									    still moving nothing when it speaks. Anywhere else in the
+									    row, "invisible when silent" and "moves nothing when
+									    speaking" are the same property with opposite signs.
+
+									    This is why the reply above it comes FIRST: reportText
+									    never returns "" (it says "not asked" before anything has
+									    been read), so it is never the silent one, and the slot
+									    that CAN be silent is the one that gets the end of the
+									    row. That is pinned by a test — accelerometer-card.test.ts
+									    — because it is a layout claim resting on a string
+									    function's totality. */}
+									<span
+										class={`accel-status${accelStatus(t().number) === "" ? "" : " speaking"}`}
+										role="status"
+										title={accelStatus(t().number)}
+									>
+										{accelStatus(t().number)}
 									</span>
 								</div>
 							)}

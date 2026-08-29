@@ -1856,25 +1856,26 @@ input[type="checkbox"] {
 /*
    @invariant reserved-slot-out-of-the-card-floor
    @rung 4  source assertion — test/intrinsic-floors.test.ts runs
-            clashSlotFaults() over .color-clash's rule body and fails the
-            suite unless the slot is shrinkable, breaks anywhere, reserves a
+            clashSlotFaults() over the rule body of EVERY slot named in
+            RESERVED_SLOTS (.color-clash and .accel-status) and fails the
+            suite unless each is shrinkable, breaks anywhere, reserves a
             whole number of its own lines, and keeps a positive min-width for
             its mark. A red check in the same file runs the predicate over
             the declaration #142 replaced and requires it to fail, so the
             assertion is known to be capable of failing
-   @debt ONE SLOT BY NAME. The property is general — a card's width stop must
+   @debt TWO SLOTS BY NAME. The property is general — a card's width stop must
          come from what the card draws, not from a box reserved for what it
-         might one day say — and the check knows about .color-clash only.
-         .accel-status (this file, Accelerometers card) is the same mechanism
-         and is deliberately NOT covered: measured 2026-08-28 it costs that
-         card 7 cells (colStop 117 with it, 110 without), and whether to
-         change it is Gabe's call (#142 Q1). .env-status is the same shape
-         already solved by wrapping. Promote by measuring the mirror of
-         judgeFloor in dev/layoutAudit.ts — "is this card's floor LARGER than
-         its body needs" — over the whole registry, which turns an
-         enumerated list of slots into a sweep no new slot can be missing
-         from. Nothing counts reserved slots today, so a fourth one added
-         tomorrow is unreported
+         might one day say — and the check knows about the two slots listed in
+         RESERVED_SLOTS. .env-status is the same shape already solved by
+         wrapping. Promote by measuring the mirror of judgeFloor in
+         dev/layoutAudit.ts — "is this card's floor LARGER than its body
+         needs" — over the whole registry, which turns an enumerated list of
+         slots into a sweep no new slot can be missing from. Nothing counts
+         reserved slots today, so a fourth one added tomorrow is unreported.
+         The list is also silent about POSITION, which #142's second round
+         showed is half the property: a reserved slot must be last in its row
+         or its silence is a visible hole (Gabe, 2026-08-28). That is pinned
+         per card in accelerometer-card.test.ts, not by this predicate
    @why #142: .color-clash was `flex: 0 0 calc(35 * var(--u))` with
         `white-space: nowrap`, so a message that is absent in the ordinary
         session put 140px into contentColSpan's min-content probe. Both
@@ -1887,8 +1888,15 @@ input[type="checkbox"] {
 */
 /* The mark, and the whole of what survives at the card's floor. Drawn from the
    state class rather than from an element that is always present: an empty
-   marker box would be a second thing to keep in sync with the message. */
-.color-clash.speaking::before {
+   marker box would be a second thing to keep in sync with the message.
+
+   ONE declaration for every reserved slot that carries the discipline above —
+   .color-clash here and .accel-status on the Accelerometers card. The two live
+   in different sections of this sheet and a copy in each would be two numbers
+   that must agree about how wide "the mark" is, which is the min-width the
+   slots reserve for it. They agree because there is one rule. */
+.color-clash.speaking::before,
+.accel-status.speaking::before {
 	/* Drawn, not typed. A CF escape rendered as tofu in the display face —
 	   a mark whose whole job is to survive at the card's floor cannot depend
 	   on a glyph being present in whatever font resolves. */
@@ -1968,32 +1976,88 @@ input[type="checkbox"] {
 /* "20.0" is four characters; the generic text field's 24u is most of a row
    of slack the tool's status has better use for. */
 .field input[type="text"].accel-addr { flex: 0 0 calc(15 * var(--u)); width: calc(15 * var(--u)); min-width: calc(15 * var(--u)); }
-/* Reserved for the same reason as .color-clash: four tool rows that each
-   gained and lost a sentence would move the card's stop as you edited. Fixed
-   width, not the message's own, so which tool is unmapped never changes the
-   card's minimum. */
+/* The rate and the resolution, pinned rather than left on `.field input
+   [type="number"]`'s `flex: 1`. Since the address and the sampling controls
+   share ONE row, a growing input pushes the Set/Read buttons and the board's
+   reply sideways as the card is dragged — an element that moves when nothing
+   about the tool changed. Four digits of rate ("5376") and two of resolution,
+   plus the field padding, are what these two numbers are. */
+.field input[type="number"].accel-rate { flex: 0 0 calc(14 * var(--u)); width: calc(14 * var(--u)); min-width: calc(14 * var(--u)); max-width: calc(14 * var(--u)); }
+.field input[type="number"].accel-bits { flex: 0 0 calc(11 * var(--u)); width: calc(11 * var(--u)); min-width: calc(11 * var(--u)); max-width: calc(11 * var(--u)); }
+/* Reserved for the same reason as .color-clash — four tool rows that each
+   gained and lost a sentence would reflow the card as you edited — and, since
+   #142, reserved the same WAY: a fixed preference that costs nothing in the
+   card's minimum.
+
+   TWO of these per row since the rows were combined: the board's own reply
+   about the sampling rate, and then the gate's verdict on the address. Both
+   carry this rule; only the basis and the colour differ (see .accel-reply).
+
+   THE ORDER IS LOAD-BEARING and lives in the markup, not here: the verdict is
+   the one that is EMPTY in the ordinary session, so it is last in the row,
+   where the space it reserves is indistinguishable from the row's own trailing
+   space. Reserved-and-silent in the MIDDLE of a row is a visible hole — which
+   is what it was, between the address and the rate. See the note at that span
+   in cards/SettingsCards.tsx. */
 .accel-status {
 	font-family: var(--font-display); font-weight: 600; font-size: calc(3.25 * var(--u));
 	letter-spacing: 0.04em;
 	color: var(--gold);
-	/* Sized to the LONGEST message this slot can hold — "needs board.device"
-	   (18 chars) — not to the shortest. At 24u it fitted "not mapped" and
-	   ellipsed the one message that has to be read to be acted on, which is the
-	   fixed slot working correctly against a width chosen from the wrong string.
-	   The card's own floor is 88 cols against the 156 the screen grants it, so
-	   the extra width costs nothing. */
-	flex: 0 0 calc(36 * var(--u));
-	/* An EMPTY span has no line box, so its own height collapses to zero and
-	   the row's align-items: center re-centres what is left — measured as a
-	   10px move of this element the moment a mapping started working. Nothing
-	   visible moved (the span was empty), but a stability sweep cannot tell
-	   those apart and neither can the next reader. Declaring the box makes the
-	   slot the same box whether it is speaking or not. */
-	height: calc(4.75 * var(--u));
-	line-height: calc(4.75 * var(--u));
-	white-space: nowrap;
+	/* THE WIDTH THIS BOX PREFERS is fixed, and that is what buys positional
+	   stability: a content-sized box would move the row every time a mapping
+	   started or stopped working. The basis is MEASURED, not recalled
+	   (2026-08-28, --u: 4px, this face and size, in the browser this sheet is
+	   read by): "not applied" 66px, "not mapped" 69.6px, "no sensor at 121.10"
+	   107.5px, "needs board.device" 111.7px — 27.9u for the longest, plus the
+	   2.5u the mark below occupies.
+
+	   THE WIDTH THIS BOX REQUIRES is a different number, and it used to be the
+	   same one. `flex: 0 0` with `white-space: nowrap` put the whole sentence
+	   into contentColSpan's min-content probe, so 2 x 36u of reserved width for
+	   messages that are absent or unread in the ordinary session sat in the
+	   card's width stop. `overflow-wrap: anywhere` is what removes it —
+	   ordinary wrapping would still contribute the longest WORD, and
+	   "board.device" alone is 60px of it.
+
+	   A wrapping slot that can grow a second line would move the card's ROW
+	   floor instead, which is trading one defect for its mirror, so the height
+	   is reserved at exactly two of its own lines (--ctl-h is 7.5u, the line is
+	   3.75u) — and two rather than one because a clipped second line is an
+	   ellipsis with extra steps. This also fixes what the old 4.75u single line
+	   was for: an EMPTY span has no line box, so its height would collapse to
+	   zero and the row's align-items: center would re-centre what is left.
+
+	   And the floor is the MARK's width, not zero: at the card's minimum the
+	   text has no room left, and a warning that vanishes exactly when the card
+	   is smallest is not a warning. .speaking draws a dot that always fits. */
+	flex: 0 1 calc(31 * var(--u));
+	min-width: calc(4 * var(--u));
+	height: var(--ctl-h);
+	line-height: calc(3.75 * var(--u));
+	overflow-wrap: anywhere;
 	overflow: hidden;
-	text-overflow: ellipsis;
+}
+/* Under `ui/reserved-slot-out-of-the-card-floor`, declared once beside
+   .color-clash above — the same invariant, not a second one, and its check
+   (test/intrinsic-floors.test.ts) runs the SAME predicate over this rule body.
+   No @invariant block here: an id may be declared in exactly one place, which
+   is what stops two sites drifting into two different versions of one claim. */
+/* The board's own reply, which is a much longer sentence than any verdict:
+   "LIS3DSH at 5376 Hz, 12-bit — shows up to 2688 Hz" measures 287.3px (71.8u)
+   on 2026-08-28, so 80u puts it on ONE of the two reserved lines and leaves the
+   second for a longer sensor name or a reply this build cannot parse. The OLD
+   36u slot ellipsed that sentence at 144px — the operator never saw the Nyquist
+   figure the sweep is actually limited by. Dimmer than the verdict because it
+   is the machine describing itself, not the card objecting to something. */
+.accel-reply {
+	/* The one item on the row allowed to GROW, so the card's spare width goes to
+	   the longest sentence on it instead of pooling as dead space at the right
+	   edge — and so the verdict after it lands against that edge as a status
+	   column rather than floating mid-row. Growth is a function of the ROW's
+	   free space, never of the text, so a reply arriving or changing still moves
+	   nothing: the property this slot exists for is untouched. */
+	flex: 1 1 calc(80 * var(--u));
+	color: var(--silk-dim);
 }
 
 /* ---------- UI scale toggle ----------

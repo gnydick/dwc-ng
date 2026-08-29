@@ -455,6 +455,18 @@ export const CARD_DEFS = {
 	 * RE-MEASURED after #142, same conditions: contentColSpan 104 -> 76 cells,
 	 * contentRowSpan 48 (unchanged). Header-bound at 260.2px, as above; `size`
 	 * stays the natural geometry for the same reason.
+	 *
+	 * RE-MEASURED AGAIN after the band labels went from prose to symbols (Gabe,
+	 * 2026-08-28: "temp gradient is shrinking below the prose horizontally").
+	 * The STOPS DID NOT MOVE — still 76 x 48, body min-content still 292.2px —
+	 * because this card has been header-bound since the first #142 change: the
+	 * title, tip and controls want 260.2px and the widest ROW now wants 235.8px.
+	 * What moved is the card's TRUNCATION BAND, which is what the ruling was
+	 * actually about: the rows measured 249.9 / 235.8 / 250.2px before and
+	 * 228.6 / 235.8 / 235.8px after, so the width at which every label is fully
+	 * drawn fell from 336px to 300px against an unchanged 292.2px floor — a band
+	 * of ~44px narrowed to ~8px. Not zero: "45 – 160 °C" is now the longest of
+	 * the three and it is the one Gabe left alone.
 	 */
 	"thermal-colors": defineCard({
 		title: "Temperature Gradient",
@@ -524,11 +536,28 @@ export const CARD_DEFS = {
 		title: "Accelerometers",
 		ariaLabel: "Accelerometers",
 		tip: "config.shaping.accelByTool · M955",
-		// MEASURED with auditCard against the `multi-tool` scenario — four tools,
-		// which is this card's worst case because every row it has is per-tool:
-		// row stop 128, col stop 117 (header wall 110), unchanged across all three
-		// height probes and with no child drift. 156 wide for the Settings column.
-		size: { colSpan: 156, rowSpan: 128 },
+		// RE-MEASURED with auditCard against the `multi-tool` scenario — four
+		// tools, which is this card's worst case because every row it has is
+		// per-tool — after #142 combined the two sections into one row per tool
+		// and took the reserved slots out of the min-content probe (mock, --u:
+		// 4px, 1600x1200, 2026-08-28):
+		//
+		//   #140, two sections of four rows   row 128, col 117 (body 456.1px)
+		//   rows combined, slots unchanged    row  64, col 173 (body 680.1px)
+		//   + the .accel-status remedy        row  64, col 114 (body 444.1px)
+		//
+		// Half the height, and a WIDER row that nonetheless reports a NARROWER
+		// floor than the eight-row card did — the two reserved sentences were
+		// worth 59 cells of min-content between them. Identical stops at
+		// data-scale 075 / 100 / 150 (0 cell drift), no child drift, and the
+		// floor still counts the body (chrome 17 of 64).
+		//
+		// 312 wide, and that is a CHANGE from #140's 156: one row per tool is
+		// twice the row, and at 156 (≈616px) the address verdict and the board's
+		// reply cannot both be legible — measured, both are intact from 676px up.
+		// The screen has 312 columns, so the card takes the pair rather than
+		// clipping every reply it draws.
+		size: { colSpan: 312, rowSpan: 64 },
 	}),
 	/** Config snapshot history + one-click revert. */
 	"saved-versions": defineCard({

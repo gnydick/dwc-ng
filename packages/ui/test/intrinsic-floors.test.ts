@@ -288,9 +288,23 @@ function clashSlotFaults(body: string): string[] {
 	return faults;
 }
 
-test(".color-clash is out of the cards' min-content and still says what it has to say", () => {
-	assert.deepEqual(clashSlotFaults(ruleBody(".color-clash")), []);
-});
+/**
+ * Every slot the invariant knows about BY NAME.
+ *
+ * One list, iterated — not a test per slot. #142's second round added
+ * `.accel-status` (the Accelerometers card's per-tool verdict and board reply,
+ * two of them per row since the rows were combined), and a second hand-written
+ * copy of the assertion is how the two would come to check different things.
+ * The register's @debt says exactly what this list is: enumeration standing in
+ * for a sweep.
+ */
+const RESERVED_SLOTS = [".color-clash", ".accel-status"] as const;
+
+for (const slot of RESERVED_SLOTS) {
+	test(`${slot} is out of the cards' min-content and still says what it has to say`, () => {
+		assert.deepEqual(clashSlotFaults(ruleBody(slot)), []);
+	});
+}
 
 test("red check — the declaration #142 replaced fails the same predicate", () => {
 	// Verbatim shape of the pre-#142 rule: fixed slot, nowrap, no reserved

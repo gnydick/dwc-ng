@@ -135,7 +135,7 @@ in the diff that drops it.
 
 **Why.** a delete that removes a card from every screen at once is exactly the action whose scope the operator must see before confirming — "delete this card?" cannot precede stripping it from screens they forgot it was on. The plan freezes usage at arm time; the studio is modal over composition edits, so the frozen report cannot go stale between the two clicks
 
-`packages/ui/src/compose/screens.ts:531`
+`packages/ui/src/compose/screens.ts:537`
 
 ### `compose/composition-degrades-per-slot` — rung 6
 
@@ -1573,11 +1573,11 @@ in the diff that drops it.
 
 ### `ui/reserved-slot-out-of-the-card-floor` — rung 4
 
-**Mechanism.** source assertion — test/intrinsic-floors.test.ts runs clashSlotFaults() over .color-clash's rule body and fails the suite unless the slot is shrinkable, breaks anywhere, reserves a whole number of its own lines, and keeps a positive min-width for its mark. A red check in the same file runs the predicate over the declaration #142 replaced and requires it to fail, so the assertion is known to be capable of failing
+**Mechanism.** source assertion — test/intrinsic-floors.test.ts runs clashSlotFaults() over the rule body of EVERY slot named in RESERVED_SLOTS (.color-clash and .accel-status) and fails the suite unless each is shrinkable, breaks anywhere, reserves a whole number of its own lines, and keeps a positive min-width for its mark. A red check in the same file runs the predicate over the declaration #142 replaced and requires it to fail, so the assertion is known to be capable of failing
 
 **Why.** #142: .color-clash was `flex: 0 0 calc(35 * var(--u))` with `white-space: nowrap`, so a message that is absent in the ordinary session put 140px into contentColSpan's min-content probe. Both colour cards' width stops were more than a third space for something they were not drawing (Chart colours 92 cells, Temperature Gradient 104; 85 and 76 after). It is the exact mirror of #134 — an artificial floor is as wrong as an unenforced one, because in both cases the number the layout obeys is not the number the content justifies
 
-**Debt — promotion.** ONE SLOT BY NAME. The property is general — a card's width stop must come from what the card draws, not from a box reserved for what it might one day say — and the check knows about .color-clash only. .accel-status (this file, Accelerometers card) is the same mechanism and is deliberately NOT covered: measured 2026-08-28 it costs that card 7 cells (colStop 117 with it, 110 without), and whether to change it is Gabe's call (#142 Q1). .env-status is the same shape already solved by wrapping. Promote by measuring the mirror of judgeFloor in dev/layoutAudit.ts — "is this card's floor LARGER than its body needs" — over the whole registry, which turns an enumerated list of slots into a sweep no new slot can be missing from. Nothing counts reserved slots today, so a fourth one added tomorrow is unreported
+**Debt — promotion.** TWO SLOTS BY NAME. The property is general — a card's width stop must come from what the card draws, not from a box reserved for what it might one day say — and the check knows about the two slots listed in RESERVED_SLOTS. .env-status is the same shape already solved by wrapping. Promote by measuring the mirror of judgeFloor in dev/layoutAudit.ts — "is this card's floor LARGER than its body needs" — over the whole registry, which turns an enumerated list of slots into a sweep no new slot can be missing from. Nothing counts reserved slots today, so a fourth one added tomorrow is unreported. The list is also silent about POSITION, which #142's second round showed is half the property: a reserved slot must be last in its row or its silence is a visible hole (Gabe, 2026-08-28). That is pinned per card in accelerometer-card.test.ts, not by this predicate
 
 `packages/ui/src/app.css:1857`
 
