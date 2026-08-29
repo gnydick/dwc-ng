@@ -1808,24 +1808,98 @@ input[type="checkbox"] {
 	font-size: calc(3.25 * var(--u));
 	letter-spacing: 0.04em;
 	color: var(--gold);
-	/* A RESERVED box, always present and always this wide — empty when there is
-	   nothing to say. Two things follow.
+	/* A RESERVED box, always the same size whether it is speaking or silent —
+	   but NOT a reserved 140px of the card's minimum width (#142).
 
-	   It is included in the card's width stop: contentColSpan measures
-	   min-content, so wrappable prose would contribute only its longest word
-	   and the card could be dragged narrow enough to fold this into three
-	   lines. Refusing to wrap makes its min-content its full width.
+	   The width this box PREFERS is fixed, and that is what buys positional
+	   stability: a content-sized box would move everything on the row as you
+	   edited colours. The basis below never changes, so nothing on the row
+	   moves as a message appears, lengthens or clears, and the card's stop
+	   cannot shift under you either.
 
-	   And that width is FIXED rather than the message's own. The text runs 99px
-	   ("close to Bed (ΔE 2.1)") to 138px ("close to Chamber (ΔE 100.0)"), so a
-	   content-sized box moved the card's minimum by 40px depending on which two
-	   colours happened to be close — a stop that shifts under you as you edit.
-	   Same discipline as .filament-loaded: reserve the space, let the content
-	   come and go inside it. */
-	flex: 0 0 calc(35 * var(--u));
-	white-space: nowrap;
+	   The basis is sized from the message, MEASURED rather than recalled
+	   (2026-08-28, --u: 4px, this face and size, mark included): "close to
+	   Bed (ΔE 2.1)" 144px, "close to Tool 0 (ΔE 0.0)" 160px, "close to
+	   Chamber (ΔE 100.0)" 189px, and 200px for a numbered chamber. #142's
+	   spec put the worst case at 138px, which is 50px short of what this
+	   sheet actually renders — worth saying, because the OLD design derived
+	   its hard floor from that number. This one does not: the basis is a
+	   preference, so a message that outruns it wraps into the second reserved
+	   line instead of setting anything.
+
+	   The width this box REQUIRES is a different number, and it used to be the
+	   same one. `flex: 0 0` with `white-space: nowrap` put the whole sentence
+	   into contentColSpan's min-content probe: 140px of the 360px the Chart
+	   colours body reported, on a message that is absent in the ordinary
+	   session. Both cards' stops were more than a third space for something
+	   they were not drawing. `overflow-wrap: anywhere` is what removes it —
+	   ordinary wrapping would still contribute the longest WORD, and a heater
+	   called "Chamber" is 50px of it.
+
+	   A wrapping slot that can grow a second line moves the card's ROW floor
+	   instead, which is trading one defect for its mirror, so the height is
+	   reserved at exactly two of its own lines (--ctl-h is 7.5u, the line is
+	   3.75u) — the .env-status discipline, one axis over. Two rather than one
+	   because a clipped second line is an ellipsis with extra steps.
+
+	   And the floor is the MARK's width, not zero: at the card's new minimum
+	   the text has no room left, and a warning that vanishes exactly when the
+	   card is smallest is not a warning. .speaking draws a dot that always
+	   fits. */
+	flex: 0 1 calc(51 * var(--u));
+	min-width: calc(4 * var(--u));
+	height: var(--ctl-h);
+	line-height: calc(3.75 * var(--u));
+	overflow-wrap: anywhere;
 	overflow: hidden;
-	text-overflow: ellipsis;
+}
+/*
+   @invariant reserved-slot-out-of-the-card-floor
+   @rung 4  source assertion — test/intrinsic-floors.test.ts runs
+            clashSlotFaults() over .color-clash's rule body and fails the
+            suite unless the slot is shrinkable, breaks anywhere, reserves a
+            whole number of its own lines, and keeps a positive min-width for
+            its mark. A red check in the same file runs the predicate over
+            the declaration #142 replaced and requires it to fail, so the
+            assertion is known to be capable of failing
+   @debt ONE SLOT BY NAME. The property is general — a card's width stop must
+         come from what the card draws, not from a box reserved for what it
+         might one day say — and the check knows about .color-clash only.
+         .accel-status (this file, Accelerometers card) is the same mechanism
+         and is deliberately NOT covered: measured 2026-08-28 it costs that
+         card 7 cells (colStop 117 with it, 110 without), and whether to
+         change it is Gabe's call (#142 Q1). .env-status is the same shape
+         already solved by wrapping. Promote by measuring the mirror of
+         judgeFloor in dev/layoutAudit.ts — "is this card's floor LARGER than
+         its body needs" — over the whole registry, which turns an
+         enumerated list of slots into a sweep no new slot can be missing
+         from. Nothing counts reserved slots today, so a fourth one added
+         tomorrow is unreported
+   @why #142: .color-clash was `flex: 0 0 calc(35 * var(--u))` with
+        `white-space: nowrap`, so a message that is absent in the ordinary
+        session put 140px into contentColSpan's min-content probe. Both
+        colour cards' width stops were more than a third space for something
+        they were not drawing (Chart colours 92 cells, Temperature Gradient
+        104; 85 and 76 after). It is the exact mirror of #134 — an
+        artificial floor is as wrong as an unenforced one, because in both
+        cases the number the layout obeys is not the number the content
+        justifies
+*/
+/* The mark, and the whole of what survives at the card's floor. Drawn from the
+   state class rather than from an element that is always present: an empty
+   marker box would be a second thing to keep in sync with the message. */
+.color-clash.speaking::before {
+	/* Drawn, not typed. A CF escape rendered as tofu in the display face —
+	   a mark whose whole job is to survive at the card's floor cannot depend
+	   on a glyph being present in whatever font resolves. */
+	content: "";
+	display: inline-block;
+	width: calc(1.5 * var(--u));
+	height: calc(1.5 * var(--u));
+	margin-right: calc(1 * var(--u));
+	border-radius: 50%;
+	background: currentColor;
+	vertical-align: middle;
 }
 
 /* ---------- settings · shaping ---------- */

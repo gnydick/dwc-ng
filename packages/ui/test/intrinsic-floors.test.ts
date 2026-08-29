@@ -197,3 +197,128 @@ test("contentRowSpan sums margins unconditionally, and no slack marker survives"
 	assert.doesNotMatch(canvas, /getPropertyValue\("--absorbs-slack"\)/,
 		"a marker read here with nothing in the sheet setting it is a route back to the defect");
 });
+
+/**
+ * #142 — THE MIRROR OF THE DEFECTS ABOVE: a slot that OVER-reports.
+ *
+ * Everything above this point stops content from lying that it is narrower than
+ * it is. `.color-clash` lied the other way. It is the per-row advisory on the
+ * Chart colours and Temperature Gradient cards ("close to Bed (ΔE 2.1)"), empty
+ * in the ordinary session, and it was declared `flex: 0 0 calc(35 * var(--u))`
+ * with `white-space: nowrap` — 140px of reserved width that a nowrap sentence
+ * puts into the row's min-content whether or not there is a sentence to say. It
+ * was 140 of the 360px those cards' bodies reported, so more than a third of
+ * both cards' width stops was space for a message that is usually absent
+ * (measured 2026-08-28: stops of 92 and 104 cells).
+ *
+ * The replacement keeps everything the fixed slot was bought for and pays for
+ * none of it in min-content:
+ *
+ *   · the flex BASIS is still a fixed multiple of --u, so the box is the same
+ *     width whether it is speaking or silent and nothing on the row moves as a
+ *     message appears, changes length or clears;
+ *   · `overflow-wrap: anywhere` is what actually removes it from the floor —
+ *     plain wrapping would still contribute the longest WORD, and a heater
+ *     called "Chamber" is 50px of it;
+ *   · a wrapping slot that can grow a second line would move the card's ROW
+ *     floor instead of its column floor, which is trading one defect for the
+ *     other, so the height is reserved and is a whole number of its own lines
+ *     (the `.env-status` discipline, one axis over);
+ *   · and `min-width` is NOT zero: the slot keeps the width of its mark, so a
+ *     clash that fires while the card sits at its floor is still visible rather
+ *     than squeezed out of existence.
+ *
+ * Source assertions, like the rest of this file — there is no DOM here. The
+ * measured stops are re-taken in the Card Lab and pinned in compose/defs.ts.
+ */
+const indexCss = stripComments(
+	readFileSync(fileURLToPath(new URL("../src/index.css", import.meta.url)), "utf8"),
+);
+
+/** `calc(N * var(--u))`, `var(--ctl-h)` and bare `0` resolved to u-multiples. */
+function uMultiple(value: string): number | null {
+	const trimmed = value.trim();
+	if (/^0$/.test(trimmed)) return 0;
+	if (/^var\(--ctl-h\)$/.test(trimmed)) {
+		const token = /--ctl-h:\s*calc\(([\d.]+)\s*\*\s*var\(--u\)\)/.exec(indexCss);
+		return token ? Number(token[1]) : null;
+	}
+	const calc = /^calc\(([\d.]+)\s*\*\s*var\(--u\)\)$/.exec(trimmed);
+	return calc ? Number(calc[1]) : null;
+}
+
+const decl = (body: string, prop: string): string | null => {
+	const m = new RegExp(`(^|[;{\\s])${prop}:([^;]*)`).exec(body);
+	return m ? m[2]!.trim() : null;
+};
+
+/**
+ * The four properties that together take the slot out of the cards' min-content
+ * without giving up what the fixed slot protected. Written over a rule body so
+ * the red check below can run the same predicate against the DECLARATION IT
+ * REPLACED and watch it fail — a source assertion that has never been shown to
+ * fail is a sentence, not a check.
+ */
+function clashSlotFaults(body: string): string[] {
+	const faults: string[] = [];
+	if (/white-space:\s*nowrap/.test(body)) {
+		faults.push("white-space: nowrap puts the whole sentence into the row's min-content");
+	}
+	if (!/overflow-wrap:\s*anywhere/.test(body)) {
+		faults.push("no overflow-wrap: anywhere — the longest word still sets the card's floor");
+	}
+	const flex = decl(body, "flex");
+	if (!flex || !/^0\s+[1-9]/.test(flex)) {
+		faults.push(`flex must be 0 <shrink≥1> <basis> so the slot, and only the slot, gives: got ${flex}`);
+	}
+	const height = uMultiple(decl(body, "height") ?? "");
+	const line = uMultiple(decl(body, "line-height") ?? "");
+	if (height === null || line === null || line === 0) {
+		faults.push("a wrapping slot must reserve an explicit height and line-height, or it moves the ROW floor");
+	} else {
+		const lines = height / line;
+		if (!Number.isInteger(lines) || lines < 2) {
+			faults.push(`reserved height must be a whole number of lines, at least 2: ${height}u / ${line}u`);
+		}
+	}
+	const min = uMultiple(decl(body, "min-width") ?? "");
+	if (min === null || min <= 0) {
+		faults.push("min-width must be a positive u-multiple, or a clash fired at the card's floor is invisible");
+	}
+	return faults;
+}
+
+test(".color-clash is out of the cards' min-content and still says what it has to say", () => {
+	assert.deepEqual(clashSlotFaults(ruleBody(".color-clash")), []);
+});
+
+test("red check — the declaration #142 replaced fails the same predicate", () => {
+	// Verbatim shape of the pre-#142 rule: fixed slot, nowrap, no reserved
+	// height, no floor for the mark.
+	const before = `
+		font-size: calc(3.25 * var(--u));
+		flex: 0 0 calc(35 * var(--u));
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	`;
+	const faults = clashSlotFaults(before);
+	assert.ok(faults.length >= 4, `the old rule must fail this predicate; it reported: ${faults.join(" | ")}`);
+});
+
+/**
+ * The mark is the half of Required behaviour 3 that CSS cannot hold: the slot
+ * keeps a floor wide enough to draw it, and the body has to actually put the
+ * state on the element for the floor to mean anything.
+ */
+test("the clash slot carries a state class, so a narrow card still shows that a clash fired", () => {
+	const settings = readFileSync(
+		fileURLToPath(new URL("../src/cards/SettingsCards.tsx", import.meta.url)), "utf8");
+	const sites = [...settings.matchAll(/class=\{`?color-clash[^`"}]*/g)];
+	assert.equal(sites.length, 2, "both colour cards' rows must set the slot's class reactively");
+	for (const site of sites) {
+		assert.match(site[0]!, /clash/, "the class must be derived from whether a clash fired");
+	}
+	assert.match(appCss, /\.color-clash\.speaking::before/,
+		"the mark must be drawn from the state class, not from an element that is always there");
+});

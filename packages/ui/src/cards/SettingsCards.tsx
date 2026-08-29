@@ -125,7 +125,7 @@ export function HeaterColorsBody() {
 								    that came and went would change the row's width, and with it
 								    the card's own minimum, every time a pick landed near
 								    another. */}
-								<span class="color-clash" role="status" title={clashText()}>
+								<span class={`color-clash${clashText() === "" ? "" : " speaking"}`} role="status" title={clashText()}>
 									{clashText()}
 								</span>
 							</div>
@@ -174,7 +174,7 @@ export function ThermalColorsBody() {
 							/>
 							<span class={`color-hex t-${ch.key}`}>{value()}</span>
 							<span class="color-range">{ch.range}</span>
-							<span class="color-clash" role="status" title={clashText()}>
+							<span class={`color-clash${clashText() === "" ? "" : " speaking"}`} role="status" title={clashText()}>
 								{clashText()}
 							</span>
 						</div>

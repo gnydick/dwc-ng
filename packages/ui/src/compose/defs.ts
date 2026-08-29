@@ -429,14 +429,33 @@ export const CARD_DEFS = {
 		ariaLabel: "Axis roles",
 		size: { colSpan: 156, rowSpan: 109 },
 	}),
-	/** Per-heater chart line colours (config overlay). */
+	/**
+	 * Per-heater chart line colours (config overlay).
+	 *
+	 * RE-MEASURED after #142 (Card Lab arithmetic, mock, --u: 4px, 1600x1200,
+	 * 2026-08-28): contentColSpan 92 -> 85 cells, contentRowSpan 69 (unchanged).
+	 * The 7 cells are the reserved clash slot leaving the min-content probe;
+	 * what stops the drag now is the card's own HEADER (298.5px of title, tip
+	 * and controls) rather than its rows, which measure 204px.
+	 *
+	 * The size below is NOT that floor and is deliberately left alone: `size`
+	 * is the card's natural geometry (see this file's redesigned-cards-grow
+	 * invariant), it already sat well ABOVE the floor before #142, and shrinking
+	 * it would re-lay the Settings screen, which #142 did not ask for.
+	 */
 	"heater-colors": defineCard({
 		title: "Chart colours",
 		ariaLabel: "Chart colours",
 		tip: "heat.heaters",
 		size: { colSpan: 156, rowSpan: 76 },
 	}),
-	/** The cold/warm/hot ramp for temperature readings (config overlay). */
+	/**
+	 * The cold/warm/hot ramp for temperature readings (config overlay).
+	 *
+	 * RE-MEASURED after #142, same conditions: contentColSpan 104 -> 76 cells,
+	 * contentRowSpan 48 (unchanged). Header-bound at 260.2px, as above; `size`
+	 * stays the natural geometry for the same reason.
+	 */
 	"thermal-colors": defineCard({
 		title: "Temperature Gradient",
 		ariaLabel: "Temperature Gradient",
