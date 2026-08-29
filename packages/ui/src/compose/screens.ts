@@ -216,14 +216,18 @@ export const SETTINGS_COMPOSITION: Composition = {
 	"thermal-colors": { col: 156, row: 161, colSpan: 156, rowSpan: 60 },
 	"sensor-names": { col: 0, row: 237, colSpan: 312, rowSpan: 72 },
 	"filament-editor": { col: 0, row: 309, colSpan: 312, rowSpan: 130 },
-	// The Shaping Lab's editor — "Settings › Input shaping", the place the lab's own
-	// refusal copy sends the operator. Its own row rather than squeezed beside
-	// something: it is three stacked groups (box, motion, accelerometers) and
-	// the column it needs is wider than half this screen leaves.
-	"settings-shaping": { col: 0, row: 439, colSpan: 156, rowSpan: 178 },
-	"config-save": { col: 0, row: 617, colSpan: 312, rowSpan: 26 },
-	console: { col: 0, row: 643, colSpan: 312, rowSpan: 75 },
-	camera: { col: 0, row: 718, colSpan: 104, rowSpan: 75 },
+	// The Shaping Lab's editor — "Settings › Input shaping", the place the lab's
+	// own refusal copy sends the operator. Two stacked groups since #140 took
+	// the accelerometer rows off it (box, motion).
+	"settings-shaping": { col: 0, row: 439, colSpan: 156, rowSpan: 112 },
+	// Beside it, not under it: the machine's sensors are read alongside the
+	// shaping settings as often as they are read alone, and the pair of them
+	// fills the two columns this screen has. The taller of the two (128 vs 112)
+	// is what the rows below clear.
+	accelerometers: { col: 156, row: 439, colSpan: 156, rowSpan: 128 },
+	"config-save": { col: 0, row: 567, colSpan: 312, rowSpan: 26 },
+	console: { col: 0, row: 593, colSpan: 312, rowSpan: 75 },
+	camera: { col: 0, row: 668, colSpan: 104, rowSpan: 75 },
 };
 
 /** The built-in screens, in nav order. Ids are stable identities. */

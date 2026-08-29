@@ -31,7 +31,7 @@ import { useApp } from "../shell/context.ts";
 import { HeightmapBody, ProbePointBody, MeshBody, BedTramBody } from "../cards/BedCards.tsx";
 import {
 	AxisRolesBody, DockSensorsBody, BedProbeBody, CameraConfigBody, SensorNamesBody, SavedVersionsBody, ConfigSaveBody,
-	HeaterColorsBody, ThermalColorsBody, ShapingBody,
+	HeaterColorsBody, ThermalColorsBody, ShapingBody, AccelerometersBody,
 } from "../cards/SettingsCards.tsx";
 import { FirmwareBody } from "../cards/FirmwareUpdateCard.tsx";
 import { LayersBody } from "../cards/LayersCard.tsx";
@@ -59,8 +59,8 @@ import { provideShapingService } from "./shapingSlot.ts";
  * cards of a screen that is always composed together arrive in one request
  * rather than eight, which is the constraint RRF's HTTP server actually has.
  *
- * Not lazy: `settings-shaping`. It is small, and it lives on Settings, a screen
- * the operator uses constantly.
+ * Not lazy: `settings-shaping` and `accelerometers`. Both are small, and both
+ * live on Settings, a screen the operator uses constantly.
  *
  * The boundary is FENCED, not merely intended: `ShapingCards.tsx` and
  * `charts/DecayChart.tsx` are on the DYNAMIC_ONLY list in
@@ -215,7 +215,13 @@ export const CARD_RENDER: Record<CardId, CardRender> = {
 	"bed-probe": { body: () => <BedProbeBody />, actions: resetAction("bed") },
 	"camera-config": { body: () => <CameraConfigBody />, actions: resetAction("camera") },
 	"sensor-names": { body: () => <SensorNamesBody />, actions: resetAction("sensorNames") },
-	"settings-shaping": { body: ctx => <ShapingBody ctx={ctx} />, actions: resetAction("shaping") },
+	"settings-shaping": { body: () => <ShapingBody />, actions: resetAction("shaping") },
+	// No `actions`, deliberately (#140). `resetSection` is section-granular and
+	// this card's fields live in the `shaping` section alongside the envelope and
+	// the motion defaults, so a Reset here would silently take the operator's
+	// envelope with it — a card misstating its own scope. Blanking a row clears
+	// that address, which is the granularity this card actually owns.
+	accelerometers: { body: ctx => <AccelerometersBody ctx={ctx} /> },
 	// The Shaping Lab. Every body is a view of ONE service (the per-tool results
 	// store and the screen's selections), so the eight cards cannot disagree
 	// about which tool is being tuned — see compose/services.ts `shaping`.

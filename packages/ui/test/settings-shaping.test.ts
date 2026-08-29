@@ -316,9 +316,9 @@ test("the status slots are reserved, not conditional", () => {
 	// Anchored so `line-height` and `min-height` cannot stand in for the one
 	// declaration that actually reserves the space.
 	assert.match(rule(".env-status"), /(^|[;{\s])height:\s*calc\(/);
-	// A fixed width that is NOT the message's own, so which tool is unmapped
-	// cannot move the card's width stop.
-	assert.match(rule(".accel-status"), /flex:\s*0 0 calc\(/);
+	// `.accel-status` was checked here too, until #140 moved the accelerometer
+	// rows onto their own card. The same assertion now lives beside them, in
+	// test/accelerometer-card.test.ts.
 	// And the refusal mark on a bound costs no layout: inset shadow, no border.
 	assert.match(rule('.field input.env-bound[aria-invalid="true"]'), /box-shadow:\s*inset/);
 });
@@ -331,7 +331,10 @@ test("the status slots are reserved, not conditional", () => {
 test("the card renders the verdict functions rather than sentences of its own", () => {
 	const body = src("cards/SettingsCards.tsx");
 	assert.match(body, /\{envelopeStatusText\(verdict\(\)\)\}/);
-	assert.match(body, /accelStatusText\(judgeAccel\(/);
+	// The accelerometer half of this assertion moved with the rows in #140.
+	// test/accelerometer-card.test.ts checks `accelStatusText(judgeAccel(`
+	// against AccelerometersBody's OWN text, which is the stronger form: this
+	// file-wide scan would have gone on passing had the rows never moved.
 	// And it never re-tests an address or a bound itself.
 	assert.doesNotMatch(body, /isAccelAddr/);
 	assert.doesNotMatch(body, /\bShapingBody[\s\S]*?\basRange\b/);
