@@ -21,7 +21,7 @@ and invariant claim mentions 13 -> 23, so no mechanism was deleted and no
 claim was lost in the gap. From here the ratchets make a dropped rung visible
 in the diff that drops it.
 
-**Totals:** 171 invariants · 147 at rung 6 or above · 24 below rung 6 (ceiling 25).
+**Totals:** 172 invariants · 147 at rung 6 or above · 25 below rung 6 (ceiling 25).
 
 ## bed
 
@@ -1551,6 +1551,16 @@ in the diff that drops it.
 
 `packages/ui/src/app.css:792`
 
+### `ui/field-input-growth-is-bounded` — rung 4
+
+**Mechanism.** source assertion — test/intrinsic-floors.test.ts scans every rule in app.css whose selector names a `.field` input, and fails the suite if any of them has a positive flex-grow (via `flex-grow` or the grow component of the `flex` shorthand) without a `max-width` that is a calc(n * var(--u)) at or above its own min-width. Two red checks in the same file run the predicate over the declaration #144 replaced and over a cap set below its floor, and require both to fail, so the assertion is known to be capable of failing
+
+**Why.** #144: `flex: 1` on this rule with no ceiling meant thirteen text inputs across four cards grew linearly with their card, past 1500px at colSpan 420 (Camera URL 497 -> 1553, Bed probing 429 -> 1485, Sensor names ~512 -> 1564, Axis roles 516 -> 1572; measured on the mock). Number inputs had carried a cap all along on the very next line, so this was one declaration missing one property, not a class of unrelated bugs. It is the exact complement of #142's reserved slot: there a minimum LARGER than the content needed, here no maximum at all, and in both cases the number the layout obeys is not the number the content justifies
+
+**Debt — promotion.** A CAP, NOT A VOCABULARY. Every text field now stops at ONE number, and the four cards do not all want the same one: measured 2026-08-28, the probe command wants 86.4u and a real camera URL 85.3u, but an axis role label wants 30.5u and a sensor name 41.1u. So Axis roles and Sensor names are BOUNDED but still far wider than their content, which is the complaint answered and not the design settled. Promote with declared per-content-kind classes (the `.env-bound` shape already in this sheet: width/min-width/max-width together, sized by what the field HOLDS) plus a lint that a `.field` text input without one is a failure — that turns "someone picked a number for all of them" into "the field declares what it holds". It changes the look of four cards at once, so it is Gabe's call, filed as #144 Q1 and NOT taken here. Also unsettled: the cap is derived from the SHIPPED default probe command, not from Gabe's own config on the printer (#144 Q2) — no printer was touched
+
+`packages/ui/src/app.css:1390`
+
 ### `ui/heavy-libraries-stay-behind-a-dynamic-import` — rung 4
 
 **Mechanism.** static analysis — test/lazy-bundle.test.ts checks three things, and no two of them catch the same mistake. (1) Only editor/setup.ts, gcode/scene.ts and heightmap/surface3d.ts may name a heavy package at all. (2) Every module on the DYNAMIC_ONLY list — those three plus cards/ShapingCards.tsx, charts/DecayChart.tsx, shaping/resultsCodec.ts and compose/shapingService.ts — is reached only by `import type` (erased, since verbatimModuleSyntax is on) or `import(...)`; a value import of scene.ts pulls Babylon in exactly as a direct import would. (3) The transitive static-import closure of THIS file is walked, and the `src/shaping/**` modules it reaches must equal a committed list exactly — which is the only one of the three that catches a module nobody thought to name in advance @why-3 (1) and (2) are per-FILE text matches, so they can only stop a regrowth someone predicted. Twice they did not: GIT_108 added shaping/selection.ts and GIT_51 added shaping/preconditions.ts to compose/services.ts, each a one-line import in a module that was already eager, and between them they put 23 modules of `src/shaping/**` — 21,635 B minified — on every board load and made the uat branch undeployable (#126). The graph walk makes LAZY the default for a new shaping module and a place on the critical path a diff
@@ -1569,7 +1579,7 @@ in the diff that drops it.
 
 **Debt — promotion.** the scan is a brace walker over text, so it sees source order but not cascade subtleties (:is(), layers, differing specificity within a selector list). Rung 6 is generating the breakpoint blocks from one typed source, so ordering stops being something an author controls at all. (The palette entry's narrow-width rules are NOT here — they live in a second max-width block directly after the desktop ones further down.)
 
-`packages/ui/src/app.css:1480`
+`packages/ui/src/app.css:1547`
 
 ### `ui/unit-lengths` — rung 4
 

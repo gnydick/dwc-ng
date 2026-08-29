@@ -197,3 +197,138 @@ test("contentRowSpan sums margins unconditionally, and no slack marker survives"
 	assert.doesNotMatch(canvas, /getPropertyValue\("--absorbs-slack"\)/,
 		"a marker read here with nothing in the sheet setting it is a route back to the defect");
 });
+
+/**
+ * #144 — THE OTHER END OF THE SAME PRINCIPLE.
+ *
+ * Everything above stops content lying that it is NARROWER than it is. This
+ * stops a field growing without any limit at all.
+ *
+ * Gabe, 2026-08-28: "'camera url' and 'bed probing' cards have a common
+ * problem. their text input field grows infinitely if the card is stretched
+ * sideways, there should be some reasonable limit to use for display". He is
+ * right that it is one problem, and it is narrower than one problem: it is ONE
+ * declaration. `.field input[type="text"], .field input[type="number"]` sets
+ * `flex: 1` (= `1 1 0%`), so every such input takes all the free space in its
+ * row. The line directly below caps NUMBER inputs at 22.5u. Text inputs were
+ * never given a cap, and there were thirteen of them across four cards —
+ * measured on the mock at the coded spans: Axis roles 7 x 516px, Camera URL
+ * 497px, Bed probing 429px, Sensor names 4 x ~512px, every one of them growing
+ * linearly with the card to over 1500px at colSpan 420.
+ *
+ * The assertion below is deliberately NOT "the text rule has a max-width". That
+ * would pin the thirteen symptoms and say nothing about the fourteenth field
+ * someone adds next month. It is the RULE SHAPE: a `.field input` rule that can
+ * GROW must also say where it stops. A new uncapped growing field fails the
+ * suite rather than being discovered by an operator dragging a card.
+ */
+
+/** `calc(N * var(--u))` and bare `0` as u-multiples; anything else is null. */
+function uMultipleOf(value: string | null): number | null {
+	if (value === null) return null;
+	const trimmed = value.trim();
+	if (/^0$/.test(trimmed)) return 0;
+	const calc = /^calc\(\s*([\d.]+)\s*\*\s*var\(--u\)\s*\)$/.exec(trimmed);
+	return calc ? Number(calc[1]) : null;
+}
+
+/** One declaration's value out of a rule body, or null if it is not declared. */
+function declOf(body: string, prop: string): string | null {
+	// `[;{\\s]` — the escape must survive the template literal. Written `\s`
+	// here it collapses to a bare "s" and the class silently stops matching
+	// whitespace, so a declaration at the start of a body reads as absent.
+	const m = new RegExp(`(^|[;{\\s])${prop}:([^;]*)`).exec(body);
+	return m ? m[2]!.trim() : null;
+}
+
+/**
+ * Does this rule body let the element GROW? `flex-grow: n` directly, or the
+ * grow component of the `flex` shorthand — `flex: 1` is `1 1 0%`, which is the
+ * form the defect was written in, so reading only `flex-grow` would have missed
+ * every instance of it.
+ */
+function growsBy(body: string): number {
+	const explicit = declOf(body, "flex-grow");
+	if (explicit !== null) return Number(explicit) || 0;
+	const short = declOf(body, "flex");
+	if (short === null) return 0;
+	if (/^none$/.test(short)) return 0;
+	if (/^auto$/.test(short)) return 1;
+	const first = /^([\d.]+)/.exec(short);
+	return first ? Number(first[1]) : 0;
+}
+
+/**
+ * Every rule in app.css whose selector list mentions a `.field` input, with its
+ * body. Written over the whole sheet rather than over a list of selectors for
+ * the reason in the note above: a list would have to be extended by the person
+ * adding the next unbounded field, which is the person who is not thinking
+ * about it.
+ */
+function fieldInputRules(css: string): Array<{ selector: string; body: string }> {
+	return [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+		.map(m => ({ selector: m[1]!.trim(), body: m[2]! }))
+		.filter(r => /\.field\b[^,{]*\binput\b/.test(r.selector));
+}
+
+/** The predicate itself, so the red check below can run it over a body that
+ *  must fail it. A source assertion never shown to fail is a sentence. */
+function unboundedGrowth(rules: Array<{ selector: string; body: string }>): string[] {
+	const faults: string[] = [];
+	for (const rule of rules) {
+		if (growsBy(rule.body) <= 0) continue;
+		const max = declOf(rule.body, "max-width");
+		if (max === null) {
+			faults.push(`${rule.selector} can grow (flex-grow ${growsBy(rule.body)}) and declares no max-width`);
+			continue;
+		}
+		const maxU = uMultipleOf(max);
+		if (maxU === null) {
+			faults.push(`${rule.selector} declares max-width: ${max}, which is not a calc(n * var(--u))`);
+			continue;
+		}
+		// Required behaviour 5: the cap may never fall under the floor. Both are
+		// u-multiples, so this is arithmetic on the source and holds at EVERY
+		// scale step at once — `max-width < min-width` is a silently broken box.
+		const minU = uMultipleOf(declOf(rule.body, "min-width"));
+		if (minU !== null && maxU < minU) {
+			faults.push(`${rule.selector} caps at ${maxU}u below its own ${minU}u floor`);
+		}
+	}
+	return faults;
+}
+
+test("a .field input that can grow declares where it stops", () => {
+	const rules = fieldInputRules(appCss);
+	// The scanner must not pass by matching nothing.
+	assert.ok(rules.length >= 4, `only ${rules.length} .field input rules found — has the sheet changed shape?`);
+	assert.ok(rules.some(r => growsBy(r.body) > 0), "no growing .field input rule found — the scanner is reading nothing");
+	assert.deepEqual(unboundedGrowth(rules), []);
+});
+
+test("red check — the declaration #144 replaced fails the same predicate", () => {
+	// Verbatim shape of the pre-#144 rule: grows, floors, never caps.
+	const before = [{
+		selector: '.field input[type="text"], .field input[type="number"]',
+		body: `
+			flex: 1;
+			width: calc(24 * var(--u));
+			min-width: calc(24 * var(--u));
+		`,
+	}];
+	const faults = unboundedGrowth(before);
+	assert.equal(faults.length, 1, `the old rule must fail this predicate; it reported: ${faults.join(" | ")}`);
+	assert.match(faults[0]!, /no max-width/);
+});
+
+test("red check — a cap under the floor is a fault, not a pass", () => {
+	const broken = [{
+		selector: ".field input.pretend",
+		body: `
+			flex: 1;
+			min-width: calc(24 * var(--u));
+			max-width: calc(12 * var(--u));
+		`,
+	}];
+	assert.match(unboundedGrowth(broken)[0] ?? "", /below its own 24u floor/);
+});

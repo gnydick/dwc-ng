@@ -1344,16 +1344,83 @@
    (flex-basis 0%) still governs actual growth, so the real, at-rest size is
    unaffected; min-width stays alongside it only so shrinking can never go
    below this floor either. */
+/* AND A CEILING, which this rule was missing until #144. `flex: 1` is
+   `1 1 0%`: the input takes ALL the free space in its row, without limit. The
+   line below has capped NUMBER inputs at 22.5u since it was written; the text
+   case was never given the same treatment, so thirteen text inputs across four
+   cards grew linearly with their card — measured on the mock at the coded
+   spans, Axis roles 7 x 516px, Camera URL 497px, Bed probing 429px, Sensor
+   names 4 x ~512px, every one of them over 1500px by colSpan 420.
+
+   Gabe, 2026-08-28: "'camera url' and 'bed probing' cards have a common
+   problem. their text input field grows infinitely if the card is stretched
+   sideways, there should be some reasonable limit to use for display".
+
+   88u IS DERIVED, not round. The longest thing any of these fields is meant to
+   display is the shipped probe-point command, `M98 P"0:/macros/dwc-ng/
+   reprobe.g" X{x} Y{y}` (config/types.ts) — 44 characters, which this face
+   renders at 86.41u INCLUDING the field's padding at the worst of the three
+   scale steps (86.41 at 075, 86.25 at 100, 86.08 at 150; measured 2026-08-28).
+   A realistic camera URL with a path and query, `http://printercams.local:8080/
+   ?action=stream`, wants 85.26u by the same measurement. 88u clears both with
+   ~1.6u to spare.
+
+   WHY A u-MULTIPLE TRACKS THE TEXT AT ALL: body font-size is `calc(4 *
+   var(--u))` (index.css), so glyph advances scale with --u and the numbers
+   above differ by less than 0.4u across 075-150 — that residue is advance
+   rounding at different pixel sizes, and taking the cap from the WORST step is
+   what absorbs it. A cap chosen at one scale would not have been a fix.
+
+   The cap can never collide with the floor above it: 88u > 24u at every scale,
+   because both are multiples of the same unit. Asserted on the source in
+   test/intrinsic-floors.test.ts, together with the rule shape that matters more
+   than this number — a `.field input` that can grow must say where it stops. */
 .field input[type="text"], .field input[type="number"] {
 	flex: 1;
 	width: calc(24 * var(--u));
 	min-width: calc(24 * var(--u));
+	max-width: calc(88 * var(--u));
 	background: var(--mask-900);
 	border: 0;
 	box-shadow: inset 0 0 0 1px var(--hairline);
 	border-radius: var(--radius);
 	padding: var(--sp-field) calc(2.5 * var(--u));
 }
+/*
+   @invariant field-input-growth-is-bounded
+   @rung 4  source assertion — test/intrinsic-floors.test.ts scans every rule
+            in app.css whose selector names a `.field` input, and fails the
+            suite if any of them has a positive flex-grow (via `flex-grow` or
+            the grow component of the `flex` shorthand) without a `max-width`
+            that is a calc(n * var(--u)) at or above its own min-width. Two red
+            checks in the same file run the predicate over the declaration
+            #144 replaced and over a cap set below its floor, and require both
+            to fail, so the assertion is known to be capable of failing
+   @debt A CAP, NOT A VOCABULARY. Every text field now stops at ONE number, and
+         the four cards do not all want the same one: measured 2026-08-28, the
+         probe command wants 86.4u and a real camera URL 85.3u, but an axis
+         role label wants 30.5u and a sensor name 41.1u. So Axis roles and
+         Sensor names are BOUNDED but still far wider than their content, which
+         is the complaint answered and not the design settled. Promote with
+         declared per-content-kind classes (the `.env-bound` shape already in
+         this sheet: width/min-width/max-width together, sized by what the field
+         HOLDS) plus a lint that a `.field` text input without one is a failure
+         — that turns "someone picked a number for all of them" into "the field
+         declares what it holds". It changes the look of four cards at once, so
+         it is Gabe's call, filed as #144 Q1 and NOT taken here. Also unsettled:
+         the cap is derived from the SHIPPED default probe command, not from
+         Gabe's own config on the printer (#144 Q2) — no printer was touched
+   @why #144: `flex: 1` on this rule with no ceiling meant thirteen text inputs
+        across four cards grew linearly with their card, past 1500px at colSpan
+        420 (Camera URL 497 -> 1553, Bed probing 429 -> 1485, Sensor names
+        ~512 -> 1564, Axis roles 516 -> 1572; measured on the mock). Number
+        inputs had carried a cap all along on the very next line, so this was
+        one declaration missing one property, not a class of unrelated bugs.
+        It is the exact complement of #142's reserved slot: there a minimum
+        LARGER than the content needed, here no maximum at all, and in both
+        cases the number the layout obeys is not the number the content
+        justifies
+*/
 .field input::placeholder { color: var(--silk-dim); }
 .field input[type="number"] { width: calc(10 * var(--u)); min-width: calc(10 * var(--u)); max-width: calc(22.5 * var(--u)); }
 
