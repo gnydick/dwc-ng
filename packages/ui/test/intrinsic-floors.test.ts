@@ -268,6 +268,23 @@ test("the stacked input keeps an explicit width floor", () => {
 		assert.doesNotMatch(r.body, /(^|[;{\s])min-width:\s*0/,
 			`${r.sel} zeroes the input's min-width — the card's floor becomes the browser's size=20 default`);
 	}
+
+	// A CEILING, IF ONE IS EVER DECLARED, MUST CLEAR THE FLOOR.
+	//
+	// This is carried here on purpose. #144 caps the same rule at 88u and
+	// asserts the same property, but it reads min-width by matching
+	// `calc(n * var(--u))` literally — and the floor is a token now, so once
+	// both land its cap-vs-floor comparison silently finds nothing to compare
+	// and stops firing. Reading the token's own value keeps the check alive
+	// through that merge instead of leaving it to be noticed later.
+	const maxDecl = /(^|[;{\s])max-width:([^;]*)/.exec(shared.body);
+	if (maxDecl) {
+		const cap = /calc\(\s*([\d.]+)\s*\*\s*var\(--u\)\s*\)/.exec(maxDecl[2]!);
+		assert.ok(cap, `the input's max-width ${maxDecl[2]!.trim()} is not a calc(n * var(--u))`);
+		const floor = Number(/--field-input-w:\s*calc\(([\d.]+)/.exec(appCss)![1]);
+		assert.ok(Number(cap[1]) >= floor,
+			`the input caps at ${cap[1]}u, under its own ${floor}u floor — a box with max-width below min-width`);
+	}
 });
 
 /** Every rule whose selector list mentions `token` as a whole class name. */
