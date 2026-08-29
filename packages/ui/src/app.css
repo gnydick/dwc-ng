@@ -5193,6 +5193,55 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; appe
 	-webkit-box-orient: vertical;
 	-webkit-line-clamp: 2;
 }
+/*
+   @invariant fixed-height-clipped-row-declares-its-floor
+   @rung 4  source assertion — test/intrinsic-floors.test.ts walks every
+            declaration block in this sheet, selects the ones that declare a
+            `height` AND clip (`overflow`/`overflow-y: hidden`), and fails the
+            suite unless each one's cascade also declares a block-axis floor:
+            a non-auto non-zero `min-height`, or `flex-shrink: 0` / `flex: 0 0`
+            where not shrinking IS the intent. The scan asserts its own catch
+            (>= 10 matching rules) so a scanner that has stopped matching fails
+            loudly instead of passing everything, and the four Shaping prose
+            rows are additionally pinned BY NAME, read through their shared
+            cascade rather than per block, so a guard dropped from one of the
+            four that are known to need it is its own failing test rather than
+            one line in a list. It is a SOURCE assertion, not a measurement:
+            it cannot say a floor is the RIGHT number, only that a fixed-height
+            clipped box is not written with no floor at all
+   @debt ONLY WHAT THE STYLESHEET CAN SAY. The predicate reads app.css text, so
+         it does not see a height arriving from an inline style, from a
+         `classList` addition, or from a JS-set custom property, and it does not
+         resolve specificity — a floor declared in a rule that loses the cascade
+         reads as present. It also cannot distinguish a flex COLUMN item, where
+         the collapse actually happens, from a flex ROW item, where the fixed
+         height is the cross size and the block axis was never at risk; both
+         are required to declare the floor, which is conservative in the right
+         direction but is the reason `.color-clash` and `.accel-status` carry a
+         min-height equal to their own height rather than a measured one.
+         Promote by making the guard travel with the geometry instead of beside
+         it: ONE shared declaration that every fixed-height clipped row extends,
+         so the floor is not something a new row can be written without, and
+         this scan becomes structurally unnecessary rather than merely green
+   @why #136: `.shp-caveat` is the only shrinkable child of the Sweep card's
+        body, and a flex child whose overflow is not `visible` has an automatic
+        minimum size of ZERO — so it absorbed the card's whole deficit alone and
+        rendered at 0px at the card's own registry size (measured 2026-08-28
+        headless: 32px at rowSpan 200, 4px at 124, 0px at the coded pin 118).
+        Its two declared lines were invisible on every browser, not only after a
+        resize. The second-order damage is why this is a rule and not a one-line
+        fix: contentRowSpan sums each child's RENDERED height, so a child that
+        shrinks with the card makes the card's own floor a function of the
+        card's own size — measured on this card, rowStop 129 at rowSpan 200 and
+        121 at rowSpan 118. A floor enforced from that measurement enforces a
+        number the shrink itself moved, which is the hysteresis
+        card-floor-independent-of-size exists to catch. Six rules in this sheet
+        were unguarded when the scan was written, and the same shape had been
+        written four separate times before anybody measured it. The row was
+        DEFERRED on GIT_136 rather than skipped: the ratchet stood at 24 against
+        a ceiling of 25 and a third +1 was not that branch's number to rule on
+        (Gabe, 2026-08-28: "give it the row and bump the ceiling to 27")
+*/
 
 /* The workflow, one row per step. A LIST rather than a button bar: each step
    carries a sentence saying what it is waiting for, and five captions under
