@@ -232,14 +232,26 @@ export const SETTINGS_COMPOSITION: Composition = {
 	// own refusal copy sends the operator. Two stacked groups since #140 took
 	// the accelerometer rows off it (box, motion).
 	"settings-shaping": { col: 0, row: 448, colSpan: 156, rowSpan: 112 },
-	// Beside it, not under it: the machine's sensors are read alongside the
-	// shaping settings as often as they are read alone, and the pair of them
-	// fills the two columns this screen has. The taller of the two (128 vs 112)
-	// is what the rows below clear.
-	accelerometers: { col: 156, row: 448, colSpan: 156, rowSpan: 128 },
-	"config-save": { col: 0, row: 576, colSpan: 312, rowSpan: 26 },
-	console: { col: 0, row: 602, colSpan: 312, rowSpan: 75 },
-	camera: { col: 0, row: 677, colSpan: 104, rowSpan: 75 },
+	// UNDER it and full width since #142, not beside it. #140 put the two side
+	// by side to fill the screen's two columns, which worked while the
+	// accelerometer card was eight narrow rows. It is now four wide ones —
+	// address, verdict, rate, resolution, Set, Read and the board's reply on one
+	// line per tool — and at 156 columns (≈616px) the two sentences on that line
+	// cannot both be legible; measured, they are intact from 676px. So the card
+	// takes both columns and sits below the pair's taller member (shaping, 112).
+	// This leaves the right-hand half of rows 448-560 empty. Nothing on this
+	// screen is the right size to fill it, and a hole is cheaper than a card
+	// that clips every reply it draws.
+	//
+	// The rows here are #142's structure carried onto #138's base: #138 grew
+	// camera-config and bed-probe by 9 rows each for the stacked field, so every
+	// row from heater-colors down moved +9 and this tail moves with it
+	// (settings-shaping 439->448, accelerometers 551->560, config-save 615->624,
+	// console 641->650, camera 716->725).
+	accelerometers: { col: 0, row: 560, colSpan: 312, rowSpan: 64 },
+	"config-save": { col: 0, row: 624, colSpan: 312, rowSpan: 26 },
+	console: { col: 0, row: 650, colSpan: 312, rowSpan: 75 },
+	camera: { col: 0, row: 725, colSpan: 104, rowSpan: 75 },
 };
 
 /** The built-in screens, in nav order. Ids are stable identities. */

@@ -21,7 +21,7 @@ and invariant claim mentions 13 -> 23, so no mechanism was deleted and no
 claim was lost in the gap. From here the ratchets make a dropped rung visible
 in the diff that drops it.
 
-**Totals:** 171 invariants · 147 at rung 6 or above · 24 below rung 6 (ceiling 25).
+**Totals:** 172 invariants · 147 at rung 6 or above · 25 below rung 6 (ceiling 27).
 
 ## bed
 
@@ -135,7 +135,7 @@ in the diff that drops it.
 
 **Why.** a delete that removes a card from every screen at once is exactly the action whose scope the operator must see before confirming — "delete this card?" cannot precede stripping it from screens they forgot it was on. The plan freezes usage at arm time; the studio is modal over composition edits, so the frozen report cannot go stale between the two clicks
 
-`packages/ui/src/compose/screens.ts:543`
+`packages/ui/src/compose/screens.ts:555`
 
 ### `compose/composition-degrades-per-slot` — rung 6
 
@@ -1570,6 +1570,16 @@ in the diff that drops it.
 **Debt — promotion.** the scan is a brace walker over text, so it sees source order but not cascade subtleties (:is(), layers, differing specificity within a selector list). Rung 6 is generating the breakpoint blocks from one typed source, so ordering stops being something an author controls at all. (The palette entry's narrow-width rules are NOT here — they live in a second max-width block directly after the desktop ones further down.)
 
 `packages/ui/src/app.css:1543`
+
+### `ui/reserved-slot-out-of-the-card-floor` — rung 4
+
+**Mechanism.** source assertion — test/intrinsic-floors.test.ts DERIVES the set of reserved slots from this sheet's own `.speaking::before` mark rule (a slot missing from it reserves width for a mark it never draws), reads the class lists those slots are actually RENDERED with out of every .tsx under src, merges every plain class-compound rule that applies to each of those class lists in source order, and fails the suite unless the resulting cascade is shrinkable (flex-shrink >= 1) on a fixed u-multiple basis, declares a positive u-multiple min-width, reserves a whole number >= 2 of its own lines, clips, wraps anywhere, does not nowrap, and carries a -webkit-line-clamp equal to the lines it reserved. Four red checks run the predicate over the declaration #142 replaced, over a nowrap and an unshrinkable co-class override, over a floorless slot and over a clamp that stops short of the last reserved line, and require each to fail — so the assertion is known to be capable of failing, and capable of failing on the exact bypass it previously allowed
+
+**Why.** #142: .color-clash was `flex: 0 0 calc(35 * var(--u))`, an item that cannot shrink, so its whole 140px basis went into contentColSpan's min-content probe for a message that is absent in the ordinary session. Both colour cards' width stops were more than a third space for something they were not drawing (Chart colours 92 cells, Temperature Gradient 104; 85 and 76 after). It is the exact mirror of #134 — an artificial floor is as wrong as an unenforced one, because in both cases the number the layout obeys is not the number the content justifies. The attribution was itself wrong the first time round and is corrected here from measurement: nowrap and overflow-wrap move this number by ZERO cells, flex-shrink moves it by 66, and min-width is then the whole of what the slot costs
+
+**Debt — promotion.** SELECTOR SHAPES IT CANNOT READ. The slot list and the rendered class lists are both derived now, so no hand-maintained enumeration remains, and the two bypasses that survived #142's first round (a co-class overriding flex, a co-class adding nowrap) are caught. What is still approximate is the cascade: only PLAIN CLASS COMPOUNDS are merged, so a rule reaching a slot through a descendant combinator, an attribute, :is() or a pseudo-class is silently not merged, and specificity is approximated by source order. A class added through `classList` is refused outright rather than mis-read. Promote by measuring the mirror of judgeFloor in dev/layoutAudit.ts — "is this card's floor LARGER than its body needs" — over the whole registry in a real layout, which reads the resolved cascade from the browser instead of parsing for it and needs no selector vocabulary at all. Also still outside this predicate: POSITION, which #142's second round showed is half the property (a reserved slot must be last in its row or its silence is a visible hole — Gabe, 2026-08-28), pinned per card in accelerometer-card.test.ts
+
+`packages/ui/src/app.css:1992`
 
 ### `ui/unit-lengths` — rung 4
 
