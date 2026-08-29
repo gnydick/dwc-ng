@@ -296,3 +296,28 @@ before any of it exists.
   refers to a running agent only by an opaque id (`a147f359d45f0a51e`), so
   without the convention the class of a live agent is invisible and the
   serial-per-class rule cannot be followed at a glance.
+- **All work happens in a worktree; the main checkout is not a work surface.**
+  Adopted 2026-08-29. Verbatim: "all work happens in worktrees, mocks must be
+  there too". An agent given work gets a worktree of the branch that work lands
+  on, created if the branch has none — even when it is the only agent alive and
+  nothing would collide. The main checkout keeps the same three jobs the main
+  agent holds: conversation, adjudication, relay. This does not contradict the
+  rules above, it closes their silence: they say WHICH worktree an agent may
+  have (one agent each; a review or test in its own), and never said an agent
+  must have one at all. Git counts the main checkout as a worktree, so read the
+  rule by its subject, not its noun — the falsifying check is
+  `git rev-parse --git-dir` in the checkout an agent wrote in, which reads
+  `.git/worktrees/<name>` in a linked worktree and a bare `.git` in the main
+  one. The silence was acted on twice on 2026-08-29, which is what prompted the
+  ruling: `rule-intake: mock teardown` was dispatched to the main checkout and
+  committed `7c3ee6d` there, and the UAT mock (port 8975) plus a vite dev
+  server (port 5173) were started from it.
+- **A mock belongs to the worktree of the work it serves.** "mocks must be
+  there too": a mock stood up for a piece of work runs FROM that work's
+  worktree — never from the main checkout, never shared between worktrees — so
+  what it serves is the branch under test rather than whatever main happens to
+  hold. Treat this as a PARTIAL mechanism for the teardown rule in § Working
+  rules (development environment), not a guarantee: binding the mock to a
+  worktree gives the process a visible owner and an obvious end, but removing a
+  worktree does NOT kill a process started from it, so teardown stays a
+  discipline that must be performed and confirmed by port state.

@@ -156,6 +156,18 @@ failed with `ERR_PARSE_ARGS_UNEXPECTED_POSITIONAL` and never listened, yet
 from an orphan launched the previous evening — the fresh mock was one report
 away from being a stranger process.
 
+**Cross-reference, added 2026-08-29:** § Dispatching work — who does it, and
+where it runs now carries a rule that a mock runs from the worktree of the work
+it serves. It is filed THERE, not here, and deliberately not duplicated as a row
+in this group: its subject is where a process lives, decided at dispatch, while
+this group's subject is whether a change was proved against something that
+behaves like the machine. It matters to rows 6 and 7 all the same, in two ways
+— a mock served out of the main checkout is not serving the branch under test,
+and a mock bound to a worktree has a visible owner and an obvious end. Do not
+read it as enforcement: removing a worktree does not kill a process started from
+it, so it narrows who can orphan a mock without preventing it, and the teardown
+rule is still discharged by killing the PID and confirming the port.
+
 Row 7 is deliberately NOT folded into § Claiming what the tooling can do. That
 rule governs a capability claim sourced from PROSE and is discharged by running
 any check at all; here a check *was* run — `curl` against the port — and it
@@ -186,12 +198,26 @@ contention afterwards.
 No wobble: both rules are Gabe's, ruled 2026-08-28, and the second refines
 rather than contradicts the first.
 
+Rows 5 and 6 (2026-08-29, Gabe: "all work happens in worktrees, mocks must be
+there too") are a REFINEMENT, not a wobble. Nothing standing ever said the main
+checkout was a valid work surface — the 2026-08-28 rules decide WHICH worktree
+an agent may have (one agent each; a review or test in its own, explicitly "not
+the main checkout") and are silent on whether an agent must have one at all.
+The new rows close that silence, and the silence was acted on twice on
+2026-08-29: `rule-intake: mock teardown` was dispatched to the main checkout and
+committed `7c3ee6d` there, and the mock (port 8975) plus vite dev server (port
+5173) for that day's UAT were started from it. A practice permitted by silence
+is not a standing rule, so no supersession stamp is owed and the circle does not
+move.
+
 | Date | Rule | Cites |
 |---|---|---|
 | 2026-08-28 | The main agent does no work: it holds conversation, adjudication and relay, and delegates everything else. Reading a file to answer a question is conversation; reading it to change it is work. | `CLAUDE.md` § Working rules (work topology) |
 | 2026-08-28 | Four agent classes — effort, review, test, rule-intake. Serial WITHIN a class (one in flight each), concurrent ACROSS classes, so at most four at once and only when each is in a different worktree. | `CLAUDE.md` § Working rules (work topology) |
 | 2026-08-28 | At most ONE agent per worktree, not waivable by an agent's own reading of its brief; a review or test of work in flight targets that branch in its OWN worktree of it, created if none exists. | `CLAUDE.md` § Working rules (work topology) |
 | 2026-08-28 | Agents are named by class and target at spawn (`effort: GIT_118`, `review: GIT_87`, `test: uat`, `rule-intake: agent topology`), because the harness identifies a running agent only by an opaque id. | `CLAUDE.md` § Working rules (work topology) |
+| 2026-08-29 | All work happens in a worktree: an agent given work gets a worktree of the branch that work lands on, created if the branch has none, even when it is the only agent alive; the main checkout keeps only conversation, adjudication and relay. Falsifiable by `git rev-parse --git-dir` in the checkout an agent wrote in — `.git/worktrees/<name>` in a linked worktree, a bare `.git` in the main one. | `CLAUDE.md` § Working rules (work topology) |
+| 2026-08-29 | A mock stood up for a piece of work runs FROM that work's worktree — not the main checkout, not shared across worktrees — so it serves the branch under test. A PARTIAL mechanism for the teardown rule in § Proving a change against something that behaves like the machine: it gives the process a visible owner and an obvious end, but removing a worktree does not kill a process started from it. | `CLAUDE.md` § Working rules (work topology) |
 
 **Evidence:** the worktree rule needs no incident to justify it — two agents
 writing one checkout each read the other's half-written files as the state they
