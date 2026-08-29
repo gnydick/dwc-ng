@@ -187,9 +187,12 @@ export const BED_COMPOSITION: Composition = {
  * shaping-status, #128 — the tools table moved into a region of declared
  * height, plus the two rows every card gained when the header's auto margin
  * stopped being excluded from its own floor). col 1 capture+custom+verify =
- * 140+71+62 = 273. col 2 decay+sweep = 189+118 = 307. Range 66 rows (24% of
- * the 274 average) — #94 already tracks this drift and nothing here
- * rebalances it.
+ * 140+71+62 = 273. col 2 decay+sweep = 189+134 = 323 (118 -> 134 for
+ * shaping-sweep, #136 — the caveat line was collapsing to zero and so was
+ * contributing nothing to the card's own floor, and the sweep note grew a
+ * fourth line so the physics sentence is not cut above the card's stop).
+ * Range 82 rows (29% of the 279 average) — #94 already tracks this drift and
+ * nothing here rebalances it.
  */
 export const SHAPING_COMPOSITION: Composition = {
 	"shaping-status": { col: 0, row: 0, colSpan: 156, rowSpan: 116 },
@@ -199,31 +202,56 @@ export const SHAPING_COMPOSITION: Composition = {
 	"shaping-custom": { col: 156, row: 140, colSpan: 156, rowSpan: 71 },
 	"shaping-verify": { col: 156, row: 211, colSpan: 156, rowSpan: 62 },
 	"shaping-decay": { col: 312, row: 0, colSpan: 156, rowSpan: 189 },
-	"shaping-sweep": { col: 312, row: 189, colSpan: 156, rowSpan: 118 },
-	// Column 2 (decay+sweep) is the tallest at 307; the strip clears all three.
-	console: { col: 0, row: 307, colSpan: 468, rowSpan: 75 },
-	camera: { col: 0, row: 382, colSpan: 104, rowSpan: 75 },
+	"shaping-sweep": { col: 312, row: 189, colSpan: 156, rowSpan: 134 },
+	// Column 2 (decay+sweep) is the tallest at 323; the strip clears all three.
+	// It moved 307 -> 323 with the Sweep card's re-measured floor (#136): a pin
+	// raised without moving what sits under it puts the console inside the card
+	// above it.
+	console: { col: 0, row: 323, colSpan: 468, rowSpan: 75 },
+	camera: { col: 0, row: 398, colSpan: 104, rowSpan: 75 },
 };
 
 /** Settings: config-overlay editors + the save card (the former save-bar). */
 export const SETTINGS_COMPOSITION: Composition = {
 	"axis-roles": { col: 0, row: 0, colSpan: 156, rowSpan: 109 },
-	"camera-config": { col: 0, row: 109, colSpan: 156, rowSpan: 40 },
+	// camera-config 40 -> 49 and bed-probe 45 -> 54: both fields stacked their
+	// label above their input (#138), which is +9 cells on each card. Every row
+	// below them moves by the same 9 — a pin raised without re-laying the rows
+	// under it puts the next card inside this one.
+	"camera-config": { col: 0, row: 109, colSpan: 156, rowSpan: 49 },
 	"tool-dock-sensors": { col: 156, row: 0, colSpan: 156, rowSpan: 76 },
 	"saved-versions": { col: 156, row: 76, colSpan: 156, rowSpan: 40 },
-	"bed-probe": { col: 156, row: 116, colSpan: 156, rowSpan: 45 },
-	"heater-colors": { col: 0, row: 161, colSpan: 156, rowSpan: 76 },
-	"thermal-colors": { col: 156, row: 161, colSpan: 156, rowSpan: 60 },
-	"sensor-names": { col: 0, row: 237, colSpan: 312, rowSpan: 72 },
-	"filament-editor": { col: 0, row: 309, colSpan: 312, rowSpan: 130 },
-	// The Shaping Lab's editor — "Settings › Input shaping", the place the lab's own
-	// refusal copy sends the operator. Its own row rather than squeezed beside
-	// something: it is three stacked groups (box, motion, accelerometers) and
-	// the column it needs is wider than half this screen leaves.
-	"settings-shaping": { col: 0, row: 439, colSpan: 156, rowSpan: 178 },
-	"config-save": { col: 0, row: 617, colSpan: 312, rowSpan: 26 },
-	console: { col: 0, row: 643, colSpan: 312, rowSpan: 75 },
-	camera: { col: 0, row: 718, colSpan: 104, rowSpan: 75 },
+	"bed-probe": { col: 156, row: 116, colSpan: 156, rowSpan: 54 },
+	// Column 1 now ends at 170 (116 + 54) against column 0's 158; the pair below
+	// clears the taller of the two, as before.
+	"heater-colors": { col: 0, row: 170, colSpan: 156, rowSpan: 76 },
+	"thermal-colors": { col: 156, row: 170, colSpan: 156, rowSpan: 60 },
+	"sensor-names": { col: 0, row: 246, colSpan: 312, rowSpan: 72 },
+	"filament-editor": { col: 0, row: 318, colSpan: 312, rowSpan: 130 },
+	// The Shaping Lab's editor — "Settings › Input shaping", the place the lab's
+	// own refusal copy sends the operator. Two stacked groups since #140 took
+	// the accelerometer rows off it (box, motion).
+	"settings-shaping": { col: 0, row: 448, colSpan: 156, rowSpan: 112 },
+	// UNDER it and full width since #142, not beside it. #140 put the two side
+	// by side to fill the screen's two columns, which worked while the
+	// accelerometer card was eight narrow rows. It is now four wide ones —
+	// address, verdict, rate, resolution, Set, Read and the board's reply on one
+	// line per tool — and at 156 columns (≈616px) the two sentences on that line
+	// cannot both be legible; measured, they are intact from 676px. So the card
+	// takes both columns and sits below the pair's taller member (shaping, 112).
+	// This leaves the right-hand half of rows 448-560 empty. Nothing on this
+	// screen is the right size to fill it, and a hole is cheaper than a card
+	// that clips every reply it draws.
+	//
+	// The rows here are #142's structure carried onto #138's base: #138 grew
+	// camera-config and bed-probe by 9 rows each for the stacked field, so every
+	// row from heater-colors down moved +9 and this tail moves with it
+	// (settings-shaping 439->448, accelerometers 551->560, config-save 615->624,
+	// console 641->650, camera 716->725).
+	accelerometers: { col: 0, row: 560, colSpan: 312, rowSpan: 64 },
+	"config-save": { col: 0, row: 624, colSpan: 312, rowSpan: 26 },
+	console: { col: 0, row: 650, colSpan: 312, rowSpan: 75 },
+	camera: { col: 0, row: 725, colSpan: 104, rowSpan: 75 },
 };
 
 /** The built-in screens, in nav order. Ids are stable identities. */

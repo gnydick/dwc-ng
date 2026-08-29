@@ -194,3 +194,36 @@ test("every Shaping card is placed at its own registry size, and the columns do 
 		.map(([, s]) => (s === undefined ? 0 : s.row + s.rowSpan)));
 	assert.ok(SHAPING_COMPOSITION.console!.row >= bottom, `console at ${SHAPING_COMPOSITION.console!.row}, cards end at ${bottom}`);
 });
+
+/**
+ * The two stacked-field cards, placed at the size the registry measured (#138).
+ *
+ * SCOPED TO TWO IDS, not the whole Settings screen, and that is deliberate
+ * rather than lazy: several other cards on this screen are placed at spans that
+ * do not match their registry entry and overflow today (axis-roles by 12px,
+ * tool-dock-sensors by 3, config-save by 50 — measured 2026-08-28 on the mock),
+ * which is #94's subject and not this ticket's. Pinning them here would turn
+ * somebody else's open finding into a red test with no fix attached.
+ *
+ * What this DOES stop is the specific failure #138 names: a rowSpan raised in
+ * `defs.ts` and forgotten in `screens.ts`, so the card grows in the Card Lab
+ * and stays short on the screen an operator actually uses. Both cards were
+ * re-measured when their label moved above its input; if a future edit changes
+ * one of the two numbers, this says so.
+ *
+ * The OTHER half — that the rows below a card which grew were moved down with
+ * it — is already covered and needs no second assertion here: "built-in screen
+ * compositions are collision-free" above fails on exactly that, verified by
+ * leaving thermal-colors at its old row 161 inside the now-170-tall bed-probe.
+ */
+test("the stacked-field cards are placed at their own registry size", async () => {
+	const { SETTINGS_COMPOSITION } = await import("../src/compose/screens.ts");
+	for (const id of ["bed-probe", "camera-config"] as const) {
+		const slot = SETTINGS_COMPOSITION[id];
+		assert.ok(slot, `${id} is not placed on Settings`);
+		const natural = CARD_DEFS[id].size;
+		assert.equal(slot.rowSpan, natural.rowSpan, `${id} rowSpan: placed ${slot.rowSpan}, registry says ${natural.rowSpan}`);
+		assert.equal(slot.colSpan, natural.colSpan, `${id} colSpan`);
+	}
+});
+

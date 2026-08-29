@@ -116,16 +116,30 @@ export function HeaterColorsBody() {
 									onInput={e => app.config.setHeaterColor(i, e.currentTarget.value)}
 								/>
 								<span class="color-hex">{s().stroke}</span>
-								<Show when={overridden()}>
-									<button type="button" class="lab-pill" onClick={() => app.config.clearHeaterColor(i)}>
-										Reset
-									</button>
-								</Show>
+								{/* A RESERVED SLOT, not a conditional child. The per-row Reset
+								    appears the instant a colour is overridden and disappears
+								    when it is cleared — and it used to appear BETWEEN the hex
+								    and the clash slot, so overriding one heater pushed the
+								    clash slot 58px sideways on that row. That is the same
+								    defect #142 exists to remove, in the card #142 is about.
+
+								    The wrapper is always here and always the same width, so the
+								    row does not move; the BUTTON comes and goes inside it, so
+								    an absent Reset is absent from the tab order and from the
+								    accessibility tree rather than being a disabled control
+								    nobody can use. */}
+								<span class="color-reset">
+									<Show when={overridden()}>
+										<button type="button" class="lab-pill" onClick={() => app.config.clearHeaterColor(i)}>
+											Reset
+										</button>
+									</Show>
+								</span>
 								{/* ALWAYS rendered, empty when there is nothing to say. A box
 								    that came and went would change the row's width, and with it
 								    the card's own minimum, every time a pick landed near
 								    another. */}
-								<span class="color-clash" role="status" title={clashText()}>
+								<span class={`color-clash${clashText() === "" ? "" : " speaking"}`} role="status" title={clashText()}>
 									{clashText()}
 								</span>
 							</div>
@@ -140,10 +154,25 @@ export function HeaterColorsBody() {
 /** The cold → warm → hot ramp the temperature READINGS are keyed to. */
 export function ThermalColorsBody() {
 	const app = useApp();
+	/**
+	 * SYMBOLS, NOT PROSE, on the two outer bands (Gabe, 2026-08-28: "temp
+	 * gradient is shrinking below the prose horizontally, just change the last
+	 * row to '>160...' instead of the words, change first row to '<45...'").
+	 * "below 45 °C" and "160 °C and above" are wrappable prose whose longest
+	 * word still went into this card's width stop; the middle band was already
+	 * the compact range form and is left exactly as it was.
+	 *
+	 * `≥` rather than the `>` Gabe typed, on the hot band ONLY. The thresholds
+	 * these three strings describe are ToolsHeatersCard.tsx:473-474 — warm is
+	 * `>= 45 && < 160`, hot is `>= 160` — so 160.0 °C reads HOT, and "> 160 °C"
+	 * would be the one temperature at which the legend disagreed with the
+	 * colour beside it. Cold needs no such care: the band really is exclusive
+	 * at 45, so `<` is literal.
+	 */
 	const channels: Array<{ key: keyof ThermalColors; label: string; range: string }> = [
-		{ key: "cold", label: "Cold", range: "below 45 °C" },
+		{ key: "cold", label: "Cold", range: "< 45 °C" },
 		{ key: "warm", label: "Warm", range: "45 – 160 °C" },
-		{ key: "hot", label: "Hot", range: "160 °C and above" },
+		{ key: "hot", label: "Hot", range: "≥ 160 °C" },
 	];
 	const current = (): ThermalColors => app.config.config.thermalColors;
 	return (
@@ -174,7 +203,7 @@ export function ThermalColorsBody() {
 							/>
 							<span class={`color-hex t-${ch.key}`}>{value()}</span>
 							<span class="color-range">{ch.range}</span>
-							<span class="color-clash" role="status" title={clashText()}>
+							<span class={`color-clash${clashText() === "" ? "" : " speaking"}`} role="status" title={clashText()}>
 								{clashText()}
 							</span>
 						</div>
@@ -246,7 +275,11 @@ export function BedProbeBody() {
 				macro, not here — including whatever preconditions it should honour, the way mesh.g
 				refuses to probe with a tool undocked.
 			</p>
-			<label class="field">
+			{/* Stacked (#138, Gabe): the caption on its own row, the command under
+			    it. Still one <label> wrapping the input, so clicking the caption
+			    focuses the field — the geometry is in app.css's .field-stacked
+			    and nowhere else. */}
+			<label class="field field-stacked">
 				<span class="field-label">Probe point command</span>
 				<input
 					type="text"
@@ -263,7 +296,9 @@ export function CameraConfigBody() {
 	return (
 		<>
 			<p class="hint">Pin the camera (top-right, on any view) to show it as a panel on that view — position and size are set independently per view.</p>
-			<label class="field">
+			{/* Stacked (#138, Gabe) — see BedProbeBody above. The two cards share
+			    the modifier rather than the markup. */}
+			<label class="field field-stacked">
 				<span class="field-label">Stream URL</span>
 				<input
 					type="text"
@@ -318,8 +353,17 @@ const AXIS_ROWS = [
 }>;
 
 /**
- * The Shaping Lab's settings: the motion envelope, the capture defaults, and
- * which accelerometer belongs to which tool.
+ * The Shaping Lab's settings: the motion envelope and the capture defaults.
+ *
+ * WHAT IS NOT HERE, AND WHY (#140). The accelerometer address and its sampling
+ * rate used to be two more sections on this card. They are properties of the
+ * MACHINE, not of the shaping feature — #47's machine-dynamics battery wants
+ * the same two facts — and they were here only because the Lab was the first
+ * thing to want them. They are now `AccelerometersBody` below. What stayed is
+ * what genuinely belongs to a shaping RUN: the box it is allowed to move in,
+ * and the move it performs. `MOTION_FIELDS` in particular stays because it is
+ * shared with the Lab's Capture card under `one-motion-field-table` — it
+ * describes the move, not the sensor.
  *
  * This card is the ONLY way an envelope comes to exist (spec I8). Nothing
  * ships one, nothing derives one from axis limits or the object model, and the
@@ -334,22 +378,13 @@ const AXIS_ROWS = [
  * was refused, and that the envelope is now unset — in a slot that is always
  * on screen, so saying it moves nothing.
  *
- * Nothing on this card validates anything. `setShaping` and `setAccelAddr` are
- * the gates (config/parse.ts via config/store.ts) and the card's whole job is
- * to make their verdicts legible; shaping/settingsDraft.ts carries the words
- * and the per-axis probe, and both go through `asEnvelope` itself.
+ * Nothing on this card validates anything. `setShaping` is the gate
+ * (config/parse.ts via config/store.ts) and the card's whole job is to make its
+ * verdicts legible; shaping/settingsDraft.ts carries the words and the per-axis
+ * probe, and both go through `asEnvelope` itself.
  */
-export function ShapingBody(props: { ctx: CardCtx }) {
+export function ShapingBody() {
 	const app = useApp();
-	// The sampling controls talk to the accelerometer, which is the shaping
-	// service's business: it owns the address lookup the rest of this card
-	// already reads, and one owner is what keeps a rate shown here and a rate
-	// used by a run from being two different answers.
-	// The ACCEL service, not the Lab's. This card is eager (see compose/cards.tsx)
-	// and reaching the Lab's service from here is what put 23 modules of
-	// shaping/** on every cold load (#126). Same pool entry the Lab's Capture
-	// card takes, so the two cannot disagree about what the sensor reported.
-	const accel = props.ctx.service("accel");
 	const stored = (): Envelope | null => app.config.config.shaping.envelope;
 
 	// `edit` is null while the four fields MIRROR the store, and holds the
@@ -422,70 +457,6 @@ export function ShapingBody(props: { ctx: CardCtx }) {
 		setMotionNote(result.note);
 	};
 
-	// Same two-signal shape as the envelope, per tool.
-	const [accelEdit, setAccelEdit] = createSignal<Record<number, string>>({});
-	const [accelCommitted, setAccelCommitted] = createSignal<Record<number, string>>({});
-	const storedAddr = (tool: number): string | undefined => app.config.config.shaping.accelByTool[tool];
-	const accelField = (tool: number): string => accelEdit()[tool] ?? storedAddr(tool) ?? "";
-	/** Does the machine report an accelerometer at this tool's address? The
-	 *  SAME lookup the preconditions read makes, so a row here and a disabled
-	 *  Capture button cannot disagree about whether the sensor is there. */
-	const accelPresent = (tool: number): boolean => {
-		const raw = storedAddr(tool);
-		if (raw === undefined) return false;
-		const addr = parseAccelAddr(raw);
-		return addr !== null && accelerometerOf(app.om.om, addr) !== null;
-	};
-	const accelStatus = (tool: number): string =>
-		accelStatusText(judgeAccel(
-			accelField(tool), accelCommitted()[tool] ?? null, storedAddr(tool), accelPresent(tool),
-		));
-	const forget = (map: Record<number, string>, tool: number): Record<number, string> => {
-		const next = { ...map };
-		delete next[tool];
-		return next;
-	};
-/**
-	 * The rate and resolution fields, per tool.
-	 *
-	 * Held as text and never seeded from the board's report. What the sensor is
-	 * DOING and what the operator is ASKING FOR are different things, and a
-	 * field that mirrored the report would make "5376" look like a setting that
-	 * had been accepted when the board had quietly given 1344 — which is
-	 * precisely what RRF does when the resolution does not allow the rate.
-	 */
-	const [rateEdit, setRateEdit] = createSignal<Record<number, string>>({});
-	const [bitsEdit, setBitsEdit] = createSignal<Record<number, string>>({});
-	const [rateArmed, setRateArmed] = createSignal<number | null>(null);
-
-	/** What the board last said, in its own words. */
-	const accelReport = (tool: number) => accel.accelReportFor(tool);
-
-	const applyRate = (tool: number): void => {
-		const rate = Number(rateEdit()[tool]);
-		const bits = Number(bitsEdit()[tool] ?? "10");
-		if (!Number.isFinite(rate) || rate <= 0 || !Number.isInteger(bits) || bits <= 0) return;
-		if (rateArmed() !== tool) {
-			setRateArmed(tool);
-			return;
-		}
-		setRateArmed(null);
-		void accel.setAccelRate(tool, rate, bits);
-	};
-
-	const commitAccel = (tool: number): void => {
-		const text = accelField(tool).trim();
-		setAccelCommitted(prev => ({ ...prev, [tool]: text }));
-		if (text === "") app.config.clearAccelAddr(tool);
-		else app.config.setAccelAddr(tool, text);
-		// Read back, exactly as the envelope does: if the config now says what
-		// was typed, the row goes back to mirroring it.
-		if ((storedAddr(tool) ?? "") === text) {
-			setAccelEdit(prev => forget(prev, tool));
-			setAccelCommitted(prev => forget(prev, tool));
-		}
-	};
-
 	return (
 		<>
 			{/* No standing paragraph. Prose rewraps as the card is resized, and a
@@ -551,57 +522,175 @@ export function ShapingBody(props: { ctx: CardCtx }) {
 				)}
 			</For>
 			<p class="env-status" role="status" classList={{ bad: motionNote() !== "" }}>{motionNote()}</p>
+		</>
+	);
+}
 
-			<span class="set-cap">Accelerometers</span>
+/**
+ * The machine's accelerometers: which sensor is on which tool, and what rate
+ * and resolution it is running.
+ *
+ * SPLIT OUT OF THE SHAPING SETTINGS CARD (#140). Gabe, 2026-08-28: "split
+ * accelerometers & sampling configs out of the input shaping card into 1 shared
+ * card". The two sections were on a shaping-branded card only because the
+ * Shaping Lab was the first thing that wanted them, and an operator asking
+ * "which sensor is on T2" had to look under Input shaping to find out. An
+ * address and a sample rate are properties of the MACHINE — #47's
+ * machine-dynamics battery reads exactly these two facts — so the card is named
+ * for the hardware and nothing about it is shaping-branded.
+ *
+ * ONE card for both, not two, and that is the point of the "shared" in the
+ * ruling: the two failure modes look identical on a card that shows only one of
+ * them — no accelerometer, and an accelerometer sampling too slowly to see what
+ * you are asking it about. Splitting them across two cards would let an
+ * operator read the address without ever seeing the rate.
+ *
+ * NOTHING HERE DECIDES ANYTHING, in either half.
+ *
+ *  - The address goes through `setAccelAddr` (config/parse.ts via
+ *    config/store.ts), which is the one gate on what an address is, and the row
+ *    reports its verdict through `judgeAccel`/`accelStatusText` rather than
+ *    saying anything of its own.
+ *  - The rate does not go into the config at all. RRF adjusts the resolution to
+ *    be no greater than R and then picks a rate supported AT that resolution,
+ *    so what is typed here and what the sensor does are routinely different
+ *    numbers. The line under each row is the BOARD'S reply to `M955 P`, not an
+ *    echo of the fields.
+ *
+ * THE ACCEL SERVICE, not the Lab's. This card is eager (see compose/cards.tsx)
+ * and reaching the Lab's service from here is what put 23 modules of shaping/**
+ * on every cold load (#126). Same pool entry the Lab's Capture card takes, so
+ * the two cannot disagree about what the sensor reported.
+ *
+ * NO `Reset` ACTION, deliberately (#140 open question). `resetSection` is
+ * section-granular and the section is `shaping` — envelope, motion defaults and
+ * `accelByTool` together. A Reset here would silently take the operator's
+ * envelope with it, which is a card misstating its own scope. Blanking a row's
+ * field clears that address, which is the granularity this card actually owns.
+ */
+export function AccelerometersBody(props: { ctx: CardCtx }) {
+	const app = useApp();
+	// The ACCEL service, not the Lab's — see the note above.
+	const accel = props.ctx.service("accel");
+
+	// Two signals per tool, the same shape the envelope editor uses: `edit`
+	// holds the operator's own text and is absent while the row MIRRORS the
+	// store, `committed` is the text as it was at the last write. Without the
+	// second, "typed but not applied" and "applied and refused" are the same
+	// picture in the input.
+	const [accelEdit, setAccelEdit] = createSignal<Record<number, string>>({});
+	const [accelCommitted, setAccelCommitted] = createSignal<Record<number, string>>({});
+	const storedAddr = (tool: number): string | undefined => app.config.config.shaping.accelByTool[tool];
+	const accelField = (tool: number): string => accelEdit()[tool] ?? storedAddr(tool) ?? "";
+	/** Does the machine report an accelerometer at this tool's address? The
+	 *  SAME lookup the preconditions read makes, so a row here and a disabled
+	 *  Capture button cannot disagree about whether the sensor is there. */
+	const accelPresent = (tool: number): boolean => {
+		const raw = storedAddr(tool);
+		if (raw === undefined) return false;
+		const addr = parseAccelAddr(raw);
+		return addr !== null && accelerometerOf(app.om.om, addr) !== null;
+	};
+	const accelStatus = (tool: number): string =>
+		accelStatusText(judgeAccel(
+			accelField(tool), accelCommitted()[tool] ?? null, storedAddr(tool), accelPresent(tool),
+		));
+	const forget = (map: Record<number, string>, tool: number): Record<number, string> => {
+		const next = { ...map };
+		delete next[tool];
+		return next;
+	};
+
+	/**
+	 * The rate and resolution fields, per tool.
+	 *
+	 * Held as text and never seeded from the board's report. What the sensor is
+	 * DOING and what the operator is ASKING FOR are different things, and a
+	 * field that mirrored the report would make "5376" look like a setting that
+	 * had been accepted when the board had quietly given 1344 — which is
+	 * precisely what RRF does when the resolution does not allow the rate.
+	 */
+	const [rateEdit, setRateEdit] = createSignal<Record<number, string>>({});
+	const [bitsEdit, setBitsEdit] = createSignal<Record<number, string>>({});
+	const [rateArmed, setRateArmed] = createSignal<number | null>(null);
+
+	/** What the board last said, in its own words. */
+	const accelReport = (tool: number) => accel.accelReportFor(tool);
+
+	const applyRate = (tool: number): void => {
+		const rate = Number(rateEdit()[tool]);
+		const bits = Number(bitsEdit()[tool] ?? "10");
+		if (!Number.isFinite(rate) || rate <= 0 || !Number.isInteger(bits) || bits <= 0) return;
+		if (rateArmed() !== tool) {
+			setRateArmed(tool);
+			return;
+		}
+		setRateArmed(null);
+		void accel.setAccelRate(tool, rate, bits);
+	};
+
+	const commitAccel = (tool: number): void => {
+		const text = accelField(tool).trim();
+		setAccelCommitted(prev => ({ ...prev, [tool]: text }));
+		if (text === "") app.config.clearAccelAddr(tool);
+		else app.config.setAccelAddr(tool, text);
+		// Read back, exactly as the envelope does: if the config now says what
+		// was typed, the row goes back to mirroring it.
+		if ((storedAddr(tool) ?? "") === text) {
+			setAccelEdit(prev => forget(prev, tool));
+			setAccelCommitted(prev => forget(prev, tool));
+		}
+	};
+
+	return (
+		<>
+			{/* ONE ROW PER TOOL (Gabe, 2026-08-28: "accelerometers card should have
+			    the rows combined, no need for 8 rows, each set of 4 tools twice").
+			    #140 shipped this card as two SECTIONS — Address, then Sampling —
+			    each with a row per tool, so a four-tool machine drew eight rows and
+			    said "T0…T3" twice. The tool is the thing the operator is looking
+			    for, and it was the one thing repeated.
+
+			    Nothing is dropped by the merge: the address field, its verdict, the
+			    rate, the resolution, the arming Set/Confirm, the Read, and the
+			    board's reply are all still here, in that order, on one line.
+
+			    The two section captions are gone with the sections. There is one
+			    group now, and the card's own title is what names it; a caption over
+			    a single list is a heading for nothing. What the captions used to
+			    say per COLUMN is carried by each control itself — the placeholders
+			    ("board.device", "Hz", "bits") and the aria-labels, which is what an
+			    assistive reader had to rely on inside a row anyway.
+
+			    No standing paragraph, for the reason the shaping card gives: prose
+			    rewraps as a card is resized, and everything it would say is said by
+			    the per-row status slots, which have to exist anyway. */}
 			<Show when={app.om.om.tools.length} fallback={<p class="job-empty">Waiting…</p>}>
 				<For each={app.om.om.tools}>
 					{tool => (
 						<Show when={tool}>
 							{t => (
 								<div class="field">
+									{/* Once, not twice — the whole point of the merge. */}
 									<span class="field-label">T{t().number}</span>
 									<input
 										type="text"
 										class="accel-addr"
 										placeholder="board.device"
 										aria-label={`T${String(t().number)} accelerometer address`}
+										title={`T${String(t().number)} accelerometer address`}
 										value={accelField(t().number)}
 										onInput={e => setAccelEdit(prev => ({ ...prev, [t().number]: e.currentTarget.value }))}
 										onChange={() => commitAccel(t().number)}
 										onKeyDown={e => { if (e.key === "Enter") commitAccel(t().number); }}
 									/>
-									{/* Reserved, like the envelope's line: four tools that each
-									    gain and lose a sentence would reflow the card on every
-									    edit. */}
-									<span class="accel-status" role="status" title={accelStatus(t().number)}>
-										{accelStatus(t().number)}
-									</span>
-								</div>
-							)}
-						</Show>
-					)}
-				</For>
-			</Show>
-
-			{/* Sampling rate, beside the address because it is a property of the
-			    same sensor — and because the two failure modes look identical on
-			    a card that shows only one of them: no accelerometer, and an
-			    accelerometer sampling too slowly to see what you are asking it
-			    about.
-
-			    RRF adjusts the resolution to be no greater than R and then picks
-			    a rate supported AT that resolution, so what is typed here and
-			    what the sensor does are routinely different numbers. That is why
-			    the line under each row is the board's own reply and not an echo
-			    of the fields. */}
-			<span class="set-cap">Sampling</span>
-			<Show when={app.om.om.tools.length} fallback={<p class="job-empty">Waiting…</p>}>
-				<For each={app.om.om.tools}>
-					{tool => (
-						<Show when={tool}>
-							{t => (
-								<div class="field">
-									<span class="field-label">T{t().number}</span>
+									{/* Sampling, on the SAME row as the address because it is a
+									    property of the same sensor — and because the two failure
+									    modes look identical on a card that shows only one of
+									    them: no accelerometer, and an accelerometer sampling too
+									    slowly to see what you are asking it about. Merging the
+									    rows makes that pairing structural rather than a matter
+									    of scrolling between two sections. */}
 									<input
 										type="number"
 										class="accel-rate"
@@ -609,6 +698,7 @@ export function ShapingBody(props: { ctx: CardCtx }) {
 										min="1"
 										step="1"
 										aria-label={`T${String(t().number)} sample rate`}
+										title={`T${String(t().number)} sample rate`}
 										value={rateEdit()[t().number] ?? ""}
 										onInput={e => { setRateArmed(null); setRateEdit(prev => ({ ...prev, [t().number]: e.currentTarget.value })); }}
 									/>
@@ -619,11 +709,17 @@ export function ShapingBody(props: { ctx: CardCtx }) {
 										min="1"
 										step="1"
 										aria-label={`T${String(t().number)} resolution in bits`}
+										title={`T${String(t().number)} resolution in bits`}
 										value={bitsEdit()[t().number] ?? ""}
 										onInput={e => { setRateArmed(null); setBitsEdit(prev => ({ ...prev, [t().number]: e.currentTarget.value })); }}
 									/>
+									{/* `accel-set` declares the button's WIDTH (app.css). Its label
+									    changes with state — SET becomes CONFIRM when a rate is
+									    armed — and an undeclared button is padding around its
+									    label, so arming a row used to push the Read button, the
+									    board's reply and the verdict 31px sideways. */}
 									<button
-										class="fb-tool"
+										class="fb-tool accel-set"
 										classList={{ "shp-arming": rateArmed() === t().number }}
 										disabled={!accelPresent(t().number)}
 										onClick={() => applyRate(t().number)}
@@ -633,10 +729,65 @@ export function ShapingBody(props: { ctx: CardCtx }) {
 									<button class="fb-tool" disabled={!accelPresent(t().number)} onClick={() => void accel.readAccel(t().number)}>
 										Read
 									</button>
-									{/* The board's own words, reserved so four tools do not
-									    reflow the card as replies arrive. */}
-									<span class="accel-status" role="status" title={reportText(accelReport(t().number))}>
+									{/* The board's own words, kept as a SECOND reserved slot
+									    rather than folded into the verdict beside it. RRF adjusts
+									    the resolution to be no greater than R and then picks a
+									    rate supported AT that resolution, so what is typed here
+									    and what the sensor does are routinely different numbers,
+									    and this is the sensor's answer — not an echo of the
+									    fields and not a judgement on the address. One slot would
+									    need a precedence rule to decide which of the two to show
+									    when both have something to say ("not applied" standing
+									    over a reply from the address before it), and inventing
+									    that rule is this card deciding something. It decides
+									    nothing.
+
+									    BEFORE the verdict, and that order is load-bearing —
+									    see the verdict's own note below. */}
+									<span class="accel-status accel-reply" role="status" title={reportText(accelReport(t().number))}>
 										{reportText(accelReport(t().number))}
+									</span>
+									{/* The gate's verdict on the address, and the LAST thing in
+									    the row on purpose.
+
+									    Gabe, 2026-08-28: "the new accelerometer card has a huge
+									    artificial blank between input field columns 1 and 2".
+									    This slot used to sit immediately after the address it
+									    judges, and it is EMPTY whenever the mapping works — which
+									    is the ordinary state — so its reserved 144px rendered as
+									    a hole between two columns of inputs.
+
+									    Three things have to hold at once and only this position
+									    holds all three:
+
+									      · nothing else may move when a message appears or clears
+									        (four tool rows reflowing as the operator types is the
+									        reflow this slot was reserved to prevent in the first
+									        place);
+									      · the reservation may not show as blank when silent;
+									      · and it may not put its sentence into the card's
+									        min-content (#142).
+
+									    A reserved box that is LAST has no neighbour to its right,
+									    so the space it holds when silent is indistinguishable
+									    from the row's own trailing space — invisible — while
+									    still moving nothing when it speaks. Anywhere else in the
+									    row, "invisible when silent" and "moves nothing when
+									    speaking" are the same property with opposite signs.
+
+									    This is why the reply above it comes FIRST: reportText
+									    never returns "" (it says "not asked" before anything has
+									    been read), so it is never the silent one, and the slot
+									    that CAN be silent is the one that gets the end of the
+									    row. That is pinned by a test — accelerometer-card.test.ts
+									    — because it is a layout claim resting on a string
+									    function's totality. */}
+									<span
+										class={`accel-status${accelStatus(t().number) === "" ? "" : " speaking"}`}
+										role="status"
+										title={accelStatus(t().number)}
+									>
+										{accelStatus(t().number)}
 									</span>
 								</div>
 							)}

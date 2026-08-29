@@ -1310,6 +1310,12 @@
 	align-items: center;
 	gap: calc(2.5 * var(--u));
 	padding: var(--sp-field) 0;
+	/* The text input's declared width, as ONE number. It is referenced by the
+	   input's `width` and by its `min-width` — and, once a field stacks, by the
+	   floor that stands in for the contained element's intrinsic width. Three
+	   references to one token rather than three literals that agree today; the
+	   rule below says what the number is for. */
+	--field-input-w: calc(24 * var(--u));
 }
 /* Rule BETWEEN rows. Keyed off adjacency, not :first-of-type — fields are
    <label> in one card and <div> in another, so :first-of-type gave the first
@@ -1344,17 +1350,175 @@
    (flex-basis 0%) still governs actual growth, so the real, at-rest size is
    unaffected; min-width stays alongside it only so shrinking can never go
    below this floor either. */
+/* AND A CEILING, which this rule was missing until #144. `flex: 1` is
+   `1 1 0%`: the input takes ALL the free space in its row, without limit. The
+   line below has capped NUMBER inputs at 22.5u since it was written; the text
+   case was never given the same treatment, so thirteen text inputs across four
+   cards grew linearly with their card — measured on the mock at the coded
+   spans, Axis roles 7 x 516px, Camera URL 497px, Bed probing 429px, Sensor
+   names 4 x ~512px, every one of them over 1500px by colSpan 420.
+
+   Gabe, 2026-08-28: "'camera url' and 'bed probing' cards have a common
+   problem. their text input field grows infinitely if the card is stretched
+   sideways, there should be some reasonable limit to use for display".
+
+   88u IS DERIVED, not round. The longest thing any of these fields is meant to
+   display is the shipped probe-point command, `M98 P"0:/macros/dwc-ng/
+   reprobe.g" X{x} Y{y}` (config/types.ts) — 44 characters, which this face
+   renders at 86.41u INCLUDING the field's padding at the worst of the three
+   scale steps (86.41 at 075, 86.25 at 100, 86.08 at 150; measured 2026-08-28).
+   A realistic camera URL with a path and query, `http://printercams.local:8080/
+   ?action=stream`, wants 85.26u by the same measurement. 88u clears both with
+   ~1.6u to spare.
+
+   WHY A u-MULTIPLE TRACKS THE TEXT AT ALL: body font-size is `calc(4 *
+   var(--u))` (index.css), so glyph advances scale with --u and the numbers
+   above differ by less than 0.4u across 075-150 — that residue is advance
+   rounding at different pixel sizes, and taking the cap from the WORST step is
+   what absorbs it. A cap chosen at one scale would not have been a fix.
+
+   The cap can never collide with the floor above it: 88u > 24u at every scale,
+   because both are multiples of the same unit. Asserted on the source in
+   test/intrinsic-floors.test.ts, together with the rule shape that matters more
+   than this number — a `.field input` that can grow must say where it stops. */
 .field input[type="text"], .field input[type="number"] {
 	flex: 1;
-	width: calc(24 * var(--u));
-	min-width: calc(24 * var(--u));
+	width: var(--field-input-w);
+	min-width: var(--field-input-w);
+	/* The floor is the token (#138, which stacked two of these fields and needed
+	   one number for the width both cards' floors are measured from); the cap is
+	   #144's 88u, derived above. Both land here: the token is 24u, so the cap
+	   still clears the floor at every scale, and #138's own assertion in
+	   test/intrinsic-floors.test.ts reads the token's VALUE rather than matching
+	   a calc() literal, which is what keeps the cap-vs-floor check firing now
+	   that the floor is no longer written out here. */
+	max-width: calc(88 * var(--u));
 	background: var(--mask-900);
 	border: 0;
 	box-shadow: inset 0 0 0 1px var(--hairline);
 	border-radius: var(--radius);
 	padding: var(--sp-field) calc(2.5 * var(--u));
 }
+/*
+   @invariant field-input-growth-is-bounded
+   @rung 4  source assertion — test/intrinsic-floors.test.ts splits every rule
+            in app.css into one entry per SELECTOR, decides which of them style
+            an input (the selector names the element, or its rightmost compound
+            is made only of classes the TSX actually puts on an <input> or
+            <textarea>), merges each selector with every later rule written with
+            the same selector, and fails the suite if any `.field` input can
+            grow (via `flex-grow` or the grow component of `flex`) without a
+            `max-width` that is a length in --u at or above its own min-width —
+            where the floor may itself be a `var()` token, resolved from
+            index.css or app.css. A max-width that is not a length in --u is a
+            fault whether or not the rule grows, since `none` is how a cap gets
+            removed. Growing inputs OUTSIDE `.field` are held at a committed
+            count (11) that cannot rise silently. Six red checks in the same
+            file run the predicate over the declaration #144 replaced, a cap
+            below its floor, `max-width: none`, a token floor, and assert the
+            scan reaches `.om-filter` / `.pin-cmd` / `.shp-run-name` — each
+            required to fail or to hold, so the assertion is known to be
+            capable of failing
+   @debt ELEVEN GROWING INPUTS OUTSIDE `.field`, COUNTED AND NOT CAPPED, by
+         name: `.console-form input`, `.om-filter`, `.fb-input.grow`,
+         `.compose-row .fb-input`, `.studio-name`, `.st-options`,
+         `.st-rowlabel`, `.st-template`, `.pin-cmd`, `.shp-decay-filter
+         .fb-input`, `.shp-run-name`. Every one of them is a text input with
+         `flex-grow` and no ceiling — the same defect this invariant is about —
+         and the first version of this check could not see any of them, because
+         its filter looked for the word `input` beside `.field` in a selector.
+         They are held at a count rather than fixed because capping them
+         changes the console, the OM inspector, the Card Studio, the file
+         browser and the Shaping Lab, which Gabe has not asked for. Promote by
+         capping them (one ruling, eleven one-line changes) — at which point
+         the count drops to zero and the `.field` qualifier can come out of the
+         invariant's name. Also, the merge is by IDENTICAL SELECTOR only: a cap
+         removed by a DIFFERENT selector of higher specificity is not seen, and
+         closing that needs the resolved cascade from a browser rather than a
+         parser.
+         AND SECOND, A CAP, NOT A VOCABULARY. Every text field now stops at ONE number, and
+         the four cards do not all want the same one: measured 2026-08-28, the
+         probe command wants 86.4u and a real camera URL 85.3u, but an axis
+         role label wants 30.5u and a sensor name 41.1u. So Axis roles and
+         Sensor names are BOUNDED but still far wider than their content, which
+         is the complaint answered and not the design settled. Promote with
+         declared per-content-kind classes (the `.env-bound` shape already in
+         this sheet: width/min-width/max-width together, sized by what the field
+         HOLDS) plus a lint that a `.field` text input without one is a failure
+         — that turns "someone picked a number for all of them" into "the field
+         declares what it holds". It changes the look of four cards at once, so
+         it is Gabe's call, filed as #144 Q1 and NOT taken here. Also unsettled:
+         the cap is derived from the SHIPPED default probe command, not from
+         Gabe's own config on the printer (#144 Q2) — no printer was touched
+   @why #144: `flex: 1` on this rule with no ceiling meant thirteen text inputs
+        across four cards grew linearly with their card, past 1500px at colSpan
+        420 (Camera URL 497 -> 1553, Bed probing 429 -> 1485, Sensor names
+        ~512 -> 1564, Axis roles 516 -> 1572; measured on the mock). Number
+        inputs had carried a cap all along on the very next line, so this was
+        one declaration missing one property, not a class of unrelated bugs.
+        It is the exact complement of #142's reserved slot: there a minimum
+        LARGER than the content needed, here no maximum at all, and in both
+        cases the number the layout obeys is not the number the content
+        justifies
+*/
 .field input::placeholder { color: var(--silk-dim); }
+
+/* THE STACKED FIELD — label on its own row, input under it.
+   ────────────────────────────────────────────────────────────────────────────
+   TWO CARDS ONLY: Bed probing and Camera URL (cards/SettingsCards.tsx). Asked
+   whether every label/input pair should stack, Gabe answered "no, just the two
+   i asked to stack" (2026-08-28, #138), and `.field` is worn by thirteen rows
+   across two card files — so this is an OPT-IN modifier and not an edit to the
+   rule above. One declaration, applied twice: a third stacked field later is a
+   class name, never a second copy of this geometry, and the ruling stays
+   checkable by reading two class attributes.
+   test/intrinsic-floors.test.ts counts the call sites and names them.
+
+   UNCONDITIONAL, not responsive. A stack that only happened below some width
+   would make each card's floor a function of its own width — the same shape as
+   #136's clipped prose, where a fixed box and a reflowing sentence disagreed
+   five columns above the card's stop. One layout is one floor.
+
+   `flex: 0 0 auto` is required, not tidiness: in a column the shared `flex: 1`
+   is on the BLOCK axis and would grow the input vertically to fill the card.
+
+   THE INPUT FILLS THE ROW WITHOUT VOTING ON THE CARD'S FLOOR, and that pairing
+   is the whole of the rule below. An input sized `auto` — or `100%`, which
+   behaves as auto for intrinsic sizing — hands its min-content contribution
+   back to Chromium's font-metric `size=20` default, exactly the value the
+   comment above records failing the 2026-08-21 scale sweep on five cards, Bed
+   probing and Camera URL among them. MEASURED here the same way: with `width:
+   auto` this card's colStop read 61 cells at scale 100 and 150 but 64 at 075 —
+   a three-cell drift against SCALE_TOLERANCE_CELLS of 1, and a regression
+   introduced by the stack rather than inherited (unstacked baseline: 55 cells
+   at all three steps). `contain: inline-size` takes the element's own contents
+   out of its intrinsic width — the same tool, and the same reason, as the chart
+   hosts — so the contribution becomes the declared `min-width` above, which is
+   n × --u and therefore scales. test/intrinsic-floors.test.ts already requires
+   every contained element to declare that floor.
+
+   `box-sizing: border-box` because the sheet's default is content-box and the
+   input carries its own padding: without it `width: 100%` is 100% plus 5u.
+
+   The width the input settles at is deliberately not capped here: that belongs
+   on the shared input rule where every field gets it (#144), not on this
+   modifier, so the bound lives in one place. */
+.field-stacked {
+	flex-direction: column;
+	align-items: stretch;
+	gap: calc(1 * var(--u));
+}
+.field-stacked > input[type="text"], .field-stacked > input[type="number"] {
+	flex: 0 0 auto;
+	box-sizing: border-box;
+	width: 100%;
+	contain: inline-size;
+	/* Restated because containment silences the element's own contribution and
+	   test/intrinsic-floors.test.ts requires a contained element to declare its
+	   floor on the rule that contains it. Same token as the width above, so the
+	   bound is still one number in one place. */
+	min-width: var(--field-input-w);
+}
 .field input[type="number"] { width: calc(10 * var(--u)); min-width: calc(10 * var(--u)); max-width: calc(22.5 * var(--u)); }
 
 .check {
@@ -1648,7 +1812,11 @@ input[type="checkbox"] {
 	   would paint UNDER it and never be seen. outline paints after descendants
 	   (painting-order step 10), like a border did, and is exempt from the px
 	   lint (zero layout space) the same way box-shadow is. */
-	width: calc(40 * var(--u)); height: calc(40 * var(--u)); outline: 1px solid var(--hairline); outline-offset: -1px; border-radius: var(--radius);
+	/* min-height restates the height so the box cannot be squeezed to zero if it
+	   ever becomes a flex item: `overflow: hidden` removes the automatic
+	   min-content minimum (#136). Named on the block axis rather than
+	   flex-shrink, which would freeze the inline axis too. */
+	width: calc(40 * var(--u)); height: calc(40 * var(--u)); min-height: calc(40 * var(--u)); outline: 1px solid var(--hairline); outline-offset: -1px; border-radius: var(--radius);
 	background: var(--mask-900); display: flex; align-items: center; justify-content: center; overflow: hidden;
 	background-image: linear-gradient(45deg, var(--mask-700) 25%, transparent 25%), linear-gradient(-45deg, var(--mask-700) 25%, transparent 25%),
 		linear-gradient(45deg, transparent 75%, var(--mask-700) 75%), linear-gradient(-45deg, transparent 75%, var(--mask-700) 75%);
@@ -1795,6 +1963,24 @@ input[type="checkbox"] {
 	flex: none;
 }
 .color-range { font-size: calc(3.375 * var(--u)); color: var(--silk-dim); flex: none; }
+/* The per-row Reset's slot on the Chart colours card. Declared, and NOT
+   shrinkable: unlike the clash slot beside it, what lives in here is a click
+   target with a label — a slot that gave at the card's floor would clip the
+   word out of a button rather than out of a sentence.
+
+   15u is the pill's own width, measured 2026-08-28 at data-scale 075 / 100 /
+   150: 43.83 / 58.45 / 87.69px, which is 14.609 / 14.613 / 14.615u — the same
+   multiple at every step, so one number covers all three with 0.385u to spare.
+
+   IT COSTS 15u OF THE ROW'S MINIMUM and that is honest rather than artificial,
+   which is the distinction #142 draws: this card really can be holding four of
+   these buttons, and a floor that pretended otherwise would clip them. Measured
+   the same session, it costs the CARD nothing — the rows go 214 -> 274px and
+   the body's stop stays 330.5px, because this card is bound by its own header
+   (298.5px) and not by its rows. The clash slot next to it is the opposite
+   case, a message the card is usually NOT drawing, and is floored at the mark
+   instead. */
+.color-reset { flex: 0 0 calc(15 * var(--u)); display: flex; align-items: center; }
 /* A statement of fact, not an error: the pick still stands. Gold, not red —
    red would read as "rejected", and nothing here is rejected. */
 /* Sits immediately after the Reset button, left-aligned, in the flow.
@@ -1808,24 +1994,171 @@ input[type="checkbox"] {
 	font-size: calc(3.25 * var(--u));
 	letter-spacing: 0.04em;
 	color: var(--gold);
-	/* A RESERVED box, always present and always this wide — empty when there is
-	   nothing to say. Two things follow.
+	/* A RESERVED box, always the same size whether it is speaking or silent —
+	   but NOT a reserved 140px of the card's minimum width (#142).
 
-	   It is included in the card's width stop: contentColSpan measures
-	   min-content, so wrappable prose would contribute only its longest word
-	   and the card could be dragged narrow enough to fold this into three
-	   lines. Refusing to wrap makes its min-content its full width.
+	   The width this box PREFERS is fixed, and that is what buys positional
+	   stability: a content-sized box would move everything on the row as you
+	   edited colours. The basis below never changes, so nothing on the row
+	   moves as a message appears, lengthens or clears, and the card's stop
+	   cannot shift under you either.
 
-	   And that width is FIXED rather than the message's own. The text runs 99px
-	   ("close to Bed (ΔE 2.1)") to 138px ("close to Chamber (ΔE 100.0)"), so a
-	   content-sized box moved the card's minimum by 40px depending on which two
-	   colours happened to be close — a stop that shifts under you as you edit.
-	   Same discipline as .filament-loaded: reserve the space, let the content
-	   come and go inside it. */
-	flex: 0 0 calc(35 * var(--u));
-	white-space: nowrap;
+	   The basis is sized from the message, MEASURED rather than recalled
+	   (2026-08-28, --u: 4px, this face and size, mark included): "close to
+	   Bed (ΔE 2.1)" 144px, "close to Tool 0 (ΔE 0.0)" 160px, "close to
+	   Chamber (ΔE 100.0)" 189px, and 200px for a numbered chamber. #142's
+	   spec put the worst case at 138px, which is 50px short of what this
+	   sheet actually renders — worth saying, because the OLD design derived
+	   its hard floor from that number. This one does not: the basis is a
+	   preference, so a message that outruns it wraps into the second reserved
+	   line instead of setting anything.
+
+	   The width this box REQUIRES is a different number, and it used to be the
+	   same one. `flex: 0 0` with `white-space: nowrap` put the whole sentence
+	   into contentColSpan's min-content probe: 140px of the 360px the Chart
+	   colours body reported, on a message that is absent in the ordinary
+	   session. Both cards' stops were more than a third space for something
+	   they were not drawing. `overflow-wrap: anywhere` is what removes it —
+	   ordinary wrapping would still contribute the longest WORD, and a heater
+	   called "Chamber" is 50px of it.
+
+	   A wrapping slot that can grow a second line moves the card's ROW floor
+	   instead, which is trading one defect for its mirror, so the height is
+	   reserved at exactly two of its own lines (--ctl-h is 7.5u, the line is
+	   3.75u) — the .env-status discipline, one axis over.
+
+	   WHICH DECLARATION ACTUALLY TAKES IT OUT OF THE FLOOR was measured on
+	   2026-08-28, forcing one property at a time in Edge against the
+	   Accelerometers card's contentColSpan, and it is NOT the one this comment
+	   used to name. Toggling `white-space: nowrap` on, `overflow-wrap` back to
+	   `normal`, or `overflow` to `visible` moved the stop by ZERO cells (132
+	   each time). Setting flex-shrink to 0 moved it to 198; setting min-width to
+	   auto moved it to 119. A shrinkable flex item contributes its declared
+	   `min-width` to min-content and nothing else. So:
+
+	     · `flex: 0 1` — the 1 is the whole remedy. `flex: 0 0` was the defect:
+	       an item that cannot shrink holds the row open at its full basis.
+	     · `min-width` is then EXACTLY what this slot costs the card, and the
+	       two numbers below can simply be added up by a reader.
+
+	   `overflow-wrap: anywhere` and the absence of nowrap are still required,
+	   but for LEGIBILITY and not for the floor: they are what makes a message
+	   too long for the box wrap into the second reserved line instead of
+	   running off the end of the first.
+
+	   AND IT IS ELLIPSED (Gabe, 2026-08-28: "put the ellipsis back"). #142's
+	   first round dropped `text-overflow: ellipsis`, because that property only
+	   fires beside `white-space: nowrap` and nowrap is what this rule exists to
+	   remove — so a message longer than two lines was cut mid-word with no cue
+	   that anything had been cut. `-webkit-line-clamp` is the mechanism that
+	   ellipsises a WRAPPED box: `display: -webkit-box` + `-webkit-box-orient:
+	   vertical` + `overflow: hidden`, clamped to the number of lines actually
+	   reserved. It costs nothing in min-content, by the measurement above, and
+	   the same construction is already in this sheet at .shp-thread-why (3
+	   lines) and .shp-caveat (2).
+
+	   Verified in the browser rather than read off the spec: Edge reports the
+	   computed `display` of these slots as `flow-root` (they are flex items and
+	   Chromium blockifies the legacy box) and applies the clamp anyway —
+	   "LIS3DSH at 5376 Hz, 12-bit — shows up to 2688 Hz" in a 31u slot renders
+	   as two lines ending "shows up t…".
+
+	   And the floor is the MARK's width, not zero: at the card's new minimum
+	   the text has no room left, and a warning that vanishes exactly when the
+	   card is smallest is not a warning. .speaking draws a dot that always
+	   fits. THAT ARGUMENT HOLDS ONLY FOR A SLOT THAT CAN BE SILENT, which this
+	   one is — a clash slot is empty unless two colours collide. See
+	   .accel-reply for the slot where it does not hold, and what its floor is
+	   sized from instead. */
+	flex: 0 1 calc(51 * var(--u));
+	min-width: calc(4 * var(--u));
+	height: var(--ctl-h);
+	/* The block-axis floor #136 requires of every fixed-height clipped box.
+	   Same number as the height above ON PURPOSE — the height is already the
+	   two reserved lines, and this says so as a floor rather than only as a
+	   preference, so the box cannot become its card's shock absorber. It is
+	   `min-height` and not `flex-shrink: 0` because this is a flex ROW item:
+	   freezing it would freeze the INLINE axis, and the `flex: 0 1` shrink
+	   above is exactly what keeps this slot out of the card's width stop
+	   (#142). The two rules meet here without either giving anything up. */
+	min-height: var(--ctl-h);
+	line-height: calc(3.75 * var(--u));
+	overflow-wrap: anywhere;
 	overflow: hidden;
-	text-overflow: ellipsis;
+	display: -webkit-box;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 2;
+}
+/*
+   @invariant reserved-slot-out-of-the-card-floor
+   @rung 4  source assertion — test/intrinsic-floors.test.ts DERIVES the set of
+            reserved slots from this sheet's own `.speaking::before` mark rule
+            (a slot missing from it reserves width for a mark it never draws),
+            reads the class lists those slots are actually RENDERED with out of
+            every .tsx under src, merges every plain class-compound rule that
+            applies to each of those class lists in source order, and fails the
+            suite unless the resulting cascade is shrinkable (flex-shrink >= 1)
+            on a fixed u-multiple basis, declares a positive u-multiple
+            min-width, reserves a whole number >= 2 of its own lines, clips,
+            wraps anywhere, does not nowrap, and carries a -webkit-line-clamp
+            equal to the lines it reserved. Four red checks run the predicate
+            over the declaration #142 replaced, over a nowrap and an
+            unshrinkable co-class override, over a floorless slot and over a
+            clamp that stops short of the last reserved line, and require each
+            to fail — so the assertion is known to be capable of failing, and
+            capable of failing on the exact bypass it previously allowed
+   @debt SELECTOR SHAPES IT CANNOT READ. The slot list and the rendered class
+         lists are both derived now, so no hand-maintained enumeration remains,
+         and the two bypasses that survived #142's first round (a co-class
+         overriding flex, a co-class adding nowrap) are caught. What is still
+         approximate is the cascade: only PLAIN CLASS COMPOUNDS are merged, so
+         a rule reaching a slot through a descendant combinator, an attribute,
+         :is() or a pseudo-class is silently not merged, and specificity is
+         approximated by source order. A class added through `classList` is
+         refused outright rather than mis-read. Promote by measuring the mirror
+         of judgeFloor in dev/layoutAudit.ts — "is this card's floor LARGER
+         than its body needs" — over the whole registry in a real layout, which
+         reads the resolved cascade from the browser instead of parsing for it
+         and needs no selector vocabulary at all. Also still outside this
+         predicate: POSITION, which #142's second round showed is half the
+         property (a reserved slot must be last in its row or its silence is a
+         visible hole — Gabe, 2026-08-28), pinned per card in
+         accelerometer-card.test.ts
+   @why #142: .color-clash was `flex: 0 0 calc(35 * var(--u))`, an item that
+        cannot shrink, so its whole 140px basis went into contentColSpan's
+        min-content probe for a message that is absent in the ordinary session.
+        Both colour cards' width stops were more than a third space for
+        something they were not drawing (Chart colours 92 cells, Temperature
+        Gradient 104; 85 and 76 after). It is the exact mirror of #134 — an
+        artificial floor is as wrong as an unenforced one, because in both
+        cases the number the layout obeys is not the number the content
+        justifies. The attribution was itself wrong the first time round and is
+        corrected here from measurement: nowrap and overflow-wrap move this
+        number by ZERO cells, flex-shrink moves it by 66, and min-width is then
+        the whole of what the slot costs
+*/
+/* The mark, and the whole of what survives at the card's floor. Drawn from the
+   state class rather than from an element that is always present: an empty
+   marker box would be a second thing to keep in sync with the message.
+
+   ONE declaration for every reserved slot that carries the discipline above —
+   .color-clash here and .accel-status on the Accelerometers card. The two live
+   in different sections of this sheet and a copy in each would be two numbers
+   that must agree about how wide "the mark" is, which is the min-width the
+   slots reserve for it. They agree because there is one rule. */
+.color-clash.speaking::before,
+.accel-status.speaking::before {
+	/* Drawn, not typed. A CF escape rendered as tofu in the display face —
+	   a mark whose whole job is to survive at the card's floor cannot depend
+	   on a glyph being present in whatever font resolves. */
+	content: "";
+	display: inline-block;
+	width: calc(1.5 * var(--u));
+	height: calc(1.5 * var(--u));
+	margin-right: calc(1 * var(--u));
+	border-radius: 50%;
+	background: currentColor;
+	vertical-align: middle;
 }
 
 /* ---------- settings · shaping ---------- */
@@ -1894,32 +2227,168 @@ input[type="checkbox"] {
 /* "20.0" is four characters; the generic text field's 24u is most of a row
    of slack the tool's status has better use for. */
 .field input[type="text"].accel-addr { flex: 0 0 calc(15 * var(--u)); width: calc(15 * var(--u)); min-width: calc(15 * var(--u)); }
-/* Reserved for the same reason as .color-clash: four tool rows that each
-   gained and lost a sentence would move the card's stop as you edited. Fixed
-   width, not the message's own, so which tool is unmapped never changes the
-   card's minimum. */
+/* The rate and the resolution, pinned rather than left on `.field input
+   [type="number"]`'s `flex: 1`. Since the address and the sampling controls
+   share ONE row, a growing input pushes the Set/Read buttons and the board's
+   reply sideways as the card is dragged — an element that moves when nothing
+   about the tool changed. Four digits of rate ("5376") and two of resolution,
+   plus the field padding, are what these two numbers are. */
+.field input[type="number"].accel-rate { flex: 0 0 calc(14 * var(--u)); width: calc(14 * var(--u)); min-width: calc(14 * var(--u)); max-width: calc(14 * var(--u)); }
+.field input[type="number"].accel-bits { flex: 0 0 calc(11 * var(--u)); width: calc(11 * var(--u)); min-width: calc(11 * var(--u)); max-width: calc(11 * var(--u)); }
+/* THE ARMING BUTTON IS DECLARED, so arming a row moves nothing after it.
+   `.fb-tool` is padding around its label and nothing else, so a button whose
+   label CHANGES with state resizes when it changes: "SET" measures 10.34u and
+   "CONFIRM" 18.195u in this face (measured 2026-08-28 at data-scale 075 / 100 /
+   150 — 10.34 / 10.338 / 10.34 and 18.193 / 18.195 / 18.193, the same
+   u-multiple at every step), and the 7.86u between them pushed the Read button,
+   the board's reply and the verdict 31.4px sideways the instant a rate was
+   armed. Nothing about the tool had changed.
+
+   Same treatment and same reason as `.shp-step > .fb-tool` further down this
+   sheet: declare the wider of the two labels and let the narrower sit inside
+   it. 18.5u clears CONFIRM at all three steps with 0.3u to spare.
+
+   It raises the row's min-content by 8.16u, and that is the honest number —
+   the button really does need that width in a state it can be in. Pinned with
+   the card's re-measured floor in compose/defs.ts. */
+.fb-tool.accel-set { width: calc(18.5 * var(--u)); flex: 0 0 auto; text-align: center; }
+/* Reserved for the same reason as .color-clash — four tool rows that each
+   gained and lost a sentence would reflow the card as you edited — and, since
+   #142, reserved the same WAY: a fixed preference that costs nothing in the
+   card's minimum.
+
+   TWO of these per row since the rows were combined: the board's own reply
+   about the sampling rate, and then the gate's verdict on the address. Both
+   carry this rule; only the basis and the colour differ (see .accel-reply).
+
+   THE ORDER IS LOAD-BEARING and lives in the markup, not here: the verdict is
+   the one that is EMPTY in the ordinary session, so it is last in the row,
+   where the space it reserves is indistinguishable from the row's own trailing
+   space. Reserved-and-silent in the MIDDLE of a row is a visible hole — which
+   is what it was, between the address and the rate. See the note at that span
+   in cards/SettingsCards.tsx. */
 .accel-status {
 	font-family: var(--font-display); font-weight: 600; font-size: calc(3.25 * var(--u));
 	letter-spacing: 0.04em;
 	color: var(--gold);
-	/* Sized to the LONGEST message this slot can hold — "needs board.device"
-	   (18 chars) — not to the shortest. At 24u it fitted "not mapped" and
-	   ellipsed the one message that has to be read to be acted on, which is the
-	   fixed slot working correctly against a width chosen from the wrong string.
-	   The card's own floor is 88 cols against the 156 the screen grants it, so
-	   the extra width costs nothing. */
-	flex: 0 0 calc(36 * var(--u));
-	/* An EMPTY span has no line box, so its own height collapses to zero and
-	   the row's align-items: center re-centres what is left — measured as a
-	   10px move of this element the moment a mapping started working. Nothing
-	   visible moved (the span was empty), but a stability sweep cannot tell
-	   those apart and neither can the next reader. Declaring the box makes the
-	   slot the same box whether it is speaking or not. */
-	height: calc(4.75 * var(--u));
-	line-height: calc(4.75 * var(--u));
-	white-space: nowrap;
+	/* THE WIDTH THIS BOX PREFERS is fixed, and that is what buys positional
+	   stability: a content-sized box would move the row every time a mapping
+	   started or stopped working. The basis is MEASURED, not recalled
+	   (2026-08-28, --u: 4px, this face and size, in the browser this sheet is
+	   read by): "not applied" 66px, "not mapped" 69.6px, "no sensor at 121.10"
+	   107.5px, "needs board.device" 111.7px — 27.9u for the longest, plus the
+	   2.5u the mark below occupies.
+
+	   THE WIDTH THIS BOX REQUIRES is a different number, and it used to be the
+	   same one. `flex: 0 0` with `white-space: nowrap` put the whole sentence
+	   into contentColSpan's min-content probe, so 2 x 36u of reserved width for
+	   messages that are absent or unread in the ordinary session sat in the
+	   card's width stop. `overflow-wrap: anywhere` is what removes it —
+	   ordinary wrapping would still contribute the longest WORD, and
+	   "board.device" alone is 60px of it.
+
+	   A wrapping slot that can grow a second line would move the card's ROW
+	   floor instead, which is trading one defect for its mirror, so the height
+	   is reserved at exactly two of its own lines (--ctl-h is 7.5u, the line is
+	   3.75u). This also fixes what the old 4.75u single line was for: an EMPTY
+	   span has no line box, so its height would collapse to zero and the row's
+	   align-items: center would re-centre what is left.
+
+	   The paragraph above about `overflow-wrap` is corrected at .color-clash,
+	   where the measurement is written out: the property that keeps this slot
+	   out of the card's floor is `flex-shrink: 1`, and what it then costs is
+	   exactly its `min-width`. The wrapping properties are legibility, not
+	   floor.
+
+	   AND IT IS ELLIPSED — `-webkit-line-clamp`, clamped to the two lines this
+	   box reserves, for the reason and with the measurement written out at
+	   .color-clash. A wrapped box cannot use `text-overflow: ellipsis`; that
+	   property fires only beside the nowrap this rule may not have.
+
+	   And the floor is the MARK's width, not zero: at the card's minimum the
+	   text has no room left, and a warning that vanishes exactly when the card
+	   is smallest is not a warning. .speaking draws a dot that always fits.
+	   THIS SLOT MAY BE SILENT, and that is what licenses a mark-sized floor:
+	   accelStatusText returns "" for `kind: "ok"` and for nothing else
+	   (shaping/settingsDraft.ts), so on a machine whose mappings work the
+	   verdict is simply absent, and the four sentences it can carry are all
+	   exception states. At the floor one of those degrades to the dot plus an
+	   ellipsis — a cue to widen the card, not a hidden condition. The slot
+	   BEFORE it cannot be silent and is floored differently; see .accel-reply. */
+	flex: 0 1 calc(31 * var(--u));
+	min-width: calc(4 * var(--u));
+	height: var(--ctl-h);
+	/* The block-axis floor #136 requires of every fixed-height clipped box.
+	   Same number as the height above ON PURPOSE — the height is already the
+	   two reserved lines, and this says so as a floor rather than only as a
+	   preference, so the box cannot become its card's shock absorber. It is
+	   `min-height` and not `flex-shrink: 0` because this is a flex ROW item:
+	   freezing it would freeze the INLINE axis, and the `flex: 0 1` shrink
+	   above is exactly what keeps this slot out of the card's width stop
+	   (#142). The two rules meet here without either giving anything up. */
+	min-height: var(--ctl-h);
+	line-height: calc(3.75 * var(--u));
+	overflow-wrap: anywhere;
 	overflow: hidden;
-	text-overflow: ellipsis;
+	display: -webkit-box;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 2;
+}
+/* Under `ui/reserved-slot-out-of-the-card-floor`, declared once beside
+   .color-clash above — the same invariant, not a second one, and its check
+   (test/intrinsic-floors.test.ts) runs the SAME predicate over this rule body.
+   No @invariant block here: an id may be declared in exactly one place, which
+   is what stops two sites drifting into two different versions of one claim. */
+/* The board's own reply, which is a much longer sentence than any verdict:
+   "LIS3DSH at 5376 Hz, 12-bit — shows up to 2688 Hz" measures 287.3px (71.8u)
+   on 2026-08-28, so 80u puts it on ONE of the two reserved lines and leaves the
+   second for a longer sensor name or a reply this build cannot parse. The OLD
+   36u slot ellipsed that sentence at 144px — the operator never saw the Nyquist
+   figure the sweep is actually limited by. Dimmer than the verdict because it
+   is the machine describing itself, not the card objecting to something. */
+.accel-reply {
+	/* The one item on the row allowed to GROW, so the card's spare width goes to
+	   the longest sentence on it instead of pooling as dead space at the right
+	   edge — and so the verdict after it lands against that edge as a status
+	   column rather than floating mid-row. Growth is a function of the ROW's
+	   free space, never of the text, so a reply arriving or changing still moves
+	   nothing: the property this slot exists for is untouched. */
+	flex: 1 1 calc(80 * var(--u));
+	color: var(--silk-dim);
+	/* A FLOOR SIZED FROM THE MESSAGE, not from the mark — the one place this
+	   slot must differ from every other reserved slot in this sheet.
+
+	   Gabe, 2026-08-28, dragging the card on the mock: "the accelerometer card
+	   narrows just a hair too much, it clips the text 'not asked'". He is right,
+	   and the cause is that this rule inherited `min-width: calc(4 * var(--u))`
+	   by sitting under .accel-status. 4u is the MARK's width, and the argument
+	   for a mark-sized floor is "the slot is empty in the ordinary session, so
+	   what has to survive at the minimum is the cue that it is not". True of
+	   .accel-status; FALSE here. reportText (shaping/accelReport.ts) is total
+	   and never returns "" — a row that has not been Read says "not asked",
+	   which is the state EVERY row is in on a freshly booted machine. A floor
+	   sized for a slot that can disappear is wrong for a slot that cannot.
+
+	   14.5u IS DERIVED. reportText has four arms; two are short and always
+	   reachable, and the floor takes the longer of those two:
+
+	     · null (nothing read yet)          "not asked"  57.00px = 14.25u
+	     · known:false, raw ""              "no reply"   47.13px = 11.79u
+	     · known:false, raw <board text>    unbounded — the board's own words
+	     · known                            the full sentence, 287.30px = 71.83u
+
+	   Measured 2026-08-28 in Edge against this rule's own computed font and
+	   letter-spacing, at all three scale steps: 42.75px at 075 (u 3), 57.00px at
+	   100 (u 4), 85.50px at 150 (u 6) — 14.25u at every step, because the body
+	   size is itself a multiple of --u. 14.5u clears the worst with 0.25u to
+	   spare and is a whole quarter-unit. No mark allowance: the ::before is
+	   drawn from `.speaking`, which this slot never carries.
+
+	   The two LONG arms are not floored — one of them is arbitrary board text
+	   and cannot be — and they are what the line clamp is for. That is the
+	   split: the floor guarantees the steady state is legible, the ellipsis says
+	   when an exceptional message has been cut. */
+	min-width: calc(14.5 * var(--u));
 }
 
 /* ---------- UI scale toggle ----------
@@ -3059,7 +3528,10 @@ input[type="checkbox"] {
 .fb-uploading { display: flex; align-items: center; gap: calc(2.5 * var(--u)); margin: 0 0 calc(2 * var(--u)); font-size: calc(3.625 * var(--u)); color: var(--silk-dim); }
 .fb-uploading b { color: var(--silk); }
 .fb-up-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 45%; flex: 0 1 auto; }
-.fb-progress { flex: 1; height: calc(1.5 * var(--u)); min-width: calc(15 * var(--u)); background: var(--mask-900); border-radius: 3px; overflow: hidden; }
+/* min-height, NOT flex-shrink: 0 — this bar is `flex: 1` in a row and must go
+   on shrinking on the inline axis. The floor is on the axis that can collapse:
+   `overflow: hidden` takes its automatic minimum to zero (#136). */
+.fb-progress { flex: 1; height: calc(1.5 * var(--u)); min-height: calc(1.5 * var(--u)); min-width: calc(15 * var(--u)); background: var(--mask-900); border-radius: 3px; overflow: hidden; }
 .fb-progress-fill { display: block; height: 100%; background: var(--accent); transition: width 0.1s linear; }
 .fb-up-pct { font-variant-numeric: tabular-nums; min-width: calc(8.5 * var(--u)); text-align: right; color: var(--silk); }
 
@@ -4673,6 +5145,10 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; appe
 	font: 400 calc(3.25 * var(--u))/calc(4.5 * var(--u)) var(--font-body);
 	color: var(--silk-dim);
 	height: calc(13.5 * var(--u));
+	/* The block-axis floor. flex-shrink: 0 is not available here — the width: 0
+	   plus grow above is the whole point of the rule — so the three declared
+	   lines are held by min-height (#136). */
+	min-height: calc(13.5 * var(--u));
 	overflow: hidden;
 	display: -webkit-box;
 	-webkit-box-orient: vertical;
@@ -4698,12 +5174,74 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; appe
 	margin: calc(1 * var(--u)) 0 0;
 	font: 400 calc(3 * var(--u))/calc(4 * var(--u)) var(--font-body);
 	color: var(--silk-dim);
+	/* THE ROW DOES NOT GIVE. Without this the rule is `flex: 0 1 auto`, and a
+	   flex item whose overflow is not `visible` has an automatic minimum size
+	   of ZERO — so this paragraph, the only shrinkable child in the body, ate
+	   the card's entire deficit alone and rendered at 0px at the card's own
+	   registry size (#136, measured 2026-08-28: 32px at rowSpan 200, 4px at
+	   124, 0px at the coded pin 118). Two consequences, and the second is the
+	   worse one: the caveat was invisible on every browser, and contentRowSpan
+	   sums RENDERED heights, so the card's floor moved 8 cells with the card —
+	   the hysteresis dev/layoutAudit.ts's invariant A exists to catch. Stated
+	   the same way as the sibling rows this was written beside
+	   (.shp-decay-filter, .shp-batch, .shp-sweep-bar) and enforced for the
+	   whole class by test/intrinsic-floors.test.ts. */
+	flex: 0 0 auto;
 	height: calc(8 * var(--u));
 	overflow: hidden;
 	display: -webkit-box;
 	-webkit-box-orient: vertical;
 	-webkit-line-clamp: 2;
 }
+/*
+   @invariant fixed-height-clipped-row-declares-its-floor
+   @rung 4  source assertion — test/intrinsic-floors.test.ts walks every
+            declaration block in this sheet, selects the ones that declare a
+            `height` AND clip (`overflow`/`overflow-y: hidden`), and fails the
+            suite unless each one's cascade also declares a block-axis floor:
+            a non-auto non-zero `min-height`, or `flex-shrink: 0` / `flex: 0 0`
+            where not shrinking IS the intent. The scan asserts its own catch
+            (>= 10 matching rules) so a scanner that has stopped matching fails
+            loudly instead of passing everything, and the four Shaping prose
+            rows are additionally pinned BY NAME, read through their shared
+            cascade rather than per block, so a guard dropped from one of the
+            four that are known to need it is its own failing test rather than
+            one line in a list. It is a SOURCE assertion, not a measurement:
+            it cannot say a floor is the RIGHT number, only that a fixed-height
+            clipped box is not written with no floor at all
+   @debt ONLY WHAT THE STYLESHEET CAN SAY. The predicate reads app.css text, so
+         it does not see a height arriving from an inline style, from a
+         `classList` addition, or from a JS-set custom property, and it does not
+         resolve specificity — a floor declared in a rule that loses the cascade
+         reads as present. It also cannot distinguish a flex COLUMN item, where
+         the collapse actually happens, from a flex ROW item, where the fixed
+         height is the cross size and the block axis was never at risk; both
+         are required to declare the floor, which is conservative in the right
+         direction but is the reason `.color-clash` and `.accel-status` carry a
+         min-height equal to their own height rather than a measured one.
+         Promote by making the guard travel with the geometry instead of beside
+         it: ONE shared declaration that every fixed-height clipped row extends,
+         so the floor is not something a new row can be written without, and
+         this scan becomes structurally unnecessary rather than merely green
+   @why #136: `.shp-caveat` is the only shrinkable child of the Sweep card's
+        body, and a flex child whose overflow is not `visible` has an automatic
+        minimum size of ZERO — so it absorbed the card's whole deficit alone and
+        rendered at 0px at the card's own registry size (measured 2026-08-28
+        headless: 32px at rowSpan 200, 4px at 124, 0px at the coded pin 118).
+        Its two declared lines were invisible on every browser, not only after a
+        resize. The second-order damage is why this is a rule and not a one-line
+        fix: contentRowSpan sums each child's RENDERED height, so a child that
+        shrinks with the card makes the card's own floor a function of the
+        card's own size — measured on this card, rowStop 129 at rowSpan 200 and
+        121 at rowSpan 118. A floor enforced from that measurement enforces a
+        number the shrink itself moved, which is the hysteresis
+        card-floor-independent-of-size exists to catch. Six rules in this sheet
+        were unguarded when the scan was written, and the same shape had been
+        written four separate times before anybody measured it. The row was
+        DEFERRED on GIT_136 rather than skipped: the ratchet stood at 24 against
+        a ceiling of 25 and a third +1 was not that branch's number to rule on
+        (Gabe, 2026-08-28: "give it the row and bump the ceiling to 27")
+*/
 
 /* The workflow, one row per step. A LIST rather than a button bar: each step
    carries a sentence saying what it is waiting for, and five captions under
@@ -4989,6 +5527,11 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; appe
 	   empty button is 0 tall and the whole chip run shifts 6px down the moment
 	   a source has fewer families than the row has places. */
 	height: calc(7 * var(--u));
+	/* The declared box, restated as a floor: with `overflow: hidden` below, the
+	   automatic min-content minimum is gone and an empty slot could collapse
+	   again by a different route than the one the comment above describes
+	   (#136). */
+	min-height: calc(7 * var(--u));
 	display: flex;
 	flex-direction: column;
 	justify-content: center;
@@ -5041,6 +5584,8 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; appe
 	   would push it past the 22u the row was measured with. 6u fits inside the
 	   controls row's declared 8u, so the card's floor is unchanged. */
 	height: calc(6 * var(--u));
+	/* Same floor as .shp-prefix, for the same reason (#136). */
+	min-height: calc(6 * var(--u));
 	line-height: calc(6 * var(--u));
 	text-align: center;
 	font-variant-numeric: tabular-nums;
@@ -5109,10 +5654,44 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; appe
 	font-size: calc(3.375 * var(--u));
 	line-height: calc(5 * var(--u));
 }
-/* Three lines rather than two: the sweep card's idle sentence has to state the
-   physics — which peak shaping can touch and which it cannot — and it is the
-   sentence an operator reads before their first sweep. */
-.shp-sweep-note { height: calc(15 * var(--u)); }
+/* FOUR lines, and a scroll that says so when a fifth arrives (#136).
+   ────────────────────────────────────────────────────────────────────────────
+   Three lines held the idle sentence — the physics an operator reads before
+   their first sweep — only at the width the card happens to be placed at. The
+   sentence reflows as the card narrows while a fixed box does not, so the tail
+   was cut with nothing saying it had been: measured 2026-08-28, three lines
+   were enough down to colSpan 130 and the card's own enforced stop is colSpan
+   125, so the clipping was reachable by an ordinary resize drag and started
+   ABOVE the floor. Four lines clear the stop at every scale step (0.75 / 1.0 /
+   1.5); the numbers are in the audit note on compose/defs.ts `shaping-sweep`.
+
+   THE HEIGHT STAYS FIXED, for the reason the shared rule above gives: a box
+   that grew with its content would change this card's floor with its state.
+   But four lines cannot be a guarantee either, because three of the seven
+   sweep states carry text whose length is not ours to choose — `failed` prints
+   the board's own reason (shaping/copy.ts sweepStateText) and `built` prints a
+   family name the operator invented. So the residue is made REACHABLE and
+   MARKED rather than cut: the box scrolls, and the two `local` gradients cover
+   the two `scroll` ones exactly when there is nothing more in that direction,
+   which paints an edge shadow if and only if text continues past the box.
+   Backgrounds take no layout space, so the cue costs no row and moves nothing
+   when it appears — the same discipline as the reserved second line above.
+   Scrollbar hidden for the same reason .panel-body hides its own: a bar
+   appearing would take inline space and reflow the sentence it is reporting on.
+
+   A `title` was considered and rejected — invisible on touch, and this machine
+   is driven by touch. */
+.shp-sweep-note {
+	height: calc(20 * var(--u));
+	overflow-y: auto;
+	scrollbar-width: none;
+	background:
+		linear-gradient(var(--mask-700) 40%, transparent) local top / 100% calc(5 * var(--u)) no-repeat,
+		linear-gradient(transparent, var(--mask-700) 60%) local bottom / 100% calc(5 * var(--u)) no-repeat,
+		radial-gradient(farthest-side at 50% 0, var(--silk-dim), transparent) scroll top / 100% calc(2 * var(--u)) no-repeat,
+		radial-gradient(farthest-side at 50% 100%, var(--silk-dim), transparent) scroll bottom / 100% calc(2 * var(--u)) no-repeat;
+}
+.shp-sweep-note::-webkit-scrollbar { display: none; }
 /* What Rescan would do for the source on screen, and what a row marked missing
    means. It shares the batch note's geometry rather than restating it — one
    declaration, one box — and only adds the gap to the table under it. Present

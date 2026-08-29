@@ -429,14 +429,87 @@ export const CARD_DEFS = {
 		ariaLabel: "Axis roles",
 		size: { colSpan: 156, rowSpan: 109 },
 	}),
-	/** Per-heater chart line colours (config overlay). */
+	/**
+	 * Per-heater chart line colours (config overlay).
+	 *
+	 * RE-MEASURED after #142 (Card Lab arithmetic, mock, --u: 4px, 1600x1200,
+	 * 2026-08-28): contentColSpan 92 -> 85 cells, contentRowSpan 69 (unchanged).
+	 * The 7 cells are the reserved clash slot leaving the min-content probe;
+	 * what stops the drag now is the card's own HEADER (298.5px of title, tip
+	 * and controls) rather than its rows, which measure 204px.
+	 *
+	 * RE-MEASURED AGAIN after the per-row Reset got a reserved slot: contentColSpan
+	 * STILL 85. The slot is `flex: 0 0 calc(15 * var(--u))` and does put 60px into
+	 * the row's min-content (274px per row, from 214), but the header still wants
+	 * 298.5px and the body's padding puts it at 330.5px, so the rows are nowhere
+	 * near binding and the fix is free at this card's stop. What it bought,
+	 * measured the same session: overriding one heater's colour used to move that
+	 * row's clash slot 68.5px sideways, and now moves it 0.
+	 *
+	 * The size below is NOT that floor and is deliberately left alone: `size`
+	 * is the card's natural geometry (see this file's redesigned-cards-grow
+	 * invariant), it already sat well ABOVE the floor before #142, and shrinking
+	 * it would re-lay the Settings screen, which #142 did not ask for.
+	 */
 	"heater-colors": defineCard({
 		title: "Chart colours",
 		ariaLabel: "Chart colours",
 		tip: "heat.heaters",
 		size: { colSpan: 156, rowSpan: 76 },
 	}),
-	/** The cold/warm/hot ramp for temperature readings (config overlay). */
+	/**
+	 * The cold/warm/hot ramp for temperature readings (config overlay).
+	 *
+	 * RE-MEASURED after #142, same conditions: contentColSpan 104 -> 76 cells,
+	 * contentRowSpan 48 (unchanged). Header-bound at 260.2px, as above; `size`
+	 * stays the natural geometry for the same reason.
+	 *
+	 * RE-MEASURED AGAIN after the band labels went from prose to symbols (Gabe,
+	 * 2026-08-28: "temp gradient is shrinking below the prose horizontally").
+	 * The STOPS DID NOT MOVE — still 76 x 48, body min-content still 292.2px —
+	 * because this card has been header-bound since the first #142 change: the
+	 * title, tip and controls want 260.2px and the widest ROW now wants 235.8px.
+	 *
+	 * WHAT MOVED IS THE TRUNCATION BAND, and the figures below REPLACE an
+	 * earlier set that mixed two different measurements into one sentence. Two
+	 * quantities are involved and they are not the same quantity:
+	 *
+	 *   · a row's MIN-content is what it contributes to the card's floor. It is
+	 *     the width of the row's widest unbreakable piece, so shortening a
+	 *     label only moves it if that label held the record.
+	 *   · a row's MAX-content is the width at which that row is fully drawn —
+	 *     nothing wrapped, nothing clipped. That is the "every label legible"
+	 *     number, and it is always the larger of the two.
+	 *
+	 * Re-measured from scratch 2026-08-28 in Edge on the mock, at data-scale 100
+	 * (--u 4px, 1600x1200), by setting `width: min-content` / `max-content` on
+	 * each `.field` row and on `.panel-body` and reading getBoundingClientRect —
+	 * the same construction panelCanvas.ts's intrinsicWidthPx uses, so these
+	 * numbers and contentColSpan's are taken the same way. Prose labels were
+	 * restored in the source for the BEFORE pass and the AFTER pass re-run on
+	 * the shipped strings, rather than recalled:
+	 *
+	 *                       min-content            max-content
+	 *   row          before      after       before      after
+	 *   Cold          249.9  ->  228.6        285.3  ->  258.6
+	 *   Warm          235.8  ->  235.8        281.7  ->  281.7
+	 *   Hot           250.2  ->  235.8        319.1  ->  265.9
+	 *   widest        250.2  ->  235.8        319.1  ->  281.7
+	 *
+	 * The card's floor is `body min-content + gutter` = 292.2 + 8 = 300.2px
+	 * (76 cells), unchanged, because the header's 260.2px + the body's 32px of
+	 * padding beat every row in both passes. Full legibility is
+	 * `widest max-content + gutter`: 327.1px before, 289.7px after.
+	 *
+	 * SO THE BAND CLOSED COMPLETELY, which is stronger than the "~44px to ~8px"
+	 * the earlier note claimed and is the honest answer to the ruling. Before,
+	 * the card could be dragged to 300.2px and the Hot label needed 327.1px, so
+	 * there were 26.9px of width in which a label was cut. After, full legibility
+	 * (289.7px) is BELOW the floor (300.2px): there is no width this card can be
+	 * dragged to at which any of the three labels is not fully drawn. The 14.4px
+	 * that came off the widest min-content and the 37.4px that came off full
+	 * legibility are different quantities and were never required to agree.
+	 */
 	"thermal-colors": defineCard({
 		title: "Temperature Gradient",
 		ariaLabel: "Temperature Gradient",
@@ -452,13 +525,28 @@ export const CARD_DEFS = {
 	"bed-probe": defineCard({
 		title: "Bed probing",
 		ariaLabel: "Bed probing",
-		size: { colSpan: 156, rowSpan: 45 },
+		// 45 -> 54 (#138): the label moved onto its own row above the input, so
+		// the field row went 47px -> 74px. MEASURED with auditCard against the
+		// `idle` scenario, 2026-08-28 headless — rowStop 54 at forced heights of
+		// 200/120/80/60/40 cells (spread 0) and 54 at scale 075, 100 AND 150.
+		// The card was ALREADY 7px over its old 45-cell pin before this change
+		// (body client 172 / scroll 179), which is #94 drift this corrects in
+		// passing rather than inherits. colStop 55 at every scale step — the
+		// same number as before the stack, which is the check that mattered:
+		// `width: auto` on the stacked input took it to 61/61/64 and that
+		// three-cell scale drift is why the input is contained (see app.css).
+		size: { colSpan: 156, rowSpan: 54 },
 	}),
 	/** Camera stream URL (config overlay). */
 	"camera-config": defineCard({
 		title: "Camera URL",
 		ariaLabel: "Camera URL",
-		size: { colSpan: 156, rowSpan: 40 },
+		// 40 -> 49 (#138), the same +9 as bed-probe and for the same reason —
+		// the two cards share the stacked-field modifier, so they move together.
+		// MEASURED the same way: rowStop 49 at forced heights 200/120/80/60/40
+		// (spread 0) and at scale 075, 100 and 150; colStop 53 at all three,
+		// unchanged from before the stack.
+		size: { colSpan: 156, rowSpan: 49 },
 	}),
 	/** Sensor display names (config overlay). */
 	"sensor-names": defineCard({
@@ -468,21 +556,92 @@ export const CARD_DEFS = {
 	}),
 	/**
 	 * The Shaping Lab's own settings: the motion envelope (the ONLY way one
-	 * comes to exist — spec I8), the capture-run defaults, and which
-	 * accelerometer belongs to which tool.
+	 * comes to exist — spec I8) and the capture-run defaults.
 	 *
 	 * The title is load-bearing, not decoration: the lab's refusal copy sends
 	 * the operator to "Settings › Input shaping" by name, and a test pins the
 	 * phrase to this def plus the screen this card sits on.
+	 *
+	 * The accelerometer address and its sampling rate were two more sections
+	 * here until #140 moved them to `accelerometers` — machine facts, not
+	 * shaping settings. The card lost two of its four sections; the rowSpan
+	 * below is re-measured, not scaled down by eye.
 	 */
 	"settings-shaping": defineCard({
 		title: "Input shaping",
 		ariaLabel: "Input shaping",
-		tip: "config.shaping · M955 P",
-		// Measured in the Card Lab, 2026-08-23: floor 88 cols × 178 rows, stable
-		// across the height probes and with no child drift. 156 wide to sit in
-		// the Settings screen's column like its neighbours.
-		size: { colSpan: 156, rowSpan: 178 },
+		// No longer "· M955 P" — the codes went with the sampling rows.
+		tip: "config.shaping",
+		// Was 88 × 178 with four sections (Card Lab, 2026-08-23). RE-MEASURED with
+		// auditCard after the #140 split, against the `multi-tool` scenario: row
+		// stop 112, col stop 87, unchanged across all three height probes and with
+		// no child drift. 156 wide to sit in the Settings screen's column like its
+		// neighbours — that colSpan is the screen's choice, not the card's floor.
+		size: { colSpan: 156, rowSpan: 112 },
+	}),
+	/**
+	 * The machine's accelerometers: address per tool, and the sample rate and
+	 * resolution the sensor is running.
+	 *
+	 * NOT shaping-branded, in id or title, and that is the whole reason it
+	 * exists separately (#140). An accelerometer address is a property of the
+	 * printer — #47's machine-dynamics battery reads the same two facts — and
+	 * until this card existed, an operator asking which sensor is on T2 had to
+	 * look under a feature card to find out.
+	 */
+	accelerometers: defineCard({
+		title: "Accelerometers",
+		ariaLabel: "Accelerometers",
+		tip: "config.shaping.accelByTool · M955",
+		// RE-MEASURED with auditCard against the `multi-tool` scenario — four
+		// tools, which is this card's worst case because every row it has is
+		// per-tool — after #142 combined the two sections into one row per tool
+		// and took the reserved slots out of the min-content probe (mock, --u:
+		// 4px, 1600x1200, 2026-08-28):
+		//
+		//   #140, two sections of four rows   row 128, col 117 (body 456.1px)
+		//   rows combined, slots unchanged    row  64, col 173 (body 680.1px)
+		//   + the .accel-status remedy        row  64, col 114 (body 444.1px)
+		//   + the floor and width fixes below row  64, col 132 (body 518.8px)
+		//
+		// Half the height, and a WIDER row that nonetheless reports a NARROWER
+		// floor than the eight-row card did — the two reserved sentences were
+		// worth 59 cells of min-content between them. Identical stops at
+		// data-scale 075 / 100 / 150 (0 cell drift), no child drift, and the
+		// floor still counts the body (chrome 17 of 64).
+		//
+		// THE LAST LINE IS 18 CELLS BACK, and both halves of it are bought
+		// deliberately (Gabe, 2026-08-28, dragging this card on the mock: "the
+		// accelerometer card narrows just a hair too much, it clips the text
+		// 'not asked'"):
+		//
+		//   +10.5u  .accel-reply's min-width, 4u -> 14.5u. 4u was the width of
+		//           the MARK, borrowed from .accel-status, and the argument for
+		//           a mark-sized floor is "the slot is empty in the ordinary
+		//           session". reportText is total and never returns "" — every
+		//           row on a machine that has not been Read says "not asked" —
+		//           so this slot has no empty state to degrade to and its floor
+		//           has to fit the message instead. 14.25u measured, at all
+		//           three scale steps. (app.css, .accel-reply)
+		//   + 8.16u .fb-tool.accel-set's declared width. The arming button's
+		//           label changes SET -> CONFIRM, 10.34u -> 18.195u, and an
+		//           undeclared button is padding around its label: arming a row
+		//           moved the Read button, the reply and the verdict 31.4px.
+		//           Declared at 18.5u, that shift is now 0.
+		//
+		// Re-verified after both: 132 cells at data-scale 075 / 100 / 150 with
+		// zero drift, and at that width "not asked" is fully drawn on all four
+		// rows at all three steps (measured scrollWidth == clientWidth, and
+		// looked at). The 312-column placement below is UNAFFECTED — it was
+		// argued from legibility of the two sentences at 156 columns, not from
+		// the floor, and 132 is still far under 312.
+		//
+		// 312 wide, and that is a CHANGE from #140's 156: one row per tool is
+		// twice the row, and at 156 (≈616px) the address verdict and the board's
+		// reply cannot both be legible — measured, both are intact from 676px up.
+		// The screen has 312 columns, so the card takes the pair rather than
+		// clipping every reply it draws.
+		size: { colSpan: 312, rowSpan: 64 },
 	}),
 	/** Config snapshot history + one-click revert. */
 	"saved-versions": defineCard({
@@ -675,14 +834,29 @@ export const CARD_DEFS = {
 		// row declare 8u each, the plot stage 60u, the readout 5u and the status
 		// line 15u, and every one of those is a declared length. Checked with no
 		// sweep, with the nine-speed `lowspeed_stock_X` matrix drawn, and with a
-		// pointer over the loudest cell — 118 rows in all three, body worth 103
-		// of it, no child moved. colStop 125 sits inside the 156 the screen
-		// gives it, and is set by the run row's declared tracks.
+		// pointer over the loudest cell — no child moved. colStop 125 sits
+		// inside the 156 the screen gives it, and is set by the run row's
+		// declared tracks.
+		//
+		// 118 -> 134 (#136), RE-MEASURED 2026-08-28 headless against the same
+		// three states, because the old number was taken while two of the
+		// card's own rows were lying about their size:
+		//   · `.shp-caveat` had `overflow: hidden` and no flex declaration, so
+		//     its automatic minimum was ZERO and it was squeezed flat — 0px at
+		//     this card's own coded pin. It contributed nothing to the sum
+		//     contentRowSpan takes, and the sum itself moved with the card
+		//     (rowStop 129 at rowSpan 200, 121 at 118). +8u of it is real.
+		//   · `.shp-sweep-note` went from three lines to four, so the idle
+		//     sentence is not cut at any width at or above colStop 125. +5u.
+		// Both rows now declare a floor, so the measured number is a floor
+		// again: rowStop 134 at rowSpans 200/160/134/130/118/100/60 with spread
+		// 0, and 134 at scale 075, 100 AND 150 — the number is the same at
+		// every scale step rather than the largest of three.
 		//
 		// The ID is unchanged on purpose: it is the key saved layouts are stored
 		// under, so renaming it would drop the card off every screen the
 		// operator has already arranged.
-		size: { colSpan: 156, rowSpan: 118 },
+		size: { colSpan: 156, rowSpan: 134 },
 	}),
 	/** Ranked shapers with their predicted residual and robustness. */
 	"shaping-candidates": defineCard({

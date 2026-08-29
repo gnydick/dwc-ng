@@ -78,9 +78,27 @@ export const nyquistOf = (sampleRateHz: number): number => Math.floor(sampleRate
  * The `unknown` arm shows the board's RAW words rather than a formatted
  * apology: a reply this build cannot parse is far more useful to the operator
  * as the text RRF actually sent than as "could not read the reply".
+ *
+ * TOTAL, AND THAT IS LOAD-BEARING. The Accelerometers card puts this slot
+ * BEFORE the one that can be silent, and the argument for that order is "this
+ * function never returns an empty string" (cards/SettingsCards.tsx). It is also
+ * why the slot carries a min-width sized for "not asked" rather than for a mark
+ * (app.css, .accel-reply). Both rest on there being no input for which this
+ * throws or returns "".
+ *
+ * `undefined` is accepted for that reason and not because a caller passes it.
+ * The one caller reaches this through `accelReports[n] ?? null`
+ * (compose/accelService.ts) — a Solid store index, whose type says
+ * `AccelReport` and whose value for an unread tool is `undefined`. Without the
+ * `??` the old signature made `r.known` a TypeError on the ordinary boot state,
+ * so the totality claim rested on a `??` in a different module that nothing
+ * named. Widening the parameter moves the guarantee into this function, where
+ * the claim is made: there is now no value of `r` that leaves without a
+ * sentence, and the `??` at the call site is belt over braces rather than the
+ * only thing holding the trousers up.
  */
-export function reportText(r: AccelReport | null): string {
-	if (r === null) return "not asked";
+export function reportText(r: AccelReport | null | undefined): string {
+	if (r === null || r === undefined) return "not asked";
 	if (!r.known) return r.raw === "" ? "no reply" : r.raw;
 	// Nyquist is the number the sweep chart is actually limited by, so it is
 	// said here rather than left for the operator to halve.
