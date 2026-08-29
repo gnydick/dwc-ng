@@ -21,7 +21,7 @@ and invariant claim mentions 13 -> 23, so no mechanism was deleted and no
 claim was lost in the gap. From here the ratchets make a dropped rung visible
 in the diff that drops it.
 
-**Totals:** 170 invariants · 146 at rung 6 or above · 24 below rung 6 (ceiling 25).
+**Totals:** 171 invariants · 147 at rung 6 or above · 24 below rung 6 (ceiling 25).
 
 ## bed
 
@@ -1453,7 +1453,17 @@ in the diff that drops it.
 
 **Why.** the canvas record and the config overlay hold the same fact with no ordering between them, so "which is right" was decided by whichever path ran first. A browser carrying rects from before someone else saved a new layout to this machine kept them, and its next Save uploaded them over the good copy (#87). The basis is what turns "probably the same" into a question with an answer @why-not-a-counter a content digest needs no second field in the overlay to keep in step, and cannot drift from what it describes: it IS the layout, projected. A generation counter is a second writer's opportunity to be wrong @limit `null` (no saved layout at all) is deliberately NOT the digest of an empty layout — "the card has nothing for this screen" and "the card says this screen is empty" are different, and only the first means there is nothing for a local copy to be stale against
 
-`packages/ui/src/shell/panelCanvas.ts:878`
+`packages/ui/src/shell/panelCanvas.ts:901`
+
+### `shell/a-stored-span-is-honoured-verbatim-only-if-the-operator-set-it` — rung 6
+
+**Mechanism.** choke-point over a required parameter — every write of the "layout" key goes through `serializeCanvas`, which takes the set as a REQUIRED argument, and `growToDefaults`/`mergeCanvas` take it the same way, so neither a write nor a merge can be expressed without stating whose spans these are. Inside this controller the set has exactly one mutator, this function, reached only from `persist(…, "operator-gesture")` — a composition reconcile cannot mark anything, which is the property that stops a boot from fossilising the very spans it just repaired
+
+**Why.** a card whose coded floor grew in a release renders CLIPPED forever on every browser holding the old span, with Reset Layout the only way out. Honouring every stored span instead makes the operator's own deliberate shrink spring back on the next reload. Both are real reports (2026-08-28 and 2026-07-30); only knowing WHICH kind of span this is lets one rule serve both
+
+**Debt — promotion.** promote by minting a branded OperatorSized value here and accepting only that at serializeCanvas and growToDefaults, so a caller cannot hand over a set it assembled from the wrong side. Records written before #132 carry no marks and cannot be reconstructed — those spans are byte-identical either way — so they grow once, by decision; see growToDefaults' doc. test/canvas-span-provenance.test.ts pins the behaviour meanwhile. A MOVE deliberately marks nothing: dragging a card across the screen says nothing about how tall it should be, and marking on any gesture at all would let an operator freeze a clipped fossil by nudging it. A span landing exactly on its coded default UNMARKS instead. That is resetSlot's entire gesture ("put this one back"), and an operator dragging a card onto its default size is saying the same thing — in both cases there is no longer a chosen span to protect, and a later release that raises the default should be free to raise this too.
+
+`packages/ui/src/shell/panelCanvas.ts:1800`
 
 ### `shell/copy-failure-is-observable` — rung 6
 
@@ -1489,7 +1499,7 @@ in the diff that drops it.
 
 **Why.** one flag used to carry two different facts — "the operator rearranged the screen" and "the canvas emitted a geometry event". `ensureSlot`/`removeSlot` run from ComposedScreen's composition-sync effect, which fires as the screen is being brought up to date with a config change nobody dragged; routing those through the same notifier as a drag is what let a plain reload report unsaved work that did not exist (#120 defect B). The fix is NOT to stop marking dirty: geometry only reaches the overlay at save time (captureScreenGeometry) and Save is gated on the flag, so a canvas that never marks dirty is one whose rearrangement can never be saved at all @enumerated the geometry writers NOT on this route, and why: `reset()` REMOVES the key rather than writing one (the next mount re-seeds from defaults) and has never notified; the construction-time settle write at the top of this function is a deterministic repair, not an edit, and deliberately calls `keys.set` directly. Both are unchanged by #120 and neither can express a notify.
 
-`packages/ui/src/shell/panelCanvas.ts:1649`
+`packages/ui/src/shell/panelCanvas.ts:1769`
 
 ### `shell/reflow-preserves-reading-order` — rung 6
 
@@ -1499,7 +1509,7 @@ in the diff that drops it.
 
 **Debt — promotion.** promote by making the placement order a value produced once and consumed by the loop, so a future caller cannot iterate the state directly and place out of order.
 
-`packages/ui/src/shell/panelCanvas.ts:1180`
+`packages/ui/src/shell/panelCanvas.ts:1275`
 
 ### `shell/reflow-terminates` — rung 3
 
@@ -1509,7 +1519,7 @@ in the diff that drops it.
 
 **Debt — promotion.** make the loop consume a bounded, strictly-increasing cursor rather than mutating a candidate in place — then "a push that advances nothing" has no encoding and the argument stops needing to be believed.
 
-`packages/ui/src/shell/panelCanvas.ts:1192`
+`packages/ui/src/shell/panelCanvas.ts:1287`
 
 ### `shell/stream-dies-with-its-element` — rung 7
 
