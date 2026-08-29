@@ -1310,6 +1310,12 @@
 	align-items: center;
 	gap: calc(2.5 * var(--u));
 	padding: var(--sp-field) 0;
+	/* The text input's declared width, as ONE number. It is referenced by the
+	   input's `width` and by its `min-width` — and, once a field stacks, by the
+	   floor that stands in for the contained element's intrinsic width. Three
+	   references to one token rather than three literals that agree today; the
+	   rule below says what the number is for. */
+	--field-input-w: calc(24 * var(--u));
 }
 /* Rule BETWEEN rows. Keyed off adjacency, not :first-of-type — fields are
    <label> in one card and <div> in another, so :first-of-type gave the first
@@ -1346,8 +1352,8 @@
    below this floor either. */
 .field input[type="text"], .field input[type="number"] {
 	flex: 1;
-	width: calc(24 * var(--u));
-	min-width: calc(24 * var(--u));
+	width: var(--field-input-w);
+	min-width: var(--field-input-w);
 	background: var(--mask-900);
 	border: 0;
 	box-shadow: inset 0 0 0 1px var(--hairline);
@@ -1355,6 +1361,63 @@
 	padding: var(--sp-field) calc(2.5 * var(--u));
 }
 .field input::placeholder { color: var(--silk-dim); }
+
+/* THE STACKED FIELD — label on its own row, input under it.
+   ────────────────────────────────────────────────────────────────────────────
+   TWO CARDS ONLY: Bed probing and Camera URL (cards/SettingsCards.tsx). Asked
+   whether every label/input pair should stack, Gabe answered "no, just the two
+   i asked to stack" (2026-08-28, #138), and `.field` is worn by thirteen rows
+   across two card files — so this is an OPT-IN modifier and not an edit to the
+   rule above. One declaration, applied twice: a third stacked field later is a
+   class name, never a second copy of this geometry, and the ruling stays
+   checkable by reading two class attributes.
+   test/intrinsic-floors.test.ts counts the call sites and names them.
+
+   UNCONDITIONAL, not responsive. A stack that only happened below some width
+   would make each card's floor a function of its own width — the same shape as
+   #136's clipped prose, where a fixed box and a reflowing sentence disagreed
+   five columns above the card's stop. One layout is one floor.
+
+   `flex: 0 0 auto` is required, not tidiness: in a column the shared `flex: 1`
+   is on the BLOCK axis and would grow the input vertically to fill the card.
+
+   THE INPUT FILLS THE ROW WITHOUT VOTING ON THE CARD'S FLOOR, and that pairing
+   is the whole of the rule below. An input sized `auto` — or `100%`, which
+   behaves as auto for intrinsic sizing — hands its min-content contribution
+   back to Chromium's font-metric `size=20` default, exactly the value the
+   comment above records failing the 2026-08-21 scale sweep on five cards, Bed
+   probing and Camera URL among them. MEASURED here the same way: with `width:
+   auto` this card's colStop read 61 cells at scale 100 and 150 but 64 at 075 —
+   a three-cell drift against SCALE_TOLERANCE_CELLS of 1, and a regression
+   introduced by the stack rather than inherited (unstacked baseline: 55 cells
+   at all three steps). `contain: inline-size` takes the element's own contents
+   out of its intrinsic width — the same tool, and the same reason, as the chart
+   hosts — so the contribution becomes the declared `min-width` above, which is
+   n × --u and therefore scales. test/intrinsic-floors.test.ts already requires
+   every contained element to declare that floor.
+
+   `box-sizing: border-box` because the sheet's default is content-box and the
+   input carries its own padding: without it `width: 100%` is 100% plus 5u.
+
+   The width the input settles at is deliberately not capped here: that belongs
+   on the shared input rule where every field gets it (#144), not on this
+   modifier, so the bound lives in one place. */
+.field-stacked {
+	flex-direction: column;
+	align-items: stretch;
+	gap: calc(1 * var(--u));
+}
+.field-stacked > input[type="text"], .field-stacked > input[type="number"] {
+	flex: 0 0 auto;
+	box-sizing: border-box;
+	width: 100%;
+	contain: inline-size;
+	/* Restated because containment silences the element's own contribution and
+	   test/intrinsic-floors.test.ts requires a contained element to declare its
+	   floor on the rule that contains it. Same token as the width above, so the
+	   bound is still one number in one place. */
+	min-width: var(--field-input-w);
+}
 .field input[type="number"] { width: calc(10 * var(--u)); min-width: calc(10 * var(--u)); max-width: calc(22.5 * var(--u)); }
 
 .check {

@@ -135,7 +135,7 @@ in the diff that drops it.
 
 **Why.** a delete that removes a card from every screen at once is exactly the action whose scope the operator must see before confirming — "delete this card?" cannot precede stripping it from screens they forgot it was on. The plan freezes usage at arm time; the studio is modal over composition edits, so the frozen report cannot go stale between the two clicks
 
-`packages/ui/src/compose/screens.ts:531`
+`packages/ui/src/compose/screens.ts:537`
 
 ### `compose/composition-degrades-per-slot` — rung 6
 
@@ -1569,7 +1569,7 @@ in the diff that drops it.
 
 **Debt — promotion.** the scan is a brace walker over text, so it sees source order but not cascade subtleties (:is(), layers, differing specificity within a selector list). Rung 6 is generating the breakpoint blocks from one typed source, so ordering stops being something an author controls at all. (The palette entry's narrow-width rules are NOT here — they live in a second max-width block directly after the desktop ones further down.)
 
-`packages/ui/src/app.css:1480`
+`packages/ui/src/app.css:1543`
 
 ### `ui/unit-lengths` — rung 4
 

@@ -246,7 +246,11 @@ export function BedProbeBody() {
 				macro, not here — including whatever preconditions it should honour, the way mesh.g
 				refuses to probe with a tool undocked.
 			</p>
-			<label class="field">
+			{/* Stacked (#138, Gabe): the caption on its own row, the command under
+			    it. Still one <label> wrapping the input, so clicking the caption
+			    focuses the field — the geometry is in app.css's .field-stacked
+			    and nowhere else. */}
+			<label class="field field-stacked">
 				<span class="field-label">Probe point command</span>
 				<input
 					type="text"
@@ -263,7 +267,9 @@ export function CameraConfigBody() {
 	return (
 		<>
 			<p class="hint">Pin the camera (top-right, on any view) to show it as a panel on that view — position and size are set independently per view.</p>
-			<label class="field">
+			{/* Stacked (#138, Gabe) — see BedProbeBody above. The two cards share
+			    the modifier rather than the markup. */}
+			<label class="field field-stacked">
 				<span class="field-label">Stream URL</span>
 				<input
 					type="text"

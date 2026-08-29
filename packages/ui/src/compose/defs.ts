@@ -452,13 +452,28 @@ export const CARD_DEFS = {
 	"bed-probe": defineCard({
 		title: "Bed probing",
 		ariaLabel: "Bed probing",
-		size: { colSpan: 156, rowSpan: 45 },
+		// 45 -> 54 (#138): the label moved onto its own row above the input, so
+		// the field row went 47px -> 74px. MEASURED with auditCard against the
+		// `idle` scenario, 2026-08-28 headless — rowStop 54 at forced heights of
+		// 200/120/80/60/40 cells (spread 0) and 54 at scale 075, 100 AND 150.
+		// The card was ALREADY 7px over its old 45-cell pin before this change
+		// (body client 172 / scroll 179), which is #94 drift this corrects in
+		// passing rather than inherits. colStop 55 at every scale step — the
+		// same number as before the stack, which is the check that mattered:
+		// `width: auto` on the stacked input took it to 61/61/64 and that
+		// three-cell scale drift is why the input is contained (see app.css).
+		size: { colSpan: 156, rowSpan: 54 },
 	}),
 	/** Camera stream URL (config overlay). */
 	"camera-config": defineCard({
 		title: "Camera URL",
 		ariaLabel: "Camera URL",
-		size: { colSpan: 156, rowSpan: 40 },
+		// 40 -> 49 (#138), the same +9 as bed-probe and for the same reason —
+		// the two cards share the stacked-field modifier, so they move together.
+		// MEASURED the same way: rowStop 49 at forced heights 200/120/80/60/40
+		// (spread 0) and at scale 075, 100 and 150; colStop 53 at all three,
+		// unchanged from before the stack.
+		size: { colSpan: 156, rowSpan: 49 },
 	}),
 	/** Sensor display names (config overlay). */
 	"sensor-names": defineCard({

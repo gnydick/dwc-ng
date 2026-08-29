@@ -197,3 +197,100 @@ test("contentRowSpan sums margins unconditionally, and no slack marker survives"
 	assert.doesNotMatch(canvas, /getPropertyValue\("--absorbs-slack"\)/,
 		"a marker read here with nothing in the sheet setting it is a route back to the defect");
 });
+
+/**
+ * THE STACKED FIELD (#138) — two call sites, one declaration, and a floor that
+ * survives the stack.
+ *
+ * Gabe asked for the label above the input on exactly two cards, and when the
+ * question was put to him whether every label/input pair should stack he
+ * answered: "no, just the two i asked to stack". `.field` is used by thirteen
+ * rows across two files, so the ruling is only checkable if the opt-in is a
+ * named modifier rather than a change to the shared rule — and only STAYS
+ * checkable if something counts the call sites. That is what these assertions
+ * are: the mechanical form of a decision, so a later well-meaning edit that
+ * spreads the modifier is a failing test rather than something discovered on
+ * the printer.
+ *
+ * The floor half is the older lesson. `app.css`'s comment above the input rule
+ * records the 2026-08-21 scale sweep, where an input with `min-width: 0` fell
+ * back to Chromium's font-metric `size=20` default — a width carrying a fixed
+ * non-`u` component, so it does not scale with `--u` and made five cards fail
+ * card-floor-scale-invariant on the column axis. Bed probing and Camera URL
+ * were two of the five. Stacking hands the input the whole card width, which
+ * makes it very easy to decide the explicit width is no longer needed; it is,
+ * and this says so.
+ */
+const settingsTsx = readFileSync(
+	fileURLToPath(new URL("../src/cards/SettingsCards.tsx", import.meta.url)), "utf8");
+
+test("the stacked field is ONE declaration, not a per-card style", () => {
+	const rules = cssRulesFor("field-stacked");
+	assert.ok(rules.length > 0, "no .field-stacked rule in app.css — the modifier has no home");
+	// The geometry is what must not be duplicated: exactly one rule may set the
+	// direction, whatever else extends it.
+	const directional = rules.filter(r => /flex-direction:/.test(r.body));
+	assert.equal(directional.length, 1,
+		`the stack direction is declared ${directional.length} times; two copies of a geometry drift`);
+});
+
+test("the stacked field opts IN at exactly the two cards Gabe named", () => {
+	const hits = [...settingsTsx.matchAll(/class="field field-stacked"/g)];
+	assert.equal(hits.length, 2, `field-stacked is on ${hits.length} rows in SettingsCards.tsx, not 2`);
+	// Named, not merely counted: two hits in the wrong two cards is the same
+	// number and a different app.
+	for (const body of ["BedProbeBody", "CameraConfigBody"]) {
+		const start = settingsTsx.indexOf(`export function ${body}(`);
+		assert.ok(start > 0, `${body} not found`);
+		const end = settingsTsx.indexOf("\nexport function ", start + 1);
+		const src = settingsTsx.slice(start, end === -1 ? undefined : end);
+		assert.match(src, /class="field field-stacked"/, `${body} does not carry the stacked modifier`);
+	}
+	// And nowhere else in the app.
+	const systemTsx = readFileSync(
+		fileURLToPath(new URL("../src/cards/SystemCards.tsx", import.meta.url)), "utf8");
+	assert.doesNotMatch(systemTsx, /field-stacked/, "the modifier leaked out of Settings");
+});
+
+test("the stacked input keeps an explicit width floor", () => {
+	// The floor may sit on the shared input rule or on the stacked override;
+	// what must not happen is the override REMOVING it (width: auto with no
+	// min-width hands the browser's size=20 default back to the card's floor).
+	const shared = cssRulesFor("field").find(r => /input\[type="text"\]/.test(r.sel));
+	assert.ok(shared, "no .field input[type=text] rule");
+	assert.match(shared.body, /min-width:\s*var\(--field-input-w\)/,
+		"the shared input rule lost its declared min-width");
+	// And the token it points at is a multiple of the global unit, not a px
+	// literal — a floor that does not scale is the defect this replaced.
+	const token = /--field-input-w:\s*calc\([\d.]+\s*\*\s*var\(--u\)\)/.exec(appCss);
+	assert.ok(token, "--field-input-w is not declared as n x --u");
+	for (const r of cssRulesFor("field-stacked")) {
+		assert.doesNotMatch(r.body, /(^|[;{\s])min-width:\s*0/,
+			`${r.sel} zeroes the input's min-width — the card's floor becomes the browser's size=20 default`);
+	}
+
+	// A CEILING, IF ONE IS EVER DECLARED, MUST CLEAR THE FLOOR.
+	//
+	// This is carried here on purpose. #144 caps the same rule at 88u and
+	// asserts the same property, but it reads min-width by matching
+	// `calc(n * var(--u))` literally — and the floor is a token now, so once
+	// both land its cap-vs-floor comparison silently finds nothing to compare
+	// and stops firing. Reading the token's own value keeps the check alive
+	// through that merge instead of leaving it to be noticed later.
+	const maxDecl = /(^|[;{\s])max-width:([^;]*)/.exec(shared.body);
+	if (maxDecl) {
+		const cap = /calc\(\s*([\d.]+)\s*\*\s*var\(--u\)\s*\)/.exec(maxDecl[2]!);
+		assert.ok(cap, `the input's max-width ${maxDecl[2]!.trim()} is not a calc(n * var(--u))`);
+		const floor = Number(/--field-input-w:\s*calc\(([\d.]+)/.exec(appCss)![1]);
+		assert.ok(Number(cap[1]) >= floor,
+			`the input caps at ${cap[1]}u, under its own ${floor}u floor — a box with max-width below min-width`);
+	}
+});
+
+/** Every rule whose selector list mentions `token` as a whole class name. */
+function cssRulesFor(token: string): Array<{ sel: string; body: string }> {
+	const re = new RegExp(`(^|[^-\w])\.${token}(?![-\w])`);
+	return [...appCss.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+		.map(m => ({ sel: m[1]!.trim(), body: m[2]! }))
+		.filter(r => re.test(r.sel));
+}
