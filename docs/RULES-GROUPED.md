@@ -119,6 +119,17 @@ needed existed. Neither could have been caught by more unit tests of the same
 shape, and both were falsified in minutes once the real modules were run in the
 real sequence.
 
+Rows 6 and 7 (2026-08-29) are the group's own back-pressure, not a wobble: the
+first five rules only ever say STAND ONE UP — per iteration, per ticket, early
+and often — and nothing in the workflow ever said take one down or check which
+one you got. On 2026-08-29 ten orphaned `mock-duet` processes were found still
+listening, the oldest two days old, four of them on ports 8136/8138/8142/8144
+matching GIT_136/GIT_138/GIT_142/GIT_144 — the branches merged the day before.
+That port-to-ticket mapping is what makes the leak a product of the workflow
+rather than a slip, and it means the rule that catches everything else was
+generating the hazard. Both new rows protect the same premise the first five
+depend on: that the thing being driven is the thing that was changed.
+
 No wobble.
 
 | Date | Rule | Cites |
@@ -128,15 +139,37 @@ No wobble.
 | 2026-08-26 | A change to what the UI reads from or writes to the board updates `packages/mock-duet` in the SAME change. Mock parity is part of the work, not a follow-up ticket. | `CLAUDE.md` § Working rules (development environment) |
 | 2026-08-26 | Nothing deploys to the printer until Gabe has UAT'd it on the mock. A clean review is not permission to ship; the implementer's UAT is evidence, Gabe's is the gate. | `CLAUDE.md` § Working rules (development environment) |
 | 2026-08-26 | Every code-complete iteration is deployed to the mock for UAT — early and often, not gated on review being clean. Refines the row above: mock deploy is early, printer deploy still waits for Gabe. | `CLAUDE.md` § Working rules (development environment) |
+| 2026-08-29 | Whoever stands a mock up owns tearing it down: a mock started for an iteration's UAT stops when that UAT ends, and a ticket's mock does not outlive the ticket's merge. Falsifiable — a `Win32_Process` scan for `mock-duet` returns nothing older than the current session's work — and a kill is confirmed by port state, never by exit code. | `CLAUDE.md` § Working rules (development environment) |
+| 2026-08-29 | Identify the mock you are driving by owning PID and start time, never by "something answered on that port". A healthy response on the expected port is not evidence the expected process produced it, and an orphan's flags (`--max-sessions 32`, `--no-auth`) silently disable the constraints the UAT exists to exercise. | `CLAUDE.md` § Working rules (development environment) |
 
 **Evidence:** `docs/LEARNINGS.md` § 2026-08-26, and
 `docs/superpowers/2026-08-26-machine-identity-phase-1-final-review.md`, whose
 two Criticals were both found by running the real modules rather than by
 reading or by unit tests.
+
+**Evidence for rows 6 and 7:** the ten-orphan inventory of 2026-08-29, measured
+with `Get-CimInstance Win32_Process` cross-referenced against
+`Get-NetTCPConnection`, four of whose ports mapped one-to-one onto the previous
+day's merged tickets. The near-miss that produced row 7: a `pnpm mock` start
+failed with `ERR_PARSE_ARGS_UNEXPECTED_POSITIONAL` and never listened, yet
+`curl 127.0.0.1:8971/rr_connect` answered `{"err":0,"apiLevel":1,"sessionTimeout":8000}`
+from an orphan launched the previous evening — the fresh mock was one report
+away from being a stranger process.
+
+Row 7 is deliberately NOT folded into § Claiming what the tooling can do. That
+rule governs a capability claim sourced from PROSE and is discharged by running
+any check at all; here a check *was* run — `curl` against the port — and it
+returned a true answer to the wrong question. The defect is a non-discriminating
+observation, not an unchecked one, so the remedy is a different check (PID +
+`CreationDate`), which that rule does not name and would not have produced.
+
 **Enforcement:** no automated check. The teeth are in the report: a completion
 claim without a UAT note fails the second rule on its face, which is
 reviewable by eye where "did you run the mock" is not. `packages/mock-duet`
-runs via `pnpm mock`.
+runs via `pnpm mock`; no teardown target exists — verified 2026-08-29 by
+reading the `scripts` blocks of both `package.json` and
+`packages/mock-duet/package.json`, which offer `start`, `dev`, `test`,
+`typecheck` and no stop, so rows 6 and 7 are held by discipline alone.
 
 ---
 

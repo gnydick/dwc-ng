@@ -50,3 +50,11 @@ RULING (verbatim): "so that prompt is a really bad way of saying to record indiv
 AND (verbatim): "yes, rewrite 146 around record-edits-not-state"
 
 Disposition: filed — Persisted layouts across releases (docs/superpowers/specs/2026-08-28-record-edits-not-state.md § The ruling; § The two candidate designs). Two register rows. #146/#147 rewritten around the reframing. NOT implemented — GIT_146 builds, and it is BLOCKED on Gabe answering "what counts as moved" (incl. reflow displacement).
+
+## 2026-08-29 (manual capture — ruled in conversation, not hook-captured; `.claude/hooks/rule_capture.py` matches a `RULE:` prefix and Gabe asked for this one to be filed after being shown the orphan inventory)
+
+RULE (as ruled): mock teardown and mock identity. (1) Whoever stands a mock up owns tearing it down — a mock started for an iteration's UAT is stopped when that UAT ends, and a ticket's mock does not outlive the ticket's merge. (2) Identify the mock you are driving by owning PID and start time, never by "something answered on that port".
+
+Evidence: ten orphaned `mock-duet` processes found listening on 2026-08-29 ~16:34 PDT, accumulated 08-27 through 08-29 (PIDs 51364/8970, 39324/8997, 62788/8999, 46136/8994, 66128/8971, 42404/8136, 80828/8138, 73292/8142, 47312/8144, 76816/8199). Ports 8136/8138/8142/8144 map to GIT_136/GIT_138/GIT_142/GIT_144, merged to main the previous day — so the leak is produced by the workflow, not by a slip. All ten killed on Gabe's instruction and verified released by port state, not by exit code. Near-miss for rule (2): a start command failed with `ERR_PARSE_ARGS_UNEXPECTED_POSITIONAL` yet `curl 127.0.0.1:8971/rr_connect` returned a healthy `{"err":0,"apiLevel":1,"sessionTimeout":8000}` from PID 66128, an orphan from the previous evening.
+
+Disposition: filed — Proving a change against something that behaves like the machine (CLAUDE.md § Working rules (development environment)). Two register rows (rows 6 and 7 of that group). Ruled NOT a duplicate of § Claiming what the tooling can do; the reason is recorded in the group's evidence block.

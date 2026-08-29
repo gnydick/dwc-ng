@@ -233,6 +233,32 @@ Adopted 2026-08-26 (Gabe, via `RULE:` intake).
   EARLY and often; the printer deploy still waits for Gabe's word. Batching UAT
   to the end is how a wrong reading of a requirement survives three fix rounds
   before anyone who knows the machine looks at it.
+- **Whoever stands a mock up owns tearing it down.** A mock started for an
+  iteration's UAT is stopped when that UAT ends, and a ticket's mock does not
+  outlive the ticket's merge. The four rules above stand one up per iteration
+  and per ticket; nothing in the workflow ever took one down, so on 2026-08-29
+  ten orphaned `mock-duet` processes were still listening, the oldest two days
+  old — and ports 8136/8138/8142/8144 were GIT_136/GIT_138/GIT_142/GIT_144, the
+  four branches merged the day before, which is what makes the leak systematic
+  rather than a slip. The rule that catches everything else was the source of
+  it. Falsifying check: `Get-CimInstance Win32_Process -Filter "Name='node.exe'"`
+  filtered to `mock-duet` returns no process older than the current session's
+  work. Confirm a kill by port state, never by exit code — `pkill` exits 0 on
+  Windows while leaving the process alive.
+- **Identify the mock you are driving by PID and start time, never by "something
+  answered on that port".** Before reporting a mock as stood up, confirm the
+  listening process is the one you launched: owning PID via
+  `Get-NetTCPConnection`, cross-checked against its `CreationDate`. A response
+  on the expected port is not evidence the expected process produced it. On
+  2026-08-29 a start command failed outright
+  (`ERR_PARSE_ARGS_UNEXPECTED_POSITIONAL`, from pnpm passing `--` through as a
+  positional) while `curl 127.0.0.1:8971/rr_connect` still returned a healthy
+  `{"err":0,"apiLevel":1,"sessionTimeout":8000}` — from the previous evening's
+  orphan, one step from a UAT that would have validated the wrong code and
+  looked green doing it. Orphans also carry flags that silently mask defects:
+  `--max-sessions 32` (the mock's own `--help`: "Raise ONLY to work around a
+  known session leak during UAT — a high cap hides that class of bug") and
+  `--no-auth` were both live on orphans found that day.
 
 ## Working rules (work topology)
 
