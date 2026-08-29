@@ -116,11 +116,25 @@ export function HeaterColorsBody() {
 									onInput={e => app.config.setHeaterColor(i, e.currentTarget.value)}
 								/>
 								<span class="color-hex">{s().stroke}</span>
-								<Show when={overridden()}>
-									<button type="button" class="lab-pill" onClick={() => app.config.clearHeaterColor(i)}>
-										Reset
-									</button>
-								</Show>
+								{/* A RESERVED SLOT, not a conditional child. The per-row Reset
+								    appears the instant a colour is overridden and disappears
+								    when it is cleared — and it used to appear BETWEEN the hex
+								    and the clash slot, so overriding one heater pushed the
+								    clash slot 58px sideways on that row. That is the same
+								    defect #142 exists to remove, in the card #142 is about.
+
+								    The wrapper is always here and always the same width, so the
+								    row does not move; the BUTTON comes and goes inside it, so
+								    an absent Reset is absent from the tab order and from the
+								    accessibility tree rather than being a disabled control
+								    nobody can use. */}
+								<span class="color-reset">
+									<Show when={overridden()}>
+										<button type="button" class="lab-pill" onClick={() => app.config.clearHeaterColor(i)}>
+											Reset
+										</button>
+									</Show>
+								</span>
 								{/* ALWAYS rendered, empty when there is nothing to say. A box
 								    that came and went would change the row's width, and with it
 								    the card's own minimum, every time a pick landed near
@@ -693,8 +707,13 @@ export function AccelerometersBody(props: { ctx: CardCtx }) {
 										value={bitsEdit()[t().number] ?? ""}
 										onInput={e => { setRateArmed(null); setBitsEdit(prev => ({ ...prev, [t().number]: e.currentTarget.value })); }}
 									/>
+									{/* `accel-set` declares the button's WIDTH (app.css). Its label
+									    changes with state — SET becomes CONFIRM when a rate is
+									    armed — and an undeclared button is padding around its
+									    label, so arming a row used to push the Read button, the
+									    board's reply and the verdict 31px sideways. */}
 									<button
-										class="fb-tool"
+										class="fb-tool accel-set"
 										classList={{ "shp-arming": rateArmed() === t().number }}
 										disabled={!accelPresent(t().number)}
 										onClick={() => applyRate(t().number)}

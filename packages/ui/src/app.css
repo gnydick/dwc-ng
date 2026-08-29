@@ -1795,6 +1795,24 @@ input[type="checkbox"] {
 	flex: none;
 }
 .color-range { font-size: calc(3.375 * var(--u)); color: var(--silk-dim); flex: none; }
+/* The per-row Reset's slot on the Chart colours card. Declared, and NOT
+   shrinkable: unlike the clash slot beside it, what lives in here is a click
+   target with a label — a slot that gave at the card's floor would clip the
+   word out of a button rather than out of a sentence.
+
+   15u is the pill's own width, measured 2026-08-28 at data-scale 075 / 100 /
+   150: 43.83 / 58.45 / 87.69px, which is 14.609 / 14.613 / 14.615u — the same
+   multiple at every step, so one number covers all three with 0.385u to spare.
+
+   IT COSTS 15u OF THE ROW'S MINIMUM and that is honest rather than artificial,
+   which is the distinction #142 draws: this card really can be holding four of
+   these buttons, and a floor that pretended otherwise would clip them. Measured
+   the same session, it costs the CARD nothing — the rows go 214 -> 274px and
+   the body's stop stays 330.5px, because this card is bound by its own header
+   (298.5px) and not by its rows. The clash slot next to it is the opposite
+   case, a message the card is usually NOT drawing, and is floored at the mark
+   instead. */
+.color-reset { flex: 0 0 calc(15 * var(--u)); display: flex; align-items: center; }
 /* A statement of fact, not an error: the pick still stands. Gold, not red —
    red would read as "rejected", and nothing here is rejected. */
 /* Sits immediately after the Reset button, left-aligned, in the flow.
@@ -1839,52 +1857,108 @@ input[type="checkbox"] {
 	   A wrapping slot that can grow a second line moves the card's ROW floor
 	   instead, which is trading one defect for its mirror, so the height is
 	   reserved at exactly two of its own lines (--ctl-h is 7.5u, the line is
-	   3.75u) — the .env-status discipline, one axis over. Two rather than one
-	   because a clipped second line is an ellipsis with extra steps.
+	   3.75u) — the .env-status discipline, one axis over.
+
+	   WHICH DECLARATION ACTUALLY TAKES IT OUT OF THE FLOOR was measured on
+	   2026-08-28, forcing one property at a time in Edge against the
+	   Accelerometers card's contentColSpan, and it is NOT the one this comment
+	   used to name. Toggling `white-space: nowrap` on, `overflow-wrap` back to
+	   `normal`, or `overflow` to `visible` moved the stop by ZERO cells (132
+	   each time). Setting flex-shrink to 0 moved it to 198; setting min-width to
+	   auto moved it to 119. A shrinkable flex item contributes its declared
+	   `min-width` to min-content and nothing else. So:
+
+	     · `flex: 0 1` — the 1 is the whole remedy. `flex: 0 0` was the defect:
+	       an item that cannot shrink holds the row open at its full basis.
+	     · `min-width` is then EXACTLY what this slot costs the card, and the
+	       two numbers below can simply be added up by a reader.
+
+	   `overflow-wrap: anywhere` and the absence of nowrap are still required,
+	   but for LEGIBILITY and not for the floor: they are what makes a message
+	   too long for the box wrap into the second reserved line instead of
+	   running off the end of the first.
+
+	   AND IT IS ELLIPSED (Gabe, 2026-08-28: "put the ellipsis back"). #142's
+	   first round dropped `text-overflow: ellipsis`, because that property only
+	   fires beside `white-space: nowrap` and nowrap is what this rule exists to
+	   remove — so a message longer than two lines was cut mid-word with no cue
+	   that anything had been cut. `-webkit-line-clamp` is the mechanism that
+	   ellipsises a WRAPPED box: `display: -webkit-box` + `-webkit-box-orient:
+	   vertical` + `overflow: hidden`, clamped to the number of lines actually
+	   reserved. It costs nothing in min-content, by the measurement above, and
+	   the same construction is already in this sheet at .shp-thread-why (3
+	   lines) and .shp-caveat (2).
+
+	   Verified in the browser rather than read off the spec: Edge reports the
+	   computed `display` of these slots as `flow-root` (they are flex items and
+	   Chromium blockifies the legacy box) and applies the clamp anyway —
+	   "LIS3DSH at 5376 Hz, 12-bit — shows up to 2688 Hz" in a 31u slot renders
+	   as two lines ending "shows up t…".
 
 	   And the floor is the MARK's width, not zero: at the card's new minimum
 	   the text has no room left, and a warning that vanishes exactly when the
 	   card is smallest is not a warning. .speaking draws a dot that always
-	   fits. */
+	   fits. THAT ARGUMENT HOLDS ONLY FOR A SLOT THAT CAN BE SILENT, which this
+	   one is — a clash slot is empty unless two colours collide. See
+	   .accel-reply for the slot where it does not hold, and what its floor is
+	   sized from instead. */
 	flex: 0 1 calc(51 * var(--u));
 	min-width: calc(4 * var(--u));
 	height: var(--ctl-h);
 	line-height: calc(3.75 * var(--u));
 	overflow-wrap: anywhere;
 	overflow: hidden;
+	display: -webkit-box;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 2;
 }
 /*
    @invariant reserved-slot-out-of-the-card-floor
-   @rung 4  source assertion — test/intrinsic-floors.test.ts runs
-            clashSlotFaults() over the rule body of EVERY slot named in
-            RESERVED_SLOTS (.color-clash and .accel-status) and fails the
-            suite unless each is shrinkable, breaks anywhere, reserves a
-            whole number of its own lines, and keeps a positive min-width for
-            its mark. A red check in the same file runs the predicate over
-            the declaration #142 replaced and requires it to fail, so the
-            assertion is known to be capable of failing
-   @debt TWO SLOTS BY NAME. The property is general — a card's width stop must
-         come from what the card draws, not from a box reserved for what it
-         might one day say — and the check knows about the two slots listed in
-         RESERVED_SLOTS. .env-status is the same shape already solved by
-         wrapping. Promote by measuring the mirror of judgeFloor in
-         dev/layoutAudit.ts — "is this card's floor LARGER than its body
-         needs" — over the whole registry, which turns an enumerated list of
-         slots into a sweep no new slot can be missing from. Nothing counts
-         reserved slots today, so a fourth one added tomorrow is unreported.
-         The list is also silent about POSITION, which #142's second round
-         showed is half the property: a reserved slot must be last in its row
-         or its silence is a visible hole (Gabe, 2026-08-28). That is pinned
-         per card in accelerometer-card.test.ts, not by this predicate
-   @why #142: .color-clash was `flex: 0 0 calc(35 * var(--u))` with
-        `white-space: nowrap`, so a message that is absent in the ordinary
-        session put 140px into contentColSpan's min-content probe. Both
-        colour cards' width stops were more than a third space for something
-        they were not drawing (Chart colours 92 cells, Temperature Gradient
-        104; 85 and 76 after). It is the exact mirror of #134 — an
+   @rung 4  source assertion — test/intrinsic-floors.test.ts DERIVES the set of
+            reserved slots from this sheet's own `.speaking::before` mark rule
+            (a slot missing from it reserves width for a mark it never draws),
+            reads the class lists those slots are actually RENDERED with out of
+            every .tsx under src, merges every plain class-compound rule that
+            applies to each of those class lists in source order, and fails the
+            suite unless the resulting cascade is shrinkable (flex-shrink >= 1)
+            on a fixed u-multiple basis, declares a positive u-multiple
+            min-width, reserves a whole number >= 2 of its own lines, clips,
+            wraps anywhere, does not nowrap, and carries a -webkit-line-clamp
+            equal to the lines it reserved. Four red checks run the predicate
+            over the declaration #142 replaced, over a nowrap and an
+            unshrinkable co-class override, over a floorless slot and over a
+            clamp that stops short of the last reserved line, and require each
+            to fail — so the assertion is known to be capable of failing, and
+            capable of failing on the exact bypass it previously allowed
+   @debt SELECTOR SHAPES IT CANNOT READ. The slot list and the rendered class
+         lists are both derived now, so no hand-maintained enumeration remains,
+         and the two bypasses that survived #142's first round (a co-class
+         overriding flex, a co-class adding nowrap) are caught. What is still
+         approximate is the cascade: only PLAIN CLASS COMPOUNDS are merged, so
+         a rule reaching a slot through a descendant combinator, an attribute,
+         :is() or a pseudo-class is silently not merged, and specificity is
+         approximated by source order. A class added through `classList` is
+         refused outright rather than mis-read. Promote by measuring the mirror
+         of judgeFloor in dev/layoutAudit.ts — "is this card's floor LARGER
+         than its body needs" — over the whole registry in a real layout, which
+         reads the resolved cascade from the browser instead of parsing for it
+         and needs no selector vocabulary at all. Also still outside this
+         predicate: POSITION, which #142's second round showed is half the
+         property (a reserved slot must be last in its row or its silence is a
+         visible hole — Gabe, 2026-08-28), pinned per card in
+         accelerometer-card.test.ts
+   @why #142: .color-clash was `flex: 0 0 calc(35 * var(--u))`, an item that
+        cannot shrink, so its whole 140px basis went into contentColSpan's
+        min-content probe for a message that is absent in the ordinary session.
+        Both colour cards' width stops were more than a third space for
+        something they were not drawing (Chart colours 92 cells, Temperature
+        Gradient 104; 85 and 76 after). It is the exact mirror of #134 — an
         artificial floor is as wrong as an unenforced one, because in both
         cases the number the layout obeys is not the number the content
-        justifies
+        justifies. The attribution was itself wrong the first time round and is
+        corrected here from measurement: nowrap and overflow-wrap move this
+        number by ZERO cells, flex-shrink moves it by 66, and min-width is then
+        the whole of what the slot costs
 */
 /* The mark, and the whole of what survives at the card's floor. Drawn from the
    state class rather than from an element that is always present: an empty
@@ -1984,6 +2058,23 @@ input[type="checkbox"] {
    plus the field padding, are what these two numbers are. */
 .field input[type="number"].accel-rate { flex: 0 0 calc(14 * var(--u)); width: calc(14 * var(--u)); min-width: calc(14 * var(--u)); max-width: calc(14 * var(--u)); }
 .field input[type="number"].accel-bits { flex: 0 0 calc(11 * var(--u)); width: calc(11 * var(--u)); min-width: calc(11 * var(--u)); max-width: calc(11 * var(--u)); }
+/* THE ARMING BUTTON IS DECLARED, so arming a row moves nothing after it.
+   `.fb-tool` is padding around its label and nothing else, so a button whose
+   label CHANGES with state resizes when it changes: "SET" measures 10.34u and
+   "CONFIRM" 18.195u in this face (measured 2026-08-28 at data-scale 075 / 100 /
+   150 — 10.34 / 10.338 / 10.34 and 18.193 / 18.195 / 18.193, the same
+   u-multiple at every step), and the 7.86u between them pushed the Read button,
+   the board's reply and the verdict 31.4px sideways the instant a rate was
+   armed. Nothing about the tool had changed.
+
+   Same treatment and same reason as `.shp-step > .fb-tool` further down this
+   sheet: declare the wider of the two labels and let the narrower sit inside
+   it. 18.5u clears CONFIRM at all three steps with 0.3u to spare.
+
+   It raises the row's min-content by 8.16u, and that is the honest number —
+   the button really does need that width in a state it can be in. Pinned with
+   the card's re-measured floor in compose/defs.ts. */
+.fb-tool.accel-set { width: calc(18.5 * var(--u)); flex: 0 0 auto; text-align: center; }
 /* Reserved for the same reason as .color-clash — four tool rows that each
    gained and lost a sentence would reflow the card as you edited — and, since
    #142, reserved the same WAY: a fixed preference that costs nothing in the
@@ -2022,20 +2113,40 @@ input[type="checkbox"] {
 	   A wrapping slot that can grow a second line would move the card's ROW
 	   floor instead, which is trading one defect for its mirror, so the height
 	   is reserved at exactly two of its own lines (--ctl-h is 7.5u, the line is
-	   3.75u) — and two rather than one because a clipped second line is an
-	   ellipsis with extra steps. This also fixes what the old 4.75u single line
-	   was for: an EMPTY span has no line box, so its height would collapse to
-	   zero and the row's align-items: center would re-centre what is left.
+	   3.75u). This also fixes what the old 4.75u single line was for: an EMPTY
+	   span has no line box, so its height would collapse to zero and the row's
+	   align-items: center would re-centre what is left.
+
+	   The paragraph above about `overflow-wrap` is corrected at .color-clash,
+	   where the measurement is written out: the property that keeps this slot
+	   out of the card's floor is `flex-shrink: 1`, and what it then costs is
+	   exactly its `min-width`. The wrapping properties are legibility, not
+	   floor.
+
+	   AND IT IS ELLIPSED — `-webkit-line-clamp`, clamped to the two lines this
+	   box reserves, for the reason and with the measurement written out at
+	   .color-clash. A wrapped box cannot use `text-overflow: ellipsis`; that
+	   property fires only beside the nowrap this rule may not have.
 
 	   And the floor is the MARK's width, not zero: at the card's minimum the
 	   text has no room left, and a warning that vanishes exactly when the card
-	   is smallest is not a warning. .speaking draws a dot that always fits. */
+	   is smallest is not a warning. .speaking draws a dot that always fits.
+	   THIS SLOT MAY BE SILENT, and that is what licenses a mark-sized floor:
+	   accelStatusText returns "" for `kind: "ok"` and for nothing else
+	   (shaping/settingsDraft.ts), so on a machine whose mappings work the
+	   verdict is simply absent, and the four sentences it can carry are all
+	   exception states. At the floor one of those degrades to the dot plus an
+	   ellipsis — a cue to widen the card, not a hidden condition. The slot
+	   BEFORE it cannot be silent and is floored differently; see .accel-reply. */
 	flex: 0 1 calc(31 * var(--u));
 	min-width: calc(4 * var(--u));
 	height: var(--ctl-h);
 	line-height: calc(3.75 * var(--u));
 	overflow-wrap: anywhere;
 	overflow: hidden;
+	display: -webkit-box;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 2;
 }
 /* Under `ui/reserved-slot-out-of-the-card-floor`, declared once beside
    .color-clash above — the same invariant, not a second one, and its check
@@ -2058,6 +2169,40 @@ input[type="checkbox"] {
 	   nothing: the property this slot exists for is untouched. */
 	flex: 1 1 calc(80 * var(--u));
 	color: var(--silk-dim);
+	/* A FLOOR SIZED FROM THE MESSAGE, not from the mark — the one place this
+	   slot must differ from every other reserved slot in this sheet.
+
+	   Gabe, 2026-08-28, dragging the card on the mock: "the accelerometer card
+	   narrows just a hair too much, it clips the text 'not asked'". He is right,
+	   and the cause is that this rule inherited `min-width: calc(4 * var(--u))`
+	   by sitting under .accel-status. 4u is the MARK's width, and the argument
+	   for a mark-sized floor is "the slot is empty in the ordinary session, so
+	   what has to survive at the minimum is the cue that it is not". True of
+	   .accel-status; FALSE here. reportText (shaping/accelReport.ts) is total
+	   and never returns "" — a row that has not been Read says "not asked",
+	   which is the state EVERY row is in on a freshly booted machine. A floor
+	   sized for a slot that can disappear is wrong for a slot that cannot.
+
+	   14.5u IS DERIVED. reportText has four arms; two are short and always
+	   reachable, and the floor takes the longer of those two:
+
+	     · null (nothing read yet)          "not asked"  57.00px = 14.25u
+	     · known:false, raw ""              "no reply"   47.13px = 11.79u
+	     · known:false, raw <board text>    unbounded — the board's own words
+	     · known                            the full sentence, 287.30px = 71.83u
+
+	   Measured 2026-08-28 in Edge against this rule's own computed font and
+	   letter-spacing, at all three scale steps: 42.75px at 075 (u 3), 57.00px at
+	   100 (u 4), 85.50px at 150 (u 6) — 14.25u at every step, because the body
+	   size is itself a multiple of --u. 14.5u clears the worst with 0.25u to
+	   spare and is a whole quarter-unit. No mark allowance: the ::before is
+	   drawn from `.speaking`, which this slot never carries.
+
+	   The two LONG arms are not floored — one of them is arbitrary board text
+	   and cannot be — and they are what the line clamp is for. That is the
+	   split: the floor guarantees the steady state is legible, the ellipsis says
+	   when an exceptional message has been cut. */
+	min-width: calc(14.5 * var(--u));
 }
 
 /* ---------- UI scale toggle ----------

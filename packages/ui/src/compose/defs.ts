@@ -438,6 +438,14 @@ export const CARD_DEFS = {
 	 * what stops the drag now is the card's own HEADER (298.5px of title, tip
 	 * and controls) rather than its rows, which measure 204px.
 	 *
+	 * RE-MEASURED AGAIN after the per-row Reset got a reserved slot: contentColSpan
+	 * STILL 85. The slot is `flex: 0 0 calc(15 * var(--u))` and does put 60px into
+	 * the row's min-content (274px per row, from 214), but the header still wants
+	 * 298.5px and the body's padding puts it at 330.5px, so the rows are nowhere
+	 * near binding and the fix is free at this card's stop. What it bought,
+	 * measured the same session: overriding one heater's colour used to move that
+	 * row's clash slot 68.5px sideways, and now moves it 0.
+	 *
 	 * The size below is NOT that floor and is deliberately left alone: `size`
 	 * is the card's natural geometry (see this file's redesigned-cards-grow
 	 * invariant), it already sat well ABOVE the floor before #142, and shrinking
@@ -461,12 +469,46 @@ export const CARD_DEFS = {
 	 * The STOPS DID NOT MOVE — still 76 x 48, body min-content still 292.2px —
 	 * because this card has been header-bound since the first #142 change: the
 	 * title, tip and controls want 260.2px and the widest ROW now wants 235.8px.
-	 * What moved is the card's TRUNCATION BAND, which is what the ruling was
-	 * actually about: the rows measured 249.9 / 235.8 / 250.2px before and
-	 * 228.6 / 235.8 / 235.8px after, so the width at which every label is fully
-	 * drawn fell from 336px to 300px against an unchanged 292.2px floor — a band
-	 * of ~44px narrowed to ~8px. Not zero: "45 – 160 °C" is now the longest of
-	 * the three and it is the one Gabe left alone.
+	 *
+	 * WHAT MOVED IS THE TRUNCATION BAND, and the figures below REPLACE an
+	 * earlier set that mixed two different measurements into one sentence. Two
+	 * quantities are involved and they are not the same quantity:
+	 *
+	 *   · a row's MIN-content is what it contributes to the card's floor. It is
+	 *     the width of the row's widest unbreakable piece, so shortening a
+	 *     label only moves it if that label held the record.
+	 *   · a row's MAX-content is the width at which that row is fully drawn —
+	 *     nothing wrapped, nothing clipped. That is the "every label legible"
+	 *     number, and it is always the larger of the two.
+	 *
+	 * Re-measured from scratch 2026-08-28 in Edge on the mock, at data-scale 100
+	 * (--u 4px, 1600x1200), by setting `width: min-content` / `max-content` on
+	 * each `.field` row and on `.panel-body` and reading getBoundingClientRect —
+	 * the same construction panelCanvas.ts's intrinsicWidthPx uses, so these
+	 * numbers and contentColSpan's are taken the same way. Prose labels were
+	 * restored in the source for the BEFORE pass and the AFTER pass re-run on
+	 * the shipped strings, rather than recalled:
+	 *
+	 *                       min-content            max-content
+	 *   row          before      after       before      after
+	 *   Cold          249.9  ->  228.6        285.3  ->  258.6
+	 *   Warm          235.8  ->  235.8        281.7  ->  281.7
+	 *   Hot           250.2  ->  235.8        319.1  ->  265.9
+	 *   widest        250.2  ->  235.8        319.1  ->  281.7
+	 *
+	 * The card's floor is `body min-content + gutter` = 292.2 + 8 = 300.2px
+	 * (76 cells), unchanged, because the header's 260.2px + the body's 32px of
+	 * padding beat every row in both passes. Full legibility is
+	 * `widest max-content + gutter`: 327.1px before, 289.7px after.
+	 *
+	 * SO THE BAND CLOSED COMPLETELY, which is stronger than the "~44px to ~8px"
+	 * the earlier note claimed and is the honest answer to the ruling. Before,
+	 * the card could be dragged to 300.2px and the Hot label needed 327.1px, so
+	 * there were 26.9px of width in which a label was cut. After, full legibility
+	 * (289.7px) is BELOW the floor (300.2px): there is no width this card can be
+	 * dragged to at which any of the three labels is not fully drawn. The 14.4px
+	 * that came off the widest min-content and the 37.4px that came off full
+	 * legibility are different quantities and were never required to agree.
 	 */
 	"thermal-colors": defineCard({
 		title: "Temperature Gradient",
@@ -545,12 +587,39 @@ export const CARD_DEFS = {
 		//   #140, two sections of four rows   row 128, col 117 (body 456.1px)
 		//   rows combined, slots unchanged    row  64, col 173 (body 680.1px)
 		//   + the .accel-status remedy        row  64, col 114 (body 444.1px)
+		//   + the floor and width fixes below row  64, col 132 (body 518.8px)
 		//
 		// Half the height, and a WIDER row that nonetheless reports a NARROWER
 		// floor than the eight-row card did — the two reserved sentences were
 		// worth 59 cells of min-content between them. Identical stops at
 		// data-scale 075 / 100 / 150 (0 cell drift), no child drift, and the
 		// floor still counts the body (chrome 17 of 64).
+		//
+		// THE LAST LINE IS 18 CELLS BACK, and both halves of it are bought
+		// deliberately (Gabe, 2026-08-28, dragging this card on the mock: "the
+		// accelerometer card narrows just a hair too much, it clips the text
+		// 'not asked'"):
+		//
+		//   +10.5u  .accel-reply's min-width, 4u -> 14.5u. 4u was the width of
+		//           the MARK, borrowed from .accel-status, and the argument for
+		//           a mark-sized floor is "the slot is empty in the ordinary
+		//           session". reportText is total and never returns "" — every
+		//           row on a machine that has not been Read says "not asked" —
+		//           so this slot has no empty state to degrade to and its floor
+		//           has to fit the message instead. 14.25u measured, at all
+		//           three scale steps. (app.css, .accel-reply)
+		//   + 8.16u .fb-tool.accel-set's declared width. The arming button's
+		//           label changes SET -> CONFIRM, 10.34u -> 18.195u, and an
+		//           undeclared button is padding around its label: arming a row
+		//           moved the Read button, the reply and the verdict 31.4px.
+		//           Declared at 18.5u, that shift is now 0.
+		//
+		// Re-verified after both: 132 cells at data-scale 075 / 100 / 150 with
+		// zero drift, and at that width "not asked" is fully drawn on all four
+		// rows at all three steps (measured scrollWidth == clientWidth, and
+		// looked at). The 312-column placement below is UNAFFECTED — it was
+		// argued from legibility of the two sentences at 156 columns, not from
+		// the floor, and 132 is still far under 312.
 		//
 		// 312 wide, and that is a CHANGE from #140's 156: one row per tool is
 		// twice the row, and at 156 (≈616px) the address verdict and the board's

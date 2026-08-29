@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 /**
@@ -205,28 +205,50 @@ test("contentRowSpan sums margins unconditionally, and no slack marker survives"
  * it is. `.color-clash` lied the other way. It is the per-row advisory on the
  * Chart colours and Temperature Gradient cards ("close to Bed (ΔE 2.1)"), empty
  * in the ordinary session, and it was declared `flex: 0 0 calc(35 * var(--u))`
- * with `white-space: nowrap` — 140px of reserved width that a nowrap sentence
- * puts into the row's min-content whether or not there is a sentence to say. It
- * was 140 of the 360px those cards' bodies reported, so more than a third of
- * both cards' width stops was space for a message that is usually absent
- * (measured 2026-08-28: stops of 92 and 104 cells).
+ * — a slot that CANNOT SHRINK, so its whole 140px basis went into the row's
+ * min-content whether or not there was a sentence to say. It was 140 of the
+ * 360px those cards' bodies reported (stops of 92 and 104 cells).
  *
- * The replacement keeps everything the fixed slot was bought for and pays for
- * none of it in min-content:
+ * WHICH PROPERTY DOES THE WORK WAS MEASURED, not reasoned about, and the answer
+ * is not the one #142's first round wrote down. Driving the mock in Edge on
+ * 2026-08-28 and forcing one declaration at a time against the Accelerometers
+ * card's contentColSpan:
  *
- *   · the flex BASIS is still a fixed multiple of --u, so the box is the same
- *     width whether it is speaking or silent and nothing on the row moves as a
+ *   baseline                                   132 cells (518.8px)
+ *   + white-space: nowrap on .accel-reply      132        (518.8)
+ *   + overflow-wrap: normal on both slots      132        (518.8)
+ *   + overflow: visible on both slots          132        (518.8)
+ *   + flex-shrink 1 -> 0 on .accel-reply       198        (780.8)
+ *   + min-width: auto on .accel-reply          119        (468.0)
+ *
+ * So a shrinkable flex item's contribution to its row's min-content is its
+ * declared `min-width` and nothing else — the text properties do not enter into
+ * it, and the earlier claim that "`overflow-wrap: anywhere` is what actually
+ * removes it from the floor" is FALSE. Two things hold the floor:
+ *
+ *   · `flex-shrink` >= 1, so the slot gives instead of holding the row open at
+ *     its basis. That is the whole of the original defect, and the only change
+ *     above that moves the number by sixty-six cells; and
+ *   · a declared, positive `min-width`, which is then EXACTLY what the slot
+ *     costs the card. A reader can add these up.
+ *
+ * The rest of the discipline is still required, for reasons that are about
+ * LEGIBILITY rather than about the floor, and the predicate below says so:
+ *
+ *   · the flex BASIS is a fixed multiple of --u, so the box is the same width
+ *     whether it is speaking or silent and nothing on the row moves as a
  *     message appears, changes length or clears;
- *   · `overflow-wrap: anywhere` is what actually removes it from the floor —
- *     plain wrapping would still contribute the longest WORD, and a heater
- *     called "Chamber" is 50px of it;
- *   · a wrapping slot that can grow a second line would move the card's ROW
- *     floor instead of its column floor, which is trading one defect for the
- *     other, so the height is reserved and is a whole number of its own lines
- *     (the `.env-status` discipline, one axis over);
- *   · and `min-width` is NOT zero: the slot keeps the width of its mark, so a
- *     clash that fires while the card sits at its floor is still visible rather
- *     than squeezed out of existence.
+ *   · the height is reserved at a whole number of the slot's own lines — a slot
+ *     that could grow a line would move the card's ROW floor instead, which is
+ *     trading one defect for its mirror;
+ *   · `overflow: hidden` with `overflow-wrap: anywhere` and no `nowrap`, so a
+ *     message too long for the box wraps INTO the reserved lines rather than
+ *     running off the end of one of them;
+ *   · and `-webkit-line-clamp` at exactly the reserved line count, so the last
+ *     reserved line ends in an ellipsis and a cut message says it was cut
+ *     (Gabe, 2026-08-28: "put the ellipsis back"). `text-overflow: ellipsis`
+ *     cannot do this job — it fires only beside `white-space: nowrap`, which is
+ *     the one property these slots may not have.
  *
  * Source assertions, like the rest of this file — there is no DOM here. The
  * measured stops are re-taken in the Card Lab and pinned in compose/defs.ts.
@@ -235,80 +257,279 @@ const indexCss = stripComments(
 	readFileSync(fileURLToPath(new URL("../src/index.css", import.meta.url)), "utf8"),
 );
 
-/** `calc(N * var(--u))`, `var(--ctl-h)` and bare `0` resolved to u-multiples. */
-function uMultiple(value: string): number | null {
+/**
+ * `calc(N * var(--u))`, bare `0`, and any `var(--token)` whose own definition in
+ * index.css or app.css is a u-multiple. Anything else is null.
+ *
+ * The token arm is not decoration. #138 turns `.field input`'s `min-width` into
+ * `var(--field-input-w)`; a matcher that only understood the literal calc form
+ * would silently find nothing to compare against the moment that landed. This
+ * function is written identically here and in #144's section of this file so
+ * the two branches merge to ONE copy rather than to two near-duplicates.
+ */
+function uMultiple(value: string | null): number | null {
+	if (value === null) return null;
 	const trimmed = value.trim();
 	if (/^0$/.test(trimmed)) return 0;
-	if (/^var\(--ctl-h\)$/.test(trimmed)) {
-		const token = /--ctl-h:\s*calc\(([\d.]+)\s*\*\s*var\(--u\)\)/.exec(indexCss);
-		return token ? Number(token[1]) : null;
+	const token = /^var\((--[a-z0-9-]+)\)$/.exec(trimmed);
+	if (token !== null) {
+		const def = new RegExp(`${token[1]}:\\s*calc\\(\\s*([\\d.]+)\\s*\\*\\s*var\\(--u\\)\\s*\\)`)
+			.exec(indexCss + appCss);
+		return def === null ? null : Number(def[1]);
 	}
-	const calc = /^calc\(([\d.]+)\s*\*\s*var\(--u\)\)$/.exec(trimmed);
+	const calc = /^calc\(\s*([\d.]+)\s*\*\s*var\(--u\)\s*\)$/.exec(trimmed);
 	return calc ? Number(calc[1]) : null;
 }
 
-const decl = (body: string, prop: string): string | null => {
-	const m = new RegExp(`(^|[;{\\s])${prop}:([^;]*)`).exec(body);
-	return m ? m[2]!.trim() : null;
-};
+/**
+ * The LAST declaration of `prop` in a body, or null if it is not declared.
+ *
+ * Last, not first, because these bodies are CASCADES: effectiveBody() below
+ * concatenates every rule that applies to one rendered element, in source
+ * order, and at equal specificity the later declaration is the one the browser
+ * uses. Reading the first is how `.accel-reply`'s override of `.accel-status`'s
+ * flex stayed invisible to this file.
+ */
+function decl(body: string, prop: string): string | null {
+	const all = [...body.matchAll(new RegExp(`(?:^|[;{\\s])${prop}:([^;}]*)`, "g"))];
+	return all.length === 0 ? null : all[all.length - 1]![1]!.trim();
+}
+
+interface CssRule {
+	readonly selectors: readonly string[];
+	readonly body: string;
+	/** The at-rule this sits inside, if any — reported so a fault found only
+	 *  inside a breakpoint block names the breakpoint. */
+	readonly at: string | null;
+}
+
+/** Every declaration block in app.css, in source order, with its at-rule. */
+function cssRules(css: string): CssRule[] {
+	const rules: CssRule[] = [];
+	const stack: string[] = [];
+	let i = 0;
+	let start = 0;
+	while (i < css.length) {
+		const ch = css[i];
+		if (ch === "{") {
+			const prelude = css.slice(start, i).trim();
+			if (prelude.startsWith("@")) {
+				stack.push(prelude);
+				i += 1;
+				start = i;
+				continue;
+			}
+			const end = css.indexOf("}", i);
+			if (end === -1) break;
+			rules.push({
+				selectors: prelude.split(",").map(s => s.trim()).filter(s => s !== ""),
+				body: css.slice(i + 1, end),
+				at: stack.length === 0 ? null : stack[stack.length - 1]!,
+			});
+			i = end + 1;
+			start = i;
+			continue;
+		}
+		if (ch === "}") {
+			stack.pop();
+			i += 1;
+			start = i;
+			continue;
+		}
+		i += 1;
+	}
+	return rules;
+}
+
+/** Every class name app.css writes a rule for. Used to tell a class token from
+ *  an ordinary identifier when reading a `class=` expression out of TSX. */
+const CSS_CLASSES = new Set([...appCss.matchAll(/\.([a-z][a-z0-9-]*)/g)].map(m => m[1]!));
 
 /**
- * The four properties that together take the slot out of the cards' min-content
- * without giving up what the fixed slot protected. Written over a rule body so
- * the red check below can run the same predicate against the DECLARATION IT
- * REPLACED and watch it fail — a source assertion that has never been shown to
- * fail is a sentence, not a check.
+ * THE SLOTS, DERIVED FROM THE SHEET rather than listed in this file.
+ *
+ * #142's first round kept a `RESERVED_SLOTS` array here, and its own @debt said
+ * exactly what that was: enumeration standing in for a sweep. An enumerated
+ * list cannot be wrong about a slot it does not contain, which is precisely the
+ * failure it had — `.accel-reply` overrides `.accel-status`'s flex and was
+ * never checked.
+ *
+ * The mark rule is the ONE declaration in app.css that draws what a reserved
+ * slot keeps at the card's floor, and every such slot's `min-width` exists to
+ * hold that mark. A slot missing from it reserves width for something it does
+ * not draw. So the mark rule's selector list IS the set of slots, and a fourth
+ * slot cannot come into existence without joining it.
  */
-function clashSlotFaults(body: string): string[] {
+function reservedSlotClasses(): string[] {
+	const mark = cssRules(appCss).filter(r => r.selectors.some(s => s.endsWith(".speaking::before")));
+	assert.equal(mark.length, 1,
+		"the mark must be drawn by exactly ONE rule — two copies are two numbers that have to agree about how wide 'the mark' is");
+	return mark[0]!.selectors.map(s => {
+		const m = /^\.([a-z][a-z0-9-]*)\.speaking::before$/.exec(s);
+		assert.ok(m !== null, `${s} is not of the form "<slot>.speaking::before"`);
+		return m![1]!;
+	});
+}
+
+interface SlotVariant {
+	/** The class list this element actually renders with. */
+	readonly classes: ReadonlySet<string>;
+	/** Where it is written, for the failure message. */
+	readonly where: string;
+}
+
+/**
+ * Every class list the app actually renders a reserved slot with.
+ *
+ * This is the dimension an enumerated list of base classes could not have:
+ * `.accel-status` and `.accel-status.accel-reply` are two different cascades,
+ * and only the first was ever checked. Read out of the TSX, so a new co-class
+ * arrives here by being WRITTEN rather than by someone remembering to add it.
+ */
+function slotVariants(): SlotVariant[] {
+	const base = reservedSlotClasses();
+	const dir = new URL("../src/", import.meta.url);
+	const files = readdirSync(dir, { recursive: true, encoding: "utf8" }).filter(f => f.endsWith(".tsx"));
+	const found: SlotVariant[] = [];
+	const seen = new Set<string>();
+	for (const rel of files) {
+		const text = readFileSync(new URL(rel.replaceAll("\\", "/"), dir), "utf8");
+		// A reserved slot may not be built through classList: this reads the
+		// STATIC class list, so a conditionally added class whose rule changed
+		// the shape would be invisible to it. Refuse rather than under-report.
+		for (const b of base) {
+			assert.doesNotMatch(text, new RegExp(`classList=\\{\\{[^}]*${b}`),
+				`${rel} adds ${b} through classList; this check reads static class lists only`);
+		}
+		for (const m of text.matchAll(/class=(?:"([^"]*)"|\{`([^`]*)`\})/g)) {
+			const expr = m[1] ?? m[2] ?? "";
+			const classes = new Set(
+				[...expr.matchAll(/[A-Za-z][A-Za-z0-9_-]*/g)].map(t => t[0]!).filter(t => CSS_CLASSES.has(t)),
+			);
+			if (!base.some(b => classes.has(b))) continue;
+			const key = [...classes].sort().join(".");
+			if (seen.has(key)) continue;
+			seen.add(key);
+			found.push({ classes, where: `${rel}: class=${expr.slice(0, 60)}` });
+		}
+	}
+	return found;
+}
+
+/**
+ * Does this selector apply to an element carrying exactly these classes?
+ *
+ * Plain class compounds only. Anything with a combinator, an element name, an
+ * attribute or a pseudo is conditional on something this file cannot see, and
+ * is left OUT rather than guessed at — which is a known hole, recorded on the
+ * declaration in app.css.
+ */
+function appliesTo(selector: string, classes: ReadonlySet<string>): boolean {
+	if (!/^(?:\.[a-z][a-z0-9-]*)+$/.test(selector)) return false;
+	return [...selector.matchAll(/\.([a-z][a-z0-9-]*)/g)].every(m => classes.has(m[1]!));
+}
+
+/** Every rule that applies to one rendered class list, concatenated in source
+ *  order — the cascade, which is what the element actually gets. */
+function effectiveBody(classes: ReadonlySet<string>): { body: string; from: string[] } {
+	const from: string[] = [];
+	const parts: string[] = [];
+	for (const rule of cssRules(appCss)) {
+		if (!rule.selectors.some(s => appliesTo(s, classes))) continue;
+		parts.push(rule.body);
+		from.push(rule.selectors.join(", ") + (rule.at === null ? "" : ` inside ${rule.at}`));
+	}
+	return { body: parts.join(";\n"), from };
+}
+
+/**
+ * The shape a reserved slot must have. Written over a BODY so the red checks
+ * below can run the same predicate over declarations that must fail it — a
+ * source assertion that has never been shown to fail is a sentence.
+ */
+function slotFaults(body: string): string[] {
 	const faults: string[] = [];
-	if (/white-space:\s*nowrap/.test(body)) {
-		faults.push("white-space: nowrap puts the whole sentence into the row's min-content");
-	}
-	if (!/overflow-wrap:\s*anywhere/.test(body)) {
-		faults.push("no overflow-wrap: anywhere — the longest word still sets the card's floor");
-	}
+
+	// --- the column floor, which is these two declarations and nothing else
 	const flex = decl(body, "flex");
-	if (!flex || !/^0\s+[1-9]/.test(flex)) {
-		faults.push(`flex must be 0 <shrink≥1> <basis> so the slot, and only the slot, gives: got ${flex}`);
+	const shape = flex === null ? null : /^([\d.]+)\s+([\d.]+)\s+(.+)$/.exec(flex);
+	if (shape === null) {
+		faults.push(`flex must be "<grow> <shrink> <basis>" so the shrink factor is visible: got ${flex}`);
+	} else {
+		if (Number(shape[2]) < 1) {
+			faults.push(`flex-shrink is ${shape[2]}: a slot that cannot shrink puts its whole ${shape[3]} basis into the card's min-content`);
+		}
+		if (uMultiple(shape[3]!) === null) {
+			faults.push(`flex-basis ${shape[3]} is not a fixed u-multiple, so the box would size to whatever it is saying`);
+		}
 	}
-	const height = uMultiple(decl(body, "height") ?? "");
-	const line = uMultiple(decl(body, "line-height") ?? "");
+	const min = uMultiple(decl(body, "min-width"));
+	if (min === null || min <= 0) {
+		faults.push("min-width must be a positive u-multiple: on a shrinkable slot that number IS its whole contribution to the card's floor");
+	}
+
+	// --- the row floor
+	const height = uMultiple(decl(body, "height"));
+	const line = uMultiple(decl(body, "line-height"));
+	let lines: number | null = null;
 	if (height === null || line === null || line === 0) {
 		faults.push("a wrapping slot must reserve an explicit height and line-height, or it moves the ROW floor");
 	} else {
-		const lines = height / line;
+		lines = height / line;
 		if (!Number.isInteger(lines) || lines < 2) {
 			faults.push(`reserved height must be a whole number of lines, at least 2: ${height}u / ${line}u`);
 		}
 	}
-	const min = uMultiple(decl(body, "min-width") ?? "");
-	if (min === null || min <= 0) {
-		faults.push("min-width must be a positive u-multiple, or a clash fired at the card's floor is invisible");
+
+	// --- legibility inside the reserved box
+	if (!/overflow:\s*hidden/.test(body)) {
+		faults.push("overflow: hidden — the reserved box must clip what will not fit, not spill it across the row");
+	}
+	if (/white-space:\s*nowrap/.test(body)) {
+		faults.push("white-space: nowrap — a message longer than the box runs off ONE line instead of wrapping into the reserved lines");
+	}
+	if (!/overflow-wrap:\s*anywhere/.test(body)) {
+		faults.push('no overflow-wrap: anywhere — one long word ("board.device") overflows the box rather than breaking inside it');
+	}
+	const clamp = decl(body, "-webkit-line-clamp");
+	const boxed = /display:\s*-webkit-box/.test(body) && /-webkit-box-orient:\s*vertical/.test(body);
+	if (clamp === null || !boxed) {
+		faults.push("no ellipsis: a WRAPPED box is ellipsed by display:-webkit-box + -webkit-box-orient:vertical + -webkit-line-clamp, never by text-overflow, which fires only beside the nowrap this slot may not have");
+	} else if (lines !== null && Number(clamp) !== lines) {
+		faults.push(`-webkit-line-clamp is ${clamp} but ${lines} lines are reserved: the ellipsis must land on the last line the slot actually has`);
 	}
 	return faults;
 }
 
-/**
- * Every slot the invariant knows about BY NAME.
- *
- * One list, iterated — not a test per slot. #142's second round added
- * `.accel-status` (the Accelerometers card's per-tool verdict and board reply,
- * two of them per row since the rows were combined), and a second hand-written
- * copy of the assertion is how the two would come to check different things.
- * The register's @debt says exactly what this list is: enumeration standing in
- * for a sweep.
- */
-const RESERVED_SLOTS = [".color-clash", ".accel-status"] as const;
+const SLOT_VARIANTS = slotVariants();
 
-for (const slot of RESERVED_SLOTS) {
-	test(`${slot} is out of the cards' min-content and still says what it has to say`, () => {
-		assert.deepEqual(clashSlotFaults(ruleBody(slot)), []);
+test("the reserved slots are derived from the sheet, and the derivation found something", () => {
+	const base = reservedSlotClasses();
+	assert.ok(base.length >= 2, `the mark rule names ${base.length} slot(s) — has it been split?`);
+	for (const b of base) {
+		assert.ok(SLOT_VARIANTS.some(v => v.classes.has(b)),
+			`.${b} is declared a reserved slot but nothing renders it — a rule for an element that does not exist`);
+	}
+	// The whole reason the markup is read: at least one slot renders with a
+	// SECOND class whose rule joins its cascade. A check that could only see
+	// base classes would be exactly as blind as the list it replaced.
+	assert.ok(SLOT_VARIANTS.some(v => v.classes.size > 1),
+		"no multi-class reserved slot found — this check would then be no stronger than the list it replaced");
+});
+
+for (const variant of SLOT_VARIANTS) {
+	const name = [...variant.classes].map(c => `.${c}`).join("");
+	test(`reserved slot ${name} is out of the cards' min-content and still says what it has to say`, () => {
+		const { body, from } = effectiveBody(variant.classes);
+		assert.ok(from.length > 0, `${variant.where}: no rule in app.css applies to ${name}`);
+		assert.deepEqual(slotFaults(body), [], `${variant.where}\ncascade: ${from.join(" | ")}`);
 	});
 }
 
 test("red check — the declaration #142 replaced fails the same predicate", () => {
-	// Verbatim shape of the pre-#142 rule: fixed slot, nowrap, no reserved
-	// height, no floor for the mark.
+	// Verbatim shape of the pre-#142 rule: a slot that cannot shrink, no floor
+	// for the mark, no reserved height, nowrap, and an ellipsis that worked only
+	// BECAUSE of that nowrap.
 	const before = `
 		font-size: calc(3.25 * var(--u));
 		flex: 0 0 calc(35 * var(--u));
@@ -316,8 +537,49 @@ test("red check — the declaration #142 replaced fails the same predicate", () 
 		overflow: hidden;
 		text-overflow: ellipsis;
 	`;
-	const faults = clashSlotFaults(before);
-	assert.ok(faults.length >= 4, `the old rule must fail this predicate; it reported: ${faults.join(" | ")}`);
+	const faults = slotFaults(before);
+	assert.ok(faults.length >= 5, `the old rule must fail this predicate; it reported: ${faults.join(" | ")}`);
+	assert.ok(faults.some(f => /flex-shrink is 0/.test(f)),
+		"the shrink factor is the fault that was worth 66 cells, and it must be named as such");
+});
+
+/**
+ * THE CASCADE IS ACTUALLY READ, stated as something that would be FALSE if it
+ * were not.
+ *
+ * `.accel-reply` is applied together with `.accel-status` and overrides its
+ * flex. #142's first round asserted over ONE rule body, so the value of `flex`
+ * this element ships with was never the value the check looked at, and both
+ * bypasses below passed a green suite.
+ */
+test("red check — an override on a co-class is what the predicate sees, not the base rule", () => {
+	const reply = SLOT_VARIANTS.find(v => v.classes.has("accel-reply"));
+	assert.ok(reply !== undefined, "the board-reply slot is missing from the markup");
+	const merged = decl(effectiveBody(reply!.classes).body, "flex");
+	const base = decl(ruleBody(".accel-status"), "flex");
+	assert.notEqual(merged, base,
+		"the reply's own flex must win over .accel-status's — if these are equal, the merge is not merging");
+	assert.match(String(merged), /^1 1 /, "the reply is the one item on the row allowed to grow");
+
+	// The two bypasses a per-rule read let through, each now shown to fail. Both
+	// were measured on the mock: the first is inert on the floor but destroys
+	// the wrap, the second cost 66 cells (132 -> 198).
+	const body = effectiveBody(reply!.classes).body;
+	assert.ok(slotFaults(`${body};white-space: nowrap;`).some(f => /nowrap/.test(f)),
+		"a nowrap added on the co-class must be a fault");
+	assert.ok(slotFaults(`${body};flex: 1 0 calc(80 * var(--u));`).some(f => /flex-shrink is 0/.test(f)),
+		"an unshrinkable co-class must be a fault");
+});
+
+test("red check — a slot with no floor, and one whose ellipsis does not reach its last line", () => {
+	const clash = SLOT_VARIANTS.find(v => v.classes.has("color-clash"));
+	assert.ok(clash !== undefined, "the clash slot is missing from the markup");
+	const good = effectiveBody(clash!.classes).body;
+	assert.deepEqual(slotFaults(good), [], "the fixture these two checks are built from must itself be clean");
+	assert.ok(slotFaults(`${good};min-width: 0;`).some(f => /min-width/.test(f)),
+		"a slot that may shrink to nothing has no floor at all");
+	assert.ok(slotFaults(`${good};-webkit-line-clamp: 1;`).some(f => /line-clamp is 1/.test(f)),
+		"an ellipsis on line 1 of a 2-line box hides the second line without a cue");
 });
 
 /**

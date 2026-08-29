@@ -49,6 +49,17 @@ const src = (rel: string): string =>
  * hide. Bounded by the next top-level `export`, which is how every body in that
  * file ends.
  */
+/**
+ * Source with its comments removed.
+ *
+ * Anything COUNTED in this file has to be counted over this, not over the raw
+ * text: the prose on this card explains the two reserved slots by naming them,
+ * so a count over the raw source is partly a count of the explanation.
+ */
+function withoutComments(text: string): string {
+	return text.replace(/\{\/\*[\s\S]*?\*\/\}/g, "").replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+}
+
 function bodyOf(rel: string, name: string): string {
 	const text = src(rel);
 	const start = text.indexOf(`export function ${name}(`);
@@ -243,8 +254,85 @@ test("every control from both former sections is on the combined row", () => {
 	// Both reserved slots survive as separate slots. Folding them into one
 	// would need a precedence rule for the case where both have something to
 	// say, and inventing that rule is this card deciding something.
-	assert.equal([...accel.matchAll(/accel-status/g)].length, 2,
+	//
+	// Counted over the body with its COMMENTS REMOVED. The comments on this
+	// card name `.accel-status` while explaining why there are two of them, so
+	// counting the raw text made the number a function of the prose: writing a
+	// sentence would have "added a third slot" and failed the suite, and
+	// deleting one slot while mentioning it twice in a comment would have
+	// passed. Neither is a fact about the markup.
+	assert.equal([...withoutComments(accel).matchAll(/accel-status/g)].length, 2,
 		"the verdict and the board's reply stay two reserved slots");
+});
+
+/**
+ * EVERY CONTROL ON THE ROW IS BOUND TO THE ROW'S OWN TOOL.
+ *
+ * The two tests above are text matches: they say the address field, the rate,
+ * the Set and the Read are all present on the combined row. They would say
+ * exactly the same if the Read button asked T0 on all four rows. That is not a
+ * hypothetical shape — combining two per-tool loops into one is precisely the
+ * edit where a captured index gets left behind — and it is currently correct
+ * only by construction of the JSX, with nothing holding it.
+ *
+ * `t()` is the <For> accessor, so `t().number` is the row's own tool and any
+ * other expression in those argument positions is a different tool. The check
+ * is therefore: inside the row template, every per-tool reader and writer is
+ * called with `t().number` and with nothing else.
+ *
+ * `rateArmed` deserves the same look and gets it below: it is a single
+ * `number | null` for the whole card rather than a per-tool map, so the ONLY
+ * thing making one row's armed state that row's is the `=== t().number`
+ * comparison at both of its use sites.
+ */
+test("every per-tool control on the row is wired to that row's tool", () => {
+	const accel = withoutComments(bodyOf("cards/SettingsCards.tsx", "AccelerometersBody"));
+	const rowStart = accel.indexOf('<div class="field">');
+	assert.notEqual(rowStart, -1, "the row template is missing");
+	const row = accel.slice(rowStart);
+
+	// Called with the row's tool, or the control is showing another tool's data.
+	for (const fn of [
+		"accelField", // the address the field shows
+		"commitAccel", // ...and where it is written
+		"accelStatus", // the verdict beside it
+		"accelPresent", // what disables Set and Read
+		"applyRate", // the arming Set
+		"accel.readAccel", // the Read
+		"accelReport", // the board's reply
+	]) {
+		const sites = [...row.matchAll(new RegExp(`\\b${fn.replace(".", "\\.")}\\(`, "g"))];
+		assert.ok(sites.length > 0, `${fn} is not called on the row at all`);
+		for (const site of sites) {
+			const after = row.slice(site.index! + site[0]!.length);
+			assert.ok(after.startsWith("t().number)"),
+				`${fn} is called with ${after.slice(0, 24)}… — every per-tool call takes t().number, the row's own tool`);
+		}
+	}
+
+	// Indexed with the row's tool, for the two edit maps the row reads directly.
+	for (const map of ["rateEdit()", "bitsEdit()"]) {
+		const sites = [...row.matchAll(new RegExp(`${map.replace("()", "\\(\\)")}\\[`, "g"))];
+		assert.ok(sites.length > 0, `${map} is never read on the row`);
+		for (const site of sites) {
+			assert.ok(row.slice(site.index! + site[0]!.length).startsWith("t().number]"),
+				`${map} is indexed by something other than the row's tool`);
+		}
+	}
+
+	// The arming state is ONE number for the whole card, so every read of it
+	// has to say which tool it is asking about. Two sites: the class and the
+	// label.
+	const armed = [...row.matchAll(/rateArmed\(\)/g)];
+	assert.equal(armed.length, 2, "the armed state is read for the button's class and its label");
+	for (const site of armed) {
+		assert.ok(row.slice(site.index! + site[0]!.length).startsWith(" === t().number"),
+			"a bare rateArmed() read would arm every row at once");
+	}
+	// And nothing addresses a tool by a literal, which is the other way a row
+	// comes to show someone else's sensor.
+	assert.doesNotMatch(row, /\b(?:accelField|commitAccel|accelStatus|accelPresent|applyRate|readAccel|accelReport)\(\s*\d/,
+		"a tool number written as a literal is not this row's tool");
 });
 
 /**
@@ -276,6 +364,16 @@ test("the slot that can be empty is the last thing in the row", () => {
 test("reportText is never empty, which is why it may sit before the silent slot", () => {
 	// Every arm: nothing read yet, an unparseable empty reply, an unparseable
 	// non-empty reply, and a parsed one.
+	//
+	// `undefined` FIRST, because it is the arm the layout claim actually rests
+	// on and the only one that could ever have THROWN rather than returned "".
+	// The card reaches this through `accelReports[n] ?? null`
+	// (compose/accelService.ts) — a Solid store index whose value for an unread
+	// tool is `undefined`, which is the state every row is in on a cold boot.
+	// Nothing pinned that `??`, so the totality this card's slot order and this
+	// slot's min-width both depend on lived in a different module, unnamed. The
+	// parameter is widened now, so the guarantee is here.
+	assert.notEqual(reportText(undefined), "");
 	assert.notEqual(reportText(null), "");
 	assert.notEqual(reportText({ known: false, raw: "" }), "");
 	assert.notEqual(reportText({ known: false, raw: "??" }), "");
