@@ -187,9 +187,12 @@ export const BED_COMPOSITION: Composition = {
  * shaping-status, #128 — the tools table moved into a region of declared
  * height, plus the two rows every card gained when the header's auto margin
  * stopped being excluded from its own floor). col 1 capture+custom+verify =
- * 140+71+62 = 273. col 2 decay+sweep = 189+118 = 307. Range 66 rows (24% of
- * the 274 average) — #94 already tracks this drift and nothing here
- * rebalances it.
+ * 140+71+62 = 273. col 2 decay+sweep = 189+134 = 323 (118 -> 134 for
+ * shaping-sweep, #136 — the caveat line was collapsing to zero and so was
+ * contributing nothing to the card's own floor, and the sweep note grew a
+ * fourth line so the physics sentence is not cut above the card's stop).
+ * Range 82 rows (29% of the 279 average) — #94 already tracks this drift and
+ * nothing here rebalances it.
  */
 export const SHAPING_COMPOSITION: Composition = {
 	"shaping-status": { col: 0, row: 0, colSpan: 156, rowSpan: 116 },
@@ -199,10 +202,13 @@ export const SHAPING_COMPOSITION: Composition = {
 	"shaping-custom": { col: 156, row: 140, colSpan: 156, rowSpan: 71 },
 	"shaping-verify": { col: 156, row: 211, colSpan: 156, rowSpan: 62 },
 	"shaping-decay": { col: 312, row: 0, colSpan: 156, rowSpan: 189 },
-	"shaping-sweep": { col: 312, row: 189, colSpan: 156, rowSpan: 118 },
-	// Column 2 (decay+sweep) is the tallest at 307; the strip clears all three.
-	console: { col: 0, row: 307, colSpan: 468, rowSpan: 75 },
-	camera: { col: 0, row: 382, colSpan: 104, rowSpan: 75 },
+	"shaping-sweep": { col: 312, row: 189, colSpan: 156, rowSpan: 134 },
+	// Column 2 (decay+sweep) is the tallest at 323; the strip clears all three.
+	// It moved 307 -> 323 with the Sweep card's re-measured floor (#136): a pin
+	// raised without moving what sits under it puts the console inside the card
+	// above it.
+	console: { col: 0, row: 323, colSpan: 468, rowSpan: 75 },
+	camera: { col: 0, row: 398, colSpan: 104, rowSpan: 75 },
 };
 
 /** Settings: config-overlay editors + the save card (the former save-bar). */

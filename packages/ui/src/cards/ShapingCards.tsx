@@ -158,16 +158,23 @@ const specS = (spec: ShaperSpec): string => (spec.type === "custom" ? NONE : `${
 /**
  * What limits this card's own reading, in one reserved slot.
  *
- * ONE component for all three cards rather than three copies of the same JSX:
- * duplicating it is the tripwire that says the design is wrong, and the failure
- * mode of three copies is three cards that come to describe the same
- * measurement differently.
+ * ONE CALL SITE TODAY — the Sweep card, below. This doc used to say "one
+ * component for all three cards", which was never true of the code: #136
+ * counted the call sites and found exactly one, so the sentence was describing
+ * an intention rather than the tree. Corrected rather than deleted, because the
+ * reason for the shape still holds and is the reason to keep it a component:
+ * three copies of this JSX would be three cards that come to describe the same
+ * measurement differently, and the second copy is the tripwire that says the
+ * design was already wrong. A second consumer therefore extends THIS, and any
+ * guard on the slot belongs here rather than on a card.
  *
  * The slot is present in every state and holds the em dash when there is
- * nothing to say, so a finding arriving never moves the rows under it. Only the
- * FIRST caveat is shown: the full list is the status card's job, and a card
- * that grew by a line per finding would be a card whose height depends on how
- * bad the news is.
+ * nothing to say, so a finding arriving never moves the rows under it — which
+ * is exactly what `.shp-caveat`'s missing `flex: 0 0 auto` was silently undoing
+ * (#136: the box rendered at 0px, so the reserved slot reserved nothing and the
+ * caveat text was invisible on every browser). Only the FIRST caveat is shown:
+ * the full list is the status card's job, and a card that grew by a line per
+ * finding would be a card whose height depends on how bad the news is.
  */
 function CardCaveat(props: { evidence: Evidence<unknown> }) {
 	const first = createMemo((): Caveat | null => {
