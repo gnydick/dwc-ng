@@ -717,14 +717,29 @@ export const CARD_DEFS = {
 		// row declare 8u each, the plot stage 60u, the readout 5u and the status
 		// line 15u, and every one of those is a declared length. Checked with no
 		// sweep, with the nine-speed `lowspeed_stock_X` matrix drawn, and with a
-		// pointer over the loudest cell — 118 rows in all three, body worth 103
-		// of it, no child moved. colStop 125 sits inside the 156 the screen
-		// gives it, and is set by the run row's declared tracks.
+		// pointer over the loudest cell — no child moved. colStop 125 sits
+		// inside the 156 the screen gives it, and is set by the run row's
+		// declared tracks.
+		//
+		// 118 -> 134 (#136), RE-MEASURED 2026-08-28 headless against the same
+		// three states, because the old number was taken while two of the
+		// card's own rows were lying about their size:
+		//   · `.shp-caveat` had `overflow: hidden` and no flex declaration, so
+		//     its automatic minimum was ZERO and it was squeezed flat — 0px at
+		//     this card's own coded pin. It contributed nothing to the sum
+		//     contentRowSpan takes, and the sum itself moved with the card
+		//     (rowStop 129 at rowSpan 200, 121 at 118). +8u of it is real.
+		//   · `.shp-sweep-note` went from three lines to four, so the idle
+		//     sentence is not cut at any width at or above colStop 125. +5u.
+		// Both rows now declare a floor, so the measured number is a floor
+		// again: rowStop 134 at rowSpans 200/160/134/130/118/100/60 with spread
+		// 0, and 134 at scale 075, 100 AND 150 — the number is the same at
+		// every scale step rather than the largest of three.
 		//
 		// The ID is unchanged on purpose: it is the key saved layouts are stored
 		// under, so renaming it would drop the card off every screen the
 		// operator has already arranged.
-		size: { colSpan: 156, rowSpan: 118 },
+		size: { colSpan: 156, rowSpan: 134 },
 	}),
 	/** Ranked shapers with their predicted residual and robustness. */
 	"shaping-candidates": defineCard({

@@ -294,3 +294,80 @@ function cssRulesFor(token: string): Array<{ sel: string; body: string }> {
 		.map(m => ({ sel: m[1]!.trim(), body: m[2]! }))
 		.filter(r => re.test(r.sel));
 }
+
+/**
+ * THE SHOCK-ABSORBER RULE, and why it is a source assertion rather than a fix.
+ *
+ * `.panel-body` is a flex COLUMN. A child with no flex declaration is
+ * `flex: 0 1 auto` — shrink 1 — and CSS gives a flex item an automatic minimum
+ * size of `min-content` ONLY while its overflow is `visible`. Declare
+ * `overflow: hidden` and that automatic minimum becomes 0, so the child can be
+ * squeezed to nothing before anything else in the card gives way. It is silent:
+ * the box vanishes, the text with it, and the card looks merely "tight".
+ *
+ * `.shp-caveat` shipped that way and rendered at ZERO PIXELS at the Sweep
+ * card's own registry size — its two declared lines were invisible on every
+ * browser, not only after a resize (#136, measured 2026-08-28 headless: 32px at
+ * rowSpan 200, 4px at 124, 0px at the coded pin 118).
+ *
+ * The second-order damage is the reason this is a rule and not a one-line fix.
+ * contentRowSpan (shell/panelCanvas.ts) sums each child's RENDERED height, so a
+ * child that shrinks with the card makes the card's own floor a function of the
+ * card's own size — the `card-floor-independent-of-size` hysteresis
+ * (dev/layoutAudit.ts). Measured on this card: rowStop 129 at rowSpan 200 and
+ * 121 at rowSpan 118. A floor enforced from that measurement enforces a number
+ * the shrink itself moved.
+ *
+ * The guard asked for is a floor, in either of the two forms that are honest
+ * about which axis they defend:
+ *   · `min-height` — correct in EVERY context, because it names the axis that
+ *     collapses. Required for anything that is a flex ROW item, where
+ *     `flex-shrink: 0` would wrongly freeze the INLINE axis (.fb-progress is
+ *     `flex: 1` and must shrink; .shp-thread-why is `flex: 1 1 auto` with a
+ *     declared `width: 0`).
+ *   · `flex-shrink: 0` / `flex: 0 0 …` — for a row of a card body, where not
+ *     shrinking on the block axis IS the intent and the siblings already say so
+ *     (.shp-decay-filter, .shp-batch, .shp-sweep-bar).
+ *
+ * This cannot prove a floor is the RIGHT number; it stops a fixed-height
+ * clipped box being written with no floor at all, which is the one thing that
+ * was written four separate times before anybody measured it.
+ */
+const HEIGHT_DECL = /(^|[;{\s])height:\s*([^;]+)/;
+const CLIPS = /(^|[;{\s])overflow(-y)?:\s*[^;]*hidden/;
+const HAS_FLOOR = /flex-shrink:\s*0|flex:\s*0\s+0|(^|[;{\s])min-height:\s*(?!auto|0[;\s}])/;
+
+/** Every `sel { … }` block in app.css, comments already stripped. */
+const cssRules = (): Array<{ sel: string; body: string }> =>
+	[...appCss.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map(m => ({ sel: m[1]!.trim(), body: m[2]! }));
+
+test("a fixed-height clipped box declares a floor — it cannot be a card's shock absorber", () => {
+	const clipped = cssRules().filter(r => HEIGHT_DECL.test(r.body) && CLIPS.test(r.body));
+	// The assertion that makes this real: a scanner that matches nothing passes
+	// everything. Same construction as the contain: inline-size guard above.
+	assert.ok(clipped.length >= 10, `only ${clipped.length} fixed-height clipped rules found — has the scanner stopped matching?`);
+	const unguarded = clipped.filter(r => !HAS_FLOOR.test(r.body)).map(r => r.sel);
+	assert.deepEqual(unguarded, [],
+		`these declare a fixed height and clip, but no min-height and no flex-shrink: 0 — ` +
+		`in a flex column each one can be squeezed to zero and take the card's floor with it: ${unguarded.join(" · ")}`);
+});
+
+/**
+ * The four rows of the Shaping cards that share this geometry, pinned BY NAME.
+ * The general scan above catches a new rule; this catches a guard being dropped
+ * from one of the four that are known to need it, which the general scan would
+ * report as one line in a list nobody reads twice.
+ */
+for (const sel of [".shp-caveat", ".shp-sweep-note", ".shp-batch-note", ".shp-listing-note"]) {
+	test(`${sel} still declares its floor`, () => {
+		// The CASCADE, not one block: the three note rules share their geometry
+		// and their `flex: 0 0 auto` in one rule, and .shp-sweep-note then
+		// overrides only the height. Requiring each block to restate the floor
+		// would be asking for the bound in two places, which is the drift this
+		// file exists to stop.
+		const owning = cssRules().filter(r => r.sel.split(",").some(s => s.trim() === sel));
+		assert.ok(owning.some(r => HEIGHT_DECL.test(r.body)), `no rule declares a height for ${sel}`);
+		assert.ok(owning.some(r => HAS_FLOOR.test(r.body)),
+			`${sel} declares a height and clips, but nothing in its cascade declares a floor`);
+	});
+}

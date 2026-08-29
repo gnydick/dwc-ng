@@ -44,6 +44,28 @@ export const AXIS_TOLERANCE = 1;
  *       driver already exists. (2) Card Lab's state pills do not change the
  *       bench, so ten cards are measured EMPTY and their real content is never
  *       audited; that is catalogued separately in DEBT.md.
+ * @note #136 added a SECOND mechanism for one specific way this invariant was
+ *       being broken, and it runs in the node suite rather than on demand: a
+ *       flex child with a fixed `height` and `overflow: hidden` has an
+ *       automatic minimum size of ZERO, so it shrinks with the card and makes
+ *       contentRowSpan's sum a function of the card's own size.
+ *       test/intrinsic-floors.test.ts now rejects any rule in app.css that
+ *       declares that pair without a `min-height` or `flex-shrink: 0`, and
+ *       pins the four Shaping prose rows by name. Six rules were unguarded
+ *       when it was written; `.shp-caveat` was the one actually collapsing
+ *       (0px at the Sweep card's own registry size, floor moving 8 cells with
+ *       the card). It does NOT discharge this invariant — it removes one
+ *       cause, and only the causes expressible in the stylesheet.
+ *
+ *       A standalone declaration for that rule was written for and DEFERRED,
+ *       not forgotten: the register stands at 24 below rung 6 against a
+ *       ceiling of 25, and GIT_142 and GIT_144 each take it to 25 on their
+ *       own. A third +1 from here is a merge conflict on the ratchet that
+ *       Gabe has not ruled on, and raising the ceiling is not this branch's
+ *       to do. If the rule earns its own row later it lands at rung 4 —
+ *       source-text analysis over app.css — with the promotion being one
+ *       shared declaration every fixed-height clipped row extends, so the
+ *       guard travels with the geometry instead of beside it.
  *
  * CSS Sizing 3 defines min-content as the size the box would have "if its
  * containing block was zero-sized in that axis" — the actual container is not

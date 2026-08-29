@@ -135,7 +135,7 @@ in the diff that drops it.
 
 **Why.** a delete that removes a card from every screen at once is exactly the action whose scope the operator must see before confirming — "delete this card?" cannot precede stripping it from screens they forgot it was on. The plan freezes usage at arm time; the studio is modal over composition edits, so the frozen report cannot go stale between the two clicks
 
-`packages/ui/src/compose/screens.ts:537`
+`packages/ui/src/compose/screens.ts:543`
 
 ### `compose/composition-degrades-per-slot` — rung 6
 
@@ -677,7 +677,7 @@ in the diff that drops it.
 
 **Why.** a floor that moves with the card is layout hysteresis: dragging a card smaller ratchets its minimum down, so its own contents decide how small it can get and the size the operator set does not survive a resize
 
-**Debt — promotion.** two gaps, and the second is the larger. (1) The sweep is manual, so promote by running it headless over the registry in CI — the CDP driver already exists. (2) Card Lab's state pills do not change the bench, so ten cards are measured EMPTY and their real content is never audited; that is catalogued separately in DEBT.md. CSS Sizing 3 defines min-content as the size the box would have "if its containing block was zero-sized in that axis" — the actual container is not an input by construction. A minimum that moves with the card means the measurement is reading post-layout geometry, which is a different quantity; Chromium calls the resulting ratchet "hysteresis". WHAT THIS DOES NOT ESTABLISH, and the panel must not imply that it does: judgeAxis is handed only the sequence of REPORTED values. No ground truth is in scope, by signature — so a floor that is uniformly and grossly WRONG is the cleanest possible pass. A passing verdict says the measurement is self-consistent, never that the number is right. That is why the passing label below is a description and not "ok", and why judgeFloor exists.
+**Debt — promotion.** two gaps, and the second is the larger. (1) The sweep is manual, so promote by running it headless over the registry in CI — the CDP driver already exists. (2) Card Lab's state pills do not change the bench, so ten cards are measured EMPTY and their real content is never audited; that is catalogued separately in DEBT.md. @note #136 added a SECOND mechanism for one specific way this invariant was being broken, and it runs in the node suite rather than on demand: a flex child with a fixed `height` and `overflow: hidden` has an automatic minimum size of ZERO, so it shrinks with the card and makes contentRowSpan's sum a function of the card's own size. test/intrinsic-floors.test.ts now rejects any rule in app.css that declares that pair without a `min-height` or `flex-shrink: 0`, and pins the four Shaping prose rows by name. Six rules were unguarded when it was written; `.shp-caveat` was the one actually collapsing (0px at the Sweep card's own registry size, floor moving 8 cells with the card). It does NOT discharge this invariant — it removes one cause, and only the causes expressible in the stylesheet. A standalone declaration for that rule was written for and DEFERRED, not forgotten: the register stands at 24 below rung 6 against a ceiling of 25, and GIT_142 and GIT_144 each take it to 25 on their own. A third +1 from here is a merge conflict on the ratchet that Gabe has not ruled on, and raising the ceiling is not this branch's to do. If the rule earns its own row later it lands at rung 4 — source-text analysis over app.css — with the promotion being one shared declaration every fixed-height clipped row extends, so the guard travels with the geometry instead of beside it. CSS Sizing 3 defines min-content as the size the box would have "if its containing block was zero-sized in that axis" — the actual container is not an input by construction. A minimum that moves with the card means the measurement is reading post-layout geometry, which is a different quantity; Chromium calls the resulting ratchet "hysteresis". WHAT THIS DOES NOT ESTABLISH, and the panel must not imply that it does: judgeAxis is handed only the sequence of REPORTED values. No ground truth is in scope, by signature — so a floor that is uniformly and grossly WRONG is the cleanest possible pass. A passing verdict says the measurement is self-consistent, never that the number is right. That is why the passing label below is a description and not "ok", and why judgeFloor exists.
 
 `packages/ui/src/dev/layoutAudit.ts:34`
 
@@ -689,7 +689,7 @@ in the diff that drops it.
 
 **Debt — promotion.** the sweep is manual, exactly like card-floor-independent-of-size above — promote by running it headless in CI over the registry, the same CDP driver already used for that sweep would suffice here too
 
-`packages/ui/src/dev/layoutAudit.ts:250`
+`packages/ui/src/dev/layoutAudit.ts:272`
 
 ### `dev/guard-follows-the-declaration` — rung 7
 
@@ -707,7 +707,7 @@ in the diff that drops it.
 
 **Debt — promotion.** violations are reported by POSITION, so the panel gives counts rather than naming the culprit element — a reader still has to hunt. Promote by reporting a stable path to the drifting node, and by running the sweep headless in CI as with card-floor-independent-of-size. FALSE BY CONSTRUCTION for a slot containing wrapping text, so cards that legitimately reflow are excluded BY NAME rather than by fudging the comparison — an exclusion list is debt, and is filed as such. NOT a discovered property — there is no prior art naming it and no component-level analogue to Cumulative Layout Shift, which is page-level and time-windowed. It is this project's positional-stability requirement, expressed as something checkable. It is FALSE BY CONSTRUCTION for a slot containing wrapping text, so cards that legitimately reflow must be excluded by name rather than by fudging the comparison.
 
-`packages/ui/src/dev/layoutAudit.ts:194`
+`packages/ui/src/dev/layoutAudit.ts:216`
 
 ### `dev/write-guard-is-dev-only` — rung 0
 

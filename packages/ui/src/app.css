@@ -1711,7 +1711,11 @@ input[type="checkbox"] {
 	   would paint UNDER it and never be seen. outline paints after descendants
 	   (painting-order step 10), like a border did, and is exempt from the px
 	   lint (zero layout space) the same way box-shadow is. */
-	width: calc(40 * var(--u)); height: calc(40 * var(--u)); outline: 1px solid var(--hairline); outline-offset: -1px; border-radius: var(--radius);
+	/* min-height restates the height so the box cannot be squeezed to zero if it
+	   ever becomes a flex item: `overflow: hidden` removes the automatic
+	   min-content minimum (#136). Named on the block axis rather than
+	   flex-shrink, which would freeze the inline axis too. */
+	width: calc(40 * var(--u)); height: calc(40 * var(--u)); min-height: calc(40 * var(--u)); outline: 1px solid var(--hairline); outline-offset: -1px; border-radius: var(--radius);
 	background: var(--mask-900); display: flex; align-items: center; justify-content: center; overflow: hidden;
 	background-image: linear-gradient(45deg, var(--mask-700) 25%, transparent 25%), linear-gradient(-45deg, var(--mask-700) 25%, transparent 25%),
 		linear-gradient(45deg, transparent 75%, var(--mask-700) 75%), linear-gradient(-45deg, transparent 75%, var(--mask-700) 75%);
@@ -3122,7 +3126,10 @@ input[type="checkbox"] {
 .fb-uploading { display: flex; align-items: center; gap: calc(2.5 * var(--u)); margin: 0 0 calc(2 * var(--u)); font-size: calc(3.625 * var(--u)); color: var(--silk-dim); }
 .fb-uploading b { color: var(--silk); }
 .fb-up-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 45%; flex: 0 1 auto; }
-.fb-progress { flex: 1; height: calc(1.5 * var(--u)); min-width: calc(15 * var(--u)); background: var(--mask-900); border-radius: 3px; overflow: hidden; }
+/* min-height, NOT flex-shrink: 0 — this bar is `flex: 1` in a row and must go
+   on shrinking on the inline axis. The floor is on the axis that can collapse:
+   `overflow: hidden` takes its automatic minimum to zero (#136). */
+.fb-progress { flex: 1; height: calc(1.5 * var(--u)); min-height: calc(1.5 * var(--u)); min-width: calc(15 * var(--u)); background: var(--mask-900); border-radius: 3px; overflow: hidden; }
 .fb-progress-fill { display: block; height: 100%; background: var(--accent); transition: width 0.1s linear; }
 .fb-up-pct { font-variant-numeric: tabular-nums; min-width: calc(8.5 * var(--u)); text-align: right; color: var(--silk); }
 
@@ -4736,6 +4743,10 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; appe
 	font: 400 calc(3.25 * var(--u))/calc(4.5 * var(--u)) var(--font-body);
 	color: var(--silk-dim);
 	height: calc(13.5 * var(--u));
+	/* The block-axis floor. flex-shrink: 0 is not available here — the width: 0
+	   plus grow above is the whole point of the rule — so the three declared
+	   lines are held by min-height (#136). */
+	min-height: calc(13.5 * var(--u));
 	overflow: hidden;
 	display: -webkit-box;
 	-webkit-box-orient: vertical;
@@ -4761,6 +4772,19 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; appe
 	margin: calc(1 * var(--u)) 0 0;
 	font: 400 calc(3 * var(--u))/calc(4 * var(--u)) var(--font-body);
 	color: var(--silk-dim);
+	/* THE ROW DOES NOT GIVE. Without this the rule is `flex: 0 1 auto`, and a
+	   flex item whose overflow is not `visible` has an automatic minimum size
+	   of ZERO — so this paragraph, the only shrinkable child in the body, ate
+	   the card's entire deficit alone and rendered at 0px at the card's own
+	   registry size (#136, measured 2026-08-28: 32px at rowSpan 200, 4px at
+	   124, 0px at the coded pin 118). Two consequences, and the second is the
+	   worse one: the caveat was invisible on every browser, and contentRowSpan
+	   sums RENDERED heights, so the card's floor moved 8 cells with the card —
+	   the hysteresis dev/layoutAudit.ts's invariant A exists to catch. Stated
+	   the same way as the sibling rows this was written beside
+	   (.shp-decay-filter, .shp-batch, .shp-sweep-bar) and enforced for the
+	   whole class by test/intrinsic-floors.test.ts. */
+	flex: 0 0 auto;
 	height: calc(8 * var(--u));
 	overflow: hidden;
 	display: -webkit-box;
@@ -5052,6 +5076,11 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; appe
 	   empty button is 0 tall and the whole chip run shifts 6px down the moment
 	   a source has fewer families than the row has places. */
 	height: calc(7 * var(--u));
+	/* The declared box, restated as a floor: with `overflow: hidden` below, the
+	   automatic min-content minimum is gone and an empty slot could collapse
+	   again by a different route than the one the comment above describes
+	   (#136). */
+	min-height: calc(7 * var(--u));
 	display: flex;
 	flex-direction: column;
 	justify-content: center;
@@ -5104,6 +5133,8 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; appe
 	   would push it past the 22u the row was measured with. 6u fits inside the
 	   controls row's declared 8u, so the card's floor is unchanged. */
 	height: calc(6 * var(--u));
+	/* Same floor as .shp-prefix, for the same reason (#136). */
+	min-height: calc(6 * var(--u));
 	line-height: calc(6 * var(--u));
 	text-align: center;
 	font-variant-numeric: tabular-nums;
@@ -5172,10 +5203,44 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; appe
 	font-size: calc(3.375 * var(--u));
 	line-height: calc(5 * var(--u));
 }
-/* Three lines rather than two: the sweep card's idle sentence has to state the
-   physics — which peak shaping can touch and which it cannot — and it is the
-   sentence an operator reads before their first sweep. */
-.shp-sweep-note { height: calc(15 * var(--u)); }
+/* FOUR lines, and a scroll that says so when a fifth arrives (#136).
+   ────────────────────────────────────────────────────────────────────────────
+   Three lines held the idle sentence — the physics an operator reads before
+   their first sweep — only at the width the card happens to be placed at. The
+   sentence reflows as the card narrows while a fixed box does not, so the tail
+   was cut with nothing saying it had been: measured 2026-08-28, three lines
+   were enough down to colSpan 130 and the card's own enforced stop is colSpan
+   125, so the clipping was reachable by an ordinary resize drag and started
+   ABOVE the floor. Four lines clear the stop at every scale step (0.75 / 1.0 /
+   1.5); the numbers are in the audit note on compose/defs.ts `shaping-sweep`.
+
+   THE HEIGHT STAYS FIXED, for the reason the shared rule above gives: a box
+   that grew with its content would change this card's floor with its state.
+   But four lines cannot be a guarantee either, because three of the seven
+   sweep states carry text whose length is not ours to choose — `failed` prints
+   the board's own reason (shaping/copy.ts sweepStateText) and `built` prints a
+   family name the operator invented. So the residue is made REACHABLE and
+   MARKED rather than cut: the box scrolls, and the two `local` gradients cover
+   the two `scroll` ones exactly when there is nothing more in that direction,
+   which paints an edge shadow if and only if text continues past the box.
+   Backgrounds take no layout space, so the cue costs no row and moves nothing
+   when it appears — the same discipline as the reserved second line above.
+   Scrollbar hidden for the same reason .panel-body hides its own: a bar
+   appearing would take inline space and reflow the sentence it is reporting on.
+
+   A `title` was considered and rejected — invisible on touch, and this machine
+   is driven by touch. */
+.shp-sweep-note {
+	height: calc(20 * var(--u));
+	overflow-y: auto;
+	scrollbar-width: none;
+	background:
+		linear-gradient(var(--mask-700) 40%, transparent) local top / 100% calc(5 * var(--u)) no-repeat,
+		linear-gradient(transparent, var(--mask-700) 60%) local bottom / 100% calc(5 * var(--u)) no-repeat,
+		radial-gradient(farthest-side at 50% 0, var(--silk-dim), transparent) scroll top / 100% calc(2 * var(--u)) no-repeat,
+		radial-gradient(farthest-side at 50% 100%, var(--silk-dim), transparent) scroll bottom / 100% calc(2 * var(--u)) no-repeat;
+}
+.shp-sweep-note::-webkit-scrollbar { display: none; }
 /* What Rescan would do for the source on screen, and what a row marked missing
    means. It shares the batch note's geometry rather than restating it — one
    declaration, one box — and only adds the gap to the table under it. Present
