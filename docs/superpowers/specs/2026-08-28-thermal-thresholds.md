@@ -19,9 +19,29 @@ strings DERIVED from the thresholds instead of hand-written prose that restates
 them. He went further: the thresholds themselves become GUI-configurable, and
 the legend is generated from that configuration.
 
-And, on where the inputs live (2026-08-28, verbatim):
+And, on which card the inputs live on (2026-08-28, verbatim):
 
 > "thresholds go on the temperature gradient card, next to each colour"
+
+And, settling the arity (2026-08-28, verbatim):
+
+> "2 inputs, one gets 45 and one gets 160, get it?"
+
+And — **the ruling that fixes where on that card they sit**, which SUPERSEDES the
+placement an earlier revision of this document chose for itself (2026-08-28,
+verbatim):
+
+> "the two temp inputs are independent of rows, they should sit at the top as
+> the 2 threshold temps"
+
+> **SUPERSEDED (2026-08-28):** every statement in this document that put a
+> threshold input inside a band's `.field` row — "each band edits its own floor",
+> Cold has no input, Warm holds the 45, Hot holds the 160 — is withdrawn. The two
+> inputs are **not** a property of any band. They sit at the TOP of the
+> Temperature Gradient card as a pair of threshold temperatures, and all three
+> band rows below them are entirely read-only with respect to the thresholds. §8
+> is rewritten around that; §8.1 records what the old reasoning was for and where
+> the parts still worth keeping were re-attached.
 
 ## 1. What exists today
 
@@ -222,7 +242,7 @@ stands**. Nothing is clamped, nothing is repaired.
 | Input | Outcome |
 |---|---|
 | `[45, 160]` | accepted; today's behaviour exactly |
-| `[160, 45]` (inverted) | **rejected** by `asRange`'s `lo >= hi` guard (`parse.ts:161`); section dropped, default stands, the row shows `aria-invalid` and the card's status line says so |
+| `[160, 45]` (inverted) | **rejected** by `asRange`'s `lo >= hi` guard (`parse.ts:161`); section dropped, default stands, the offending input shows `aria-invalid` and the threshold region's reserved status slot (§8.4) says so |
 | `[45, 45]` (equal — a zero-width warm band) | **rejected** by the same guard: a band no temperature can occupy is unrepresentable, not merely ugly |
 | non-numeric (`"hot"`), `NaN`, `Infinity` | **rejected** — `parse.ts:160-161` already requires `typeof === "number"` and `Number.isFinite` on both |
 | missing, empty, not an array, wrong length | `undefined` from the parser → key absent → coded default |
@@ -230,8 +250,8 @@ stands**. Nothing is clamped, nothing is repaired.
 | a cut far above the machine's range (`[45, 5000]`) | **accepted.** Refusing it would be a GUI-encoded opinion about the machine — see §9 |
 
 Rejection is **visible, never silent**: the offending input gets
-`aria-invalid="true"` and the card's always-rendered status line says what was
-refused — exactly as `SettingsCards.tsx` already does for the shaping envelope
+`aria-invalid="true"` and the threshold region's always-rendered status slot
+(§8.4) says what was refused — exactly as `SettingsCards.tsx` already does for the shaping envelope
 (`GIT_142` branch, `:455-485`, the `.env-status` reserved slot). A refused edit
 leaves the section byte-identical.
 
@@ -348,8 +368,14 @@ becomes a call into the band module.
 
 Gabe: "thresholds go on the temperature gradient card, next to each colour." So:
 the `thermal-colors` card (`compose/defs.ts:440-444`, title "Temperature
-Gradient"), inside the existing per-band `.field` rows. Not a new card, not a
-new section.
+Gradient"). Not a new card, not a new section.
+
+And, on where on that card: **"the two temp inputs are independent of rows, they
+should sit at the top as the 2 threshold temps."** So they are NOT inside the
+per-band `.field` rows. The card gains a **threshold region at the top**, above
+the three band rows, holding exactly two numeric inputs presented as the two
+threshold temperatures. The band rows below it keep colour + label + derived
+range text and are entirely read-only with respect to the thresholds.
 
 ### Arity — SETTLED
 
@@ -364,36 +390,104 @@ reading-colour classList. A threshold rendered in two editable places is the
 exact duplication this ticket exists to delete and is not permitted anywhere in
 the implementation.
 
-**Row placement (implementer's choice, made here): each band edits its own
-FLOOR.** Cold has no input (the band starts at −∞), the Warm row holds the 45,
-the Hot row holds the 160. It reads naturally — the number sits in the row whose
-colour begins at it — and the rule it states ("each band edits its floor; the
-bottom band has none") keeps the arity honest if a band is ever added, where
-"the row owns its lower edge and *displays* its upper one" would leave a
-displayed 160 sitting beside an input, inviting the second editable home back
-in (anti-pattern A5.4).
+### 8.1 What the superseded placement argued, and where each part landed
 
-Rung for "one editable home per threshold": **6** — the mechanism is that only
-two `<input>` elements exist in the card.
+The withdrawn design put each cut in the row of the band whose colour begins at
+it — Cold no input, Warm the 45, Hot the 160 — and argued for it on the grounds
+that "each band edits its floor; the bottom band has none" keeps the arity honest
+if a fourth band is ever added, where "the row owns its lower edge and *displays*
+its upper one" would leave a displayed 160 beside an input and invite the second
+editable home back in (A5.4).
 
-### Row contents, and which parts are editable
+That argument was about **why exactly two editable homes exist** and it still
+holds — it just no longer needs a row rule to carry it, because the region is
+rendered FROM the cut tuple (below). The reason to keep saying it: a reader who
+sees three band rows and two inputs must not "tidy" the region into three.
 
-Per row, left to right, on the existing `.field` line:
+What the withdrawn placement cost, and what the ruling buys:
+
+- **It made the rows non-uniform.** Warm and Hot carried an input; Cold did not.
+  Three rows of the same visual kind with different shapes is the asymmetry
+  `CLAUDE.md`'s uniformity / alignment / positional-stability rule exists to
+  avoid, and every reserved-slot argument on this card would have had to be made
+  twice — once for a row with an input, once for a row without.
+- **It made the thresholds look like a property of a band.** They are a property
+  of the SCALE: the cut list partitions the whole line, and each cut is the
+  boundary BETWEEN two bands, not a field of either. Putting the pair at the top
+  says that in the layout instead of contradicting it.
+- **It forced the legend generator to return segments.** The old design had M2
+  return each band's rendering as a leading operator, an editable cut and a
+  trailing unit, so that the legend and the input it contained came from one
+  call. That splicing is now unnecessary: the legend is a finished read-only
+  string per band, and the input is a plain number input in the region. M2's
+  surface shrinks, and with it the chance that a segment-splicing edit
+  reintroduces a literal.
+
+### 8.2 The threshold region — contents, and the rung it reaches
+
+Rendered from the stored `Range` itself, one input per element of the tuple:
+
+| Element | Editable? | Source |
+|---|---|---|
+| region label — e.g. "Thresholds" | no | static chrome |
+| input 1 — the warm cut | **yes** | `thermalCuts[0]`, effective value |
+| input 2 — the hot cut | **yes** | `thermalCuts[1]`, effective value |
+| a reserved status slot (§8.4) | no | the refusal message, empty when there is none |
+
+**Rungs, split honestly — the placement changes the picture and one half really
+does get stronger:**
+
+- *"The region offers exactly one editable input per cut — no more, no fewer."*
+  **Rung 8**, if and only if the region is rendered by iterating the cut tuple
+  (`<Index each={cuts()}>` over the `Range`) rather than by hand-writing two
+  inputs. There is then no count to get wrong: the number of inputs is arithmetic
+  over the stored value. **This rung was not available under the superseded
+  placement**, where the mapping was bands → inputs with a hole at Cold and
+  therefore had to be hand-written per row. Hand-writing `<input>` twice here
+  would forfeit it and drop this property back to rung 1; the iteration is the
+  mechanism, not a style preference.
+- *"No editable threshold home exists anywhere else on the card."* **Rung 6**,
+  choke-point: the band-row renderer contains no `<input type="number">` at all.
+  This is the same rung the old placement had — the ruling does **not** promote
+  it, and saying "structurally clearer" is not a rung (A5.11). What it *does*
+  buy is that the rung-4 support under it becomes **expressible**: a source
+  assertion "the band-row render body contains no `<input`" can now FAIL, where
+  under the old placement the row legitimately contained one and no such check
+  could be written. See test §11.3, which is sharpened accordingly.
+
+So the honest summary the brief asked for: the ladder rating for "one editable
+home per threshold" **stays at 6** for the card-wide property, gains a **new
+rung-8 property** the old placement could not express, and gains a real,
+failing-capable rung-4 check underneath the 6.
+
+### 8.3 Band rows — now uniform, and entirely read-only
+
+All three rows are the same shape. Per row, left to right, on the existing
+`.field` line:
 
 | Element | Editable? | Source |
 |---|---|---|
 | `.field-label` — Cold / Warm / Hot | no | the band table |
 | `.color-swatch` (`<input type="color">`) | **yes** (unchanged) | `thermalColors[key]` |
 | `.color-hex` | no | derived from the swatch |
-| `.color-range` — the legend | **holds the one editable input for this band's floor** (Warm, Hot); wholly derived read-only text on Cold | generated by M2 from the cuts — **no string literal in the component** |
+| `.color-range` — the legend | **no — wholly derived read-only text on every row** | generated by M2 from the cuts — **no string literal in the component** |
 | `.color-clash` — reserved advisory slot | no | unchanged |
+| per-row Reset (§13a) | **yes** — and it now means exactly one thing: this band's COLOUR | `clearThermalColor(key)`, which does not yet exist — see §13(a) |
 
-The legend text and the input are one element group: the generator returns the
-band's rendering as segments (a leading operator, an editable cut, a trailing
-unit) rather than a finished string, so the row a threshold appears in and the
-legend it produces come from one call and cannot disagree.
+**A consequence of the move that the old design did not have.** `.color-range` is
+`flex: none` (`app.css:1797`), so its content feeds the row's min-content width
+directly. Under the superseded placement the cut inside it was an input with a
+fixed flex basis, so the row's geometry was identical at `45` and at `1600`. Now
+the digits are free text: a legend reading `1600 °C and above` is wider than
+`160 °C and above`, and an operator editing a cut would reflow the card. So
+`.color-range` must itself become a **reserved slot** — a fixed width sized to
+the widest rendering the generator can produce, `font-variant-numeric:
+tabular-nums`, in the idiom `.accel-status` already documents at `app.css:1901`
+("Sized to the LONGEST message this slot can hold … not to the shortest"). This
+is a requirement, not a nicety: without it the ruling trades a non-uniform row
+for a value-dependent one.
 
-### Input mechanics
+### 8.4 Input mechanics
 
 - `type="number"`, `step="1"`, in `.env-bound`'s idiom.
 - **Commit semantics: draft on `onInput`, commit on `onChange` and on `Enter`**
@@ -406,37 +500,94 @@ legend it produces come from one call and cannot disagree.
   number, where `4` is a keystroke on the way to `45` and committing it would
   briefly invert the pair.
 - A refused commit reverts the input to the stored value, sets
-  `aria-invalid="true"`, and speaks through the card's status line (§3).
-- **`max-width` is mandatory.** #144 is open on text inputs in `.field` rows
-  growing without limit when a card is stretched. `app.css:1358` gives
-  `input[type="number"]` `max-width: calc(22.5 * var(--u))`, so a number input
-  inherits a bound — but that must be **verified at implementation time, not
-  taken on this document's word**, and the cut input should carry its own fixed
-  flex basis in the `.env-bound` shape (`app.css:1851-1852`) so the row's
-  geometry is identical whether the value reads `45` or `1600`. Cite #144.
+  `aria-invalid="true"`, and speaks through the region's status slot (below).
+- **`max-width` is mandatory — and moving the inputs out of the rows is exactly
+  what makes it a fresh obligation rather than an inherited one.** #144 is open
+  on inputs in `.field` rows growing without limit when a card is stretched.
+  Both caps that exist are **descendant-scoped to `.field`**, verified by
+  reading the CSS on both trees rather than from prose:
+  - `main` @ `8df4a98`, `app.css:1358` —
+    `.field input[type="number"] { … max-width: calc(22.5 * var(--u)); }`
+  - branch `GIT_144`, `app.css:1382` —
+    `.field input[type="text"], .field input[type="number"] { … max-width:
+    calc(88 * var(--u)); }`, with the narrower `.field input[type="number"]`
+    rule still present at `:1425`
+  The only unscoped `input[type="number"]` rule is `app.css:4294`, which sets
+  appearance, alignment and `tabular-nums` and **no width at all**. So: **if the
+  new threshold region is not a `.field`, neither cap reaches its inputs and
+  #144 is re-created on a brand-new element.** Two acceptable discharges, and
+  the choice must be made deliberately: build the region AS a `.field` row (it
+  inherits the cap and the row idiom, and the region is then a row that happens
+  to hold two inputs rather than a colour), or give the region's inputs their
+  own explicit bound. Either way the input carries a **fixed flex basis** in the
+  `.env-bound` shape (`app.css:1851-1852`, `GIT_144` `:1919`) so the region's
+  geometry is identical whether the value reads `45` or `1600`. Verify the rule
+  that actually applies in the merged tree at implementation time — do not take
+  this document's word for which of the two branches' CSS is in it. Cite #144.
+- **The region needs a reserved status slot.** A refusal message or clamp
+  feedback appearing beside the inputs must not resize the card — `CLAUDE.md`'s
+  uniformity / alignment / positional-stability rule, and defect §13(b) is a
+  live example of getting it wrong on this very card. Two precedents, both
+  acceptable, both zero-layout-cost:
+  - **Fixed reserved box**, always rendered and empty when there is nothing to
+    say: `.color-clash` (`app.css:1805`, whose comment states the whole
+    argument) and `.accel-status` (`app.css:1901`, "sized to the LONGEST message
+    this slot can hold … not to the shortest"). `.env-status` on `GIT_142` is
+    the same shape applied to the other ordered-pair editor.
+  - **Fixed-height scroller with a scroll cue**, for a message that can run
+    long: `GIT_136` shipped `.shp-sweep-note` (`app.css:5170` on that branch) —
+    fixed `height`, `overflow-y: auto`, `scrollbar-width: none`, and top/bottom
+    gradient cues painted as `background`, so variable-length content costs no
+    layout at all.
+  What is NOT acceptable is a `<Show>`-wrapped message that appears on refusal.
 
-### Layout — measurement, not guessing
+### 8.5 Layout — measurement, not guessing, and the pins are moving under us
 
-The Temperature Gradient card is under active min-width work on `GIT_142`: its
-floor was just cut from colStop 104 to 76 by removing a `white-space: nowrap`
-reserved slot from min-content (`packages/ui/test/intrinsic-floors.test.ts` on
-that branch, the `.color-clash` block). Adding two numeric inputs to those rows
-**will move that floor** — and note `.color-range` is `flex: none`
-(`app.css:1797`), so its content feeds the row's minimum directly.
+The move changes WHAT is re-measured. The superseded placement added inputs to
+existing rows, so it grew the rows' min-content **width**. This one adds a NEW
+region above them, so:
+
+- The card's **row floor** (height) grows by the region plus its gap. `rowSpan`
+  almost certainly moves; it is the pin most likely to be wrong if left alone.
+- The card's **width floor** becomes `max(band-row min-content, region
+  min-content)` — the region is its own flex line, so it does not add to the
+  rows. Whether the floor moves at all is therefore a measurement, not a
+  prediction: the band rows' own contribution changes only through §8.3's
+  `.color-range` reservation, and the region may or may not exceed it.
+- The Temperature Gradient card is under active min-width work on `GIT_142`,
+  which cut its floor from colStop 104 to 76 by removing a `white-space: nowrap`
+  reserved slot from min-content (`packages/ui/test/intrinsic-floors.test.ts` on
+  that branch, the `.color-clash` block). Measure against the merged result of
+  that work, not against `main`.
+
+**The Settings screen's row assignments are in flux across four branches, so a
+row number quoted in this document would go stale.** Stated plainly because it
+already has: `GIT_136`, `GIT_138`, `GIT_142` and `GIT_144` all touch card pins,
+card placement or the CSS that feeds a floor, and `GIT_138` alone moved every
+row below `bed-probe` by **+9** — `thermal-colors` is `row: 161` on `main` @
+`8df4a98` and `row: 170` on `GIT_138`, and `GIT_142` reshuffles everything from
+`settings-shaping` down to make room for an `accelerometers` card. **#150's
+re-measure is taken against whatever has merged at implementation time**, and the
+pin is found by its key (`"thermal-colors"` in `compose/screens.ts`), never by a
+line or row number carried over from here.
 
 All of the following are requirements. A pin left at its old value is drift, not
 a pass:
 
 1. Re-measure the card in the Card Lab with `auditCard`
    (`packages/ui/src/dev/LayoutAuditPanel.tsx:121`) — the procedure
-   `compose/defs.ts:540,629,654,673` records for other cards.
-2. Re-pin `size: { colSpan, rowSpan }` in `compose/defs.ts:440-444` (today
-   `156 × 60`) from that measurement.
-3. Re-pin the placement in `compose/screens.ts:216` (today
-   `col:156 row:161 colSpan:156 rowSpan:60`) and check it neither collides with
-   nor overflows its neighbours on that screen.
+   `compose/defs.ts:540,629,654,673` records for other cards. The card is
+   TALLER now, so the measurement that matters most is the row floor, not just
+   the column stop.
+2. Re-pin `size: { colSpan, rowSpan }` on the `"thermal-colors"` entry in
+   `compose/defs.ts` (`156 × 60` on `main` @ `8df4a98`) from that measurement.
+3. Re-pin the `"thermal-colors"` placement in `compose/screens.ts` from the same
+   measurement, and — because the card grew in height — **re-check everything
+   below it on the Settings screen for collision or overflow**, on the merged
+   tree. Displacing the cards under it is expected, not a surprise.
 4. Run the scale sweep at 0.75 / 1.0 / 1.5 and confirm equal cell floors, per
-   `CLAUDE.md` § Architecture requirements.
+   `CLAUDE.md` § Architecture requirements. The sweep now covers a taller card,
+   and the region's own height must scale with `--u` like everything else.
 5. Every new length is `calc(n * var(--u))`; decorations are inset box-shadow,
    never `border:` — enforced by `packages/ui/test/unit-lengths.test.ts`.
 
@@ -495,6 +646,12 @@ ticket. Do it here, file it separately, or leave the rung-6 ledger row standing?
    enumerated in §1 (`ToolsHeatersCard.tsx`, `SettingsCards.tsx`, `Shell.tsx`),
    so a fourth hardcoded comparison is caught by the suite. This is the rung-4
    support under §2's rung-5 residual.
+   **Sharpened by the placement ruling (§8.2):** the same file gains an
+   assertion that the band-row render body in `SettingsCards.tsx` contains no
+   `<input type="number"` — the check that holds the rung-6 "no editable
+   threshold home outside the region" property. It could not be written while a
+   row legitimately held one. Its red check: it must FAIL against a deliberately
+   row-placed input, or it is a sentence and not a check.
 4. The §3 parse table, every row, including that a rejected pair leaves the
    effective config equal to the default.
 5. `CONFIG_VERSION` compatibility (§5's falsifying check): a `version: 3`
@@ -504,7 +661,14 @@ ticket. Do it here, file it separately, or leave the rung-6 ledger row standing?
    overlay does **not** contain a `thermalCuts` key.
 7. Mock (§6): the v2/v3 seed carries a non-default `thermalCuts`; the v1 seed
    does not.
-8. Layout (§8): the card's re-measured floor, asserted at 0.75 / 1.0 / 1.5.
+8. Layout (§8.5): the card's re-measured floor — **row floor as well as column
+   stop, because the card grew a region rather than widening a row** — asserted
+   at 0.75 / 1.0 / 1.5, against the merged tree, never against a row number
+   quoted from this document.
+9. Positional stability (§8.3, §8.4): `.color-range`'s width does not change
+   when the cuts change — the assertion drives the legend with `[45,160]` and
+   with `[1600,1900]` and expects the same reserved width — and the region's
+   status slot is present in every state, refused and accepted alike.
 
 ## 12. Ledger rows owed
 
@@ -517,6 +681,8 @@ from `@invariant` blocks in source, so these are declared beside the code).
 | legend cannot disagree with the colour rule | 8 | no literals exist; both generated from the cut list | none owed |
 | bands partition the line, no gap, no overlap | 8 | `bandIndex` counts cuts | none owed |
 | cuts are strictly ordered | 6 | sole producer `asRange` | brand `Range` → 7 (Q2) |
+| the threshold region offers exactly one input per cut | 8 | the region is rendered by iterating the `Range`; there is no hand-written count | none owed — but hand-writing the two inputs forfeits it back to rung 1 |
+| no editable threshold home outside the region | 6 | choke-point: the band-row renderer contains no `<input type="number">`, backed by the rung-4 source assertion of §11.3 | rung 8 would need the region to be the only place a cut is nameable — a sealed module exporting an editor rather than a value. Not scheduled |
 | no FOURTH site hardcodes a band comparison | 5 | shared module + source-assertion test (§11.3) | a `Celsius` newtype whose only public predicate is band membership → 7. Not scheduled |
 | `DEFAULT_THERMAL_COLORS` and `index.css` agree | 0 | co-location + doc comment (`config/types.ts:186-191`) | **pre-existing, inherited not introduced.** A5.3: co-location is not a mechanism. Generating the `:root` block from the constant would be rung 8. Out of scope, recorded here only so it is not mistaken for something this change fixed |
 
@@ -527,13 +693,40 @@ from `@invariant` blocks in source, so these are declared beside the code).
 calling `clearHeaterColor(i)`; `ThermalColorsBody` has no equivalent, only the
 card-level `resetAction("thermalColors")` (`compose/cards.tsx:213`).
 
-**Disposition: THIS ticket.** Not because the asymmetry is this ticket's fault,
-but because this ticket makes it unanswerable to defer: once a row carries a
-threshold as well as a colour, "reset this row" must mean something specific
-(colour only? cut only? both?), and `resetSection` takes a single section key
-(`compose/cards.tsx:250`) while colours and cuts are about to be two sections —
-so the card's existing single Reset would silently stop covering half of what
-the card edits. The reset granularity is a design output of this change.
+**Disposition: THIS ticket**, and the placement ruling makes the answer cleaner
+rather than merely moving it. The finding that made it undeferrable stands
+unchanged: `resetSection` takes a single section key (`compose/cards.tsx:250`,
+used via `resetAction("thermalColors")` at `:213`) while colours and cuts become
+**two** person sections, so the card's existing single Reset would silently stop
+covering half of what the card edits. Reset granularity is a design output of
+this change.
+
+What the ruling changes is the part that was previously ambiguous. Under the
+superseded placement, "reset this row" had three defensible meanings (colour
+only? cut only? both?) because a row edited two different sections. With the
+inputs in their own region, **each surface edits exactly one section**, so each
+gets exactly one Reset and neither can be mistaken for the other:
+
+1. **Per band row → the band's COLOUR only.** Mirrors `clearHeaterColor(i)` on
+   the chart-colour rows (`SettingsCards.tsx:118-123`) precisely. It needs a
+   setter that does not exist yet: `setThermalColors` (`config/store.ts:655-657`)
+   merges a partial and cannot un-set one channel, so a `clearThermalColor(key)`
+   in the `clearAxisRole` / `clearHeaterColor` delete-shape (`:646`, `:652`) is
+   an implementation obligation of this ticket, not an optional extra.
+2. **The threshold region → its own Reset, covering `thermalCuts` only.** Yes,
+   the region needs one: without it the only way back to `[45,160]` is typing it,
+   and §4 requires that committing the default DELETES the key rather than
+   materialising it — a Reset states that intent directly, where retyping the
+   default relies on the setter's equality branch to do the same thing.
+3. **The card-level Reset must cover BOTH sections or be removed.** A header
+   Reset that silently drops only the colours is the defect this ticket exists to
+   avoid, one layer up. Either `resetAction` grows to take a list of section keys
+   — the honest shape, since "what this card edits" is then stated once — or the
+   header action goes away in favour of the two granular ones above. It must not
+   stay as-is.
+
+Both new controls are subject to §13(b)'s lesson, which is now binding on this
+ticket's own work: **reserve the space, do not `<Show>` the button into the row.**
 
 **(b) The Chart-colours Reset is conditionally rendered with no reserved space.**
 It pops into the row on first override, shifting the `.color-clash` slot — on
