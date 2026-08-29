@@ -77,9 +77,11 @@ Options:
       --state <file>      Persist the SD tree and machine state to this file and
                           restore it at startup. Omitted = the mock forgets on
                           exit, which is the default on purpose.
-      --frozen-screen     Seed a pre-#86 screens.layouts override (the Machine
-                          screen saved with a SUBSET of its coded cards, no
-                          tombstones) so the composition merge is observable.
+      --frozen-screen     Seed a pre-#86 screens.layouts override (Machine and
+                          Settings each saved with a SUBSET of their coded
+                          cards, no tombstones) so the composition merge is
+                          observable. The Settings entry predates the #140
+                          Accelerometers card, so the merge must add it.
       --unidentified      Serve a machine with no boards[].uniqueId and no
                           interface MAC, so the UI's unidentified path (identity
                           card, in-memory canvas) is reachable. Composes with
@@ -147,7 +149,7 @@ if (mock.stateRestore === null) {
 	console.log(`state: ${values.state} (new file; written after the first change)`);
 }
 console.log(`dwc-ng-config.json seed: version ${configVersion}${configVersion === 3 ? " (current)" : ""}`);
-if (values["frozen-screen"]) console.log("frozen screen (--frozen-screen): screens.layouts.machine holds a pre-#86 subset override");
+if (values["frozen-screen"]) console.log("frozen screen (--frozen-screen): screens.layouts.machine and .settings hold pre-#86 subset overrides (settings also predates #140's Accelerometers card)");
 if (values.unidentified) console.log("unidentified (--unidentified): no boards[].uniqueId, no interface MAC — the UI cannot key this machine");
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {

@@ -318,8 +318,17 @@ const AXIS_ROWS = [
 }>;
 
 /**
- * The Shaping Lab's settings: the motion envelope, the capture defaults, and
- * which accelerometer belongs to which tool.
+ * The Shaping Lab's settings: the motion envelope and the capture defaults.
+ *
+ * WHAT IS NOT HERE, AND WHY (#140). The accelerometer address and its sampling
+ * rate used to be two more sections on this card. They are properties of the
+ * MACHINE, not of the shaping feature — #47's machine-dynamics battery wants
+ * the same two facts — and they were here only because the Lab was the first
+ * thing to want them. They are now `AccelerometersBody` below. What stayed is
+ * what genuinely belongs to a shaping RUN: the box it is allowed to move in,
+ * and the move it performs. `MOTION_FIELDS` in particular stays because it is
+ * shared with the Lab's Capture card under `one-motion-field-table` — it
+ * describes the move, not the sensor.
  *
  * This card is the ONLY way an envelope comes to exist (spec I8). Nothing
  * ships one, nothing derives one from axis limits or the object model, and the
@@ -334,22 +343,13 @@ const AXIS_ROWS = [
  * was refused, and that the envelope is now unset — in a slot that is always
  * on screen, so saying it moves nothing.
  *
- * Nothing on this card validates anything. `setShaping` and `setAccelAddr` are
- * the gates (config/parse.ts via config/store.ts) and the card's whole job is
- * to make their verdicts legible; shaping/settingsDraft.ts carries the words
- * and the per-axis probe, and both go through `asEnvelope` itself.
+ * Nothing on this card validates anything. `setShaping` is the gate
+ * (config/parse.ts via config/store.ts) and the card's whole job is to make its
+ * verdicts legible; shaping/settingsDraft.ts carries the words and the per-axis
+ * probe, and both go through `asEnvelope` itself.
  */
-export function ShapingBody(props: { ctx: CardCtx }) {
+export function ShapingBody() {
 	const app = useApp();
-	// The sampling controls talk to the accelerometer, which is the shaping
-	// service's business: it owns the address lookup the rest of this card
-	// already reads, and one owner is what keeps a rate shown here and a rate
-	// used by a run from being two different answers.
-	// The ACCEL service, not the Lab's. This card is eager (see compose/cards.tsx)
-	// and reaching the Lab's service from here is what put 23 modules of
-	// shaping/** on every cold load (#126). Same pool entry the Lab's Capture
-	// card takes, so the two cannot disagree about what the sensor reported.
-	const accel = props.ctx.service("accel");
 	const stored = (): Envelope | null => app.config.config.shaping.envelope;
 
 	// `edit` is null while the four fields MIRROR the store, and holds the
@@ -422,70 +422,6 @@ export function ShapingBody(props: { ctx: CardCtx }) {
 		setMotionNote(result.note);
 	};
 
-	// Same two-signal shape as the envelope, per tool.
-	const [accelEdit, setAccelEdit] = createSignal<Record<number, string>>({});
-	const [accelCommitted, setAccelCommitted] = createSignal<Record<number, string>>({});
-	const storedAddr = (tool: number): string | undefined => app.config.config.shaping.accelByTool[tool];
-	const accelField = (tool: number): string => accelEdit()[tool] ?? storedAddr(tool) ?? "";
-	/** Does the machine report an accelerometer at this tool's address? The
-	 *  SAME lookup the preconditions read makes, so a row here and a disabled
-	 *  Capture button cannot disagree about whether the sensor is there. */
-	const accelPresent = (tool: number): boolean => {
-		const raw = storedAddr(tool);
-		if (raw === undefined) return false;
-		const addr = parseAccelAddr(raw);
-		return addr !== null && accelerometerOf(app.om.om, addr) !== null;
-	};
-	const accelStatus = (tool: number): string =>
-		accelStatusText(judgeAccel(
-			accelField(tool), accelCommitted()[tool] ?? null, storedAddr(tool), accelPresent(tool),
-		));
-	const forget = (map: Record<number, string>, tool: number): Record<number, string> => {
-		const next = { ...map };
-		delete next[tool];
-		return next;
-	};
-/**
-	 * The rate and resolution fields, per tool.
-	 *
-	 * Held as text and never seeded from the board's report. What the sensor is
-	 * DOING and what the operator is ASKING FOR are different things, and a
-	 * field that mirrored the report would make "5376" look like a setting that
-	 * had been accepted when the board had quietly given 1344 — which is
-	 * precisely what RRF does when the resolution does not allow the rate.
-	 */
-	const [rateEdit, setRateEdit] = createSignal<Record<number, string>>({});
-	const [bitsEdit, setBitsEdit] = createSignal<Record<number, string>>({});
-	const [rateArmed, setRateArmed] = createSignal<number | null>(null);
-
-	/** What the board last said, in its own words. */
-	const accelReport = (tool: number) => accel.accelReportFor(tool);
-
-	const applyRate = (tool: number): void => {
-		const rate = Number(rateEdit()[tool]);
-		const bits = Number(bitsEdit()[tool] ?? "10");
-		if (!Number.isFinite(rate) || rate <= 0 || !Number.isInteger(bits) || bits <= 0) return;
-		if (rateArmed() !== tool) {
-			setRateArmed(tool);
-			return;
-		}
-		setRateArmed(null);
-		void accel.setAccelRate(tool, rate, bits);
-	};
-
-	const commitAccel = (tool: number): void => {
-		const text = accelField(tool).trim();
-		setAccelCommitted(prev => ({ ...prev, [tool]: text }));
-		if (text === "") app.config.clearAccelAddr(tool);
-		else app.config.setAccelAddr(tool, text);
-		// Read back, exactly as the envelope does: if the config now says what
-		// was typed, the row goes back to mirroring it.
-		if ((storedAddr(tool) ?? "") === text) {
-			setAccelEdit(prev => forget(prev, tool));
-			setAccelCommitted(prev => forget(prev, tool));
-		}
-	};
-
 	return (
 		<>
 			{/* No standing paragraph. Prose rewraps as the card is resized, and a
@@ -551,8 +487,132 @@ export function ShapingBody(props: { ctx: CardCtx }) {
 				)}
 			</For>
 			<p class="env-status" role="status" classList={{ bad: motionNote() !== "" }}>{motionNote()}</p>
+		</>
+	);
+}
 
-			<span class="set-cap">Accelerometers</span>
+/**
+ * The machine's accelerometers: which sensor is on which tool, and what rate
+ * and resolution it is running.
+ *
+ * SPLIT OUT OF THE SHAPING SETTINGS CARD (#140). Gabe, 2026-08-28: "split
+ * accelerometers & sampling configs out of the input shaping card into 1 shared
+ * card". The two sections were on a shaping-branded card only because the
+ * Shaping Lab was the first thing that wanted them, and an operator asking
+ * "which sensor is on T2" had to look under Input shaping to find out. An
+ * address and a sample rate are properties of the MACHINE — #47's
+ * machine-dynamics battery reads exactly these two facts — so the card is named
+ * for the hardware and nothing about it is shaping-branded.
+ *
+ * ONE card for both, not two, and that is the point of the "shared" in the
+ * ruling: the two failure modes look identical on a card that shows only one of
+ * them — no accelerometer, and an accelerometer sampling too slowly to see what
+ * you are asking it about. Splitting them across two cards would let an
+ * operator read the address without ever seeing the rate.
+ *
+ * NOTHING HERE DECIDES ANYTHING, in either half.
+ *
+ *  - The address goes through `setAccelAddr` (config/parse.ts via
+ *    config/store.ts), which is the one gate on what an address is, and the row
+ *    reports its verdict through `judgeAccel`/`accelStatusText` rather than
+ *    saying anything of its own.
+ *  - The rate does not go into the config at all. RRF adjusts the resolution to
+ *    be no greater than R and then picks a rate supported AT that resolution,
+ *    so what is typed here and what the sensor does are routinely different
+ *    numbers. The line under each row is the BOARD'S reply to `M955 P`, not an
+ *    echo of the fields.
+ *
+ * THE ACCEL SERVICE, not the Lab's. This card is eager (see compose/cards.tsx)
+ * and reaching the Lab's service from here is what put 23 modules of shaping/**
+ * on every cold load (#126). Same pool entry the Lab's Capture card takes, so
+ * the two cannot disagree about what the sensor reported.
+ *
+ * NO `Reset` ACTION, deliberately (#140 open question). `resetSection` is
+ * section-granular and the section is `shaping` — envelope, motion defaults and
+ * `accelByTool` together. A Reset here would silently take the operator's
+ * envelope with it, which is a card misstating its own scope. Blanking a row's
+ * field clears that address, which is the granularity this card actually owns.
+ */
+export function AccelerometersBody(props: { ctx: CardCtx }) {
+	const app = useApp();
+	// The ACCEL service, not the Lab's — see the note above.
+	const accel = props.ctx.service("accel");
+
+	// Two signals per tool, the same shape the envelope editor uses: `edit`
+	// holds the operator's own text and is absent while the row MIRRORS the
+	// store, `committed` is the text as it was at the last write. Without the
+	// second, "typed but not applied" and "applied and refused" are the same
+	// picture in the input.
+	const [accelEdit, setAccelEdit] = createSignal<Record<number, string>>({});
+	const [accelCommitted, setAccelCommitted] = createSignal<Record<number, string>>({});
+	const storedAddr = (tool: number): string | undefined => app.config.config.shaping.accelByTool[tool];
+	const accelField = (tool: number): string => accelEdit()[tool] ?? storedAddr(tool) ?? "";
+	/** Does the machine report an accelerometer at this tool's address? The
+	 *  SAME lookup the preconditions read makes, so a row here and a disabled
+	 *  Capture button cannot disagree about whether the sensor is there. */
+	const accelPresent = (tool: number): boolean => {
+		const raw = storedAddr(tool);
+		if (raw === undefined) return false;
+		const addr = parseAccelAddr(raw);
+		return addr !== null && accelerometerOf(app.om.om, addr) !== null;
+	};
+	const accelStatus = (tool: number): string =>
+		accelStatusText(judgeAccel(
+			accelField(tool), accelCommitted()[tool] ?? null, storedAddr(tool), accelPresent(tool),
+		));
+	const forget = (map: Record<number, string>, tool: number): Record<number, string> => {
+		const next = { ...map };
+		delete next[tool];
+		return next;
+	};
+
+	/**
+	 * The rate and resolution fields, per tool.
+	 *
+	 * Held as text and never seeded from the board's report. What the sensor is
+	 * DOING and what the operator is ASKING FOR are different things, and a
+	 * field that mirrored the report would make "5376" look like a setting that
+	 * had been accepted when the board had quietly given 1344 — which is
+	 * precisely what RRF does when the resolution does not allow the rate.
+	 */
+	const [rateEdit, setRateEdit] = createSignal<Record<number, string>>({});
+	const [bitsEdit, setBitsEdit] = createSignal<Record<number, string>>({});
+	const [rateArmed, setRateArmed] = createSignal<number | null>(null);
+
+	/** What the board last said, in its own words. */
+	const accelReport = (tool: number) => accel.accelReportFor(tool);
+
+	const applyRate = (tool: number): void => {
+		const rate = Number(rateEdit()[tool]);
+		const bits = Number(bitsEdit()[tool] ?? "10");
+		if (!Number.isFinite(rate) || rate <= 0 || !Number.isInteger(bits) || bits <= 0) return;
+		if (rateArmed() !== tool) {
+			setRateArmed(tool);
+			return;
+		}
+		setRateArmed(null);
+		void accel.setAccelRate(tool, rate, bits);
+	};
+
+	const commitAccel = (tool: number): void => {
+		const text = accelField(tool).trim();
+		setAccelCommitted(prev => ({ ...prev, [tool]: text }));
+		if (text === "") app.config.clearAccelAddr(tool);
+		else app.config.setAccelAddr(tool, text);
+		// Read back, exactly as the envelope does: if the config now says what
+		// was typed, the row goes back to mirroring it.
+		if ((storedAddr(tool) ?? "") === text) {
+			setAccelEdit(prev => forget(prev, tool));
+			setAccelCommitted(prev => forget(prev, tool));
+		}
+	};
+
+	return (
+		<>
+			{/* No standing paragraph, for the reason the shaping card gives: prose
+			    rewraps as a card is resized, and everything it would say is said by
+			    the per-row status slots, which have to exist anyway. */}
+			<span class="set-cap">Address</span>
 			<Show when={app.om.om.tools.length} fallback={<p class="job-empty">Waiting…</p>}>
 				<For each={app.om.om.tools}>
 					{tool => (

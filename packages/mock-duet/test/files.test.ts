@@ -132,6 +132,20 @@ test("--frozen-screen seeds a pre-#86 screen override, and the default seeds non
 	for (const value of Object.values(machine)) {
 		assert.notEqual(value, null, "a pre-tombstone override holds rects only");
 	}
+
+	// #140 split the accelerometer rows off "Settings › Input shaping" onto a
+	// card of their own. Gabe's SD carries a Settings layout saved before that
+	// card existed, and the seed has to be able to present that state — a mock
+	// that only ever serves the post-split card set cannot show whether the
+	// merge hands an existing operator the new card, which is the one thing
+	// requirement 7 is about.
+	const settings = parsed.overlay.screens.layouts.settings;
+	assert.deepEqual(Object.keys(settings).sort(), ["config-save", "settings-shaping"]);
+	assert.equal(settings.accelerometers, undefined,
+		"a pre-#140 override cannot name a card that did not exist");
+	for (const value of Object.values(settings)) {
+		assert.notEqual(value, null, "a pre-tombstone override holds rects only");
+	}
 });
 
 test("the default mock seeds NO screen override, so nothing is frozen out of the box", async t => {

@@ -468,21 +468,48 @@ export const CARD_DEFS = {
 	}),
 	/**
 	 * The Shaping Lab's own settings: the motion envelope (the ONLY way one
-	 * comes to exist — spec I8), the capture-run defaults, and which
-	 * accelerometer belongs to which tool.
+	 * comes to exist — spec I8) and the capture-run defaults.
 	 *
 	 * The title is load-bearing, not decoration: the lab's refusal copy sends
 	 * the operator to "Settings › Input shaping" by name, and a test pins the
 	 * phrase to this def plus the screen this card sits on.
+	 *
+	 * The accelerometer address and its sampling rate were two more sections
+	 * here until #140 moved them to `accelerometers` — machine facts, not
+	 * shaping settings. The card lost two of its four sections; the rowSpan
+	 * below is re-measured, not scaled down by eye.
 	 */
 	"settings-shaping": defineCard({
 		title: "Input shaping",
 		ariaLabel: "Input shaping",
-		tip: "config.shaping · M955 P",
-		// Measured in the Card Lab, 2026-08-23: floor 88 cols × 178 rows, stable
-		// across the height probes and with no child drift. 156 wide to sit in
-		// the Settings screen's column like its neighbours.
-		size: { colSpan: 156, rowSpan: 178 },
+		// No longer "· M955 P" — the codes went with the sampling rows.
+		tip: "config.shaping",
+		// Was 88 × 178 with four sections (Card Lab, 2026-08-23). RE-MEASURED with
+		// auditCard after the #140 split, against the `multi-tool` scenario: row
+		// stop 112, col stop 87, unchanged across all three height probes and with
+		// no child drift. 156 wide to sit in the Settings screen's column like its
+		// neighbours — that colSpan is the screen's choice, not the card's floor.
+		size: { colSpan: 156, rowSpan: 112 },
+	}),
+	/**
+	 * The machine's accelerometers: address per tool, and the sample rate and
+	 * resolution the sensor is running.
+	 *
+	 * NOT shaping-branded, in id or title, and that is the whole reason it
+	 * exists separately (#140). An accelerometer address is a property of the
+	 * printer — #47's machine-dynamics battery reads the same two facts — and
+	 * until this card existed, an operator asking which sensor is on T2 had to
+	 * look under a feature card to find out.
+	 */
+	accelerometers: defineCard({
+		title: "Accelerometers",
+		ariaLabel: "Accelerometers",
+		tip: "config.shaping.accelByTool · M955",
+		// MEASURED with auditCard against the `multi-tool` scenario — four tools,
+		// which is this card's worst case because every row it has is per-tool:
+		// row stop 128, col stop 117 (header wall 110), unchanged across all three
+		// height probes and with no child drift. 156 wide for the Settings column.
+		size: { colSpan: 156, rowSpan: 128 },
 	}),
 	/** Config snapshot history + one-click revert. */
 	"saved-versions": defineCard({

@@ -308,16 +308,30 @@ const ACCEL_BY_TOOL = { "0": "20.0", "1": "21.0", "2": "22.0", "3": "23.0" };
  * existed cannot contain one, and seeding one would test the new path while
  * claiming to be the old state.
  */
-const FROZEN_MACHINE_SCREEN = {
+const FROZEN_SCREENS = {
 	machine: {
 		position: { col: 0, row: 0, colSpan: 156, rowSpan: 103 },
 		"tools-heaters": { col: 156, row: 0, colSpan: 156, rowSpan: 110 },
+	},
+	// The SETTINGS screen as a browser saved it before #140 split the
+	// accelerometer rows onto their own card: `settings-shaping` at its old
+	// four-section height, and NO `accelerometers` key, because the card did
+	// not exist to be placed or removed.
+	//
+	// This is the state Gabe's own machine is in, and it is the only way to see
+	// requirement 7 in a browser rather than only in a unit test: the merge must
+	// hand this operator the new card while leaving the geometry they chose for
+	// the cards they did place. Same no-tombstones rule as the Machine entry —
+	// an override written before this card existed cannot say "I removed it".
+	settings: {
+		"settings-shaping": { col: 0, row: 439, colSpan: 156, rowSpan: 178 },
+		"config-save": { col: 0, row: 617, colSpan: 312, rowSpan: 26 },
 	},
 };
 
 function currentOverlay(frozenScreen = false): Record<string, unknown> {
 	return {
-		...(frozenScreen ? { screens: { layouts: FROZEN_MACHINE_SCREEN } } : {}),
+		...(frozenScreen ? { screens: { layouts: FROZEN_SCREENS } } : {}),
 		// U/V/W drive the three individual Z leadscrew motors
 		// (M584 U1.0 V1.1 W1.2); C is the tool coupler (C0.2).
 		axisRoles: { U: "Z motor 1", V: "Z motor 2", W: "Z motor 3", C: "Coupler" },
