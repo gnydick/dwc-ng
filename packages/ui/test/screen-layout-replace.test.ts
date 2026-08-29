@@ -90,7 +90,7 @@ test("RED CHECK: writing only the config overlay reproduces the shredding", () =
 		// What the canvas would render: defaults (the imported composition) merged
 		// against storage, per card. Storage wins for every known id.
 		const defaults = Object.entries(IMPORTED).map(([id, r]) => ({ id, ...r }));
-		const rendered = mergeCanvas(parseStoredCanvas(machineCanvasKeys(machine, "machine").get("layout")), defaults);
+		const rendered = mergeCanvas(parseStoredCanvas(machineCanvasKeys(machine, "machine").get("layout")), defaults, new Set<string>());
 
 		// POSITION is the invariant this pins: the browser's remembered col/row
 		// wins over the imported layout's, which is the shredding. Spans are no

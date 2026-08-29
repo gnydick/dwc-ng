@@ -860,6 +860,13 @@ interface StoredCanvasEnvelope {
 	basis?: string;
 	/** The operator RESET this canvas. See {@link readStoredCanvasRecord}. */
 	cleared?: true;
+	/**
+	 * The ids whose SPAN an operator gesture set — see
+	 * {@link StoredCanvasRecord.sized}. Absent on every record written before
+	 * #132, which is exactly what "nothing here is known to be the operator's"
+	 * looks like.
+	 */
+	sized?: string[];
 }
 
 /** A stored canvas as the construction path needs to read it: the geometry,
@@ -869,6 +876,22 @@ export interface StoredCanvasRecord {
 	state: unknown;
 	basis: string | null;
 	cleared: boolean;
+	/**
+	 * The ids whose SPAN this browser's OPERATOR set, by a gesture.
+	 *
+	 * The fact `growToDefaults` needed and did not have (#132). Its own doc
+	 * said so: "stored spans carry no record of who set them, so the two cases
+	 * are indistinguishable here". A span the operator deliberately shrank and
+	 * a fossil of an older release's coded default were byte-identical, so the
+	 * merge had to pick one rule for both — and picking "stored wins" left
+	 * `shaping-status` at the 102 it had before #128 raised the coded floor to
+	 * 116, drawing 452 px of body into a 400 px box.
+	 *
+	 * EMPTY, never absent, for a record that predates the field: "no proof an
+	 * operator sized this" is the correct reading of a record that could not
+	 * have carried the proof, and it is what makes those spans grow once.
+	 */
+	sized: ReadonlySet<string>;
 }
 
 /**
@@ -1002,10 +1025,23 @@ export function parseStoredCanvas(raw: string | null): unknown {
  * `basis` is REQUIRED, not defaulted: a canvas written without saying which
  * saved layout it was reconciled against is precisely the record #87 could not
  * judge, and making it omittable would let the next writer recreate one.
+ *
+ * `sized` is REQUIRED for exactly the same reason one layer down (#132). A
+ * canvas written without saying which of its spans an operator chose is the
+ * record `growToDefaults` could not judge, and a default of "none" or "all"
+ * would be a guess baked into every future write. Sorted so a re-serialised
+ * record is byte-stable.
  */
-export function serializeCanvas(state: CanvasState, basis: string, cleared?: true): string {
+export function serializeCanvas(
+	state: CanvasState,
+	basis: string,
+	sized: ReadonlySet<string>,
+	cleared?: true,
+): string {
 	return JSON.stringify({
-		v: CANVAS_FORMAT_VERSION, state, basis, ...(cleared === true ? { cleared } : {}),
+		v: CANVAS_FORMAT_VERSION, state, basis,
+		...(cleared === true ? { cleared } : {}),
+		sized: [...sized].sort(),
 	} satisfies StoredCanvasEnvelope);
 }
 
@@ -1029,6 +1065,7 @@ export function readStoredCanvasRecord(raw: string | null): StoredCanvasRecord {
 	const state = parseStoredCanvas(raw);
 	let basis: string | null = null;
 	let cleared = false;
+	const sized = new Set<string>();
 	if (raw !== null && raw !== "") {
 		try {
 			const parsed: unknown = JSON.parse(raw);
@@ -1036,13 +1073,19 @@ export function readStoredCanvasRecord(raw: string | null): StoredCanvasRecord {
 				const e = parsed as StoredCanvasEnvelope;
 				if (typeof e.basis === "string") basis = e.basis;
 				cleared = e.cleared === true;
+				// Element-checked, not merely Array.isArray'd: this comes off
+				// localStorage, and a non-string leaking into the set would make
+				// `sized.has(id)` answer a question about a value nobody wrote.
+				if (Array.isArray(e.sized)) {
+					for (const id of e.sized) if (typeof id === "string") sized.add(id);
+				}
 			}
 		} catch {
 			// Same tolerance as parseStoredCanvas: unreadable storage is
 			// "nothing was written here", never a throw out of a mount.
 		}
 	}
-	return { state, basis, cleared };
+	return { state, basis, cleared, sized };
 }
 
 /**
@@ -1053,13 +1096,21 @@ export function readStoredCanvasRecord(raw: string | null): StoredCanvasRecord {
  * the highest known order" step, because position is absolute, not
  * relative. A stored id no longer in defaults is dropped.
  *
- * A stored rect whose SPAN the composition has since grown adopts the larger
- * span (growToDefaults) and the cards it now overlaps are pushed clear
- * (reflow) — otherwise a card redesigned to be taller stays at its old height
- * on every browser that has ever laid the screen out, and its new content
- * renders below the fold with no way out but Reset Layout. Observed
- * 2026-07-24: position 95 -> 103 and active-job 40 -> 46 changed nothing on a
- * machine with a stored canvas.
+ * A stored rect whose SPAN the composition has since grown, AND WHICH NO
+ * OPERATOR GESTURE SET, adopts the larger span (growToDefaults) and the cards
+ * it now overlaps are pushed clear (reflow) — otherwise a card redesigned to
+ * be taller stays at its old height on every browser that has ever laid the
+ * screen out, and its new content renders below the fold with no way out but
+ * Reset Layout. Observed 2026-07-24: position 95 -> 103 and active-job 40 -> 46
+ * changed nothing on a machine with a stored canvas.
+ *
+ * The "no operator gesture set it" half is #132 and is load-bearing: between
+ * 2026-07-30 and #132 this paragraph described intent the code did not
+ * implement. The Math.max was deleted, `grew` was never assigned true, and
+ * `return grew ? reflow(state) : state` below was a constant. Gabe found the
+ * hole on his Shaping screen — the one screen with no saved SD layout, so the
+ * one where nothing else reconciled the fossil. If this paragraph and
+ * growToDefaults disagree again, growToDefaults is the answer.
  *
 
  * Stored rects are NEVER discarded for overlapping each other (the old
@@ -1098,10 +1149,23 @@ export function sanitizeCanvas(stored: unknown): CanvasState {
  *
  * Grow-only by decision (spec D1): position is never touched, and a span the
  * user enlarged past the coded default is kept, so an ordinary load changes
- * nothing. The accepted cost is that a card deliberately shrunk below its
- * default (via the detent breakaway) is grown back the next time that default
- * moves — stored spans carry no record of who set them, so the two cases are
- * indistinguishable here.
+ * nothing.
+ *
+ * WHO SET THE SPAN decides which rule applies (#132). `sized` names the ids an
+ * operator gesture sized in this browser, or that reached it as a layout the
+ * operator saved to the card; those win outright, in BOTH directions, which is
+ * what keeps the 2026-07-30 fix alive (shrink a card, reload, and it stays
+ * shrunk — see the paragraph in the loop below). Every other stored span is a
+ * fossil of whatever the coded default was when this browser last laid the
+ * screen out, and is raised to the current one per axis.
+ *
+ * The one-time cost, chosen deliberately: records written before this field
+ * existed carry no marks, so a card the operator really had shrunk grows back
+ * ONCE and must be dragged down again — after which it is marked and sticks.
+ * The alternative failure is a card that clips its own content on a
+ * machine-control surface with no way out but Reset Layout, and between a card
+ * that is slightly too tall and a card that hides what it draws, the too-tall
+ * one is the one an operator can undo by dragging.
  *
  * `grew` reports whether any span actually increased. It is the gate that
  * decides whether a reflow may run at all, and it is deliberately FALSE for a
@@ -1112,6 +1176,14 @@ export function sanitizeCanvas(stored: unknown): CanvasState {
 export function growToDefaults(
 	stored: unknown,
 	defaults: PanelDefault[],
+	/**
+	 * REQUIRED, like `serializeCanvas`'s: the ids whose span the operator set.
+	 * Not defaulted, because both defaults are wrong — "none" grows spans the
+	 * operator chose, "all" preserves fossils — and a caller that has not
+	 * thought about which set it holds is the caller this parameter exists to
+	 * stop. `readStoredCanvasRecord` produces it; nothing else may invent one.
+	 */
+	sized: ReadonlySet<string>,
 ): { state: CanvasState; grew: boolean } {
 	const fallback = defaultCanvas(defaults);
 	const record = typeof stored === "object" && stored !== null
@@ -1134,20 +1206,43 @@ export function growToDefaults(
 			added.push(d.id);
 			continue;
 		}
-		// The STORED size wins outright. This used to be
-		// Math.max(entry, coded) per axis, so a card could never be smaller than
-		// its coded default across a reload: shrink it, reload, and it sprang
-		// back — growing was remembered and shrinking was not (reported
-		// 2026-07-30, Tools & heaters at rowSpan 77 against a coded 110).
+		// An OPERATOR-SIZED span wins outright. Taking Math.max here made a card
+		// spring back to its coded size across a reload: shrink it, reload, and
+		// growing was remembered while shrinking was not (reported 2026-07-30,
+		// Tools & heaters at rowSpan 77 against a coded 110).
 		//
 		// The max existed so a card that GAINED content in a release would adopt
-		// the bigger coded size instead of clipping. That is now covered better
-		// by the thing that actually knows: the resize stop measures content and
-		// refuses to go under it, so any size the operator can set already
-		// contains what the card draws. A default is a starting point for a card
-		// that has none — see the `added` pass below — not a floor under one the
-		// operator has already placed.
-		state[d.id] = clampRect(entry);
+		// the bigger coded size instead of clipping, and 2026-07-30's fix argued
+		// that was now covered by the thing that actually knows: the resize stop
+		// measures content and refuses to go under it, so any size the operator
+		// can set already contains what the card draws.
+		//
+		// True at RESIZE time, false ACROSS RELEASES (#132). The stop measured
+		// the card as it was drawn THEN; a span legal in release N sits below the
+		// content floor of release N+1, and nothing re-checked it. shaping-status
+		// went 102 -> 116 in #128 and every browser holding 102 kept it, clipping
+		// 452 px of body into a 400 px box on a screen with no saved SD layout to
+		// be reconciled against.
+		//
+		// So the max is back, for UNMARKED spans only. A coded default is a floor
+		// under a span nobody is known to have chosen, and a starting point for a
+		// card that has none (the `added` pass below) — never a floor under one
+		// the operator placed.
+		if (sized.has(d.id)) {
+			state[d.id] = clampRect(entry);
+			continue;
+		}
+		const raised = clampRect({
+			col: entry.col,
+			row: entry.row,
+			colSpan: Math.max(entry.colSpan, d.colSpan),
+			rowSpan: Math.max(entry.rowSpan, d.rowSpan),
+		});
+		// Read off the CLAMPED result, not the raw max: a colSpan raised past
+		// GRID_COLS is pulled back by clampRect, and reporting growth the state
+		// does not contain would reflow the screen around a change nobody made.
+		if (raised.colSpan > entry.colSpan || raised.rowSpan > entry.rowSpan) grew = true;
+		state[d.id] = raised;
 	}
 	// Second pass, after every stored rect is placed: a new card can now be
 	// sited against the WHOLE canvas rather than against a partial one, so the
@@ -1242,8 +1337,13 @@ export function benchOrigin(state: CanvasState): CanvasState {
 	return out;
 }
 
-export function mergeCanvas(stored: unknown, defaults: PanelDefault[]): CanvasState {
-	const { state, grew } = growToDefaults(stored, defaults);
+export function mergeCanvas(
+	stored: unknown,
+	defaults: PanelDefault[],
+	/** Required for the same reason growToDefaults' is — this only forwards it. */
+	sized: ReadonlySet<string>,
+): CanvasState {
+	const { state, grew } = growToDefaults(stored, defaults, sized);
 	// Gated on an ACTUAL growth, which is a correctness requirement and not an
 	// optimisation: see the paragraph above about hidden cards storing a legal
 	// overlap. Reflowing unconditionally would shove cards around to "fix"
@@ -1574,10 +1674,30 @@ export function createPanelCanvas(
 	const effectiveStored = supersede || isWhollyEmpty
 		? (seedFromOverlay ?? storedRaw)
 		: record.cleared ? {} : storedRaw;
+	/**
+	 * Which spans are the OPERATOR'S, for this mount (#132).
+	 *
+	 * Two sources, and both really are operator gestures:
+	 *
+	 *  - what this browser recorded at `persist(…, "operator-gesture")`, and
+	 *  - every id in the layout the operator SAVED TO THE CARD. Saving is the
+	 *    strongest statement about a layout there is — stronger than a drag,
+	 *    which is local and unsaved — so a span that reached this browser from
+	 *    the card is not a fossil of a coded default, whichever release wrote
+	 *    it. That is also why this fix touches exactly one screen on Gabe's
+	 *    machine: Shaping is the only one with no `screens.layouts` entry, so
+	 *    it is the only one whose stored spans nothing endorses.
+	 *
+	 * Union rather than either alone: the seed governs the ids the card knows
+	 * about, and the record governs edits made since that save, and a screen
+	 * routinely has both.
+	 */
+	const sizedNow = new Set<string>(record.sized);
+	if (seedFromOverlay != null) for (const id of Object.keys(seedFromOverlay)) sizedNow.add(id);
 	const [state, setState] = createSignal(
 		bench === true
-			? benchOrigin(growToDefaults(storedRaw, defaults).state)
-			: mergeCanvas(effectiveStored, defaults),
+			? benchOrigin(growToDefaults(storedRaw, defaults, sizedNow).state)
+			: mergeCanvas(effectiveStored, defaults, sizedNow),
 	);
 	// Settle a redesign repair once rather than recomputing it on every load.
 	// Deliberately NOT persist(): a repair is not a user edit, and mutating the
@@ -1591,7 +1711,7 @@ export function createPanelCanvas(
 	// not an edit, so it must not quietly retract the operator's reset. The flag
 	// is dropped by `persist` below — a drag IS an edit, and a canvas with rects
 	// the operator placed is no longer a cleared one.
-	keys.set("layout", serializeCanvas(state(), basisNow, record.cleared ? true : undefined));
+	keys.set("layout", serializeCanvas(state(), basisNow, sizedNow, record.cleared ? true : undefined));
 
 	// Stored wins (this browser's own toggles); otherwise seed from the
 	// composition, which is how orientation reaches a browser that has never
@@ -1674,9 +1794,87 @@ export function createPanelCanvas(
 	 *          repair, not an edit, and deliberately calls `keys.set` directly.
 	 *          Both are unchanged by #120 and neither can express a notify.
 	 */
+	/**
+	 * Record which spans the OPERATOR set. The sole writer of `sizedNow`.
+	 *
+	 * @invariant a-stored-span-is-honoured-verbatim-only-if-the-operator-set-it
+	 * @rung 6  choke-point over a required parameter — every write of the
+	 *          "layout" key goes through `serializeCanvas`, which takes the set
+	 *          as a REQUIRED argument, and `growToDefaults`/`mergeCanvas` take
+	 *          it the same way, so neither a write nor a merge can be expressed
+	 *          without stating whose spans these are. Inside this controller the
+	 *          set has exactly one mutator, this function, reached only from
+	 *          `persist(…, "operator-gesture")` — a composition reconcile cannot
+	 *          mark anything, which is the property that stops a boot from
+	 *          fossilising the very spans it just repaired
+	 * @why a card whose coded floor grew in a release renders CLIPPED forever on
+	 *          every browser holding the old span, with Reset Layout the only way
+	 *          out. Honouring every stored span instead makes the operator's own
+	 *          deliberate shrink spring back on the next reload. Both are real
+	 *          reports (2026-08-28 and 2026-07-30); only knowing WHICH kind of
+	 *          span this is lets one rule serve both
+	 * @debt promote by minting a branded OperatorSized value here and accepting
+	 *          only that at serializeCanvas and growToDefaults, so a caller cannot
+	 *          hand over a set it assembled from the wrong side. Records written
+	 *          before #132 carry no marks and cannot be reconstructed — those spans
+	 *          are byte-identical either way — so they grow once, by decision; see
+	 *          growToDefaults' doc. test/canvas-span-provenance.test.ts pins the
+	 *          behaviour meanwhile.
+	 *
+	 * A MOVE deliberately marks nothing: dragging a card across the screen says
+	 * nothing about how tall it should be, and marking on any gesture at all
+	 * would let an operator freeze a clipped fossil by nudging it.
+	 *
+	 * A span landing exactly on its coded default UNMARKS instead. That is
+	 * resetSlot's entire gesture ("put this one back"), and an operator dragging
+	 * a card onto its default size is saying the same thing — in both cases
+	 * there is no longer a chosen span to protect, and a later release that
+	 * raises the default should be free to raise this too.
+	 */
+	/**
+	 * The canvas as it was at the last PERSISTED write — the state a gesture
+	 * started from.
+	 *
+	 * Not `state()`, and that distinction is the whole of it: a drag and a
+	 * resize write live PREVIEWS straight to `setState` on every frame and call
+	 * `persist` once, on drop. By then `state()` already holds the result, so
+	 * comparing `next` against it compares the gesture to itself and finds
+	 * nothing changed — measured 2026-08-28 driving a real pointer drag on the
+	 * mock: shaping-decay went 189 -> 155, `sized` stayed `[]`, and the shrink
+	 * sprang back on reload. That is the 2026-07-30 regression, reintroduced.
+	 *
+	 * `persist` is its only writer, so it cannot drift out of step with what is
+	 * in storage, and the comparison is against the right state without any
+	 * gesture having to snapshot one for it.
+	 */
+	let lastPersisted: CanvasState = state();
+
+	const markOperatorSized = (prev: CanvasState, next: CanvasState): void => {
+		for (const id of [...sizedNow]) if (next[id] === undefined) sizedNow.delete(id);
+		for (const [id, rect] of safeEntries(next)) {
+			const was = prev[id];
+			if (was === undefined) {
+				// Only an import reaches here with an id the canvas did not have
+				// (ensureSlot is a composition-reconcile). An imported layout is
+				// one a person chose and applied, so its spans are theirs.
+				sizedNow.add(id);
+				continue;
+			}
+			if (was.colSpan === rect.colSpan && was.rowSpan === rect.rowSpan) continue;
+			const coded = defaults.find(d => d.id === id);
+			if (coded !== undefined && coded.colSpan === rect.colSpan && coded.rowSpan === rect.rowSpan) {
+				sizedNow.delete(id);
+			} else {
+				sizedNow.add(id);
+			}
+		}
+	};
+
 	const persist = (next: CanvasState, origin: LayoutOrigin): void => {
+		if (origin === "operator-gesture") markOperatorSized(lastPersisted, next);
+		lastPersisted = next;
 		setState(next);
-		keys.set("layout", serializeCanvas(next, basisNow));
+		keys.set("layout", serializeCanvas(next, basisNow, sizedNow));
 		if (origin === "operator-gesture") onLayoutChange?.();
 	};
 
@@ -2123,8 +2321,13 @@ export function createPanelCanvas(
 		// under the CURRENT basis, so a layout saved to the card after this
 		// reset still supersedes it, which is right: that is a newer fact
 		// about the screen than this clear.
-		keys.set("layout", serializeCanvas({}, basisNow, true));
-		setState(defaultCanvas(defaults));
+		// The marks go with the geometry. Reset means "back to the coded
+		// layout", and a mark is a claim about a span the operator chose — there
+		// are none left to claim once every rect is the coded one.
+		sizedNow.clear();
+		keys.set("layout", serializeCanvas({}, basisNow, sizedNow, true));
+		lastPersisted = defaultCanvas(defaults);
+		setState(lastPersisted);
 		keys.remove("orientation");
 		setOrientationState({});
 		// Reset is "back to the default layout" — remembered hidden spots are
@@ -2205,12 +2408,18 @@ export function restampCanvas(store: MachineStore, screenId: string, basis: stri
 	const keys = machineCanvasKeys(store, screenId);
 	const record = readStoredCanvasRecord(keys.get("layout"));
 	if (record.state === null && !record.cleared) return;
-	keys.set("layout", serializeCanvas(sanitizeCanvas(record.state), basis, record.cleared ? true : undefined));
+	// The marks are geometry provenance, not basis provenance: a re-stamp says
+	// which saved layout this record was reconciled against and changes not one
+	// rect, so who sized those rects is exactly as true afterwards.
+	keys.set("layout", serializeCanvas(sanitizeCanvas(record.state), basis, record.sized, record.cleared ? true : undefined));
 }
 
 export function writeCanvasState(store: MachineStore, screenId: string, rects: CanvasState, orientations: OrientationState | undefined, basis: string): void {
 	const keys = machineCanvasKeys(store, screenId);
-	keys.set("layout", serializeCanvas(sanitizeCanvas(rects), basis));
+	// Every id in an IMPORTED layout is operator-sized. An import is a layout a
+	// person chose and applied wholesale — the same standing as a save to the
+	// card — so its spans are nobody's coded default to raise.
+	keys.set("layout", serializeCanvas(sanitizeCanvas(rects), basis, new Set(Object.keys(rects))));
 	// Parked spots describe the layout being REPLACED — a hidden card's
 	// remembered position from the old layout would drop it somewhere
 	// arbitrary in the new one.

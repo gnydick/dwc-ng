@@ -10,6 +10,16 @@ import {
 
 const rect = (col: number, row: number, colSpan: number, rowSpan: number) => ({ col, row, colSpan, rowSpan });
 
+// GIT_132: growToDefaults/mergeCanvas now take the OPERATOR-SIZED id set —
+// which stored spans a gesture set, and so win outright in both directions.
+// An empty set means "no proof any of these is the operator's", which is what
+// every record written before #132 says and what a fixture asserting the
+// coded-default path wants. `sizedAll` is for fixtures whose whole point is a
+// span the operator chose.
+const noneSized: ReadonlySet<string> = new Set<string>();
+const sizedAll = (...ids: string[]): ReadonlySet<string> => new Set(ids);
+
+
 test("clampRect clamps span/position into bounds and falls back to safe values on non-finite input", () => {
 	assert.deepEqual(clampRect(rect(0, 0, 1, 1)), rect(0, 0, 1, 1));
 	assert.deepEqual(clampRect(rect(GRID_COLS - 4, 0, 10, 1)), rect(GRID_COLS - 10, 0, 10, 1), "col pulled back so col+colSpan stays <= GRID_COLS");
@@ -145,9 +155,9 @@ test("a v2 envelope gets both regranulations, but not the column doubling", () =
 
 test("mergeCanvas falls back to defaults when storage is corrupt, empty, or the wrong shape", () => {
 	const defaults = [{ id: "a", col: 0, row: 0, colSpan: 4, rowSpan: 4 }];
-	assert.deepEqual(mergeCanvas(null, defaults), defaultCanvas(defaults));
-	assert.deepEqual(mergeCanvas("a string", defaults), defaultCanvas(defaults));
-	assert.deepEqual(mergeCanvas(42, defaults), defaultCanvas(defaults));
+	assert.deepEqual(mergeCanvas(null, defaults, noneSized), defaultCanvas(defaults));
+	assert.deepEqual(mergeCanvas("a string", defaults, noneSized), defaultCanvas(defaults));
+	assert.deepEqual(mergeCanvas(42, defaults, noneSized), defaultCanvas(defaults));
 });
 
 // b9bdcbf's "wholly empty store uses the composed defaults verbatim" branch
@@ -250,13 +260,13 @@ test("mergeCanvas keeps a valid stored rect for a known id, clamped", () => {
 	// clamp test: a smaller stored rowSpan would additionally trip
 	// growToDefaults and confuse which rule produced the result.
 	const stored = { a: rect(0, 3, GRID_COLS + 6, 4) };
-	assert.deepEqual(mergeCanvas(stored, defaults).a, rect(0, 3, GRID_COLS, 4), "row/col kept, oversized colSpan clamped to GRID_COLS");
+	assert.deepEqual(mergeCanvas(stored, defaults, noneSized).a, rect(0, 3, GRID_COLS, 4), "row/col kept, oversized colSpan clamped to GRID_COLS");
 });
 
 test("mergeCanvas drops a stored id no longer in defaults and defaults a new id missing from storage", () => {
 	const defaults = [{ id: "a", col: 0, row: 0, colSpan: 4, rowSpan: 4 }, { id: "b", col: 10, row: 0, colSpan: 4, rowSpan: 4 }];
 	const stored = { a: rect(1, 1, 4, 4), ghost: rect(0, 0, 1, 1) };
-	const merged = mergeCanvas(stored, defaults);
+	const merged = mergeCanvas(stored, defaults, noneSized);
 	assert.deepEqual(Object.keys(merged).sort(), ["a", "b"]);
 	assert.deepEqual(merged.a, rect(1, 1, 4, 4));
 	assert.deepEqual(merged.b, rect(10, 0, 4, 4), "b missing from storage, uses its own coded default");
@@ -273,7 +283,7 @@ test("a newly-added default card is placed clear of the stored layout, not on to
 		{ id: "new", col: 0, row: 0, colSpan: 12, rowSpan: 20 }, // coded to the SAME spot
 	];
 	// The user dragged "old" down to row 10; "new" has never been seen here.
-	const merged = mergeCanvas({ old: rect(0, 10, 12, 40) }, defaults);
+	const merged = mergeCanvas({ old: rect(0, 10, 12, 40) }, defaults, noneSized);
 	assert.deepEqual(merged.old, rect(0, 10, 12, 40), "an existing card must not be moved to make room");
 	assert.equal(rectsOverlap(merged.new!, merged.old!), false, "the new card must not land on an occupied cell");
 	assert.equal(merged.new!.col, 0, "slideDownToFree keeps the coded column");
@@ -287,7 +297,7 @@ test("two cards added at once are placed against each other, not just against st
 		{ id: "newA", col: 0, row: 0, colSpan: 12, rowSpan: 20 },
 		{ id: "newB", col: 12, row: 0, colSpan: 12, rowSpan: 20 },
 	];
-	const merged = mergeCanvas({ kept: rect(0, 0, 24, 10) }, defaults);
+	const merged = mergeCanvas({ kept: rect(0, 0, 24, 10) }, defaults, noneSized);
 	assert.equal(rectsOverlap(merged.newA!, merged.newB!), false, "the two newcomers must not overlap each other");
 	assert.equal(rectsOverlap(merged.newA!, merged.kept!), false);
 	assert.equal(rectsOverlap(merged.newB!, merged.kept!), false);
@@ -305,7 +315,7 @@ test("adding a card does not reflow the cards the user already placed", () => {
 	];
 	// a and b are stored overlapping (legal — one may be hidden).
 	const stored = { a: rect(0, 0, 12, 10), b: rect(1, 1, 12, 10) };
-	const merged = mergeCanvas(stored, defaults);
+	const merged = mergeCanvas(stored, defaults, noneSized);
 	assert.deepEqual(merged.a, rect(0, 0, 12, 10), "stored overlap must survive a card being added");
 	assert.deepEqual(merged.b, rect(1, 1, 12, 10));
 });
@@ -317,7 +327,7 @@ test("mergeCanvas KEEPS a stored layout whose rects overlap (audit residual clos
 	// mount — the "card sizes not remembered" bug.
 	const defaults = [{ id: "a", col: 0, row: 0, colSpan: 4, rowSpan: 4 }, { id: "b", col: 10, row: 0, colSpan: 4, rowSpan: 4 }];
 	const stored = { a: rect(0, 0, 4, 4), b: rect(1, 1, 4, 4) }; // b overlaps a (b may be hidden)
-	assert.deepEqual(mergeCanvas(stored, defaults), { a: rect(0, 0, 4, 4), b: rect(1, 1, 4, 4) });
+	assert.deepEqual(mergeCanvas(stored, defaults, noneSized), { a: rect(0, 0, 4, 4), b: rect(1, 1, 4, 4) });
 });
 
 // --- growToDefaults: a STORED size is the operator's, in BOTH directions ---
@@ -328,14 +338,14 @@ test("growToDefaults keeps a stored span SMALLER than the coded default", () => 
 	// sprang back — growing was remembered, shrinking was not (reported
 	// 2026-07-30, Tools & heaters held at rowSpan 77 against a coded 110).
 	const defaults = [{ id: "a", col: 0, row: 0, colSpan: 12, rowSpan: 103 }];
-	const { state, grew } = growToDefaults({ a: rect(3, 95, 12, 95) }, defaults);
+	const { state, grew } = growToDefaults({ a: rect(3, 95, 12, 95) }, defaults, sizedAll("a"));
 	assert.deepEqual(state.a, rect(3, 95, 12, 95), "stored span kept, col/row untouched");
 	assert.equal(grew, false, "adopting nothing means there is nothing to reflow around");
 });
 
 test("growToDefaults keeps a user-enlarged span and reports no growth", () => {
 	const defaults = [{ id: "a", col: 0, row: 0, colSpan: 12, rowSpan: 40 }];
-	const { state, grew } = growToDefaults({ a: rect(0, 0, 24, 90) }, defaults);
+	const { state, grew } = growToDefaults({ a: rect(0, 0, 24, 90) }, defaults, sizedAll("a"));
 	assert.deepEqual(state.a, rect(0, 0, 24, 90), "bigger stored spans win");
 	assert.equal(grew, false, "nothing grew, so no reflow may be triggered");
 });
@@ -344,7 +354,7 @@ test("growToDefaults takes BOTH axes from storage, smaller or larger", () => {
 	// Mixed: narrower than the coded default on one axis, taller on the other.
 	// Both are the operator's, so both survive.
 	const defaults = [{ id: "a", col: 0, row: 0, colSpan: 20, rowSpan: 10 }];
-	const { state } = growToDefaults({ a: rect(0, 0, 8, 50) }, defaults);
+	const { state } = growToDefaults({ a: rect(0, 0, 8, 50) }, defaults, sizedAll("a"));
 	assert.deepEqual(state.a, rect(0, 0, 8, 50), "stored wins on both axes");
 });
 
@@ -353,7 +363,7 @@ test("growToDefaults defaults unknown/invalid stored entries and drops stale ids
 		{ id: "a", col: 1, row: 2, colSpan: 4, rowSpan: 4 },
 		{ id: "b", col: 9, row: 0, colSpan: 4, rowSpan: 4 },
 	];
-	const { state, grew } = growToDefaults({ a: "junk", ghost: rect(0, 0, 1, 1) }, defaults);
+	const { state, grew } = growToDefaults({ a: "junk", ghost: rect(0, 0, 1, 1) }, defaults, noneSized);
 	assert.deepEqual(Object.keys(state).sort(), ["a", "b"]);
 	assert.deepEqual(state.a, rect(1, 2, 4, 4));
 	// A card placed at its coded default was never sized by this browser at
@@ -364,7 +374,7 @@ test("growToDefaults defaults unknown/invalid stored entries and drops stale ids
 
 test("growToDefaults clamps a span grown past the grid", () => {
 	const defaults = [{ id: "a", col: 0, row: 0, colSpan: GRID_COLS, rowSpan: 4 }];
-	const { state } = growToDefaults({ a: rect(40, 0, 4, 4) }, defaults);
+	const { state } = growToDefaults({ a: rect(40, 0, 4, 4) }, defaults, noneSized);
 	assert.equal(state.a!.col + state.a!.colSpan <= GRID_COLS, true, "clampRect pulls col back into bounds");
 });
 
@@ -429,7 +439,7 @@ test("mergeCanvas returns a stored arrangement exactly as it was", () => {
 		{ id: "a", col: 0, row: 0, colSpan: 24, rowSpan: 103 },
 		{ id: "b", col: 0, row: 95, colSpan: 24, rowSpan: 40 },
 	];
-	const merged = mergeCanvas({ a: rect(0, 0, 24, 95), b: rect(0, 95, 24, 40) }, defaults);
+	const merged = mergeCanvas({ a: rect(0, 0, 24, 95), b: rect(0, 95, 24, 40) }, defaults, sizedAll("a", "b"));
 	assert.deepEqual(merged.a, rect(0, 0, 24, 95), "stored span kept");
 	assert.deepEqual(merged.b, rect(0, 95, 24, 40), "neighbour not pushed");
 	assert.equal(hasCollisions(merged), false);
@@ -443,13 +453,13 @@ test("mergeCanvas still KEEPS a legal overlap when nothing grew (hidden-card gua
 		{ id: "b", col: 10, row: 0, colSpan: 4, rowSpan: 4 },
 	];
 	const stored = { a: rect(0, 0, 4, 4), b: rect(1, 1, 4, 4) };
-	assert.deepEqual(mergeCanvas(stored, defaults), stored);
+	assert.deepEqual(mergeCanvas(stored, defaults, noneSized), stored);
 });
 
 test("serializeCanvas round-trips through parseStoredCanvas and mergeCanvas", () => {
 	const defaults = [{ id: "a", col: 0, row: 0, colSpan: 4, rowSpan: 4 }];
 	const canvas = defaultCanvas(defaults);
-	assert.deepEqual(mergeCanvas(parseStoredCanvas(serializeCanvas(canvas, "test-basis")), defaults), canvas);
+	assert.deepEqual(mergeCanvas(parseStoredCanvas(serializeCanvas(canvas, "test-basis", noneSized)), defaults, noneSized), canvas);
 });
 
 // Every screen's layout is asserted in composition.test.ts against its
@@ -704,7 +714,7 @@ test("identity resolving is a clean swap: the in-memory canvas is discarded, the
 		// real machine this board turns out to be — from a previous session.
 		const store = openMachineStore({ kind: "board", uniqueId: "finding1-swap-test" });
 		const savedKeys = machineCanvasKeys(store, "test-screen");
-		savedKeys.set("layout", serializeCanvas({ "machine-identity": rect(0, 0, 12, 10), "other-card": rect(30, 30, 12, 10) }, "test-basis"));
+		savedKeys.set("layout", serializeCanvas({ "machine-identity": rect(0, 0, 12, 10), "other-card": rect(30, 30, 12, 10) }, "test-basis", noneSized));
 
 		// AFTER: identity lands. ComposedScreen's keyed `<Show>` tears down the
 		// null-object branch and mounts a fresh createPanelCanvas against the

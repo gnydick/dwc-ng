@@ -247,7 +247,7 @@ test("a card the merge adds is slid clear of one the operator has moved", () => 
 		{ id: "position", col: 0, row: 0, colSpan: 156, rowSpan: 103 },
 		{ id: "tools-heaters", col: 0, row: 0, colSpan: 156, rowSpan: 110 },
 	];
-	const { state } = growToDefaults(stored, defaults);
+	const { state } = growToDefaults(stored, defaults, new Set<string>());
 
 	assert.deepEqual(
 		state["position"],
