@@ -36,3 +36,9 @@ ARD (verbatim): "ARD: we have to honor smooth migration path when there are upda
 AMENDMENT (verbatim, seconds later): "change that to remove the 'if migration is needed'  all migrations will be at least a version upgrade in the layout files"
 
 Disposition: filed — Solo rules, by area § Persisted layouts across releases (docs/superpowers/specs/2026-08-28-layout-migration-design.md). Implementation ticket pair filed separately; NOT implemented in this pass.
+
+## 2026-08-28 (manual capture — ruled in conversation, not hook-captured; `.claude/hooks/rule_capture.py` matches a `RULE:` prefix and this was answered inline as a question about #130's open question 1)
+
+RULING (verbatim): "canvas_format_version owns it. but we need an invariant that enforces that changes in the canvas that requires changes in the config are coupled otherwise strange breakages can happen"
+
+Disposition: filed — Persisted layouts across releases (docs/superpowers/specs/2026-08-28-layout-version-ownership.md § What ruling 1 settles, and what it costs; § Ruling 2 — the coupling requirement). Two register rows. Enforcement mechanisms rated in the same spec; NOT implemented — GIT_130 builds.
