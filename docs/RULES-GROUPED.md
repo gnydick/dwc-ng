@@ -237,6 +237,14 @@ what makes the first row enforceable — the conditional form left a judgement c
 that no check could catch, and the unconditional form reduces it to arithmetic.
 Both the original dictation and the amendment are quoted verbatim in the spec.
 
+Rows 6 and 7 are a further refinement, not a wobble: reframing #146, Gabe ruled
+that the configuration document records the operator's EDITS rather than the
+app's resolved state, which is the same boundary seen from the other side — the
+first three rows decide which copy wins at a version boundary, and these two
+decide what may be in the copy at all. They restate the config module's own
+founding rule (`config/types.ts`: reset = delete from the overlay) for the one
+section that never obeyed it.
+
 Rows 4 and 5 close the one thing the ARD left open — WHICH stamp the arithmetic
 reads — and are a refinement, not a wobble: Gabe ruled `CANVAS_FORMAT_VERSION`
 owns it and attached a new obligation in the same breath, that a canvas change
@@ -252,3 +260,5 @@ the recommendation and what none of them reach) is in the companion spec.
 | 2026-08-28 | During a migration the served entry document is temporarily replaced by an "Upgrade in process" page, so no browser loads the app mid-migration. Because migrations are unconditional, this window is entered on EVERY release. | `docs/superpowers/specs/2026-08-28-layout-migration-design.md` § The four obligations |
 | 2026-08-28 | `CANVAS_FORMAT_VERSION` is THE layout version: it owns layout migration and is the stamp the ratchet reads. `CONFIG_VERSION` stamps the non-layout configuration document only and carries no claim about what a layout means — which requires layouts to leave the `CONFIG_VERSION`-stamped overlay rather than merely being re-labelled. | `docs/superpowers/specs/2026-08-28-layout-version-ownership.md` § What ruling 1 settles, and what it costs |
 | 2026-08-28 | A canvas-format change that FORCES a change to the configuration document must be coupled so neither stamp can advance alone — enforced by a mechanism, not a prose "must", since the two stamps have deliberately different disciplines (the layout stamp ratchets every release; `CONFIG_VERSION` is read by equality and must bump only on a real shape change). | `docs/superpowers/specs/2026-08-28-layout-version-ownership.md` § Ruling 2 — the coupling requirement |
+| 2026-08-28 | The configuration document records the operator's EDITS, not the app's resolved STATE: geometry reaches the overlay only from an operator gesture, so a card's presence in the file IS its authorship and a card sitting at its coded default is absent — which is what lets a later release still move or re-measure it. | `docs/superpowers/specs/2026-08-28-record-edits-not-state.md` § The ruling |
+| 2026-08-28 | Attribution is STRUCTURAL, not stored: write-through on gesture is preferred over a persisted provenance mark, because a mark states authorship a second time beside the file's own key presence and nothing makes the two agree. The rule is prospective only — numbers already resolved onto a card can be repaired by a migration Gabe rules on or by an explicit reset, never by inferring which of them a person chose. | `docs/superpowers/specs/2026-08-28-record-edits-not-state.md` § The two candidate designs |

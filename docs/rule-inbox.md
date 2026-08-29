@@ -42,3 +42,11 @@ Disposition: filed — Solo rules, by area § Persisted layouts across releases 
 RULING (verbatim): "canvas_format_version owns it. but we need an invariant that enforces that changes in the canvas that requires changes in the config are coupled otherwise strange breakages can happen"
 
 Disposition: filed — Persisted layouts across releases (docs/superpowers/specs/2026-08-28-layout-version-ownership.md § What ruling 1 settles, and what it costs; § Ruling 2 — the coupling requirement). Two register rows. Enforcement mechanisms rated in the same spec; NOT implemented — GIT_130 builds.
+
+## 2026-08-28 (manual capture — ruled in conversation, not hook-captured; `.claude/hooks/rule_capture.py` matches a `RULE:` prefix and this was given inline as a reframing of ticket #146)
+
+RULING (verbatim): "so that prompt is a really bad way of saying to record individual edits and blame them"
+
+AND (verbatim): "yes, rewrite 146 around record-edits-not-state"
+
+Disposition: filed — Persisted layouts across releases (docs/superpowers/specs/2026-08-28-record-edits-not-state.md § The ruling; § The two candidate designs). Two register rows. #146/#147 rewritten around the reframing. NOT implemented — GIT_146 builds, and it is BLOCKED on Gabe answering "what counts as moved" (incl. reflow displacement).
