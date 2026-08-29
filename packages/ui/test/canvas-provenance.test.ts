@@ -232,7 +232,7 @@ test("Save to machine re-stamps the canvas, so the next mount reports nothing", 
 		const store = openMachineStore({ kind: "board", uniqueId: "restamp-test" });
 		const keys = machineCanvasKeys(store, "machine");
 		const built: CanvasState = { a: rect(0, 10), b: rect(12, 10) };
-		keys.set("layout", serializeCanvas(built, layoutBasis(built)));
+		keys.set("layout", serializeCanvas(built, layoutBasis(built), new Set<string>()));
 
 		// The operator drags, then Saves: the overlay now holds a DIFFERENT
 		// layout than the canvas was built against.
@@ -253,7 +253,7 @@ test("a re-stamp leaves a cleared canvas cleared", () => {
 	withStorage(() => {
 		const store = openMachineStore({ kind: "board", uniqueId: "restamp-cleared" });
 		const keys = machineCanvasKeys(store, "machine");
-		keys.set("layout", serializeCanvas({}, "old", true));
+		keys.set("layout", serializeCanvas({}, "old", new Set<string>(), true));
 
 		restampCanvas(store, "machine", "new");
 		const record = readStoredCanvasRecord(keys.get("layout"));
