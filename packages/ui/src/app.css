@@ -1388,15 +1388,42 @@
 }
 /*
    @invariant field-input-growth-is-bounded
-   @rung 4  source assertion — test/intrinsic-floors.test.ts scans every rule
-            in app.css whose selector names a `.field` input, and fails the
-            suite if any of them has a positive flex-grow (via `flex-grow` or
-            the grow component of the `flex` shorthand) without a `max-width`
-            that is a calc(n * var(--u)) at or above its own min-width. Two red
-            checks in the same file run the predicate over the declaration
-            #144 replaced and over a cap set below its floor, and require both
-            to fail, so the assertion is known to be capable of failing
-   @debt A CAP, NOT A VOCABULARY. Every text field now stops at ONE number, and
+   @rung 4  source assertion — test/intrinsic-floors.test.ts splits every rule
+            in app.css into one entry per SELECTOR, decides which of them style
+            an input (the selector names the element, or its rightmost compound
+            is made only of classes the TSX actually puts on an <input> or
+            <textarea>), merges each selector with every later rule written with
+            the same selector, and fails the suite if any `.field` input can
+            grow (via `flex-grow` or the grow component of `flex`) without a
+            `max-width` that is a length in --u at or above its own min-width —
+            where the floor may itself be a `var()` token, resolved from
+            index.css or app.css. A max-width that is not a length in --u is a
+            fault whether or not the rule grows, since `none` is how a cap gets
+            removed. Growing inputs OUTSIDE `.field` are held at a committed
+            count (11) that cannot rise silently. Six red checks in the same
+            file run the predicate over the declaration #144 replaced, a cap
+            below its floor, `max-width: none`, a token floor, and assert the
+            scan reaches `.om-filter` / `.pin-cmd` / `.shp-run-name` — each
+            required to fail or to hold, so the assertion is known to be
+            capable of failing
+   @debt ELEVEN GROWING INPUTS OUTSIDE `.field`, COUNTED AND NOT CAPPED, by
+         name: `.console-form input`, `.om-filter`, `.fb-input.grow`,
+         `.compose-row .fb-input`, `.studio-name`, `.st-options`,
+         `.st-rowlabel`, `.st-template`, `.pin-cmd`, `.shp-decay-filter
+         .fb-input`, `.shp-run-name`. Every one of them is a text input with
+         `flex-grow` and no ceiling — the same defect this invariant is about —
+         and the first version of this check could not see any of them, because
+         its filter looked for the word `input` beside `.field` in a selector.
+         They are held at a count rather than fixed because capping them
+         changes the console, the OM inspector, the Card Studio, the file
+         browser and the Shaping Lab, which Gabe has not asked for. Promote by
+         capping them (one ruling, eleven one-line changes) — at which point
+         the count drops to zero and the `.field` qualifier can come out of the
+         invariant's name. Also, the merge is by IDENTICAL SELECTOR only: a cap
+         removed by a DIFFERENT selector of higher specificity is not seen, and
+         closing that needs the resolved cascade from a browser rather than a
+         parser.
+         AND SECOND, A CAP, NOT A VOCABULARY. Every text field now stops at ONE number, and
          the four cards do not all want the same one: measured 2026-08-28, the
          probe command wants 86.4u and a real camera URL 85.3u, but an axis
          role label wants 30.5u and a sensor name 41.1u. So Axis roles and

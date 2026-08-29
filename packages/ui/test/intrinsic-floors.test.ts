@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 /**
@@ -218,27 +218,83 @@ test("contentRowSpan sums margins unconditionally, and no slack marker survives"
  *
  * The assertion below is deliberately NOT "the text rule has a max-width". That
  * would pin the thirteen symptoms and say nothing about the fourteenth field
- * someone adds next month. It is the RULE SHAPE: a `.field input` rule that can
- * GROW must also say where it stops. A new uncapped growing field fails the
- * suite rather than being discovered by an operator dragging a card.
+ * someone adds next month. It is the RULE SHAPE: a `.field` input that can GROW
+ * must also say where it stops. A new uncapped growing field fails the suite
+ * rather than being discovered by an operator dragging a card.
+ *
+ * WHAT THE SCANNER CAN AND CANNOT SEE, stated because the first version of this
+ * file overstated it, and in three separate ways.
+ *
+ *   1. Its filter looked for the word `input` beside `.field` in a selector, so
+ *      an input styled by CLASS alone was outside its field of view entirely.
+ *      `.pin-cmd`, `.om-filter` and `.shp-run-name` are growing text inputs
+ *      with no ceiling and it could never have seen any of them. The scan now
+ *      reads every class the app actually puts on an <input> or <textarea>
+ *      (out of the TSX, because a stylesheet cannot tell an input's class from
+ *      a div's) and a selector whose rightmost compound is made of those
+ *      classes is an input rule.
+ *   2. It read ONE rule body, so a `max-width: none` written under a capped
+ *      rule would have gone on reporting the cap. Same-selector rules are now
+ *      merged in source order and the LAST declaration is the one read.
+ *   3. `max-width: none` was a pass — it is not null, so the "declares no
+ *      max-width" arm did not fire, and the u-multiple arm was only reached for
+ *      rules that grow. A max-width that is not a length in --u is now a fault
+ *      on any input rule, growing or not, because that is exactly the shape a
+ *      cap is removed in.
+ *
+ * A comma list is also split before any of this: it is shorthand for several
+ * rules, and treating it as one is how `.field input[type="number"]`'s 22.5u
+ * cap came to satisfy a check about `.field input[type="text"]`.
+ *
+ * The twelve growing inputs OUTSIDE `.field` are counted, not fixed. Capping
+ * them is a change to the console, the OM inspector, the Card Studio, the file
+ * browser and the Shaping Lab that nobody has asked for, so they are held at a
+ * committed number that cannot rise silently and are named on the declaration
+ * in app.css so they can be worked through deliberately.
  */
 
-/** `calc(N * var(--u))` and bare `0` as u-multiples; anything else is null. */
-function uMultipleOf(value: string | null): number | null {
+/** Every class name app.css writes a rule for. */
+const CSS_CLASSES = new Set([...appCss.matchAll(/\.([a-z][a-z0-9-]*)/g)].map(m => m[1]!));
+
+const indexCss = stripComments(
+	readFileSync(fileURLToPath(new URL("../src/index.css", import.meta.url)), "utf8"),
+);
+
+/**
+ * `calc(N * var(--u))`, bare `0`, and any `var(--token)` whose own definition in
+ * index.css or app.css is a u-multiple. Anything else is null.
+ *
+ * The token arm is not decoration. #138 turns this rule's `min-width` into
+ * `var(--field-input-w)`; a matcher that only understood the literal calc form
+ * would silently find nothing to compare the cap against the moment that
+ * landed, and the cap-below-floor check would stop firing while still passing.
+ */
+function uMultiple(value: string | null): number | null {
 	if (value === null) return null;
 	const trimmed = value.trim();
 	if (/^0$/.test(trimmed)) return 0;
+	const token = /^var\((--[a-z0-9-]+)\)$/.exec(trimmed);
+	if (token !== null) {
+		const def = new RegExp(`${token[1]}:\\s*calc\\(\\s*([\\d.]+)\\s*\\*\\s*var\\(--u\\)\\s*\\)`)
+			.exec(indexCss + appCss);
+		return def === null ? null : Number(def[1]);
+	}
 	const calc = /^calc\(\s*([\d.]+)\s*\*\s*var\(--u\)\s*\)$/.exec(trimmed);
 	return calc ? Number(calc[1]) : null;
 }
 
-/** One declaration's value out of a rule body, or null if it is not declared. */
-function declOf(body: string, prop: string): string | null {
-	// `[;{\\s]` — the escape must survive the template literal. Written `\s`
-	// here it collapses to a bare "s" and the class silently stops matching
-	// whitespace, so a declaration at the start of a body reads as absent.
-	const m = new RegExp(`(^|[;{\\s])${prop}:([^;]*)`).exec(body);
-	return m ? m[2]!.trim() : null;
+/**
+ * The LAST declaration of `prop` in a body, or null if it is not declared.
+ *
+ * Last, not first, because these bodies are CASCADES: cascadeFor() below
+ * concatenates every rule written with the same selector, in source order, and
+ * the later declaration is the one the browser uses. Reading the first is how a
+ * `max-width: none` written under a capped rule would go on reporting the cap
+ * that no longer applies.
+ */
+function decl(body: string, prop: string): string | null {
+	const all = [...body.matchAll(new RegExp(`(?:^|[;{\\s])${prop}:([^;}]*)`, "g"))];
+	return all.length === 0 ? null : all[all.length - 1]![1]!.trim();
 }
 
 /**
@@ -248,9 +304,9 @@ function declOf(body: string, prop: string): string | null {
  * every instance of it.
  */
 function growsBy(body: string): number {
-	const explicit = declOf(body, "flex-grow");
+	const explicit = decl(body, "flex-grow");
 	if (explicit !== null) return Number(explicit) || 0;
-	const short = declOf(body, "flex");
+	const short = decl(body, "flex");
 	if (short === null) return 0;
 	if (/^none$/.test(short)) return 0;
 	if (/^auto$/.test(short)) return 1;
@@ -258,39 +314,96 @@ function growsBy(body: string): number {
 	return first ? Number(first[1]) : 0;
 }
 
-/**
- * Every rule in app.css whose selector list mentions a `.field` input, with its
- * body. Written over the whole sheet rather than over a list of selectors for
- * the reason in the note above: a list would have to be extended by the person
- * adding the next unbounded field, which is the person who is not thinking
- * about it.
- */
-function fieldInputRules(css: string): Array<{ selector: string; body: string }> {
-	return [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
-		.map(m => ({ selector: m[1]!.trim(), body: m[2]! }))
-		.filter(r => /\.field\b[^,{]*\binput\b/.test(r.selector));
+interface Rule { readonly selector: string; readonly body: string }
+
+/** Every rule in app.css, SPLIT so one entry is one selector. */
+const ALL_RULES: Rule[] = [...appCss.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+	.flatMap(m => m[1]!.split(",").map(s => ({ selector: s.trim(), body: m[2]! })))
+	.filter(r => r.selector !== "");
+
+/** Every class the app actually puts on an <input> or a <textarea>. */
+function inputClasses(): Set<string> {
+	const dir = new URL("../src/", import.meta.url);
+	const found = new Set<string>();
+	for (const rel of readdirSync(dir, { recursive: true, encoding: "utf8" })) {
+		if (!rel.endsWith(".tsx")) continue;
+		const text = readFileSync(new URL(rel.replaceAll("\\", "/"), dir), "utf8");
+		for (const tag of text.matchAll(/<(?:input|textarea)\b/g)) {
+			const rest = text.slice(tag.index!, tag.index! + 800);
+			const end = rest.search(/\/>|>/);
+			const open = rest.slice(0, end === -1 ? undefined : end);
+			for (const c of open.matchAll(/class=(?:"([^"]*)"|\{`([^`]*)`\})/g)) {
+				for (const t of (c[1] ?? c[2] ?? "").matchAll(/[A-Za-z][A-Za-z0-9_-]*/g)) {
+					if (CSS_CLASSES.has(t[0]!)) found.add(t[0]!);
+				}
+			}
+		}
+	}
+	return found;
 }
 
-/** The predicate itself, so the red check below can run it over a body that
+const INPUT_CLASSES = inputClasses();
+
+/** Does this one selector target an input? Either it names the element, or its
+ *  rightmost compound is made only of classes the markup puts on inputs. */
+function targetsInput(selector: string): boolean {
+	if (/\b(?:input|textarea)\b/.test(selector)) return true;
+	const last = selector.split(/[\s>+~]+/).filter(s => s !== "").pop() ?? "";
+	if (!/^(?:\.[a-z][a-z0-9-]*)+$/.test(last)) return false;
+	return [...last.matchAll(/\.([a-z][a-z0-9-]*)/g)].every(m => INPUT_CLASSES.has(m[1]!));
+}
+
+/** Every selector in app.css that styles an input, with its body. */
+function inputRules(): Rule[] {
+	return ALL_RULES.filter(r => targetsInput(r.selector));
+}
+
+/** The selectors that reach a `.field` input — what this invariant FAILS on. */
+const isFieldInput = (selector: string): boolean => /\.field\b/.test(selector) && targetsInput(selector);
+
+/**
+ * One selector's declarations plus those of every LATER rule written with the
+ * SAME selector, so a cap removed further down the sheet is seen.
+ *
+ * Identical selectors only — a full cascade needs specificity and the DOM, and
+ * approximating it here would report faults that do not exist. What it closes
+ * is the shape that actually occurs in this sheet: the same selector written
+ * twice, the second time to override.
+ */
+function cascadeFor(rule: Rule): string {
+	const start = ALL_RULES.indexOf(rule);
+	// A rule the red checks construct is not in the sheet and has no cascade —
+	// it is exactly its own body. Without this, `indexOf` returning -1 merges
+	// the WHOLE sheet into the fixture and the red checks quietly stop testing
+	// what they name.
+	if (start === -1) return rule.body;
+	return ALL_RULES.filter((r, i) => i >= start && r.selector === rule.selector).map(r => r.body).join(";");
+}
+
+/** The predicate itself, so the red checks below can run it over bodies that
  *  must fail it. A source assertion never shown to fail is a sentence. */
-function unboundedGrowth(rules: Array<{ selector: string; body: string }>): string[] {
+function unboundedGrowth(rules: readonly Rule[]): string[] {
 	const faults: string[] = [];
 	for (const rule of rules) {
-		if (growsBy(rule.body) <= 0) continue;
-		const max = declOf(rule.body, "max-width");
-		if (max === null) {
-			faults.push(`${rule.selector} can grow (flex-grow ${growsBy(rule.body)}) and declares no max-width`);
+		const body = cascadeFor(rule);
+		// A cap that is not a length in this sheet's own unit is not a cap. This
+		// is checked whether or not the rule grows, because `max-width: none`
+		// written under a capped rule is exactly how a cap gets removed.
+		const declared = decl(body, "max-width");
+		if (declared !== null && uMultiple(declared) === null) {
+			faults.push(`${rule.selector} declares max-width: ${declared}, which is not a length in --u — "none", "100%" and "unset" are not ceilings`);
 			continue;
 		}
-		const maxU = uMultipleOf(max);
-		if (maxU === null) {
-			faults.push(`${rule.selector} declares max-width: ${max}, which is not a calc(n * var(--u))`);
+		if (growsBy(body) <= 0) continue;
+		if (declared === null) {
+			faults.push(`${rule.selector} can grow (flex-grow ${growsBy(body)}) and declares no max-width`);
 			continue;
 		}
 		// Required behaviour 5: the cap may never fall under the floor. Both are
 		// u-multiples, so this is arithmetic on the source and holds at EVERY
 		// scale step at once — `max-width < min-width` is a silently broken box.
-		const minU = uMultipleOf(declOf(rule.body, "min-width"));
+		const maxU = uMultiple(declared)!;
+		const minU = uMultiple(decl(body, "min-width"));
 		if (minU !== null && maxU < minU) {
 			faults.push(`${rule.selector} caps at ${maxU}u below its own ${minU}u floor`);
 		}
@@ -299,17 +412,39 @@ function unboundedGrowth(rules: Array<{ selector: string; body: string }>): stri
 }
 
 test("a .field input that can grow declares where it stops", () => {
-	const rules = fieldInputRules(appCss);
+	const rules = inputRules().filter(r => isFieldInput(r.selector));
 	// The scanner must not pass by matching nothing.
 	assert.ok(rules.length >= 4, `only ${rules.length} .field input rules found — has the sheet changed shape?`);
 	assert.ok(rules.some(r => growsBy(r.body) > 0), "no growing .field input rule found — the scanner is reading nothing");
 	assert.deepEqual(unboundedGrowth(rules), []);
 });
 
+/**
+ * THE SCAN REACHES INPUTS STYLED BY CLASS ALONE, held at a COUNT rather than
+ * fixed — see the note at the top of this section for why capping them is not
+ * this branch's to do.
+ */
+const UNCAPPED_NON_FIELD_INPUTS = 11;
+
+test("no NEW uncapped growing input appears outside .field", () => {
+	const outside = inputRules().filter(r => !isFieldInput(r.selector));
+	assert.ok(outside.length > 0, "the scan sees no non-.field input rules at all — it has stopped reading the sheet");
+	const uncapped = outside.filter(r => growsBy(cascadeFor(r)) > 0 && decl(cascadeFor(r), "max-width") === null);
+	assert.ok(uncapped.length <= UNCAPPED_NON_FIELD_INPUTS,
+		`${uncapped.length} uncapped growing inputs outside .field, up from ${UNCAPPED_NON_FIELD_INPUTS}. ` +
+			"Cap the new one, or move it under the .field vocabulary:\n  " +
+			uncapped.map(r => r.selector).join("\n  "));
+	// And the number must not be stale in the other direction either: a count
+	// nobody can reach is a count nobody notices going wrong.
+	assert.ok(uncapped.length >= UNCAPPED_NON_FIELD_INPUTS,
+		`only ${uncapped.length} uncapped inputs found against a committed ${UNCAPPED_NON_FIELD_INPUTS} — ` +
+			"either some were capped (lower the number and say which) or the scanner stopped seeing them");
+});
+
 test("red check — the declaration #144 replaced fails the same predicate", () => {
 	// Verbatim shape of the pre-#144 rule: grows, floors, never caps.
-	const before = [{
-		selector: '.field input[type="text"], .field input[type="number"]',
+	const before: Rule[] = [{
+		selector: '.field input[type="text"]',
 		body: `
 			flex: 1;
 			width: calc(24 * var(--u));
@@ -322,7 +457,7 @@ test("red check — the declaration #144 replaced fails the same predicate", () 
 });
 
 test("red check — a cap under the floor is a fault, not a pass", () => {
-	const broken = [{
+	const broken: Rule[] = [{
 		selector: ".field input.pretend",
 		body: `
 			flex: 1;
@@ -331,4 +466,44 @@ test("red check — a cap under the floor is a fault, not a pass", () => {
 		`,
 	}];
 	assert.match(unboundedGrowth(broken)[0] ?? "", /below its own 24u floor/);
+});
+
+test("red check — max-width: none is not a ceiling", () => {
+	const broken: Rule[] = [{
+		selector: ".field input.pretend",
+		body: `
+			flex: 1;
+			min-width: calc(24 * var(--u));
+			max-width: none;
+		`,
+	}];
+	assert.match(unboundedGrowth(broken)[0] ?? "", /not a length in --u/);
+});
+
+test("red check — the floor may be a token, and the cap is still compared to it", () => {
+	// #138 replaces this rule's literal min-width with `var(--field-input-w)`.
+	// A matcher that only knew the calc form would find nothing to compare and
+	// pass silently, which is the failure mode this arm exists to prevent.
+	assert.equal(uMultiple("var(--ctl-h)"), 7.5, "a token defined in index.css must resolve");
+	const broken: Rule[] = [{
+		selector: ".field input.pretend",
+		body: "flex: 1; min-width: var(--ctl-h); max-width: calc(1 * var(--u));",
+	}];
+	assert.match(unboundedGrowth(broken)[0] ?? "", /below its own 7.5u floor/,
+		"a floor written as a token must still be compared against the cap");
+});
+
+/**
+ * THE SCANNER SEES THE CLASS-ONLY INPUTS, stated as something that would be
+ * FALSE if the widening had not happened. The three below are the ones the old
+ * filter could not reach, and each is a growing text input.
+ */
+test("the scan reaches inputs styled by class alone", () => {
+	const seen = new Set(inputRules().map(r => r.selector));
+	for (const sel of [".om-filter", ".pin-cmd", ".shp-run-name"]) {
+		assert.ok(seen.has(sel), `${sel} is a text input and the scan does not see it`);
+	}
+	// And it does not sweep in every rule in the sheet by accident.
+	assert.ok(inputRules().length < ALL_RULES.length / 4,
+		`${inputRules().length} of ${ALL_RULES.length} rules read as input rules — the filter is too loose to mean anything`);
 });
