@@ -21,7 +21,7 @@ and invariant claim mentions 13 -> 23, so no mechanism was deleted and no
 claim was lost in the gap. From here the ratchets make a dropped rung visible
 in the diff that drops it.
 
-**Totals:** 174 invariants · 147 at rung 6 or above · 27 below rung 6 (ceiling 27).
+**Totals:** 177 invariants · 150 at rung 6 or above · 27 below rung 6 (ceiling 27).
 
 ## bed
 
@@ -937,6 +937,16 @@ in the diff that drops it.
 
 ## mock-duet
 
+### `mock-duet/a-ticket-port-can-never-be-the-uat-port` — rung 6
+
+**Mechanism.** choke point — this is the only function that turns a ticket number into a port, `mockctl start` calls nothing else to derive one, and it throws on the single input (970) whose arithmetic would land on the reserved slot. The number is never returned and then checked; there is no value to check
+
+**Why.** the UAT stack is a FIXED pair Gabe keeps one bookmark for — mock 8970 with vite 5173 pinned by strictPort. A derivation that could quietly hand a ticket the same 8970 would let a scratch mock occupy the slot the bookmark points at, and the bookmark would then answer from the wrong branch while still looking correct. That is the same failure shape as the orphan that answered a healthy rr_connect on 2026-08-29
+
+**Debt — promotion.** rung 8 would make the two classes one sum type minted at the point of choice, so "a port" with no class simply would not exist to be passed around. Today an explicit `--port` still yields a bare number
+
+`packages/mock-duet/src/ports.ts:95`
+
 ### `mock-duet/capture-files-come-only-from-the-synth` — rung 6
 
 **Mechanism.** choke-point — this is the sole route from a MOVE to a file under `0:/sys/accelerometer`, and it consumes the armed record before it writes, so one M956 can produce at most one file. The synth runs here, once, and its text is carried on the queued `Dump` until `advanceCaptures` lands it: `writeCapture` is the only call either half makes to the SD card, so the two moments are one route, not two. It does not own the directory: `rr_upload` (server.ts) and the DSF `PUT /machine/file` route (dsf.ts) write arbitrary bytes to any path, exactly as a real board lets you upload a CSV there
@@ -991,6 +1001,14 @@ in the diff that drops it.
 
 `packages/mock-duet/src/persist.ts:21`
 
+### `mock-duet/nothing-is-killed-without-being-identified-first` — rung 7
+
+**Mechanism.** sole-constructor type — `killVouched` is the only call that terminates anything, it is not exported, and it takes a `VouchedTarget` whose brand is a `unique symbol` this module never exports. `{ pid, port }` does not satisfy the type and no cast outside this file can name the brand, so reaching a kill from another module is a compile error rather than a dead process. Both minting sites check first: `stopEntry` only after `identify` returned `running` (all three factors), `stopLiveMock` only after re-reading the process's own identity in the same breath. Death is then confirmed BY EFFECT — the PID gone AND the port released — never by an exit code, because pkill exits 0 on Windows and leaves the process running
+
+**Why.** PIDs recycle, and the ruled pidfile format (name = pid, content = port) has no start time to disambiguate with. A `stop` that dereferenced a PID out of a file and killed it would eventually terminate a stranger's process on this machine. The three factors make that require a mock-duet, listening on exactly the recorded port, that started before the file naming it was written — and a recycled PID's process starts after the original died, hence after that write
+
+`packages/mock-duet/src/pidfile.ts:528`
+
 ### `mock-duet/one-parameter-reader` — rung 6
 
 **Mechanism.** choke-point — every parameter any code handler reads comes from `readParams`. The handlers receive a `Params` and have no access to the raw line, so a second, subtly different `P(\d+)` regex has nowhere to be written; adding an accessor here changes one grammar for every code at once
@@ -1000,6 +1018,16 @@ in the diff that drops it.
 **Debt — promotion.** promotion to 7 is a parsed `Line` type produced only by this module, with the raw string unreachable from a handler's signature. Today a handler could still be handed the string, because the dispatch in gcode.ts holds it in scope; splitting the dispatch table out so each handler is a `(machine, params) => string` function closes that.
 
 `packages/mock-duet/src/gcodeParams.ts:4`
+
+### `mock-duet/pidfile-only-after-a-successful-bind` — rung 6
+
+**Mechanism.** choke point — `writePidFile` is not exported, and this is the only exported function that reaches it. It awaits `MockServer.listen()` first and writes the port that call RESOLVED; no parameter carries a port to the write, so no caller can name one. A start that dies before this line (argument parsing, loading a capture) or loses the port race throws here and creates nothing. `writePidFile` also throws on a second call, so one process registers exactly once
+
+**Why.** on 2026-08-29 a mock start died in parseArgs before binding any socket, and `curl 127.0.0.1:8971/rr_connect` still answered healthily — from an unrelated orphan. A pidfile that can exist without a bound socket turns every later question ("is my mock up?", "whose process is this?") into the liveness probe that already lied once, one step from a UAT that would have validated the wrong code and looked green doing it
+
+**Debt — promotion.** rung 7 would make the resolved port a branded `BoundPort` mintable only by the bind, so even a future function inside this module could not write a port it had not watched a socket accept. Today the barrier stops at the module edge
+
+`packages/mock-duet/src/pidfile.ts:713`
 
 ### `mock-duet/shaping-has-one-home` — rung 6
 

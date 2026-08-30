@@ -280,11 +280,20 @@ test("no flag, no persistence: nothing is written to disk anywhere", async () =>
 	}
 });
 
-test("persist.ts is the only writer in the package", () => {
+test("persist.ts and pidfile.ts are the only writers in the package", () => {
 	// The behavioural test above can only prove that nothing was written where
 	// it happened to look. This one covers everywhere else: if no other module
 	// can even name a write, then "no store, no write" is a property of the
 	// package rather than of one temp directory.
+	//
+	// EXACTLY TWO modules may name a filesystem write, and they own DISJOINT
+	// trees — this is a scope, not an allowlist that grows:
+	//   src/persist.ts  the mock's SD tree and machine state (the invariant above)
+	//   src/pidfile.ts  <project root>/target/run — the process registry and the
+	//                   detached start logs (GIT_172)
+	// Anything else, including mockctl.ts, may only READ. A third name here is a
+	// third writer, and this test fails rather than being widened.
+	const OWNERS = [join("src", "persist.ts"), join("src", "pidfile.ts")];
 	const WRITERS = /\b(writeFileSync|writeFile|appendFile|appendFileSync|createWriteStream|openSync|open|mkdirSync|mkdir|renameSync|rename|rmSync|unlinkSync|writeSync|cpSync|copyFileSync)\b/;
 	const offenders: string[] = [];
 	const walkSrc = (dir: string): void => {
@@ -295,7 +304,7 @@ test("persist.ts is the only writer in the package", () => {
 				continue;
 			}
 			if (!entry.name.endsWith(".ts")) continue;
-			if (full.endsWith(join("src", "persist.ts"))) continue;
+			if (OWNERS.some(owner => full.endsWith(owner))) continue;
 			readFileSync(full, "utf8").split("\n").forEach((line, i) => {
 				if (/node:fs/.test(line) && WRITERS.test(line)) {
 					offenders.push(`${relative(SRC, full).replaceAll("\\", "/")}:${i + 1}  ${line.trim()}`);

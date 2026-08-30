@@ -5,8 +5,9 @@
   "type": "module",
   "description": "Mock RRF server speaking the rr_ dialect, with scripted scenarios (CLAUDE.md Task #3).",
   "scripts": {
-    "start": "node src/cli.ts",
-    "dev": "node --watch src/cli.ts",
+    "start": "node --title=mock-duet src/cli.ts",
+    "dev": "node --title=mock-duet --watch src/cli.ts",
+    "ctl": "node src/mockctl.ts",
     "test": "node --test",
     "typecheck": "tsc --noEmit"
   },
