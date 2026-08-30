@@ -1,18 +1,43 @@
 import { parseArgs } from "node:util";
 import process from "node:process";
+import { fileURLToPath } from "node:url";
 import { createMockServer } from "./server.ts";
 import { scenarios } from "./scenarios/index.ts";
 import { loadCaptureFile } from "./capture.ts";
 import type { ConfigSeedVersion } from "./files.ts";
+import { stripArgSeparators } from "./argv.ts";
+import { listenAndRegister } from "./pidfile.ts";
+import { UAT_MOCK_PORT, UAT_VITE_PORT, portTag } from "./ports.ts";
+
+/**
+ * The bundled capture, resolved against THIS FILE rather than the cwd.
+ *
+ * The default used to be the bare relative string, which only worked when the
+ * mock was launched with cwd = `packages/mock-duet`. `mockctl` starts the mock
+ * detached from wherever the operator happened to be, so the default has to
+ * mean the same thing from every directory. An explicitly passed `--snapshot`
+ * is still resolved against the cwd, which is what a person typing a path
+ * expects.
+ */
+const DEFAULT_SNAPSHOT = "captures/om-snapshot-2026-07-12.json";
+const BUNDLED_SNAPSHOT = fileURLToPath(new URL(`../${DEFAULT_SNAPSHOT}`, import.meta.url));
 
 const { values } = parseArgs({
+	// A bare `--` is a package-manager artefact, not an argument: `pnpm mock --
+	// --port 8971` forwards it, and parseArgs (allowPositionals: false) then
+	// rejects everything after it with ERR_PARSE_ARGS_UNEXPECTED_POSITIONAL.
+	// On 2026-08-29 that killed a start BEFORE it bound a socket.
+	args: stripArgSeparators(process.argv.slice(2)),
 	options: {
 		scenario: { type: "string", short: "s", default: "idle" },
 		// Defaults to the bundled capture of the machine this UI is built for.
 		// A bare synthetic board is rarely what you want to look at; pass
 		// --snapshot "" for one.
-		snapshot: { type: "string", default: "captures/om-snapshot-2026-07-12.json" },
-		port: { type: "string", short: "p", default: "8970" },
+		snapshot: { type: "string", default: DEFAULT_SNAPSHOT },
+		// 8970 is the RESERVED UAT mock port (see ports.ts): the stack Gabe
+		// bookmarks. An agent's own scratch mock belongs on its ticket port
+		// (8000 + ticket) — `pnpm mock:start` derives that for you.
+		port: { type: "string", short: "p", default: String(UAT_MOCK_PORT) },
 		password: { type: "string", default: "" },
 		"busy-every": { type: "string", default: "0" },
 		"chunk-size": { type: "string", default: "8" },
@@ -58,7 +83,11 @@ Options:
       --snapshot <file>   Serve a captured object model (JSON from DSF
                           GET /machine/model or stitched rr_model responses).
                           Non-standalone keys are dropped; seqs synthesized.
-  -p, --port <port>       Port to listen on (default: 8970).
+  -p, --port <port>       Port to listen on (default: ${UAT_MOCK_PORT}, the RESERVED UAT
+                          mock port — paired with vite ${UAT_VITE_PORT}. An agent's own
+                          scratch mock belongs on its ticket port, 8000 +
+                          <ticket>; \`pnpm mock:start\` derives that from the
+                          worktree name. See packages/mock-duet/src/ports.ts.)
       --password <pw>     Require this rr_connect password ("" accepts any).
       --busy-every <n>    Every nth rr_model/rr_filelist request gets a 503.
       --chunk-size <n>    Array elements per rr_model chunk / files per page (default: 8).
@@ -86,7 +115,17 @@ Options:
                           interface MAC, so the UI's unidentified path (identity
                           card, in-memory canvas) is reachable. Composes with
                           --snapshot and --config-version.
-      --list              List scenarios and exit.`);
+      --list              List scenarios and exit.
+
+Lifecycle (a mock is torn down by whoever stood it up):
+  pnpm mock:start [--uat|--scratch|--port <n>]   start detached, wait for the
+                                                 pidfile, then report
+  pnpm mock:status     every tracked mock in every worktree, plus orphans
+  pnpm mock:stop       stop this worktree's tracked mocks
+  pnpm mock:reap       stop EVERY live mock-duet, tracked or not
+
+A mock started this way registers <project root>/target/run/mocks/<worktree>/<pid>,
+whose single line is the port. \`pnpm mock\` registers one too.`);
 	process.exit(0);
 }
 
@@ -110,7 +149,8 @@ if (!(CONFIG_VERSIONS as readonly string[]).includes(values["config-version"])) 
 }
 const configVersion = Number(values["config-version"]) as ConfigSeedVersion;
 
-const model = values.snapshot !== "" ? loadCaptureFile(values.snapshot) : undefined;
+const snapshotPath = values.snapshot === DEFAULT_SNAPSHOT ? BUNDLED_SNAPSHOT : values.snapshot;
+const model = values.snapshot !== "" ? loadCaptureFile(snapshotPath) : undefined;
 
 const mock = createMockServer({
 	scenario,
@@ -129,12 +169,19 @@ const mock = createMockServer({
 	unidentified: values.unidentified,
 });
 
-const port = await mock.listen(parseInt(values.port, 10));
-console.log(`mock-duet listening on http://127.0.0.1:${port}`);
+// Bind, THEN register. `listenAndRegister` is the only route by which a PID
+// file comes to exist (pidfile.ts, Invariant A): a start that dies before this
+// line — in parseArgs, in the capture loader — leaves nothing behind, and a
+// start that loses the port race throws here and leaves nothing behind either.
+// It also installs the signal/exit teardown that removes the file again, so
+// "registered" and "cleans up after itself" cannot come apart.
+const { port, pid, file: pidFile, segment } = await listenAndRegister(mock, parseInt(values.port, 10));
+console.log(`mock-duet listening on http://127.0.0.1:${port} [${portTag(port)}]  pid ${pid}`);
+console.log(`pidfile: ${pidFile}  (worktree ${segment}; stop with \`pnpm mock:stop --pid ${pid}\`)`);
 console.log(`scenario: ${scenario.name} — ${scenario.description}`);
 if (model !== undefined) {
 	const axes = (model.move?.axes ?? []).map((a: any) => a?.letter).join("");
-	console.log(`snapshot: ${values.snapshot} (${model.tools?.length ?? 0} tools, axes ${axes || "n/a"})`);
+	console.log(`snapshot: ${snapshotPath} (${model.tools?.length ?? 0} tools, axes ${axes || "n/a"})`);
 }
 if (values["no-auth"]) console.log("auth disabled (--no-auth): X-Session-Key not required");
 if (values.dsf) console.log(`DSF mode (--dsf): REST http://127.0.0.1:${port}/machine/*, push ws://127.0.0.1:${port}/machine`);
@@ -152,8 +199,5 @@ console.log(`dwc-ng-config.json seed: version ${configVersion}${configVersion ==
 if (values["frozen-screen"]) console.log("frozen screen (--frozen-screen): screens.layouts.machine and .settings hold pre-#86 subset overrides (settings also predates #140's Accelerometers card)");
 if (values.unidentified) console.log("unidentified (--unidentified): no boards[].uniqueId, no interface MAC — the UI cannot key this machine");
 
-for (const signal of ["SIGINT", "SIGTERM"] as const) {
-	process.on(signal, () => {
-		void mock.close().then(() => process.exit(0));
-	});
-}
+// Signal handling and pidfile removal are installed by listenAndRegister
+// above, together, so a registered mock always knows how to unregister itself.

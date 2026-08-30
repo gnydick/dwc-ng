@@ -37,3 +37,8 @@ packages/mock-duet/tsconfig.tsbuildinfo
 
 # superpowers SDD scratch
 .superpowers/
+
+# Run-time state, rooted at the MAIN checkout so one command sees every
+# worktree's mocks: target/run/mocks/<worktree>/<pid> (content: the port) and
+# target/run/logs/<worktree>/<pid>.log. See packages/mock-duet/src/pidfile.ts.
+target/

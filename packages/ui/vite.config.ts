@@ -2,6 +2,10 @@ import { defineConfig, loadEnv, type ProxyOptions } from 'vite'
 import solid from 'vite-plugin-solid'
 import { fileURLToPath } from 'node:url'
 import { execFileSync } from 'node:child_process'
+// The two dev-stack port classes live in ONE place, next to the mock that
+// serves the other half of the pair. Config only — nothing from here reaches
+// the browser bundle.
+import { UAT_MOCK_PORT, UAT_VITE_PORT } from '../mock-duet/src/ports.ts'
 
 /**
  * WHICH SOURCE this bundle was built from, for the rail footer.
@@ -55,7 +59,7 @@ const repoRoot = fileURLToPath(new URL('../../', import.meta.url))
 // The local mock IS a project default: it ships in this repo, so pointing at
 // it when nothing is configured is a fact about the project, not about a
 // person.
-const MOCK_TARGET = 'http://127.0.0.1:8970'
+const MOCK_TARGET = `http://127.0.0.1:${UAT_MOCK_PORT}`
 
 // Asset paths are baked into index.html at BUILD time, so a deployment that
 // lives under a subdirectory cannot be produced by moving files afterwards —
@@ -207,6 +211,25 @@ export default defineConfig(({ mode }) => {
     ],
     server: {
       host: true, // listen on all interfaces, not just localhost
+      // THE UAT STACK IS A FIXED PAIR: vite 5173 + mock 8970. Gabe keeps one
+      // bookmark and expects it to be whatever he is supposed to be driving.
+      //
+      // strictPort is the mechanism, not a preference. Vite's default is to
+      // SILENTLY INCREMENT when the port is taken: on 2026-08-29 a UAT landed
+      // on 5184 while everyone involved believed it was on 5173, and nothing
+      // said otherwise. A fixed port that drifts quietly is worse than no
+      // convention at all, because it is a promise that breaks without saying
+      // so. With strictPort, vite either binds 5173 or refuses to start —
+      // "the UAT is somewhere other than where you were told" stops being
+      // representable. If it refuses, the previous UAT stack is still up:
+      // tear it down (pnpm mock:status, pnpm mock:stop).
+      //
+      // The NUMBER is not repeated here: ports.ts owns both halves of the pair
+      // (and the ticket-port convention for scratch mocks), and this config
+      // imports it. Two copies of a port number are two things that disagree
+      // the first time one of them moves.
+      port: UAT_VITE_PORT,
+      strictPort: true,
       allowedHosts,
       cors: { origin: corsOrigins, credentials: true },
       proxy: {

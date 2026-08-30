@@ -12,6 +12,62 @@ pnpm --filter @dwc-ng/mock-duet start -- --list   # list scenarios
 pnpm --filter @dwc-ng/mock-duet test       # protocol test suite (node:test)
 ```
 
+## Lifecycle: whoever stands a mock up owns tearing it down
+
+`pnpm mock` runs in the foreground and stops with Ctrl-C. For anything you
+want to leave running — a UAT stack, a scratch mock for a ticket — use the
+control verbs, which start it detached and give you a way to find it again:
+
+```sh
+pnpm mock:start          # detached, from THIS worktree; waits for it to REGISTER
+pnpm mock:status         # every tracked mock in every worktree, + orphans
+pnpm mock:stop           # this worktree's; --all, --port <n>, --pid <n>
+pnpm mock:restart        # stop this worktree's, start one on the same port
+pnpm mock:reap           # stop EVERY live mock-duet, tracked or not
+pnpm mock:reap --dry-run # ...or just show the table
+```
+
+`mock:start` reports success only once the child has written its PID file, so
+a start that dies in argument parsing or loses the port race is reported as a
+FAILURE with its log — never confirmed by curling the port, which on
+2026-08-29 was answered by an unrelated orphan while the start had already
+failed.
+
+Every mock started through the CLI registers, at the MAIN checkout's root so
+one command sees every worktree:
+
+```
+<project root>/target/run/mocks/<worktree>/<pid>      # file NAME = pid, CONTENT = port
+<project root>/target/run/logs/<worktree>/<pid>.log   # detached start output
+```
+
+A clean exit removes the file; a hard kill cannot, so `mock:status`
+distinguishes `running` from `stale pidfile (…)` and lists **untracked
+orphans** — live mocks with no PID file, the only way a mock that predates
+this mechanism is visible at all. Only `mock:reap` can stop those; `mock:stop`
+never touches anything the registry does not know about.
+
+Nothing is killed without three checks passing first: the PID's process must
+be node running the mock's entry point, it must be the process actually
+listening on the port the file records, and it must have started before that
+file was written. Kills are confirmed by effect — process gone, port released
+— never by an exit code. See `src/pidfile.ts`.
+
+### Ports: two classes, and they never overlap
+
+| Class | Ports | Who |
+|---|---|---|
+| **UAT stack** (reserved, exactly one at a time) | mock **8970** + vite **5173** | the stack Gabe drives, one bookmark, always the same numbers |
+| **Ticket scratch** (derived, never scavenged) | **8000 + `<ticket>`** — GIT_170 → 8170 | an agent's own mock for the ticket it is working |
+
+`mock:start` derives the ticket port from the worktree name, so nothing has to
+remember it and a stray process names the ticket that owns it. The UAT slot
+must be asked for explicitly (`pnpm mock:start --uat`); 8970 is reserved out
+of the derived range so no ticket can take it. Vite's half is pinned with
+`strictPort: true` — it silently increments otherwise, and on 2026-08-29 a UAT
+landed on 5184 while everyone believed it was on 5173. The numbers live in
+`src/ports.ts`, which `vite.config.ts` imports rather than repeating.
+
 ## What it implements
 
 | Endpoint | Behaviour |
