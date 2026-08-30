@@ -133,7 +133,36 @@
 	--sp-cell: calc(2 * var(--u));      /* table cell padding (heaters) */
 	--sp-list: calc(2.25 * var(--u));   /* file/list row padding */
 	--sp-field: calc(1.5 * var(--u));   /* settings field row padding */
-	--sp-stack: calc(2 * var(--u));     /* gutter between stacked cards on the canvas */
+	--sp-stack: calc(2 * var(--u));     /* gap below the preflight strip (.preflight) */
+	/* GIT_170 — the gutter between cards on the canvas. ONE unit: the smallest
+	   gap that stays on the quantum.
+
+	   Gabe, 2026-08-29: minimal padding between cards, reclaim what the card
+	   "border" costs. The border already costs nothing (app.css draws it as an
+	   inset box-shadow, the zero-layout form), so the space to reclaim was this
+	   gutter — it was 2u. It went to 0 first (c59b398); driven on the mock, Gabe
+	   ruled that too tight and asked for the minimum value still on the quantum,
+	   which is this. Card border-box is 4n-4 at scale 1: 4n at zero, 4n-8 before
+	   any of it. Still a multiple of the quantum, so a card size can land exactly
+	   on a content size, which is the property the whole grid rests on.
+
+	   1u, NOT a literal 4px, even though they render identically at scale 1. A
+	   frozen 4px sits unchanged in a floor whose every other term scales, so the
+	   card's minimum in STORED CELLS would come out different at every step — the
+	   exact defect docs/superpowers/specs/2026-08-21-global-unit-scaling-design.md
+	   exists to remove, in miniature. In `u` the quotient is the same number at
+	   0.75, 1.0 and 1.5 (resizeHardFloor: 21 cells at all three). It would also
+	   owe test/unit-lengths.test.ts an allowlist escape, which is the cheaper
+	   half of the same argument.
+
+	   It is its OWN token, split out of --sp-stack, because --sp-stack is also
+	   the preflight strip's bottom margin: one value serving two independent
+	   decisions means a change to the card gutter silently moves the strip. Split,
+	   that regression is not something a later edit can express by accident.
+	   Guarded by test/panel-canvas.test.ts "GIT_170: the card gutter is its own
+	   token", which asserts the FORM (calc(1 * var(--u))) and not merely the
+	   rendered value — so substituting the literal fails the suite. */
+	--sp-card-gutter: calc(1 * var(--u)); /* gutter between cards on the canvas */
 	--sp-gutter: calc(3 * var(--u));    /* page side gutter */
 	--sp-gutter-b: calc(3.5 * var(--u)); /* page bottom gutter */
 	--sp-rail-py: calc(3.5 * var(--u)); /* nav rail vertical padding */

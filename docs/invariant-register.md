@@ -1453,7 +1453,7 @@ in the diff that drops it.
 
 **Why.** the canvas record and the config overlay hold the same fact with no ordering between them, so "which is right" was decided by whichever path ran first. A browser carrying rects from before someone else saved a new layout to this machine kept them, and its next Save uploaded them over the good copy (#87). The basis is what turns "probably the same" into a question with an answer @why-not-a-counter a content digest needs no second field in the overlay to keep in step, and cannot drift from what it describes: it IS the layout, projected. A generation counter is a second writer's opportunity to be wrong @limit `null` (no saved layout at all) is deliberately NOT the digest of an empty layout — "the card has nothing for this screen" and "the card says this screen is empty" are different, and only the first means there is nothing for a local copy to be stale against
 
-`packages/ui/src/shell/panelCanvas.ts:901`
+`packages/ui/src/shell/panelCanvas.ts:909`
 
 ### `shell/a-stored-span-is-honoured-verbatim-only-if-the-operator-set-it` — rung 6
 
@@ -1463,7 +1463,7 @@ in the diff that drops it.
 
 **Debt — promotion.** promote by minting a branded OperatorSized value here and accepting only that at serializeCanvas and growToDefaults, so a caller cannot hand over a set it assembled from the wrong side. Records written before #132 carry no marks and cannot be reconstructed — those spans are byte-identical either way — so they grow once, by decision; see growToDefaults' doc. test/canvas-span-provenance.test.ts pins the behaviour meanwhile. A MOVE deliberately marks nothing: dragging a card across the screen says nothing about how tall it should be, and marking on any gesture at all would let an operator freeze a clipped fossil by nudging it. A span landing exactly on its coded default UNMARKS instead. That is resetSlot's entire gesture ("put this one back"), and an operator dragging a card onto its default size is saying the same thing — in both cases there is no longer a chosen span to protect, and a later release that raises the default should be free to raise this too.
 
-`packages/ui/src/shell/panelCanvas.ts:1800`
+`packages/ui/src/shell/panelCanvas.ts:1808`
 
 ### `shell/copy-failure-is-observable` — rung 6
 
@@ -1499,7 +1499,7 @@ in the diff that drops it.
 
 **Why.** one flag used to carry two different facts — "the operator rearranged the screen" and "the canvas emitted a geometry event". `ensureSlot`/`removeSlot` run from ComposedScreen's composition-sync effect, which fires as the screen is being brought up to date with a config change nobody dragged; routing those through the same notifier as a drag is what let a plain reload report unsaved work that did not exist (#120 defect B). The fix is NOT to stop marking dirty: geometry only reaches the overlay at save time (captureScreenGeometry) and Save is gated on the flag, so a canvas that never marks dirty is one whose rearrangement can never be saved at all @enumerated the geometry writers NOT on this route, and why: `reset()` REMOVES the key rather than writing one (the next mount re-seeds from defaults) and has never notified; the construction-time settle write at the top of this function is a deterministic repair, not an edit, and deliberately calls `keys.set` directly. Both are unchanged by #120 and neither can express a notify.
 
-`packages/ui/src/shell/panelCanvas.ts:1769`
+`packages/ui/src/shell/panelCanvas.ts:1777`
 
 ### `shell/reflow-preserves-reading-order` — rung 6
 
@@ -1509,7 +1509,7 @@ in the diff that drops it.
 
 **Debt — promotion.** promote by making the placement order a value produced once and consumed by the loop, so a future caller cannot iterate the state directly and place out of order.
 
-`packages/ui/src/shell/panelCanvas.ts:1275`
+`packages/ui/src/shell/panelCanvas.ts:1283`
 
 ### `shell/reflow-terminates` — rung 3
 
@@ -1519,7 +1519,7 @@ in the diff that drops it.
 
 **Debt — promotion.** make the loop consume a bounded, strictly-increasing cursor rather than mutating a candidate in place — then "a push that advances nothing" has no encoding and the argument stops needing to be believed.
 
-`packages/ui/src/shell/panelCanvas.ts:1287`
+`packages/ui/src/shell/panelCanvas.ts:1295`
 
 ### `shell/stream-dies-with-its-element` — rung 7
 
@@ -1549,7 +1549,7 @@ in the diff that drops it.
 
 **Debt — promotion.** the test reads the stylesheet as text. Rung 6 is emitting these widths from the same table definition the component renders from, so a column and its width are one fact rather than two that agree. The Tools card renders the same table without the control columns, so Current is the second cell rather than the fourth. Under role classes that fact needs no restatement of any OTHER column's width — which is what the positional version got wrong. 152 + 58 = 210.
 
-`packages/ui/src/app.css:792`
+`packages/ui/src/app.css:808`
 
 ### `ui/field-input-growth-is-bounded` — rung 4
 
@@ -1559,7 +1559,7 @@ in the diff that drops it.
 
 **Debt — promotion.** ELEVEN GROWING INPUTS OUTSIDE `.field`, COUNTED AND NOT CAPPED, by name: `.console-form input`, `.om-filter`, `.fb-input.grow`, `.compose-row .fb-input`, `.studio-name`, `.st-options`, `.st-rowlabel`, `.st-template`, `.pin-cmd`, `.shp-decay-filter .fb-input`, `.shp-run-name`. Every one of them is a text input with `flex-grow` and no ceiling — the same defect this invariant is about — and the first version of this check could not see any of them, because its filter looked for the word `input` beside `.field` in a selector. They are held at a count rather than fixed because capping them changes the console, the OM inspector, the Card Studio, the file browser and the Shaping Lab, which Gabe has not asked for. Promote by capping them (one ruling, eleven one-line changes) — at which point the count drops to zero and the `.field` qualifier can come out of the invariant's name. Also, the merge is by IDENTICAL SELECTOR only: a cap removed by a DIFFERENT selector of higher specificity is not seen, and closing that needs the resolved cascade from a browser rather than a parser. AND SECOND, A CAP, NOT A VOCABULARY. Every text field now stops at ONE number, and the four cards do not all want the same one: measured 2026-08-28, the probe command wants 86.4u and a real camera URL 85.3u, but an axis role label wants 30.5u and a sensor name 41.1u. So Axis roles and Sensor names are BOUNDED but still far wider than their content, which is the complaint answered and not the design settled. Promote with declared per-content-kind classes (the `.env-bound` shape already in this sheet: width/min-width/max-width together, sized by what the field HOLDS) plus a lint that a `.field` text input without one is a failure — that turns "someone picked a number for all of them" into "the field declares what it holds". It changes the look of four cards at once, so it is Gabe's call, filed as #144 Q1 and NOT taken here. Also unsettled: the cap is derived from the SHIPPED default probe command, not from Gabe's own config on the printer (#144 Q2) — no printer was touched
 
-`packages/ui/src/app.css:1403`
+`packages/ui/src/app.css:1419`
 
 ### `ui/fixed-height-clipped-row-declares-its-floor` — rung 4
 
@@ -1569,7 +1569,7 @@ in the diff that drops it.
 
 **Debt — promotion.** ONLY WHAT THE STYLESHEET CAN SAY. The predicate reads app.css text, so it does not see a height arriving from an inline style, from a `classList` addition, or from a JS-set custom property, and it does not resolve specificity — a floor declared in a rule that loses the cascade reads as present. It also cannot distinguish a flex COLUMN item, where the collapse actually happens, from a flex ROW item, where the fixed height is the cross size and the block axis was never at risk; both are required to declare the floor, which is conservative in the right direction but is the reason `.color-clash` and `.accel-status` carry a min-height equal to their own height rather than a measured one. Promote by making the guard travel with the geometry instead of beside it: ONE shared declaration that every fixed-height clipped row extends, so the floor is not something a new row can be written without, and this scan becomes structurally unnecessary rather than merely green
 
-`packages/ui/src/app.css:5197`
+`packages/ui/src/app.css:5213`
 
 ### `ui/heavy-libraries-stay-behind-a-dynamic-import` — rung 4
 
@@ -1589,7 +1589,7 @@ in the diff that drops it.
 
 **Debt — promotion.** the scan is a brace walker over text, so it sees source order but not cascade subtleties (:is(), layers, differing specificity within a selector list). Rung 6 is generating the breakpoint blocks from one typed source, so ordering stops being something an author controls at all. (The palette entry's narrow-width rules are NOT here — they live in a second max-width block directly after the desktop ones further down.)
 
-`packages/ui/src/app.css:1644`
+`packages/ui/src/app.css:1660`
 
 ### `ui/reserved-slot-out-of-the-card-floor` — rung 4
 
@@ -1599,7 +1599,7 @@ in the diff that drops it.
 
 **Debt — promotion.** SELECTOR SHAPES IT CANNOT READ. The slot list and the rendered class lists are both derived now, so no hand-maintained enumeration remains, and the two bypasses that survived #142's first round (a co-class overriding flex, a co-class adding nowrap) are caught. What is still approximate is the cascade: only PLAIN CLASS COMPOUNDS are merged, so a rule reaching a slot through a descendant combinator, an attribute, :is() or a pseudo-class is silently not merged, and specificity is approximated by source order. A class added through `classList` is refused outright rather than mis-read. Promote by measuring the mirror of judgeFloor in dev/layoutAudit.ts — "is this card's floor LARGER than its body needs" — over the whole registry in a real layout, which reads the resolved cascade from the browser instead of parsing for it and needs no selector vocabulary at all. Also still outside this predicate: POSITION, which #142's second round showed is half the property (a reserved slot must be last in its row or its silence is a visible hole — Gabe, 2026-08-28), pinned per card in accelerometer-card.test.ts
 
-`packages/ui/src/app.css:2093`
+`packages/ui/src/app.css:2109`
 
 ### `ui/unit-lengths` — rung 4
 
@@ -1609,7 +1609,7 @@ in the diff that drops it.
 
 **Debt — promotion.** NOT build-failing, despite how it reads. `pnpm build` is `tsc -b && vite build` and never runs node:test; this repo has no CI and no git hook, so the gate is "someone ran `pnpm test`". Promote by running `pnpm test` from a pre-push hook or in CI → rung 6 (mechanically unavoidable on the path to main). Blocked on there being no CI in this repo.
 
-`packages/ui/src/index.css:152`
+`packages/ui/src/index.css:181`
 
 ## util
 
