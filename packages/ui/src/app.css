@@ -271,26 +271,32 @@
 .panel-canvas {
 	display: grid;
 }
-/* BOTH gutters, moved off the grid and onto the item — and, since GIT_170, set
-   to ZERO. A card spanning n cells now renders exactly 4n px on both axes (it
-   used to render 4n - 8), so a card size can still land exactly on a content
-   size and the quantum is unchanged. Every value inside a card (head, its
-   margin, the body's padding) is a multiple of 4 for the same reason: with any
-   one of them off-grid, content totals sit permanently between two achievable
-   card sizes and an exact fit becomes impossible at ANY increment.
+/* BOTH gutters, moved off the grid and onto the item — and, since GIT_170, ONE
+   UNIT rather than two. A card spanning n cells renders 4n - 4 px on both axes
+   at scale 1 (it used to render 4n - 8), so a card size still lands exactly on
+   a content size and the quantum is unchanged. Every value inside a card (head,
+   its margin, the body's padding) is a multiple of 4 for the same reason: with
+   any one of them off-grid, content totals sit permanently between two
+   achievable card sizes and an exact fit becomes impossible at ANY increment.
 
    The horizontal gutter used to be the grid's own column-gap, which forced a
    52px column pitch and up to 51px of unremovable dead width per card. Same
    treatment as the rows, same result: the quantum is 4px on both axes.
 
-   What separates two abutting cards now is the .card hairline below — an inset
+   1u is the FLOOR of this knob, not a taste setting: it is the smallest gutter
+   that keeps the card box on the quantum, because anything between 0 and 1u is
+   a fraction of a cell. It went to 0 first (c59b398) and Gabe ruled that too
+   tight on the mock; 1u is the next value up that the grid can express.
+
+   Even at 0 the cards did not run together, and that is worth keeping in mind
+   before anyone raises this again: the .card hairline below is an inset
    box-shadow, so two neighbours put two 1px rings back to back and read as a
-   ~2px seam that occupies no layout space at all. That is the whole point: the
-   separator got cheaper than the gutter it replaced, not merely smaller.
+   ~2px seam at NO layout cost. The gutter is air the operator asked for on top
+   of a separator that was already doing its job.
 
    The token is --sp-card-gutter and NOT --sp-stack (index.css): --sp-stack is
-   the preflight strip's bottom margin, and zeroing a shared token would have
-   collapsed that gap with nothing to catch it. */
+   the preflight strip's bottom margin, and moving a shared token would have
+   dragged that gap along with nothing to catch it. */
 .panel-canvas > * { margin-bottom: var(--sp-card-gutter); margin-right: var(--sp-card-gutter); }
 
 .card {

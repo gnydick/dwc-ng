@@ -792,44 +792,50 @@ test("contentColSpan and headerColSpan convert through unitPx(), not the stored 
  * The resize hard floor must land on the SAME number of stored cells at every
  * scale step. Each triple below is one step: the drawn unit, and the header
  * height that unit produces (the header is all `u`, so it scales with it),
- * and the card's bottom gutter — now `--sp-card-gutter`, which is 0 at every
- * scale (GIT_170). Zero is zero at every scale, so the third term no longer
- * varies with the step; the pairing is kept so this test still reads as one
- * scale step per row and would catch a gutter that came back scale-dependent.
+ * and the card's bottom gutter — `--sp-card-gutter`, which is 1u (GIT_170).
+ *
+ * The gutter is written as 1 × THE STEP'S OWN UNIT on each row, not as a
+ * constant, and that is exactly why the value is 1u rather than a literal 4px.
+ * A frozen 4px would put 4 into all three rows below and the quotients would
+ * come out 20.5 / 21.5 / 20.16… — three different cell counts, which is the
+ * scale invariant breaking. Written in `u`, every term of the sum scales
+ * together and the quotient is 20.5 at every step. If these three numbers ever
+ * disagree, THAT is the finding; the arithmetic is not the suspect.
  *
  * It used to measure `.panel-resize-grip` — a deliberately non-scaling 16px
  * pointer target — so a scale-independent constant sat inside a floor whose
  * other terms scaled, and the stop was 22/20/18 cells at 0.75/1/1.5.
  *
- * 22 -> 20 cells is the GIT_170 gutter drop, not a regression: (36 + 4*4)*1.5
- * = 78px of chrome, and 78/4 = 19.5 -> 20 without the 8px gutter that used to
- * push it to 21.5 -> 22. Losing the gutter LOOSENS the floor, which is the
- * safe direction — a card can be dragged 2 cells smaller than before, and its
- * content still fits because the box gained back exactly the 8px the margin
- * used to hold.
+ * 22 -> 21 cells is the GIT_170 gutter change, not a regression: (36 + 4*4)*1.5
+ * = 78px of chrome, plus 4px of gutter = 82, and 82/4 = 20.5 -> 21, where the
+ * 8px gutter it replaced made it 86/4 = 21.5 -> 22. A smaller gutter LOOSENS
+ * the floor, which is the safe direction — a card can be dragged one cell
+ * smaller than before, and its content still fits because the box gained back
+ * exactly the 4px the margin gave up.
  */
 test("resizeHardFloor: the same cell count at every scale", () => {
 	const cells = [
-		resizeHardFloor(36, 4, 0),   // scale 1
-		resizeHardFloor(27, 3, 0),   // 0.75
-		resizeHardFloor(54, 6, 0),   // 1.5
+		resizeHardFloor(36, 4, 4),   // scale 1
+		resizeHardFloor(27, 3, 3),   // 0.75
+		resizeHardFloor(54, 6, 6),   // 1.5
 	];
-	assert.deepEqual(cells, [20, 20, 20], "the floor drifts with the scale");
+	assert.deepEqual(cells, [21, 21, 21], "the floor drifts with the scale");
 });
 
 /**
- * The gutter term is still a real input, not dead weight: a non-zero gutter
- * must still move the floor. Without this, `--sp-card-gutter` could be
- * reintroduced at a scale-DEPENDENT value and the test above — which now
- * passes 0 three times — would not notice.
+ * The gutter term is a real input and not dead weight. All three values this
+ * change has shipped are pinned here, so the row above — which now passes the
+ * same 1u three times over — cannot be read as saying the gutter does not
+ * reach the floor.
  */
-test("resizeHardFloor: a non-zero gutter still raises the floor", () => {
-	assert.equal(resizeHardFloor(36, 4, 0), 20);
-	assert.equal(resizeHardFloor(36, 4, 8), 22);
+test("resizeHardFloor: the gutter reaches the floor, a cell per half-gutter", () => {
+	assert.equal(resizeHardFloor(36, 4, 0), 20, "no gutter at all");
+	assert.equal(resizeHardFloor(36, 4, 4), 21, "1u — today");
+	assert.equal(resizeHardFloor(36, 4, 8), 22, "2u — what GIT_170 replaced");
 });
 
 /**
- * GIT_170 — the card gutter is its OWN token, and it is zero.
+ * GIT_170 — the card gutter is its OWN token, and it is one unit.
  *
  * The gutter used to be `--sp-stack`, which two unrelated things spend: the
  * card's own margin (`.panel-canvas > *`) and the preflight strip's bottom
@@ -840,21 +846,29 @@ test("resizeHardFloor: a non-zero gutter still raises the floor", () => {
  * `--sp-stack`, if the gutter token stops being 0, or if the preflight loses
  * its gap.
  *
- * Read out of the stylesheet rather than asserted in prose: a comment saying
- * "the gutter is zero" is rung 0, and this repo's own prose is exactly the
+ * Read out of the stylesheet rather than asserted in prose: a comment naming
+ * the gutter's value is rung 0, and this repo's own prose is exactly the
  * source the working rules call most dangerous.
  */
-test("GIT_170: the card gutter is its own token, set to zero, and the preflight keeps --sp-stack", () => {
+test("GIT_170: the card gutter is its own token, written in u, and the preflight keeps --sp-stack", () => {
 	const read = (f: string) => readFileSync(fileURLToPath(new URL(`../src/${f}`, import.meta.url)), "utf8");
 	const stripComments = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, "");
 	const indexCss = stripComments(read("index.css"));
 	const appCss = stripComments(read("app.css"));
 
-	// The token exists and is zero — unitless, so `unit-lengths.test.ts` never
-	// sees a length here and no px-ok escape is owed.
+	// The token exists and is written in `u`, like every other spacing token.
+	// A literal `4px` would render identically at scale 1 and then FAIL to
+	// shrink or grow with the step, which is the defect the whole scaling pass
+	// exists to remove; it would also owe unit-lengths.test.ts an allowlist
+	// escape. Asserting the FORM, not just the current multiplier, is what makes
+	// that substitution unwritable rather than merely discouraged.
 	const def = /--sp-card-gutter:\s*([^;]+);/.exec(indexCss);
 	assert.ok(def, "index.css defines no --sp-card-gutter");
-	assert.equal(def[1]!.trim(), "0", "the card gutter must be a bare unitless 0");
+	assert.match(
+		def[1]!.trim(),
+		/^calc\(\s*1\s*\*\s*var\(--u\)\s*\)$/,
+		"the card gutter must be 1 × var(--u) — a literal px would not follow the scale",
+	);
 
 	// The card spends the new token on BOTH axes, and no longer --sp-stack.
 	const cardMargin = /\.panel-canvas\s*>\s*\*\s*\{([^}]*)\}/.exec(appCss);
@@ -867,7 +881,7 @@ test("GIT_170: the card gutter is its own token, set to zero, and the preflight 
 	// And the preflight still has its gap, at the unchanged 2u.
 	const preflight = /\.preflight\s*\{([^}]*)\}/.exec(appCss);
 	assert.ok(preflight, "app.css has no .preflight rule");
-	assert.match(preflight[1]!, /margin-bottom:\s*var\(--sp-stack\)/, "zeroing the gutter collapsed the preflight strip's gap");
+	assert.match(preflight[1]!, /margin-bottom:\s*var\(--sp-stack\)/, "shrinking the card gutter collapsed the preflight strip's gap");
 	assert.match(indexCss, /--sp-stack:\s*calc\(2 \* var\(--u\)\)/, "--sp-stack must stay at 2u for the preflight");
 });
 

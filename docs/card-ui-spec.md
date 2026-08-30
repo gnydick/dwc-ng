@@ -27,33 +27,44 @@ no drawers that overlay content. An action that needs confirmation confirms
 ```
 columns:        624 fixed columns × 4px, NO column gap
 rows:           4px, NO row gap
-card gutter:    0 — no margin on the card at all
-card height:    4 × rowSpan px          (card width: 4 × colSpan px)
+card gutter:    4px — one unit, as a margin on the card itself
+card height:    (4 × rowSpan) − 4 px    (card width: (4 × colSpan) − 4 px)
 separator:      the card's own 1px inset ring, at zero layout cost
 ```
 
 The 4px here is the *stored* quantum. What is drawn is `var(--u)`, which is
 4px at scale 1.0 and 3px / 6px at the 0.75 / 1.5 steps; the stored numbers do
-not move with it. See `docs/superpowers/specs/2026-08-21-global-unit-scaling-design.md`.
+not move with it. **The gutter is written `calc(1 * var(--u))`, so it is 3px
+and 6px at those steps** — a frozen `4px` would render identically at scale 1
+and then sit unchanged inside a floor whose every other term scales, which
+makes a card's minimum in stored cells come out different at every step. See
+`docs/superpowers/specs/2026-08-21-global-unit-scaling-design.md`.
 
-### Why the gutter is zero
+### Why the gutter is one unit
 
-The gutter used to be an 8px margin on the card, which made every card's
-border box `4n − 8`. Zeroing it (2026-08-29, Gabe: minimal padding between
-cards) puts the box on exactly `4n` — *more* on the quantum than before, not
-less — and hands every card back 8px on each axis at scale 1.
+The gutter used to be 2u (8px at scale 1), which made every card's border box
+`4n − 8`. It is now 1u, `4n − 4`.
 
-Nothing was added to replace it. Two abutting cards are told apart by the ring
-each already draws: `box-shadow: inset 0 0 0 1px`, back to back, reads as a
-~2px seam. **The separator is cheaper than the gap it replaced** — an inset
-ring occupies no layout space, so it cannot appear in a card's floor and
-cannot drift with the scale, which a 1px margin would have done on both
-counts. A literal `1px` gutter was the obvious alternative and was rejected
-for exactly that: it needs a lint escape and it lands every card on `4n − 1`.
+**1u is the floor of this knob, not a taste setting.** Anything between 0 and
+1u is a fraction of a cell, so 1u is the smallest gap the grid can express
+while the card box stays on the quantum — and staying on the quantum is what
+lets a card size land exactly on a content size (§ below).
+
+It went to **0** first, on the reasoning that the gutter was the only thing
+costing space and the card's outline already cost nothing: the outline is
+`box-shadow: inset 0 0 0 1px`, so two abutting cards put two rings back to
+back and read as a ~2px seam at no layout cost at all. That is still true, and
+it is why the cards never ran together at zero. Driven on the mock, Gabe ruled
+zero **too tight** and asked for the minimum value still on the quantum. So
+the gutter today is deliberate air on top of a separator that was already
+doing its job — not the thing keeping the cards apart.
+
+A literal `1px` gutter was considered at the start and rejected: it needs a
+lint escape and it lands every card on `4n − 1`, permanently off the quantum.
 
 Consequence worth knowing before you measure anything: **every card's floor
-dropped by exactly 2 cells on both axes** when this landed, because the gutter
-was a term in the sum. Floors got looser, never tighter, so nothing that fitted
+dropped by exactly 1 cell on both axes** when this landed, because the gutter
+is a term in the sum. Floors got looser, never tighter, so nothing that fitted
 before can clip now.
 
 ### Why rows are 4px with no gap
@@ -65,9 +76,10 @@ it. This system previously used 24px rows with a 6px row gap, a **30px
 quantum**, which meant up to 29px of dead space per card no matter what.
 
 The row gap is **zero** on purpose. A gap adds itself back into the quantum
-(24 + 6 = 30). The visual gutter moved onto the card as a margin so the quantum
-stayed 4 — and has since gone to zero as well (§ above), which put the card
-box on the quantum exactly rather than 8px under it.
+(24 + 6 = 30). The visual gutter moved onto the card as a margin instead, so
+the quantum stayed 4 — and the margin has since halved to one unit (§ above),
+which is a different question from this one: a *gap* would change the quantum,
+a *margin* only changes where inside the cell the box stops.
 
 ### The rhythm rule (critical, and the part most often missed)
 
@@ -86,7 +98,7 @@ Concretely, all of these are multiples of 4:
 | card header height | 20px (explicit — do not let the font decide) |
 | header bottom margin | 8px |
 | body bottom padding | 8px |
-| card bottom gutter | 0 (was 8px — see §2) |
+| card bottom gutter | 4px (was 8px — see §2) |
 
 The header height **must be set explicitly**. Left to the font it measured
 18px, which put every card 2px off the rhythm.
@@ -111,11 +123,13 @@ A two-line variant is how a component acquires three heights.
 ## 4. Card sizing
 
 Default row spans are **computed from measured content**, not guessed. Measure
-the rendered content height, then `rowSpan = contentHeight / 4`. (The formula
-still carries a `+ gutter` term in code — `contentRowSpan(cardEl, gutterPx)` —
-because the gutter is read back off the element rather than assumed; it is 0
-today, and the term is what would keep the arithmetic right if it ever were
-not.)
+the rendered content height, then `rowSpan = (contentHeight + gutter) / 4`.
+
+Never hard-code that gutter. In code it is a parameter —
+`contentRowSpan(cardEl, gutterPx)` — and every caller reads it back off the
+element with `getComputedStyle`. That is the reason moving it from 2u to 0 and
+then to 1u cost no change to any of the four span formulas: there is exactly
+one place the gutter is stated, and the arithmetic follows it.
 
 - Cards whose content is **fixed** (a form, a fixed set of buttons) are trimmed
   to exactly what they draw.

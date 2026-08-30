@@ -456,11 +456,13 @@ const GRIP_U = 4;
  * plus the resize-grip foot plus 50% (operator's spec), plus the card's own
  * bottom gutter, divided by the drawn unit.
  *
- * That gutter term is ZERO as of GIT_170 (`--sp-card-gutter`, index.css), and
- * the parameter stays anyway: callers do not assume the value, they read it
- * back off the element (`getComputedStyle(cardEl).marginBottom`), so there is
- * exactly one place the gutter is stated and this arithmetic follows it
- * wherever it goes. Hard-coding the zero here would be the second copy.
+ * That gutter term is 1u as of GIT_170 (`--sp-card-gutter`, index.css), down
+ * from 2u and briefly 0. The parameter is what makes those three edits cost
+ * nothing here: callers do not assume the value, they read it back off the
+ * element (`getComputedStyle(cardEl).marginBottom`), so there is exactly one
+ * place the gutter is stated and this arithmetic follows it wherever it goes.
+ * Hard-coding today's number here would be the second copy, and the one that
+ * goes stale silently.
  *
  * Pure and exported so the arithmetic can be checked without a DOM. THE
  * point of it: every term is either a measured length that scales with `u`

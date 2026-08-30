@@ -89,35 +89,42 @@ function defineCard(meta: CardMeta): CardMeta {
  * The registry's data half. Entries land here as views convert (design
  * phases A2–A6); the starting entry proves the mechanism end to end.
  *
- * ── GIT_170: EVERY MEASURED FLOOR BELOW MOVED BY THE SAME −2 CELLS. ─────────
+ * ── GIT_170: EVERY MEASURED FLOOR BELOW MOVED BY THE SAME −1 CELL. ──────────
  *
- * The inter-card gutter went to zero (index.css `--sp-card-gutter`), so a card
- * spanning n cells now renders n·u px instead of n·u − 2u. The gutter was a
- * term in the sum `contentRowSpan`/`contentColSpan` take, so every card's
- * measured floor dropped by exactly 2 cells on BOTH axes. MEASURED, not
+ * The inter-card gutter went from 2u to 1u (index.css `--sp-card-gutter`), so
+ * a card spanning n cells renders n·u − 1u px instead of n·u − 2u. The gutter
+ * is a term in the sum `contentRowSpan`/`contentColSpan` take, so every card's
+ * measured floor dropped by exactly 1 cell on BOTH axes. MEASURED, not
  * reasoned: the Card Lab scale sweep was run on the parent commit (f2f8d07)
  * and on this one, over all 54 registry cards × 2 scale steps × 2 scenarios
- * (default and `shaping-measured`), and the delta was −2/−2 on every single
+ * (default and `shaping-measured`), and the delta was −1/−1 on every single
  * row — one value, no exceptions.
  *
- * The per-card numbers written in the comments below were taken BEFORE that,
- * so each is 2 higher than the same sweep reports today. They are deliberately
- * NOT rewritten one by one: sixty hand-edited numbers is sixty chances to put
- * one in wrong, and a single stated offset cannot disagree with itself. Read
- * any figure below as "the floor at the time, which is today's floor + 2".
+ * (It briefly went to 0, at c59b398, where the same sweep read −2/−2. Gabe
+ * drove that on the mock and ruled it too tight, so the value is now the
+ * smallest gutter the quantum can express. The intermediate figure is recorded
+ * because that commit is in this branch's history, and a reader who lands on
+ * it needs to know which offset belongs to which commit.)
+ *
+ * The per-card numbers written in the comments below were taken BEFORE any of
+ * this, so each is 1 higher than the same sweep reports today. They are
+ * deliberately NOT rewritten one by one: sixty hand-edited numbers is sixty
+ * chances to put one in wrong, and a single stated offset cannot disagree with
+ * itself. Read any figure below as "the floor at the time, which is today's
+ * floor + 1".
  *
  * The `size` values themselves are also deliberately UNCHANGED, and that is
  * not an oversight. Each composition in compose/screens.ts packs its rows
  * contiguously — SYSTEM_COMPOSITION runs 0, 56, 176, 288, 363, each row the
- * previous row plus its span — so a span trimmed by 2 without moving every
- * card below it by 2 does not tighten the screen at all: it re-opens the same
- * 8px between the cards that the gutter used to hold, and the change would
- * have bought nothing. Trimming the defaults therefore means re-flowing every
+ * previous row plus its span — so a span trimmed by 1 without moving every
+ * card below it by 1 does not tighten the screen at all: it re-opens between
+ * the cards exactly the 4px the gutter gave up, and the change would have
+ * bought nothing. Trimming the defaults therefore means re-flowing every
  * composition, which is a different piece of work with its own collision
  * assertions (test/composition.test.ts) and its own review. Until then a card
- * keeps its old span and spends the reclaimed 2 cells on its own content,
- * which is why several cards that used to overflow their default no longer do
- * (Tuning, Tool dock sensors and Sensors reached zero overflow on the mock).
+ * keeps its old span and spends the reclaimed cell on its own content, which
+ * is why cards that used to overflow their default overflow less, and the
+ * shallowest of them (Tuning, Tool dock sensors) reached zero on the mock.
  * ───────────────────────────────────────────────────────────────────────────
  */
 export const CARD_DEFS = {
@@ -828,10 +835,11 @@ export const CARD_DEFS = {
 		// the number that was a floor at both.
 		//
 		// RE-SWEPT 2026-08-29 (GIT_170), `shaping-measured`, both scale steps:
-		// 147 rows × 112 cols, identical at 0.75 and 1.5. Two of those cells are
+		// 148 rows × 113 cols, identical at 0.75 and 1.5. One of those cells is
 		// this change — the same sweep on the parent commit (f2f8d07) read
-		// 149 × 114 — and colStop is therefore 112, still inside the 156 the
-		// screen gives it, still set by the motion editor's declared tracks.
+		// 149 × 114, and at the intermediate zero-gutter commit c59b398 it read
+		// 147 × 112 — so colStop is 113, still inside the 156 the screen gives
+		// it, still set by the motion editor's declared tracks.
 		// The ROW figure has also drifted from the 139/140 recorded above, by 9
 		// cells that predate GIT_170 and are NOT diagnosed here: the number is
 		// reported as measured rather than reconciled, because a guess about
@@ -862,11 +870,12 @@ export const CARD_DEFS = {
 		// screen pixels would have broken it.
 		//
 		// RE-SWEPT 2026-08-29 (GIT_170), `shaping-measured`, both scale steps:
-		// 153 rows × 131 cols, identical at 0.75 and 1.5 — the invariant still
-		// holds, which is what this note exists to record. Two of those cells
-		// are this change (the parent commit f2f8d07 read 155 × 133 in the same
-		// sweep), so colStop is 131 and still sits inside the 156 this screen
-		// gives, still set by the captures table's declared tracks. The ROW
+		// 154 rows × 132 cols, identical at 0.75 and 1.5 — the invariant still
+		// holds, which is what this note exists to record. One of those cells
+		// is this change (the parent commit f2f8d07 read 155 × 133 in the same
+		// sweep; the zero-gutter commit c59b398 read 153 × 131), so colStop is
+		// 132 and still sits inside the 156 this screen gives, still set by the
+		// captures table's declared tracks. The ROW
 		// figure differs from the 189 above by 34 cells that predate GIT_170;
 		// as with Capture, that gap is reported and not explained here.
 		size: { colSpan: 156, rowSpan: 189 },
@@ -901,11 +910,12 @@ export const CARD_DEFS = {
 		// 0, and 134 at scale 075, 100 AND 150 — the number is the same at
 		// every scale step rather than the largest of three.
 		//
-		// RE-SWEPT 2026-08-29 (GIT_170): 132 × 123, identical at 0.75 and 1.5.
+		// RE-SWEPT 2026-08-29 (GIT_170): 133 × 124, identical at 0.75 and 1.5.
 		// This is the one shaping card whose recorded figure was still exactly
 		// current before the change — the same sweep on the parent commit
-		// (f2f8d07) read 134 × 125 — so the whole of the −2/−2 here is the
-		// gutter leaving the sum, and nothing else moved.
+		// (f2f8d07) read 134 × 125, and the zero-gutter commit c59b398 read
+		// 132 × 123 — so the whole of the −1/−1 here is half the gutter
+		// leaving the sum, and nothing else moved.
 		//
 		// The ID is unchanged on purpose: it is the key saved layouts are stored
 		// under, so renaming it would drop the card off every screen the
