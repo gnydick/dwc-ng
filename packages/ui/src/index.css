@@ -133,7 +133,28 @@
 	--sp-cell: calc(2 * var(--u));      /* table cell padding (heaters) */
 	--sp-list: calc(2.25 * var(--u));   /* file/list row padding */
 	--sp-field: calc(1.5 * var(--u));   /* settings field row padding */
-	--sp-stack: calc(2 * var(--u));     /* gutter between stacked cards on the canvas */
+	--sp-stack: calc(2 * var(--u));     /* gap below the preflight strip (.preflight) */
+	/* GIT_170 — the gutter between cards on the canvas, deliberately ZERO.
+	   Gabe, 2026-08-29: minimal padding between cards, reclaim what the card
+	   "border" costs. The border already costs nothing (app.css draws it as an
+	   inset box-shadow, the zero-layout form), so the space to reclaim was this
+	   gutter, and dropping it gives back 8px per axis at scale 1 — more than the
+	   1px separator the ask started from, and it lands the card border-box on
+	   4n instead of 4n-1. Two abutting cards still read apart: each draws its own
+	   1px inset hairline, so the seam is ~2px wide and costs no layout at all.
+
+	   It is its OWN token, split out of --sp-stack, because --sp-stack is also
+	   the preflight strip's bottom margin: one value serving two independent
+	   decisions means zeroing the gutter silently collapses the strip. Split,
+	   that regression is not something a later edit can express by accident.
+	   Guarded by test/panel-canvas.test.ts "GIT_170: the card gutter is its own
+	   token".
+
+	   A bare unitless 0 on purpose: `0px` would be a length, and would owe
+	   test/unit-lengths.test.ts an allowlist escape for a value that has no unit
+	   left to scale. If this ever needs to be non-zero again, write it as
+	   n * var(--u) like every other spacing token — never a literal. */
+	--sp-card-gutter: 0;                /* gutter between cards on the canvas */
 	--sp-gutter: calc(3 * var(--u));    /* page side gutter */
 	--sp-gutter-b: calc(3.5 * var(--u)); /* page bottom gutter */
 	--sp-rail-py: calc(3.5 * var(--u)); /* nav rail vertical padding */

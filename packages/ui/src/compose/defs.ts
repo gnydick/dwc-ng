@@ -88,6 +88,37 @@ function defineCard(meta: CardMeta): CardMeta {
 /**
  * The registry's data half. Entries land here as views convert (design
  * phases A2–A6); the starting entry proves the mechanism end to end.
+ *
+ * ── GIT_170: EVERY MEASURED FLOOR BELOW MOVED BY THE SAME −2 CELLS. ─────────
+ *
+ * The inter-card gutter went to zero (index.css `--sp-card-gutter`), so a card
+ * spanning n cells now renders n·u px instead of n·u − 2u. The gutter was a
+ * term in the sum `contentRowSpan`/`contentColSpan` take, so every card's
+ * measured floor dropped by exactly 2 cells on BOTH axes. MEASURED, not
+ * reasoned: the Card Lab scale sweep was run on the parent commit (f2f8d07)
+ * and on this one, over all 54 registry cards × 2 scale steps × 2 scenarios
+ * (default and `shaping-measured`), and the delta was −2/−2 on every single
+ * row — one value, no exceptions.
+ *
+ * The per-card numbers written in the comments below were taken BEFORE that,
+ * so each is 2 higher than the same sweep reports today. They are deliberately
+ * NOT rewritten one by one: sixty hand-edited numbers is sixty chances to put
+ * one in wrong, and a single stated offset cannot disagree with itself. Read
+ * any figure below as "the floor at the time, which is today's floor + 2".
+ *
+ * The `size` values themselves are also deliberately UNCHANGED, and that is
+ * not an oversight. Each composition in compose/screens.ts packs its rows
+ * contiguously — SYSTEM_COMPOSITION runs 0, 56, 176, 288, 363, each row the
+ * previous row plus its span — so a span trimmed by 2 without moving every
+ * card below it by 2 does not tighten the screen at all: it re-opens the same
+ * 8px between the cards that the gutter used to hold, and the change would
+ * have bought nothing. Trimming the defaults therefore means re-flowing every
+ * composition, which is a different piece of work with its own collision
+ * assertions (test/composition.test.ts) and its own review. Until then a card
+ * keeps its old span and spends the reclaimed 2 cells on its own content,
+ * which is why several cards that used to overflow their default no longer do
+ * (Tuning, Tool dock sensors and Sensors reached zero overflow on the mock).
+ * ───────────────────────────────────────────────────────────────────────────
  */
 export const CARD_DEFS = {
 	/** 7-axis DRO. */
@@ -793,9 +824,18 @@ export const CARD_DEFS = {
 		// status box 20u, and every one of those is a declared length. Checked
 		// with no envelope, with a 12-capture measure plan drawn, and with the run
 		// control armed — 139 rows in all three, body worth 124 of it, NO CHILD
-		// MOVED. The scale sweep reports 139 at 0.75 and 140 at 1.5, so 140 is the
-		// number that is a floor at both; colStop 114 sits inside the 156 the
-		// screen gives it, set by the motion editor's declared tracks.
+		// MOVED. The scale sweep reported 139 at 0.75 and 140 at 1.5, so 140 was
+		// the number that was a floor at both.
+		//
+		// RE-SWEPT 2026-08-29 (GIT_170), `shaping-measured`, both scale steps:
+		// 147 rows × 112 cols, identical at 0.75 and 1.5. Two of those cells are
+		// this change — the same sweep on the parent commit (f2f8d07) read
+		// 149 × 114 — and colStop is therefore 112, still inside the 156 the
+		// screen gives it, still set by the motion editor's declared tracks.
+		// The ROW figure has also drifted from the 139/140 recorded above, by 9
+		// cells that predate GIT_170 and are NOT diagnosed here: the number is
+		// reported as measured rather than reconciled, because a guess about
+		// where 9 cells went would read as a finding.
 		//
 		// The map's stage declares its WIDTH as well as its height, unlike the
 		// canvas stages on Decay and Sweep. An SVG's legs are DOM children, so a
@@ -816,11 +856,19 @@ export const CARD_DEFS = {
 		// the filter 8u, the list 60u of scroll, the batch bar 8u and its report
 		// 10u. Every one of those is a declared length, so the number is the
 		// same with 276 captures listed, with 12, and with none — checked at all
-		// three. The scale sweep puts it at 189 x 133 cells at BOTH 0.75 and 1.5
+		// three. The scale sweep put it at 189 x 133 cells at BOTH 0.75 and 1.5
 		// (rowDelta 0, colDelta 0), which is the claim that matters: the chart
 		// is a canvas and the filter row is full of text, and either sized in
-		// screen pixels would have broken it. colStop 133 is set by the captures
-		// table's declared tracks and sits inside the 156 this screen gives.
+		// screen pixels would have broken it.
+		//
+		// RE-SWEPT 2026-08-29 (GIT_170), `shaping-measured`, both scale steps:
+		// 153 rows × 131 cols, identical at 0.75 and 1.5 — the invariant still
+		// holds, which is what this note exists to record. Two of those cells
+		// are this change (the parent commit f2f8d07 read 155 × 133 in the same
+		// sweep), so colStop is 131 and still sits inside the 156 this screen
+		// gives, still set by the captures table's declared tracks. The ROW
+		// figure differs from the 189 above by 34 cells that predate GIT_170;
+		// as with Capture, that gap is reported and not explained here.
 		size: { colSpan: 156, rowSpan: 189 },
 	}),
 	/** Frequency × speed: which peaks shaping can touch and which it cannot. */
@@ -852,6 +900,12 @@ export const CARD_DEFS = {
 		// again: rowStop 134 at rowSpans 200/160/134/130/118/100/60 with spread
 		// 0, and 134 at scale 075, 100 AND 150 — the number is the same at
 		// every scale step rather than the largest of three.
+		//
+		// RE-SWEPT 2026-08-29 (GIT_170): 132 × 123, identical at 0.75 and 1.5.
+		// This is the one shaping card whose recorded figure was still exactly
+		// current before the change — the same sweep on the parent commit
+		// (f2f8d07) read 134 × 125 — so the whole of the −2/−2 here is the
+		// gutter leaving the sum, and nothing else moved.
 		//
 		// The ID is unchanged on purpose: it is the key saved layouts are stored
 		// under, so renaming it would drop the card off every screen the
