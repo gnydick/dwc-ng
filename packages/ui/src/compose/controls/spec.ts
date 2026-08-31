@@ -55,8 +55,11 @@ export type ControlNode =
 	// A range control over a declared input. Label and unit come from the
 	// input's own def (derive, don't duplicate); min/max/step are the HTML
 	// range attributes and nothing more — no GUI clamping, the firmware is
-	// the authority. The template is emitted ON RELEASE only (one request
-	// per gesture — RRF tolerates very few), never per input event.
+	// the authority. The template is emitted once per completed value-change
+	// gesture (RRF tolerates very few requests), held by the shared machine
+	// in control/rangeGesture.ts — keyboard events are not wired at all, only
+	// value changes open a gesture — and falsified by range-gesture.test.ts
+	// (a held arrow key's change burst must settle into ONE send).
 	| { type: "slider"; input: string; min: number; max: number; step?: number; template: string; stamp?: boolean }
 	| { type: "row"; label?: string; sub?: string; class?: string; items: RowItem[] }
 	| { type: "grid"; items: ControlNode[] }

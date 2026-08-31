@@ -71,9 +71,27 @@ Authored form:
 
 **Commit semantics** (read from `SpeedSlider.tsx:26-33` as precedent):
 dragging updates only the card-local inputs store (worn stamps re-resolve
-live, nothing is sent); the command is resolved and sent **on release only**
-(pointerup / keyup / change, guarded by a `dragging` flag against
-double-fire) — one request per gesture, because RRF tolerates very few.
+live, nothing is sent); the command is resolved and sent **once per completed
+value-change gesture**, because RRF tolerates very few requests.
+
+> **Fix round (review of increment 1).** The first cut wired
+> pointerdown/keydown → grab and pointerup/keyup/change → release behind a
+> `dragging` flag. Two defects, both traced: `change` fires on EVERY keyboard
+> step of a range input and each auto-repeat keydown re-armed the flag, so a
+> held arrow key sent one rr_gcode per step (~20/s); and any keyup while
+> focused sent once armed — a Shift press could emit. Same wiring, same
+> defects, in `SpeedSlider.tsx`. The mechanism is now the shared gesture
+> machine `control/rangeGesture.ts` (pure reducer + timer wrapper), driven by
+> BOTH sliders: keyboard events are not wired at all — only value changes
+> open a gesture (pointer gestures complete on pointerup/pointercancel;
+> keyboard ones settle 500 ms after the last change, or on blur), and a
+> gesture whose final value equals its own start value sends nothing. The
+> reference is the gesture's start, never a remembered "last sent" — the
+> board can move between gestures, so any longer-lived latch would go stale.
+> `range-gesture.test.ts` drives the reducer with the misfiring sequences
+> (held-arrow burst → exactly one send; changeless press → zero) and locks
+> the onSend-before-onActive(false) ordering SpeedSlider's follow-the-machine
+> effect depends on.
 Unlike SpeedSlider there is no follow-the-machine scale logic: the bound
 value is a card-local input (like a step-size chip), not an OM mirror, so
 none of the freeze/centre machinery applies. Send goes through

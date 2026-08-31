@@ -7,10 +7,12 @@
  * (I6/I13/I14): there is no field in which code could travel.
  *
  * Structure is validated FIELD BY FIELD before compileControlSpec runs —
- * unknown node types, wrong-typed fields, and unknown keys are named errors,
- * not silently dropped: an author should see precisely what's wrong, and a
- * reviewer of a shared card should know the file contains nothing the
- * vocabulary can't say.
+ * unknown node types and wrong-typed fields are named errors, not silently
+ * dropped, so an author sees precisely what's wrong. Unknown keys on a KNOWN
+ * node are ignored rather than rejected: each validator rebuilds the node
+ * from its declared fields only, so an unrecognised key cannot survive into
+ * the compiled spec (and a reviewer of a shared card still sees everything
+ * the card can do, because the review walks the rebuilt spec).
  */
 import { compileControlSpec, ENRICHMENT_IDS, type CompiledControlSpec, type ControlNode, type ControlSpec, type InputDef, type RowItem } from "./spec.ts";
 import { isSafeKey } from "@dwc-ng/connector";

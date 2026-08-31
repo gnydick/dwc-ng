@@ -11,6 +11,7 @@ import { For, Show, createMemo, createSignal, onCleanup, type JSX } from "solid-
 import { createStore } from "solid-js/store";
 import { GcodeButton } from "../../control/GcodeButton.tsx";
 import { cmd } from "../../control/commands.ts";
+import { createRangeGesture } from "../../control/rangeGesture.ts";
 import { useApp } from "../../shell/context.ts";
 import { readOm, readOmList } from "./omSelector.ts";
 import { formatReadoutValue } from "./readout.ts";
@@ -166,11 +167,12 @@ export function ControlList(props: { spec: CompiledControlSpec; ctx: CardCtx }) 
 				const def = props.spec.inputs[node.input]!; // compile guarantees the reference
 				const value = (): number => inputs[node.input] ?? node.min;
 				const command = () => resolveTemplate(node.template, scopeWith(p.vars));
-				// Send on RELEASE only, SpeedSlider's commit semantics: dragging
-				// updates the shared input (worn stamps re-resolve live, nothing is
-				// sent), and the resolved template goes out once per gesture. The
-				// dragging flag is what keeps pointerup + change from double-firing.
-				const [dragging, setDragging] = createSignal(false);
+				// One send per completed value-change gesture: dragging (or
+				// arrowing) updates the shared input — worn stamps re-resolve
+				// live, nothing is sent — and the resolved template goes out once
+				// when the gesture completes, via the shared rangeGesture machine
+				// (keyboard events are not wired at all; only value changes open
+				// a gesture, so a held arrow key settles into ONE send).
 				const [state, setState] = createSignal<"idle" | "sending" | "sent" | "failed">("idle");
 				const [error, setError] = createSignal("");
 				let ackTimer: ReturnType<typeof setTimeout> | undefined;
@@ -190,14 +192,12 @@ export function ControlList(props: { spec: CompiledControlSpec; ctx: CardCtx }) 
 						setError(err instanceof Error ? err.message : String(err));
 					}
 				};
-				const grab = (): void => {
-					setDragging(true);
-				};
-				const release = (): void => {
-					if (!dragging()) return;
-					setDragging(false);
-					void send();
-				};
+				// One send per completed value-change gesture — the shared machine
+				// (control/rangeGesture.ts) SpeedSlider drives too. The template
+				// resolves from the inputs store, which every change has already
+				// updated by the time the gesture completes.
+				const gesture = createRangeGesture({ onSend: () => void send() });
+				onCleanup(gesture.dispose);
 				return (
 					<div class="ctl-slider" title={command()}>
 						<span class="ctl-name">{def.label}</span>
@@ -209,12 +209,16 @@ export function ControlList(props: { spec: CompiledControlSpec; ctx: CardCtx }) 
 							step={node.step}
 							value={value()}
 							aria-label={def.label}
-							onPointerDown={grab}
-							onPointerUp={release}
-							onKeyDown={grab}
-							onKeyUp={release}
-							onInput={e => setInputs(node.input, Number(e.currentTarget.value))}
-							onChange={release}
+							onPointerDown={() => gesture.down(value())}
+							onPointerUp={gesture.up}
+							onPointerCancel={gesture.up}
+							onBlur={gesture.blur}
+							onInput={e => {
+								const next = Number(e.currentTarget.value);
+								const prev = value();
+								setInputs(node.input, next);
+								gesture.change(prev, next);
+							}}
 						/>
 						{/* Tabular figures, reserved width: the value changes during a
 						    drag and must not shove the track under the finger. */}

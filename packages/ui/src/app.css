@@ -2901,6 +2901,12 @@ input[type="checkbox"] {
 	   and its digit count with it; absence renders the placeholder in the same
 	   box, so the card cannot jitter whatever the machine reports. */
 	min-width: calc(16.5 * var(--u));
+	/* …and a reserved MAX (the .ctl-slider-cmd discipline): a STRING readout
+	   (e.g. state.status flipping "idle" ↔ "processing") truncates inside the
+	   same box instead of reflowing the row on every change. */
+	max-width: calc(40 * var(--u));
+	overflow: hidden;
+	text-overflow: ellipsis;
 	text-align: right;
 	white-space: nowrap;
 }
