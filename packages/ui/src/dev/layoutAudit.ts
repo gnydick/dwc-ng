@@ -203,6 +203,17 @@ export interface DriftSample {
  * and the reason this prefix is the right window rather than a convenient one.
  * A card with no filler at all yields the whole list, which is the strictest
  * case and the common one.
+ *
+ * WHAT COUNTS AS "FILLING" IS THE SAMPLER'S PROBLEM, NOT THIS FUNCTION'S, and
+ * it is where this check was quietly lost once: `.ctl-list` grows in live
+ * layout so a root spacer has slack, but its own children pack to the top, so
+ * nothing below it moves and it is NOT a filler. Read live, it cut this prefix
+ * to one element on every control card and the check reported "stable" over a
+ * window containing only the header. `sampleChildren` therefore reads the flag
+ * under `measuring-rows` — the same truth mode `contentRowSpan` measures in —
+ * so this function is handed the same answer the floor is computed from. If a
+ * future sample's `grows` is filled in some third way, this prefix silently
+ * narrows again and nothing fails; that is the coupling to keep an eye on.
  */
 export function growPrefix(samples: readonly DriftSample[]): DriftSample[] {
 	const first = samples.findIndex(s => s.grows === true);

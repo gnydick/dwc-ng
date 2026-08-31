@@ -91,13 +91,40 @@ convention, cited.
   with a vertical measurement mode: a growing body child is a slack
   absorber to `contentRowSpan` (measured at declared `min-height`, i.e.
   zero), which would have collapsed every control card's row floor, so
-  `contentRowSpan` — the ONE vertical measurement route — wears
-  `measuring-rows` on the body for its synchronous read and app.css
-  collapses the list to `flex: 0 0 auto` under it (the `measuring-intrinsic`
-  construction, on the other axis). The grow, the collapse rule and the
-  wearer are held together by `test/layout-nodes.test.ts` ("root-level
-  flexible spacer…"); the mock's seeded Beeper card carries the idiom so a
-  fresh mock demonstrates it (its Pitch row is the pinned footer).
+  `contentRowSpan` wears `measuring-rows` on the body for its synchronous
+  read and app.css collapses the list to `flex: 0 0 auto` under it (the
+  `measuring-intrinsic` construction, on the other axis). The grow, the
+  collapse rule and the wearer are held together by
+  `test/layout-nodes.test.ts` ("root-level flexible spacer…"); the mock's
+  seeded Beeper card carries the idiom, PLACED on a screen, so a fresh mock
+  demonstrates it (its Pitch row is the pinned footer).
+  - **Correction (review of 3248aed).** This bullet first called
+    `contentRowSpan` "the ONE vertical measurement route" and dressed the
+    wearer up as a choke point on that basis. It was asserted, not
+    enumerated, and it was false: `sampleChildren`
+    (`dev/LayoutAuditPanel.tsx`) reads the same `flexGrow` signal for the
+    same meaning — "does this child absorb slack" — and did not wear the
+    mode, so `growPrefix` cut the row-axis drift window at `.ctl-list` and
+    Invariant B degraded to "the header did not move" on every control card
+    while still printing *stable*. `contentRowSpan` is the one route for a
+    card's row FLOOR; it is not the only reader of the vertical truth mode.
+    Both readers now go through `measureUnder` (`shell/panelCanvas.ts`),
+    which is the actual choke point — one add/remove site, exception-safe,
+    with the mode names a closed union.
+- **The slider's grow is main-axis-honest (F2, review of 3248aed).**
+  Giving `.ctl-list` free space exposed a latent bug in a different node:
+  `.ctl-slider` declared `flex: 1` on the ATOM, and flex-grow follows
+  whatever main axis the container runs. `slider` is valid ROOT vocabulary,
+  so a root-level slider became a growing item of a now-growing column and
+  drew itself in the vertical middle of an otherwise empty card. The grow
+  now lives on `.ctl-wrap > .ctl-slider` — the vocabulary's only row
+  container — where it cannot be expressed in a stack at all. The general
+  rule this instance settles: **a vocabulary class may declare flex-grow
+  only where the container's main axis is the axis the grow was written
+  for**; `.ctl-spacer` is the sole exception, being the node whose purpose
+  is to eat slack on either axis. Enumerated and pinned in
+  `test/layout-nodes.test.ts` ("main-axis-honest"), which fails on any new
+  grow-bearing `.ctl-*` rule that is not on the list with a reason.
 - A spacer emits nothing, reads nothing, and has no children: in the share
   review it contributes NOTHING to the inventory, and the walk says so
   explicitly (a `return` under the totality weld, like jog-pad's motion note).

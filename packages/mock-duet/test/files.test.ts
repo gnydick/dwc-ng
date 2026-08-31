@@ -142,7 +142,7 @@ test("--config-version 2 carries the current overlay shape under the pre-split v
 	assert.equal(parsed.overlay.shaping.accelByTool["0"], "20.0");
 });
 
-test("--frozen-screen seeds a pre-#86 screen override, and the default seeds none", async t => {
+test("--frozen-screen seeds a pre-#86 screen override, and nothing else", async t => {
 	// #86: a built-in screen's saved layout used to REPLACE its coded
 	// composition, so an operator who ever pressed Save never saw a card
 	// shipped to that screen again. The state only exists for a machine whose
@@ -179,14 +179,63 @@ test("--frozen-screen seeds a pre-#86 screen override, and the default seeds non
 	}
 });
 
-test("the default mock seeds NO screen override, so nothing is frozen out of the box", async t => {
+test("the default mock PLACES its demo card, and degrades nothing doing it", async t => {
+	// Two claims in one test because they are one property of the same key.
+	//
+	// 1. PLACED. Defining a card under `overlay.cards` only registers it; a
+	//    custom card renders where a screen's composition names it. The seed
+	//    defined Beeper and placed it nowhere, so a fresh mock showed it
+	//    nowhere — it existed only as an unticked checkbox in a composed
+	//    screen's edit mode (review of 3248aed). This assertion is the check
+	//    that was never run: not "is the card defined" but "does anything
+	//    render it".
+	// 2. DEGRADES NOTHING. This test previously asserted `screens === undefined`
+	//    under the name "nothing is frozen out of the box", which was a proxy
+	//    for the real intent — the default machine must not carry a pre-#86
+	//    WHOLESALE override. Post-#86 an override merges, so the honest form of
+	//    that intent is: the default names only the demo card and holds no
+	//    tombstone. Asserted directly, so the seed can place a card without
+	//    the suite reading it as degradation.
 	const mock = await startMock();
 	t.after(() => mock.close());
 	const key = await mock.connect();
 
 	const down = await mock.getRaw("rr_download?name=0:/sys/dwc-ng-config.json", key);
 	const parsed = JSON.parse(await down.text());
-	assert.equal(parsed.overlay.screens, undefined, "the ordinary machine is not degraded");
+
+	interface Rect { col: number; row: number; colSpan: number; rowSpan: number }
+	const screens = (parsed.overlay.screens ?? {}) as {
+		layouts?: Record<string, Record<string, Rect | null>>;
+		custom?: Record<string, { cards?: Record<string, Rect | null> }>;
+	};
+	const layouts = screens.layouts ?? {};
+	// BOTH kinds of screen, so moving the placement to a custom screen later
+	// keeps this test honest instead of turning it into a false failure.
+	const placements: Array<[string, Rect | null]> = [
+		...Object.values(layouts).flatMap(cards => Object.entries(cards)),
+		...Object.values(screens.custom ?? {}).flatMap(s => Object.entries(s.cards ?? {})),
+	];
+	for (const id of Object.keys(parsed.overlay.cards)) {
+		const hit = placements.find(([slot, rect]) => slot === id && rect !== null);
+		assert.ok(hit !== undefined,
+			`seeded custom card "${id}" is defined but placed on no screen — a fresh mock renders it nowhere`);
+		const rect = hit![1]!;
+		const card = parsed.overlay.cards[id];
+		assert.ok(rect.colSpan >= card.colSpan && rect.rowSpan >= card.rowSpan,
+			`"${id}" is placed smaller than its own authored footprint (${rect.colSpan}x${rect.rowSpan} < ${card.colSpan}x${card.rowSpan})`);
+		// The demo exists to show the root-spacer footer idiom, which needs
+		// SLACK: at exactly the authored height the spacer distributes nothing
+		// and the card demonstrates the thing it was seeded for by accident.
+		assert.ok(rect.rowSpan > card.rowSpan,
+			`"${id}" is placed at exactly its authored height — a flexible root spacer has no free space to show`);
+	}
+
+	assert.deepEqual(Object.keys(layouts).sort(), ["machine"],
+		"the default seed overrides exactly the one screen it places a card on");
+	for (const value of Object.values(layouts.machine)) {
+		assert.notEqual(value, null,
+			"the default machine removes nothing — an additive placement carries no tombstone");
+	}
 });
 
 test("rr_filelist reports err 1 (unmounted) and err 2 (missing)", async t => {

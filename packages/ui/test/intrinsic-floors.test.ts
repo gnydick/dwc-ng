@@ -1082,17 +1082,26 @@ test("the ctl-col/ctl-group ratio zero is lifted while intrinsic width is measur
 			`${sel} is zeroed for ratios but not lifted for measurement — its content is invisible to the card's width stop`);
 	}
 
-	// The wearer: inside intrinsicWidthPx itself, not a caller — the sole
-	// measurement route is the choke point, so every present and future
-	// caller measures in truth mode without knowing the class exists.
+	// The wearer: inside intrinsicWidthPx itself, not a caller — it is the sole
+	// route to an intrinsic width, so every present and future caller measures
+	// in truth mode without knowing the class exists.
+	//
+	// Worn through `measureUnder` since the review of 3248aed, which is why this
+	// pin no longer looks for the add/remove pair it used to: that pair had no
+	// `try/finally`, so a throw between the two lines left the card pinned in
+	// measurement mode for the life of the page, its columns silently no longer
+	// pure ratio tracks. `measureUnder` is now the ONE add/remove site for both
+	// modes and removes in a finally; that the class comes off at all is pinned
+	// there (test/layout-nodes.test.ts, "exception-safe choke point"), and what
+	// belongs HERE is only that this function enters the mode.
 	const canvas = readFileSync(
 		fileURLToPath(new URL("../src/shell/panelCanvas.ts", import.meta.url)), "utf8");
 	const fn = /function intrinsicWidthPx[\s\S]*?\n\}/.exec(canvas);
 	assert.ok(fn !== null, "intrinsicWidthPx not found in panelCanvas.ts — the sole measurer moved; move this pin with it");
-	assert.match(fn[0]!, /classList\.add\("measuring-intrinsic"\)/,
+	assert.match(fn[0]!, /measureUnder\([\s\S]*?"measuring-intrinsic"/,
 		"intrinsicWidthPx never enters measurement mode — the zeroed containers under-report their floor");
-	assert.match(fn[0]!, /classList\.remove\("measuring-intrinsic"\)/,
-		"measurement mode is never left — live rendering would lose the fr-ratio purity the zero exists for");
+	assert.match(fn[0]!, /getBoundingClientRect\(\)\.width/,
+		"the intrinsicWidthPx slice does not reach its own measurement — this pin is reading the wrong text");
 });
 
 /**

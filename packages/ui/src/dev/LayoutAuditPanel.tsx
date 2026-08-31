@@ -6,7 +6,7 @@ import {
 	growPrefix, judgeAxis, judgeDrift, judgeFloor, judgeScaleInvariance,
 	type AxisProbe, type AxisVerdict, type DriftSample, type FloorVerdict,
 } from "./layoutAudit.ts";
-import { contentRowSpan, contentColSpan, headerColSpan, unitPx } from "../shell/panelCanvas.ts";
+import { contentRowSpan, contentColSpan, headerColSpan, measureUnder, unitPx } from "../shell/panelCanvas.ts";
 import { withScale } from "../shell/scale.ts";
 
 export interface CardReport {
@@ -93,28 +93,60 @@ function chromeRowSpan(cardEl: HTMLElement, gutterPx: number): number {
 	return contentRowSpan(cardEl, gutterPx, "header-only");
 }
 
-/** Every in-flow descendant of the body, with its offset from the body's box. */
+/**
+ * Every in-flow descendant of the body, with its offset from the body's box.
+ *
+ * TWO READS, IN TWO MODES, and the split is the whole correctness of the row
+ * axis. POSITIONS are read live — that is what the drift check compares. But
+ * `grows` is not a position, it is the same "does this child absorb slack"
+ * question `contentRowSpan` asks, and it must be answered the same way or the
+ * two disagree about the same element. It did: `.ctl-list` grows in live
+ * layout (`flex: 1 0 auto`, so a ROOT spacer has free space), and this sampler
+ * walks the body in document order — `.card-head`, then `.ctl-list`, then
+ * everything inside it. `growPrefix` cuts at the first growing sample, so on
+ * EVERY control card the row-axis drift check silently shrank to "the header
+ * did not move" and went on printing "stable" (found in review of 3248aed).
+ *
+ * A coverage loss that reports success is worse than a failure, and this is
+ * the project's positional-stability check — not an optional diagnostic.
+ *
+ * Reading the flag under `measuring-rows` (the SAME mode, via the same
+ * choke point) restores the honest answer without a special case for
+ * `.ctl-list` here: under it the list is content height and reads grow 0,
+ * while a genuine filler — a root `.ctl-spacer`, `.gcode-viewer`,
+ * `.console-history` — still reads grow 1 and still cuts the prefix, which is
+ * right, because things below THOSE do legitimately move. Derived from the one
+ * rule in app.css rather than restated here, so the two cannot drift apart.
+ */
 function sampleChildren(cardEl: HTMLElement, axis: "row" | "col"): DriftSample[] {
 	const body = cardEl.querySelector<HTMLElement>(".panel-body");
 	if (!body) return [];
 	const origin = body.getBoundingClientRect();
-	return Array.from(body.querySelectorAll<HTMLElement>("*"))
-		.filter(el => {
-			const s = getComputedStyle(el);
-			return s.position !== "absolute" && s.position !== "fixed" && el.getBoundingClientRect().width > 0;
-		})
-		.map((el, i) => {
-			const r = el.getBoundingClientRect();
-			// main = the axis being resized; cross = the one that must not move.
-			return axis === "col"
-				? { id: `${i}:${el.className || el.tagName}`, main: Math.round(r.x - origin.x), cross: Math.round(r.y - origin.y) }
-				: {
-					id: `${i}:${el.className || el.tagName}`,
-					main: Math.round(r.y - origin.y),
-					cross: Math.round(r.x - origin.x),
-					grows: (parseFloat(getComputedStyle(el).flexGrow) || 0) > 0,
-				};
-		});
+	const els = Array.from(body.querySelectorAll<HTMLElement>("*")).filter(el => {
+		const s = getComputedStyle(el);
+		return s.position !== "absolute" && s.position !== "fixed" && el.getBoundingClientRect().width > 0;
+	});
+	// Live geometry FIRST: the mode below collapses the list, and a position
+	// measured under it is not the position the operator sees.
+	const rects = els.map(el => el.getBoundingClientRect());
+	// …then the slack-absorber flag, in the mode the floor is measured in. The
+	// column axis never reads it (growPrefix is row-only), so it is not paid for.
+	const grows = axis === "row"
+		? measureUnder(body, "measuring-rows", () =>
+			els.map(el => (parseFloat(getComputedStyle(el).flexGrow) || 0) > 0))
+		: [];
+	return els.map((el, i) => {
+		const r = rects[i]!;
+		// main = the axis being resized; cross = the one that must not move.
+		return axis === "col"
+			? { id: `${i}:${el.className || el.tagName}`, main: Math.round(r.x - origin.x), cross: Math.round(r.y - origin.y) }
+			: {
+				id: `${i}:${el.className || el.tagName}`,
+				main: Math.round(r.y - origin.y),
+				cross: Math.round(r.x - origin.x),
+				grows: grows[i] === true,
+			};
+	});
 }
 
 /** Audit ONE mounted card element. The panel drives this per card. */

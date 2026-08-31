@@ -303,9 +303,20 @@
 	background: var(--mask-700);
 	box-shadow: inset 0 0 0 1px var(--hairline);
 	border-radius: var(--radius);
-	/* Deliberately NOT a density token: .card is only ever emitted with .panel
-	   (shell/Panel.tsx), and .card.panel below zeroes this. Tokenizing an
-	   unreachable declaration would suggest a density knob that does nothing. */
+	/* Deliberately NOT a density token: every card ON THE CANVAS is emitted as
+	   .card.panel (shell/Panel.tsx), and .card.panel below zeroes this — so on
+	   the canvas this padding is unreachable and tokenizing it would suggest a
+	   density knob that does nothing.
+
+	   It is NOT true that `.card` is only ever emitted with `.panel`, which is
+	   what this comment used to say (corrected 2026-08-31): the Card Studio
+	   preview mounts `.studio-preview-card.card` with no `.panel`
+	   (compose/CardStudio.tsx), and that mount is exactly where this padding
+	   DOES draw. The distinction is load-bearing in the other direction too —
+	   `display: flex` lives on `.card.panel`, not on `.card`, so the preview's
+	   body is not a flex column and a root spacer's grow is inert in it. A
+	   spec's bottom-pinned footer therefore shows in a PLACED card and not in
+	   the studio preview; do not read the preview as proof of the geometry. */
 	padding: calc(3 * var(--u)) calc(4 * var(--u));
 }
 
@@ -2912,7 +2923,21 @@ input[type="checkbox"] {
 }
 .ctl-readout-value small { font-size: calc(3 * var(--u)); color: var(--silk-dim); margin-left: calc(0.75 * var(--u)); font-weight: 600; }
 
-.ctl-slider { display: flex; align-items: center; gap: calc(2.5 * var(--u)); min-height: var(--ctl-h); flex: 1; }
+.ctl-slider { display: flex; align-items: center; gap: calc(2.5 * var(--u)); min-height: var(--ctl-h); }
+/* The strip's GROW is a property of the row it sits in, so it is written where
+   the row is — not on the atom (F2, review of 3248aed). `flex: 1` on
+   `.ctl-slider` itself is axis-blind: flex-grow follows whatever main axis its
+   CONTAINER runs, so the one declaration that fills a row also ate a stack's
+   slack. `slider` is a valid ROOT node (parse.ts walks root `nodes` through the
+   same validateNode), and once `.ctl-list` grew into the body a root-level
+   slider absorbed the card's entire free height and drew itself in the VERTICAL
+   MIDDLE of an otherwise empty card. Scoped to `.ctl-wrap >` the grow cannot be
+   expressed in a column at all — `.ctl-wrap` is the vocabulary's only row
+   container, and a row that REPLACES its class (`node.class`) owns its own
+   children's flex, the same precedent the root follows. Every remaining
+   grow-bearing `.ctl-*` rule is enumerated in test/layout-nodes.test.ts
+   ("main-axis-honest"), which fails on a new unscoped one. */
+.ctl-wrap > .ctl-slider { flex: 1; }
 /* The range chrome (track/thumb) is the ONE set of rules under .speed-input,
    co-selected as .ctl-range-input — never a second copy. */
 /* Grows to fill the row and SAYS WHERE IT STOPS (the GIT_144 rule): a
@@ -4054,9 +4079,20 @@ input[type="checkbox"].fw-check { accent-color: var(--accent); width: calc(3.75 
    existed the root nodes sat directly in `.panel-body` (flex column,
    definite height) and the idiom worked; a content-height list made every
    root spacer silently inert. `1 0 auto`: grows into the body's slack,
-   never shrinks below content (the body scrolls instead), content-based —
-   so a card WITHOUT a root spacer renders exactly as before, slack below
-   its top-anchored children. contentRowSpan must NOT see this grow — a
+   never shrinks below content (the body scrolls instead), content-based.
+
+   WHAT THE GROW DOES TO A CARD THAT DID NOT ASK FOR IT, stated as narrowly as
+   it is actually true (the first version of this comment claimed "renders
+   exactly as before" flat, and it was false — F2, review of 3248aed): the
+   list's own children pack to flex-start, so the slack lands BELOW them and
+   nothing moves — PROVIDED no root child claims it. Whether one can is not a
+   property of this rule, it is the enumeration of which vocabulary classes
+   carry flex-grow: `.ctl-spacer` (the node whose whole purpose is to eat
+   slack on either axis) and nothing else, since the slider's grow is scoped
+   to `.ctl-wrap >` where the main axis really is horizontal. That
+   enumeration is the pin — test/layout-nodes.test.ts ("main-axis-honest")
+   fails on any new grow-bearing `.ctl-*` rule — so this sentence stays true
+   by a check rather than by a reading. contentRowSpan must NOT see this grow — a
    growing body child is measured as a slack absorber (min-height, i.e.
    zero) — so the vertical measurement collapses it under `.measuring-rows`
    below; the pair is held by test/layout-nodes.test.ts ("root-level

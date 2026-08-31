@@ -35,7 +35,8 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const stripComments = (css: string): string => css.replace(/\/\*[\s\S]*?\*\//g, "");
@@ -67,6 +68,17 @@ const splitSelectors = (list: string): string[] => {
 	out.push(cur.trim());
 	return out;
 };
+
+const panelCanvas = readFileSync(
+	fileURLToPath(new URL("../src/shell/panelCanvas.ts", import.meta.url)), "utf8");
+
+/** Every .ts/.tsx under a directory. Used by the choke-point pin below, which
+ *  is a claim about the WHOLE source tree and cannot be made by naming files:
+ *  the wearer it has to catch is the one nobody has written yet. */
+const sourceFiles = (dir: string): string[] =>
+	readdirSync(dir, { withFileTypes: true }).flatMap(e =>
+		e.isDirectory() ? sourceFiles(join(dir, e.name))
+			: /\.tsx?$/.test(e.name) ? [join(dir, e.name)] : []);
 
 /** The LAST rule whose selector list contains exactly `sel`. */
 const ruleFor = (sel: string): { sel: string; body: string } => {
@@ -182,22 +194,146 @@ test("a root-level flexible spacer has free space to distribute, and the floor c
 	assert.match(collapse!.body, /flex:\s*0 0 auto/,
 		"the measurement rule does not collapse the grow — the floor still cannot see the content");
 
-	// 3. The wearer: inside contentRowSpan itself, not a caller — the sole
-	// vertical measurement route is the choke point (the intrinsicWidthPx
-	// precedent), added BEFORE the child loop reads and removed after.
-	const canvas = readFileSync(
-		fileURLToPath(new URL("../src/shell/panelCanvas.ts", import.meta.url)), "utf8");
-	const fn = /export function contentRowSpan[\s\S]*?\n\}/.exec(canvas);
-	assert.ok(fn !== null, "contentRowSpan not found in panelCanvas.ts — the sole vertical measurer moved; move this pin with it");
-	const add = fn![0]!.indexOf('classList.add("measuring-rows")');
-	const remove = fn![0]!.indexOf('classList.remove("measuring-rows")');
+	// 3. The wearer: contentRowSpan's own child loop runs inside the mode.
+	const fn = /\bfunction contentRowSpan[\s\S]*?\n\}/.exec(panelCanvas);
+	assert.ok(fn !== null, "contentRowSpan not found in panelCanvas.ts — the vertical measurer moved; move this pin with it");
+	// The slice above is a regex over source and degrades QUIETLY if the
+	// function is ever moved into a class or an object literal (the closing
+	// `\n}` would then land somewhere else). These two anchors make that
+	// degradation loud: they are the first and last statements of the real
+	// function, so a slice that lost either is a slice this test must not go
+	// on reasoning about.
+	assert.match(fn![0]!, /querySelector<HTMLElement>\("\.panel-body"\)/,
+		"the contentRowSpan slice does not start at the real function — this pin is reading the wrong text");
+	assert.match(fn![0]!, /return Math\.max\(1,/,
+		"the contentRowSpan slice does not reach the function's return — the source shape moved and the assertions below are vacuous");
+	const enter = fn![0]!.indexOf('measureUnder(body, "measuring-rows"');
 	const loop = fn![0]!.indexOf("for (const child");
-	assert.ok(add !== -1,
+	assert.ok(enter !== -1,
 		"contentRowSpan never enters measuring-rows — a growing .ctl-list is measured as a slack absorber and reports zero");
-	assert.ok(remove !== -1,
-		"measuring-rows is never left — live rendering would lose the grow the root spacer needs");
-	assert.ok(add < loop && loop < remove,
-		"measuring-rows must be worn around the child loop — worn elsewhere, the loop still reads the growing list");
+	assert.ok(enter < loop,
+		"measuring-rows must be entered BEFORE the child loop — entered after, the loop still reads the growing list");
+});
+
+/**
+ * F4 (review of 3248aed) — THE MEASUREMENT MODES COME OFF HOWEVER THE READ
+ * ENDS, AND THERE IS EXACTLY ONE PLACE THAT TAKES THEM OFF.
+ *
+ * Both wearers were a bare `classList.add(…)` … read … `classList.remove(…)`
+ * pair with no `try/finally` — contentRowSpan with `measuring-rows`, and
+ * intrinsicWidthPx with `measuring-intrinsic`, the same shape twice, which is
+ * the tripwire that says the design was already wrong. A throw between the two
+ * lines leaves the class stuck on that card's body for the life of the page:
+ * `.ctl-list` permanently loses the grow a root spacer needs (silently
+ * re-creating the F1 defect on one card), or that card's columns stop being
+ * pure ratio tracks. Neither paints as an error.
+ *
+ * The fix is a choke point, not two more `finally`s: `measureUnder` is the one
+ * add/remove site, the mode names are a closed union (a misspelt class is a
+ * mode that silently does nothing, so it is now a compile error), and it is
+ * nesting-safe because `classList` is a set and not a counter.
+ */
+test("a measurement mode is only ever worn through the exception-safe choke point", () => {
+	const helper = /export function measureUnder[\s\S]*?\n\}/.exec(panelCanvas);
+	assert.ok(helper !== null, "measureUnder is gone — nothing guarantees a measurement class comes off");
+	assert.match(helper![0]!, /try\s*\{[\s\S]*\}\s*finally\s*\{[\s\S]*classList\.remove/,
+		"measureUnder does not remove the class in a finally — a throw mid-measurement strips a card's layout for good");
+
+	// measureUnder toggles the class by its PARAMETER, so the choke point can be
+	// stated as an absolute over the whole tree: nowhere in src does anything
+	// add or remove a measurement class by NAME. A hand-written wearer — the
+	// shape both defects had — is a literal, and fails here wherever it is put,
+	// including in this file's own module.
+	assert.match(helper![0]!, /classList\.add\(mode\)/,
+		"measureUnder no longer adds the mode it was given");
+	assert.match(helper![0]!, /classList\.remove\(mode\)/,
+		"measureUnder no longer removes the mode it was given");
+	const offenders: string[] = [];
+	for (const file of sourceFiles(fileURLToPath(new URL("../src", import.meta.url)))) {
+		for (const m of readFileSync(file, "utf8").matchAll(/classList\.(?:add|remove)\(\s*"measuring-[\w-]+"/g)) {
+			offenders.push(`${file.split(/[\\/]/).pop()}: ${m[0]}`);
+		}
+	}
+	assert.deepEqual(offenders, [],
+		`a measurement mode is worn by hand instead of through measureUnder, so that copy has no finally: ${offenders.join(", ")}`);
+
+	// F3 (same review): the audit's drift sampler reads the SAME flex-grow
+	// signal for the SAME meaning and did not wear the mode, so `.ctl-list`
+	// read as a filler, growPrefix cut the row-axis window to the header alone,
+	// and Invariant B — the project's positional-stability check — reported
+	// "stable" over a window it was no longer measuring. The claim that
+	// contentRowSpan was "the ONE vertical measurement route" was asserted, not
+	// enumerated, and this is the instance that falsified it.
+	const audit = readFileSync(
+		fileURLToPath(new URL("../src/dev/LayoutAuditPanel.tsx", import.meta.url)), "utf8");
+	const sampler = /function sampleChildren[\s\S]*?\n\}/.exec(audit);
+	assert.ok(sampler !== null, "sampleChildren not found — the drift sampler moved; move this pin with it");
+	assert.match(sampler![0]!, /measureUnder\(body, "measuring-rows"[\s\S]*?flexGrow/,
+		"sampleChildren reads flex-grow outside the row truth mode — a growing .ctl-list truncates growPrefix and the drift check silently shrinks to the header");
+});
+
+/**
+ * F2 (review of 3248aed) — A VOCABULARY CLASS DECLARES flex-grow ONLY WHERE
+ * THE CONTAINER'S MAIN AXIS IS THE AXIS THE GROW WAS WRITTEN FOR.
+ *
+ * `flex-grow` is axis-blind: it follows whatever main axis the PARENT runs, so
+ * a grow written for a row also fires in a stack. That was harmless while
+ * `.ctl-list` was content height and became a defect the moment it grew:
+ * `.ctl-slider` carried `flex: 1` on the ATOM, `slider` is valid ROOT
+ * vocabulary (parse.ts walks root `nodes` through the same validateNode), so a
+ * card whose spec is `nodes: [{type:"slider"}]`, placed taller than its
+ * content, drew its slider floating in the VERTICAL MIDDLE of an otherwise
+ * empty card. No built-in was affected — the blast radius was exactly the
+ * user-authored Card Lab specs this vocabulary exists to serve.
+ *
+ * The allowlist below is the enforcement, not the documentation: this test is
+ * the reason `.ctl-list`'s comment can still say a card without a root spacer
+ * renders as before. It is a SOURCE-SEMANTIC pin, not a rendered one — this
+ * suite is `node --test` with no DOM and no layout engine, so nothing here
+ * measures a pixel. What it does catch is the defect's actual shape: a
+ * `.ctl-*` rule that grows without naming the container it grows in.
+ */
+test("every .ctl-* flex-grow is main-axis-honest — scoped to a row, or a spacer", () => {
+	// grow from either spelling. `flex: <n>` and `flex-grow: <n>`; the
+	// keywords resolve to `flex: 0 1 auto` (initial/none) or `1 1 auto` (auto).
+	const growOf = (body: string): number => {
+		const explicit = /(?:^|;)\s*flex-grow\s*:\s*([\d.]+)/.exec(body);
+		if (explicit) return Number(explicit[1]);
+		const shorthand = /(?:^|;)\s*flex\s*:\s*([^;]+)/.exec(body);
+		if (!shorthand) return 0;
+		const value = shorthand[1]!.trim();
+		if (value === "auto") return 1;
+		if (value === "none" || value === "initial") return 0;
+		return Number.parseFloat(value) || 0;
+	};
+
+	// Every selector allowed to grow, WITH the reason it is honest. A new
+	// grow-bearing `.ctl-*` rule fails here until someone writes its reason,
+	// which is the point: the failure asks the question the defect skipped.
+	const honest: Record<string, string> = {
+		".ctl-spacer": "the node whose whole purpose is eating slack — main-axis on either axis, deliberately",
+		".ctl-list": "grows in .panel-body (a column) so a ROOT spacer has free space; its own children pack to the top",
+		".ctl-wrap > .ctl-slider": "scoped to the vocabulary's only ROW container, where the main axis really is horizontal",
+		".ctl-slider .ctl-range-input": "inside .ctl-slider, which is itself a row — the track fills it",
+	};
+
+	const growers = rules()
+		.filter(r => growOf(r.body) > 0)
+		.flatMap(r => splitSelectors(r.sel))
+		.filter(sel => /(?:^|[\s>+~(])\.ctl-/.test(sel));
+	assert.ok(growers.length > 0, "no .ctl-* rule grows at all — this pin is reading the wrong file");
+	for (const sel of growers) {
+		assert.ok(honest[sel] !== undefined,
+			`.ctl-* rule "${sel}" declares flex-grow with nothing saying which axis it grows on. `
+			+ "flex-grow follows the CONTAINER's main axis, and every one of these classes can be placed in a "
+			+ "COLUMN (root, .ctl-col, .ctl-group) as well as a row — scope it to the row container, or add it "
+			+ `to the allowlist in this test with the reason it is honest. Allowed: ${Object.keys(honest).join(", ")}`);
+	}
+	// …and the specific regression: the strip's grow is not on the atom.
+	assert.equal(growOf(ruleFor(".ctl-slider").body), 0,
+		".ctl-slider declares flex-grow on the ATOM again — a root-level slider is then a growing item of the growing .ctl-list and floats in the middle of its card");
+	assert.ok(growers.includes(".ctl-wrap > .ctl-slider"),
+		"nothing grows the slider inside a row any more — a row's slider stopped filling it");
 });
 
 test("the mock's seeded demo card compiles whole and exercises the round-2 shapes", async t => {
@@ -219,8 +355,37 @@ test("the mock's seeded demo card compiles whole and exercises the round-2 shape
 	const key = await mock.connect();
 	const down = await mock.getRaw("rr_download?name=0:/sys/dwc-ng-config.json", key);
 	const config = JSON.parse(await down.text()) as {
-		overlay: { cards: Record<string, { name: string; spec: string }> };
+		overlay: {
+			cards: Record<string, { name: string; spec: string; colSpan: number; rowSpan: number }>;
+			screens?: { layouts?: Record<string, unknown> };
+		};
 	};
+
+	// PLACED, not merely defined — the check nobody ran (review of 3248aed).
+	// `overlay.cards` is the REGISTRY; a custom card renders only where a
+	// screen's composition names it, so a seed that defines Beeper and places
+	// it nowhere serves a mock on which the card is invisible until a human
+	// ticks it in edit mode. That is what happened, and the whole reason the
+	// card is seeded — a fresh mock that DEMONSTRATES the vocabulary — was
+	// silently void for it.
+	//
+	// Read through parseComposition, not off the JSON: that is the boundary
+	// the placement actually crosses (custom-id guard + clampRect), so this
+	// asserts the rect the renderer would get rather than the bytes on the SD.
+	const { parseComposition } = await import("../src/compose/composition.ts");
+	const known = new Set(Object.keys(config.overlay.cards));
+	const placed = Object.values(config.overlay.screens?.layouts ?? {})
+		.flatMap(raw => Object.entries(parseComposition(raw, known)));
+	for (const [id, card] of Object.entries(config.overlay.cards)) {
+		const slot = placed.find(([sid]) => sid === id)?.[1];
+		assert.ok(slot !== undefined,
+			`seeded card "${card.name}" (${id}) survives no screen's composition — a fresh mock renders it nowhere`);
+		// Placed with SLACK, deliberately above the authored footprint: the
+		// footer idiom is the thing this card demonstrates, and a card at its
+		// own content height has no free space for a root spacer to distribute.
+		assert.ok(slot!.rowSpan > card.rowSpan,
+			`"${card.name}" is placed at ${slot!.rowSpan} rows against an authored ${card.rowSpan} — a flexible root spacer shows nothing without slack`);
+	}
 
 	const cards = Object.values(config.overlay.cards);
 	assert.ok(cards.length > 0, "the seed carries at least one custom card");

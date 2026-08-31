@@ -638,6 +638,55 @@ export function scrollFloorRows(scrollTop: number, clientHeight: number, unitPx:
 export type FloorContent = "as-rendered" | "header-only";
 
 /**
+ * The two MEASUREMENT MODES, as a closed set.
+ *
+ * Each is a class app.css defines rules under, worn for the duration of a
+ * synchronous read so the layout engine answers the question the measurement
+ * is actually asking rather than the one live rendering needs:
+ *
+ *   measuring-intrinsic — lifts `.ctl-col`/`.ctl-group`'s ratio-preserving
+ *                         `min-width: 0` back to `min-content` (horizontal).
+ *   measuring-rows      — collapses `.ctl-list`'s root-spacer grow back to
+ *                         content height (vertical).
+ *
+ * A union rather than a `string`: a mode whose class name is misspelled is a
+ * mode that silently does nothing — the measurement then returns a plausible
+ * wrong number, which is the worst failure this file has. Spelling it wrong is
+ * now a compile error.
+ */
+export type MeasurementMode = "measuring-intrinsic" | "measuring-rows";
+
+/**
+ * Wear a measurement mode for exactly one synchronous read.
+ *
+ * THE ONE PLACE either class is added or removed, and the reason it is a
+ * function rather than two lines pasted at each site: the class MUST come off
+ * however the read ends. Both wearers used to be a bare add … read … remove
+ * pair, so a throw between them — `getComputedStyle` on a detached node, a
+ * caller's read callback, anything — left the class stuck on that card's body
+ * forever. For `measuring-rows` that means `.ctl-list` permanently loses the
+ * grow a root spacer needs and the footer idiom silently stops working on one
+ * card; for `measuring-intrinsic` it means that card's columns stop being pure
+ * ratio tracks. Neither paints as an error. `probeAt` (dev/LayoutAuditPanel)
+ * already had the finally this was missing; this is the same discipline moved
+ * to where it cannot be forgotten by a third wearer.
+ *
+ * NESTING-SAFE, and that is not theoretical hygiene: `classList` is a set, not
+ * a counter, so an inner `remove` would strip a mode an outer measurement was
+ * still relying on and the outer read would silently come back in LIVE mode.
+ * Only the call that actually added the class takes it off, so modes compose.
+ */
+export function measureUnder<T>(el: HTMLElement, mode: MeasurementMode, read: () => T): T {
+	const owned = !el.classList.contains(mode);
+	if (owned) el.classList.add(mode);
+	try {
+		return read();
+	} finally {
+		if (owned) el.classList.remove(mode);
+	}
+}
+
+/**
  * The smallest rowSpan that still contains a card's content, measured from the
  * live DOM at resize start.
  *
@@ -684,51 +733,60 @@ export function contentRowSpan(
 	// every control card at header + padding. Under `.measuring-rows` the
 	// sheet collapses the list to content height (its flexible spacers at
 	// their zero basis), the flexGrow this loop reads is 0, and the rendered
-	// height IS the content's true minimum. Inside the ONE vertical
-	// measurement route on purpose, so every caller measures in truth mode
-	// without knowing the class exists (the intrinsicWidthPx precedent).
+	// height IS the content's true minimum.
+	//
+	// Worn through `measureUnder`, never by hand: the class must come off even
+	// if this loop throws, or the card keeps it forever and its root spacer
+	// stops working with nothing to see. That is the ONE add/remove site for
+	// either mode — see measureUnder.
+	//
+	// This function is the ONE VERTICAL route for a card's row floor, so every
+	// caller of IT measures in truth mode without knowing the class exists.
+	// It is NOT the only place the vertical truth mode is needed: the audit's
+	// drift sampler reads the same flex-grow signal for the same meaning and
+	// wears the same mode (dev/LayoutAuditPanel.tsx, sampleChildren).
 	// Pinned by test/layout-nodes.test.ts ("root-level flexible spacer").
-	body.classList.add("measuring-rows");
-	for (const child of Array.from(body.children)) {
-		// The audit's "with the body emptied" measurement. `.card-head` is the
-		// header by the same selector headerColSpan uses, so "the header" means
-		// one thing in both directions.
-		if (content === "header-only" && !child.classList.contains("card-head")) continue;
-		counted++;
-		const rect = child.getBoundingClientRect();
-		const style = getComputedStyle(child);
-		// Absolutely positioned children are out of the flow and contribute
-		// nothing to a stack's height (the toolpath canvas is one).
-		if (style.position === "absolute" || style.position === "fixed") continue;
-		// A child that ABSORBS SLACK draws whatever height it is handed, so its
-		// rendered height is not a minimum — its declared min-height is. Without
-		// this a filler child hands the card its own current height back as a
-		// floor: the toolpath viewport measured a rowStop of 180 against a span
-		// of 180, because its canvas is sized from the element being measured.
-		const grows = (parseFloat(style.flexGrow) || 0) > 0;
-		const floor = parseFloat(style.minHeight);
-		const height = grows ? (Number.isFinite(floor) ? floor : 0) : rect.height;
-		// Margins are summed UNCONDITIONALLY, and that is only safe because no
-		// direct child of a body can carry a vertical `auto` one.
-		//
-		// getComputedStyle resolves `margin: auto` to its USED value — the card's
-		// own free space — so when the card header carried `margin-bottom: auto`
-		// to push contents to the bottom, this loop added 333px of the sensors
-		// card's slack to the sensors card's own minimum. The reported minimum
-		// then equalled the card's current height and cards grew but would not
-		// shrink back (reported 2026-07-30). A `--absorbs-slack: 1` marker beside
-		// the margin bought that back by hand.
-		//
-		// #128 deleted the margin instead: card content is anchored to the TOP and
-		// slack accumulates below it, so there is no auto margin here to discount
-		// and the marker went with it (app.css, "card contents sit at the TOP").
-		// test/panel-anchoring.test.ts fails the suite if one is written back,
-		// which is what makes the unconditional sum above correct rather than
-		// merely currently true.
-		contentBottom += height
-			+ (parseFloat(style.marginTop) || 0) + (parseFloat(style.marginBottom) || 0);
-	}
-	body.classList.remove("measuring-rows");
+	measureUnder(body, "measuring-rows", () => {
+		for (const child of Array.from(body.children)) {
+			// The audit's "with the body emptied" measurement. `.card-head` is the
+			// header by the same selector headerColSpan uses, so "the header" means
+			// one thing in both directions.
+			if (content === "header-only" && !child.classList.contains("card-head")) continue;
+			counted++;
+			const rect = child.getBoundingClientRect();
+			const style = getComputedStyle(child);
+			// Absolutely positioned children are out of the flow and contribute
+			// nothing to a stack's height (the toolpath canvas is one).
+			if (style.position === "absolute" || style.position === "fixed") continue;
+			// A child that ABSORBS SLACK draws whatever height it is handed, so its
+			// rendered height is not a minimum — its declared min-height is. Without
+			// this a filler child hands the card its own current height back as a
+			// floor: the toolpath viewport measured a rowStop of 180 against a span
+			// of 180, because its canvas is sized from the element being measured.
+			const grows = (parseFloat(style.flexGrow) || 0) > 0;
+			const floor = parseFloat(style.minHeight);
+			const height = grows ? (Number.isFinite(floor) ? floor : 0) : rect.height;
+			// Margins are summed UNCONDITIONALLY, and that is only safe because no
+			// direct child of a body can carry a vertical `auto` one.
+			//
+			// getComputedStyle resolves `margin: auto` to its USED value — the card's
+			// own free space — so when the card header carried `margin-bottom: auto`
+			// to push contents to the bottom, this loop added 333px of the sensors
+			// card's slack to the sensors card's own minimum. The reported minimum
+			// then equalled the card's current height and cards grew but would not
+			// shrink back (reported 2026-07-30). A `--absorbs-slack: 1` marker beside
+			// the margin bought that back by hand.
+			//
+			// #128 deleted the margin instead: card content is anchored to the TOP and
+			// slack accumulates below it, so there is no auto margin here to discount
+			// and the marker went with it (app.css, "card contents sit at the TOP").
+			// test/panel-anchoring.test.ts fails the suite if one is written back,
+			// which is what makes the unconditional sum above correct rather than
+			// merely currently true.
+			contentBottom += height
+				+ (parseFloat(style.marginTop) || 0) + (parseFloat(style.marginBottom) || 0);
+		}
+	});
 	const bodyStyle = getComputedStyle(body);
 	// The gaps a flex/grid body puts BETWEEN its children are part of the stack.
 	const rowGap = parseFloat(bodyStyle.rowGap);
@@ -773,13 +831,19 @@ export function contentRowSpan(
  * lifted…").
  */
 function intrinsicWidthPx(el: HTMLElement, sizing: "min-content" | "max-content"): number {
+	// BOTH mutations are undone on the way out however the read ends — the
+	// inline width by this finally, the class by measureUnder's. They used to be
+	// a bare set/read/restore sequence, so a throw from the layout read left the
+	// card pinned at `width: min-content` AND permanently in measurement mode,
+	// with only the wrong-looking card to go on. Same shape, same fix, as
+	// contentRowSpan's loop above.
 	const previous = el.style.width;
-	el.classList.add("measuring-intrinsic");
-	el.style.width = sizing;
-	const width = el.getBoundingClientRect().width;
-	el.style.width = previous;
-	el.classList.remove("measuring-intrinsic");
-	return width;
+	try {
+		el.style.width = sizing;
+		return measureUnder(el, "measuring-intrinsic", () => el.getBoundingClientRect().width);
+	} finally {
+		el.style.width = previous;
+	}
 }
 
 /**

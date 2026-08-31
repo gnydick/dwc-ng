@@ -329,9 +329,50 @@ const FROZEN_SCREENS = {
 	},
 };
 
+/**
+ * WHERE THE DEMO CARD IS PLACED — and the reason a placement exists at all.
+ *
+ * Defining `overlay.cards["c-mock-meta"]` puts the card in the REGISTRY. It
+ * does not put it on a screen: a custom card renders only where a screen's
+ * composition names it (compose/screens.ts screenList → parseComposition), so
+ * until this key existed a fresh mock showed Beeper nowhere — it appeared only
+ * as an unticked checkbox under "Your cards" in a composed screen's edit mode,
+ * invisible until a human placed it by hand. Every reason the seed exists (a
+ * card that DEMONSTRATES the vocabulary, on a mock, with zero setup) died in
+ * that gap, and the gap cost Gabe an hour on 2026-08-31 reloading a mock that
+ * was working exactly as written. Found in review of 3248aed.
+ *
+ * `screens.layouts.machine` MERGES with the coded composition (#86 — an
+ * override that only names one card adds it and moves nothing), so this is
+ * purely additive: every coded Machine card keeps its place, and there are no
+ * `null` tombstones here because nothing is being removed.
+ *
+ * THE SCREEN: `machine`, because it is the screen a fresh mock lands on — a
+ * scroll, not a navigation, and no new nav entry to discover. A custom screen
+ * of its own would have been tidier semantically and is the wrong trade: the
+ * failure being fixed is "reloaded and there was nothing to see".
+ *
+ * THE RECT: col 156 is the screen's own half-width column edge, and rows from
+ * 307 down are empty east of the camera card (camera is col 0-104, rows
+ * 307-382; nothing else sits below row 307), so this collides with nothing.
+ * rowSpan 110 is DELIBERATELY 22 rows above the card's own authored footprint
+ * (rowSpan 88): the thing this card is here to demonstrate is the root-spacer
+ * footer idiom, and a card at exactly its content floor has no slack for a
+ * spacer to distribute — the Pitch row would sit under the content either way
+ * and demonstrate nothing. The gap between 88 and 110 IS the demonstration.
+ */
+const DEMO_PLACEMENT = {
+	machine: { "c-mock-meta": { col: 156, row: 307, colSpan: 156, rowSpan: 110 } },
+};
+
 function currentOverlay(frozenScreen = false): Record<string, unknown> {
 	return {
-		...(frozenScreen ? { screens: { layouts: FROZEN_SCREENS } } : {}),
+		// The frozen fixture is a machine's SD as it was BEFORE #86, so it
+		// cannot also carry the demo placement: an override written then could
+		// not name a card that did not exist, exactly as it carries no
+		// tombstones. --frozen-screen therefore shows the migration state and
+		// not the demo card; they are two different questions about the seed.
+		screens: { layouts: frozenScreen ? FROZEN_SCREENS : DEMO_PLACEMENT },
 		// U/V/W drive the three individual Z leadscrew motors
 		// (M584 U1.0 V1.1 W1.2); C is the tool coupler (C0.2).
 		axisRoles: { U: "Z motor 1", V: "Z motor 2", W: "Z motor 3", C: "Coupler" },
