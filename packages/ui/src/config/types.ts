@@ -108,6 +108,56 @@ export interface CustomCardDef {
 	name: string;
 	/** JSON text of a compose/controls ControlSpec. */
 	spec: string;
+	/**
+	 * Authored default footprint (grid cells), X then Y. OPTIONAL FLAT
+	 * SCALARS, deliberately — like every metadata field below: prune() drops
+	 * only empty plain objects and mergeInto() deep-merges only plain
+	 * objects, so a scalar leaf beside `spec` is a value neither can enter,
+	 * empty, or partially merge (the hazard that forced `spec` into opaque
+	 * text — see above — cannot reach a leaf by construction). A nested
+	 * `size: {…}` object would be legal today but one refactor away from
+	 * that exact hazard; two leaves have no inside. Absent axis = the stock
+	 * custom default (compose/composition.ts CUSTOM_CARD_SIZE); spans
+	 * normalize through clampRect at the placement site, the one bound.
+	 */
+	colSpan?: number;
+	rowSpan?: number;
+	/** CardTip text (click-to-copy). Absent = the stock "custom card" tip. */
+	tip?: string;
+	/** Uniform card-body padding in `--u` UNITS (a number, never a px
+	 *  string). Absent = the house padding tokens. */
+	padding?: number;
+}
+
+/** The optional metadata half of CustomCardDef — what rides beside name+spec. */
+export type CustomCardMeta = Pick<CustomCardDef, "colSpan" | "rowSpan" | "tip" | "padding">;
+
+/**
+ * THE acceptance gate for custom-card metadata — the one place the field
+ * predicates exist. Both trust boundaries spread its result: the untrusted
+ * overlay parse (config/parse.ts parseCards) and the store mutators
+ * (addCustomCard/updateCustomCard), so a value that fails here is never
+ * stored and never survives a load, whichever door it came through.
+ *
+ * - spans: finite ≥ 1 (the grid bound itself is clampRect's, at use —
+ *   a bound may exist in exactly one place);
+ * - tip: a non-empty string (an empty tip IS the absent tip);
+ * - padding: finite ≥ 0, no upper cap — it feeds `calc(n * var(--u))`,
+ *   CSS degrades a silly value to an over-padded scrollable body, and the
+ *   author who typed it can edit it back; a cap would be a guess.
+ *
+ * Ledger row: card-meta-single-gate, rung 5 (shared helper — a future
+ * writer could still assign a field directly on a draft). Promote by
+ * branding CustomCardMeta so an unsanitized record cannot be assigned.
+ */
+export function sanitizeCardMeta(raw: { [K in keyof CustomCardMeta]?: unknown }): CustomCardMeta {
+	const span = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v) && v >= 1;
+	const out: CustomCardMeta = {};
+	if (span(raw.colSpan)) out.colSpan = raw.colSpan;
+	if (span(raw.rowSpan)) out.rowSpan = raw.rowSpan;
+	if (typeof raw.tip === "string" && raw.tip.trim() !== "") out.tip = raw.tip;
+	if (typeof raw.padding === "number" && Number.isFinite(raw.padding) && raw.padding >= 0) out.padding = raw.padding;
+	return out;
 }
 
 /**

@@ -32,6 +32,29 @@ everything does NOT delete them** — it resets overrides (settings,
 renames, hides, layouts) while creations survive; a custom card or screen
 is only removed by its own explicit ✕/Delete.
 
+### Card metadata: size, tip, padding
+
+A custom card's definition carries optional metadata beside its spec
+(#194 inc 4) — card chrome, not spec content, so it never rides the spec
+JSON and never affects what the card can *do*:
+
+- **Authored size** (`colSpan`/`rowSpan`, grid cells): the card's default
+  footprint — what it places at when added to a screen, exactly as a
+  registry card places at its natural `size`. The measured content floors
+  still govern minimums, and an already-placed card keeps the geometry the
+  operator gave it; the authored size applies on ADD.
+- **Tip** (`tip`): the CardTip text (click-to-copy, like every registry
+  tip — name what powers the card, e.g. `state.status · M300`). Absent =
+  the stock `custom card` tag. Provenance lives in the import review's
+  complete inventory, not in the tip.
+- **Padding** (`padding`, a number of `--u` units): uniform card-body
+  padding, rendered as `calc(n * var(--u))` so it scales with everything
+  else. Absent = the house padding.
+
+All three are optional overlay data: reset semantics, share/import and
+Save-to-machine treat them exactly like the rest of the definition, and a
+config written before they existed reads identically to today.
+
 ### Authoring from the Card Lab (dev builds)
 
 The Card Lab (nav → **Card Lab**) is the authoring *bench*: its

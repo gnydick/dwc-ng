@@ -171,7 +171,7 @@ in the diff that drops it.
 
 **Why.** a half-compiled spec renders controls that look operable and send nothing, or send the wrong thing. Built-in specs run this at module load, so a broken one fails the build rather than the machine
 
-`packages/ui/src/compose/controls/spec.ts:102`
+`packages/ui/src/compose/controls/spec.ts:136`
 
 ### `compose/controls/template-compiles-whole` — rung 7
 
@@ -205,7 +205,7 @@ in the diff that drops it.
 
 **Why.** a second delete surface is how the blast-radius report gets skipped: the old drawer ✕ deleted from every screen while showing only a tooltip warning. One surface, armed with the plan, keeps "delete" and "here is what that does" inseparable
 
-`packages/ui/src/compose/CardStudio.tsx:144`
+`packages/ui/src/compose/CardStudio.tsx:149`
 
 ### `compose/one-run-at-a-time-per-screen` — rung 7
 
@@ -285,7 +285,7 @@ in the diff that drops it.
 
 **Why.** a claim names the board it was checked against ("written for b.A") by testing it against WHICHEVER machine was current at load time. Spec §3 explicitly anticipates identity changing under a live session (a mainboard swap, an SD card moved to another board) — a claim raised against B and left standing after re-resolving to C would let Adopt commit A's machine half (envelope included) into config now keyed to C: the exact cross-machine leak this campaign exists to make unrepresentable, reached THROUGH the confirm action rather than around it
 
-`packages/ui/src/config/store.ts:501`
+`packages/ui/src/config/store.ts:517`
 
 ### `config/claimed-not-adopted` — rung 6
 
@@ -293,7 +293,7 @@ in the diff that drops it.
 
 **Why.** spec §3: an SD card cloned or moved to another board must not have its settings silently adopted (a foreign envelope becomes the box the head is driven inside) or silently discarded (a real machine's real settings would be lost the first time its OWN card fails to round-trip through some other path). "Claimed, not adopted" is the third option this function exists to make the default
 
-`packages/ui/src/config/store.ts:1027`
+`packages/ui/src/config/store.ts:1051`
 
 ### `config/claimed-not-reachable-without-adopt` — rung 6
 
@@ -301,7 +301,7 @@ in the diff that drops it.
 
 **Why.** `store.meta.claimedProfile` (exposed, reactive) carries only the origin and section NAMES — see ClaimedProfile's doc comment — so a caller reading it can never mistake a claimed fact for live config. The real values still have to live SOMEWHERE for Adopt to apply them; keeping them here, off the store entirely, is what makes "cannot be consumed as fact without an explicit act" true by construction rather than by a caller remembering to check a flag
 
-`packages/ui/src/config/store.ts:386`
+`packages/ui/src/config/store.ts:402`
 
 ### `config/config-section-scope` — rung 6
 
@@ -309,7 +309,7 @@ in the diff that drops it.
 
 **Why.** an unscoped section defaults to whichever half the code happens to write, and the half it must not default into is the machine one: that is how an envelope crosses machines
 
-`packages/ui/src/config/types.ts:367`
+`packages/ui/src/config/types.ts:417`
 
 ### `config/envelope-is-config-not-default` — rung 6
 
@@ -319,7 +319,7 @@ in the diff that drops it.
 
 **Debt — promotion.** promote to rung 7 by branding `Envelope` so a hand-written object literal is not assignable and a future writer physically cannot skip `asEnvelope`. Blocked on the brand having to survive JSON round-trips to the SD card; today the guarantee is "one gate, two callers".
 
-`packages/ui/src/config/types.ts:241`
+`packages/ui/src/config/types.ts:291`
 
 ### `config/id-namespace` — rung 7
 
@@ -327,7 +327,7 @@ in the diff that drops it.
 
 **Why.** "u-" ids must never collide with built-in screen ids or the lab route, and "c-" ids never with registry CardIds. A collision would silently shadow a built-in screen with a user one, and the user could not delete what they had not created
 
-`packages/ui/src/config/store.ts:1237`
+`packages/ui/src/config/store.ts:1261`
 
 ### `config/labels-never-travel` — rung 6
 
@@ -337,7 +337,7 @@ in the diff that drops it.
 
 **Debt — promotion.** the payload is a hand-built object literal, so a future field is one line away — `machineId` (Task 9) is exactly that field arriving. Promote by giving ConfigOverlay a single serialize that returns a branded ConfigPayload upload accepts, so what travels is decided by the overlay's own type rather than here.
 
-`packages/ui/src/config/store.ts:976`
+`packages/ui/src/config/store.ts:1000`
 
 ### `config/legacy-key-single-mention` — rung 6
 
@@ -353,7 +353,7 @@ in the diff that drops it.
 
 **Why.** (Ruling 18) an earlier version wrote this half into whichever machine happened to be resolved by `machineStore()` at the synchronous instant `createConfigStore` runs — no stamp, no evidence, on data migrateStorage.ts's own header says "carries no such proof" and "must be DROPPED, never guessed at". That branch was unreachable in THIS app only because of incidental boot ordering (App.tsx constructs the config store before the machine session can resolve) — improbable, not impossible, and this project's standard is that a hazard must be unrepresentable, not merely unlikely today. There is nothing an operator could confirm a recovered half against either (the origin is unknowable in principle), so there is no "claimed, pending confirmation" state to offer instead — dropping it is the only correct answer The one-shot v2 → v3 backfill of the pre-split, origin-global legacy cache (spec §4, campaign #76 phase 1 task 8; see migrateStorage.ts for the exact key name — only that module may spell it). That legacy cache predates Task 6/7's split and, like the live overlay it once carried, proves nothing about which machine wrote its machine-scoped bytes — Ruling 17/18 apply the identical drop-unconditionally rule to its snapshots that the live overlay already follows. The drop is not silent (Ruling 19): every migrated snapshot that HAD a non-empty machine half is named in the returned `droppedMachineSections`, alongside the live overlay's own report, so the one channel the System card already reads (Task 11) carries both. Returns `null` when there was nothing to migrate — the common case on every boot after the first, since readAndClearLegacyPersonCache removes the key on the one read that finds it.
 
-`packages/ui/src/config/store.ts:1384`
+`packages/ui/src/config/store.ts:1408`
 
 ### `config/machine-identity-single-resolution` — rung 6
 
@@ -383,7 +383,7 @@ in the diff that drops it.
 
 **Debt — promotion.** this function's contract depends on its caller never fabricating a `MachineStore` for the wrong machine — nothing here re-checks that a `handle`'s `id` matches "the current machine" beyond what machineSession.ts already guarantees by construction.
 
-`packages/ui/src/config/store.ts:1606`
+`packages/ui/src/config/store.ts:1630`
 
 ### `config/no-unstamped-sd-write` — rung 6
 
@@ -391,7 +391,7 @@ in the diff that drops it.
 
 **Why.** identity resolves about one poll after boot (machineSession.ts). A save attempted in that window must not put an unattributable file on the card — the next machine to read it (even THIS one, on a later boot with a different resolution) would have no stamp to check and no way to tell "mine" from "nobody's"
 
-`packages/ui/src/config/store.ts:994`
+`packages/ui/src/config/store.ts:1018`
 
 ### `config/one-snapshot-order-and-revert-does-not-use-it` — rung 6
 
@@ -399,7 +399,7 @@ in the diff that drops it.
 
 **Why.** the list was chronological and the card renders into a fixed box that never scrolls (3 rows), so backup 9 of 10 landed below the fold and a save looked like it had not happened (#118, reported with eight backups already on the card). The obvious fix — reversing the render — would have made every Restore click restore the WRONG snapshot, silently, over the live overlay, because revert indexed the array positionally. Both halves are here so neither can be done without the other @why-storage-order-differs the stored array stays oldest-first because the MAX_SNAPSHOTS cap evicts with `slice(-MAX_SNAPSHOTS)` — the oldest must be at the front for the cap to drop the right end. Presentation is reversed once, here, rather than storage being reversed and every eviction site having to remember it
 
-`packages/ui/src/config/store.ts:595`
+`packages/ui/src/config/store.ts:611`
 
 ### `config/open-tab-sees-other-tabs-history` — rung 6
 
@@ -407,7 +407,7 @@ in the diff that drops it.
 
 **Why.** without it the losing tab had to be reloaded before it could see a backup taken next door — and, before the merge above existed, its next commit destroyed that backup instead. The listener is what turns "the other tab wins the race" into "there is no race" @scope SNAPSHOTS ONLY. `overlay` and `dirty` are this instance's own unsaved work; adopting another tab's copy of them would discard an edit the operator is still typing. A `storage` event never fires in the document that caused it, so this can only ever be another tab.
 
-`packages/ui/src/config/store.ts:356`
+`packages/ui/src/config/store.ts:372`
 
 ### `config/overlay-writes-persist` — rung 6
 
@@ -417,7 +417,7 @@ in the diff that drops it.
 
 **Debt — promotion.** `commit` is closure-private, so this holds within the module and says nothing about a future module. Promotion to 7 is making the overlay a branded value only commit can produce, so a second store could not assign one either.
 
-`packages/ui/src/config/store.ts:445`
+`packages/ui/src/config/store.ts:461`
 
 ### `config/person-cache-snapshots-only-grow` — rung 6
 
@@ -425,7 +425,7 @@ in the diff that drops it.
 
 **Why.** `persistCache` used to hand `meta.snapshots` straight through, and that list is seeded once at createConfigStore and never re-read — so any tab built BEFORE a save persisted `snapshots: []` over the newer record and the next boot restored nothing (#120 defect A, reproduced with an in-browser setItem hook) @why-ordered ordering by `takenAt` rather than by arrival is what makes the merge idempotent: re-running it over its own output changes nothing, so a record that has been through several writers still reads oldest-first and `revert(i)` still means what the list shows. @why-stable ties are NOT broken by id. `mintSnapshotId` includes `Math.random()`, so an id tie-break REORDERS two backups taken in the same millisecond differently on every write — which is a real gesture (Save, rename, Save again) and made "the newest is last" false at random. Ties keep the order they already have (stored first, then this call's contribution), which `Array.prototype.sort`'s stability guarantees.
 
-`packages/ui/src/config/store.ts:1557`
+`packages/ui/src/config/store.ts:1581`
 
 ### `config/revert-machine-half-scoped-to-current-machine` — rung 6
 
@@ -433,7 +433,7 @@ in the diff that drops it.
 
 **Why.** snapshot() (above) is the sole writer of a machine's own "snapshots" key and never writes under an id taken on a different machine, so `.find(e => e.id === snap.id)` coming up empty on machine B proves the snapshot was not taken on B — but that only tells you WHOSE machine half it isn't; it says nothing about what B's own machine half currently holds, and is no license to overwrite it
 
-`packages/ui/src/config/store.ts:908`
+`packages/ui/src/config/store.ts:932`
 
 ### `config/screen-layout-two-tier` — rung 6
 
@@ -443,7 +443,7 @@ in the diff that drops it.
 
 **Debt — promotion.** replaceAllScreenCards is still reachable from anywhere holding the store, and its name is the only thing saying the caller owes the second tier — which is naming, not prevention. Rung 7 is having it take a branded value that only compose/screens.ts can mint, so a bare Record cannot be passed. Rung 8 would be folding the canvas write in here so one tier alone has no encoding at all; that needs the config store to reach the canvas store, which is a bigger architectural change than this invariant alone justifies.
 
-`packages/ui/src/config/store.ts:191`
+`packages/ui/src/config/store.ts:192`
 
 ### `config/snapshot-cache-is-person-only` — rung 6
 
@@ -451,7 +451,7 @@ in the diff that drops it.
 
 **Why.** a snapshot used to clone the WHOLE joined overlay into this same record (Ruling 17) — reverting to one taken on machine A while pointed at machine B restored A's axis roles and envelope onto B, the exact inherited-envelope hazard this campaign exists to remove
 
-`packages/ui/src/config/store.ts:1302`
+`packages/ui/src/config/store.ts:1326`
 
 ### `config/sole-snapshot-producer` — rung 6
 
@@ -461,7 +461,7 @@ in the diff that drops it.
 
 **Debt — promotion.** promote by making ConfigSnapshot's label a branded SnapshotLabel this function is the sole producer of, so a snapshot assembled elsewhere cannot be pushed at all rather than merely not being.
 
-`packages/ui/src/config/store.ts:858`
+`packages/ui/src/config/store.ts:882`
 
 ### `config/tombstones-outlive-a-geometry-write` — rung 6
 
@@ -469,7 +469,7 @@ in the diff that drops it.
 
 **Why.** `captureScreenGeometry` (Save to machine) rebuilds a screen's whole rect record from the canvas and calls this. Had it dropped tombstones, every Save would have resurrected every card the operator removed — #86's own defect, one layer down, in the one gesture that is supposed to make their layout permanent
 
-`packages/ui/src/config/store.ts:742`
+`packages/ui/src/config/store.ts:758`
 
 ### `config/untrusted-overlay-boundary` — rung 6
 
@@ -489,7 +489,7 @@ in the diff that drops it.
 
 **Debt — promotion.** promote by making persistCache take one CacheRecord value assembled in one place, so a second call site physically cannot pass a subset. @note #120 A narrowed this invariant's scope rather than weakening it: overlay/dirty/snapshots still reach disk in ONE write, but the snapshot list is no longer this instance's copy — it is derived inside writePersonCache from the record on disk plus whatever this call contributes. "Written together" was always the invariant; "written from one tab's memory" was an unstated assumption riding along with it, and it was false the moment a second tab existed.
 
-`packages/ui/src/config/store.ts:406`
+`packages/ui/src/config/store.ts:422`
 
 ## connector
 
@@ -1597,7 +1597,7 @@ in the diff that drops it.
 
 **Debt — promotion.** ONLY WHAT THE STYLESHEET CAN SAY. The predicate reads app.css text, so it does not see a height arriving from an inline style, from a `classList` addition, or from a JS-set custom property, and it does not resolve specificity — a floor declared in a rule that loses the cascade reads as present. It also cannot distinguish a flex COLUMN item, where the collapse actually happens, from a flex ROW item, where the fixed height is the cross size and the block axis was never at risk; both are required to declare the floor, which is conservative in the right direction but is the reason `.color-clash` and `.accel-status` carry a min-height equal to their own height rather than a measured one. Promote by making the guard travel with the geometry instead of beside it: ONE shared declaration that every fixed-height clipped row extends, so the floor is not something a new row can be written without, and this scan becomes structurally unnecessary rather than merely green
 
-`packages/ui/src/app.css:5213`
+`packages/ui/src/app.css:5263`
 
 ### `ui/heavy-libraries-stay-behind-a-dynamic-import` — rung 4
 

@@ -73,6 +73,21 @@ test("mock SD seeds dwc-ng-config.json at the current version, stamped and mappe
 	for (let tool = 0; tool <= 3; tool++) {
 		assert.equal(parsed.overlay.shaping.accelByTool[String(tool)], `${20 + tool}.0`);
 	}
+
+	// #194 inc 4 parity: the seed carries a user-authored card whose def
+	// exercises ALL the custom-card metadata fields (authored footprint,
+	// tip, padding in --u units), so the SD → parseOverlay → placement →
+	// render path is drivable on a fresh mock with zero setup. The spec is
+	// stored as text and must itself be valid JSON.
+	const card = parsed.overlay.cards["c-mock-meta"];
+	assert.equal(card.name, "Beeper");
+	assert.equal(card.colSpan, 120);
+	assert.equal(card.rowSpan, 48);
+	assert.equal(card.tip, "state.status · M300");
+	assert.equal(card.padding, 6);
+	const spec = JSON.parse(card.spec);
+	assert.equal(spec.nodes[0].type, "readout");
+	assert.equal(spec.nodes[1].template, "M300 S440 P250");
 });
 
 test("--config-version 1 seeds the byte-identical pre-v3 shape (no stamp, no accelByTool)", async t => {

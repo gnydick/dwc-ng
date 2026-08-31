@@ -338,6 +338,28 @@ function currentOverlay(frozenScreen = false): Record<string, unknown> {
 		// Tools 0..3 report dock presence on gpIn 10..13 (1 = docked).
 		dockSensors: { "0": { gpIn: 10 }, "1": { gpIn: 11 }, "2": { gpIn: 12 }, "3": { gpIn: 13 } },
 		shaping: { accelByTool: ACCEL_BY_TOOL },
+		// A user-authored card carrying the #194-inc4 metadata (authored
+		// footprint, tip, padding in --u units) so the SD → download →
+		// parseOverlay → placement → render path is drivable on a fresh
+		// mock with zero setup — mock parity moves with the change, not
+		// after it. The spec's one G-code, M300 S440 P250, is verified
+		// against reference/duet-gcode.md §M300 (S = Hz, P = ms).
+		cards: {
+			"c-mock-meta": {
+				name: "Beeper",
+				spec: JSON.stringify({
+					inputs: {},
+					nodes: [
+						{ type: "readout", om: "state.status", label: "State" },
+						{ type: "gcode-button", label: "Beep", template: "M300 S440 P250" },
+					],
+				}),
+				colSpan: 120,
+				rowSpan: 48,
+				tip: "state.status · M300",
+				padding: 6,
+			},
+		},
 	};
 }
 
