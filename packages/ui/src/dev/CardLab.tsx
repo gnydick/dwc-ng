@@ -17,6 +17,7 @@ import { createServicePool } from "../compose/services.ts";
 import type { CardCtx } from "../compose/ctx.ts";
 import { SCENARIOS, scenarioFile, scenarioList, scenarioModel, type ScenarioId } from "./cardScenarios.ts";
 import { createStubConnector } from "@dwc-ng/connector";
+import { sanitizeCardMeta } from "../config/types.ts";
 import { LayoutAuditAll, LayoutAuditPanel, ScaleSweepAll } from "./LayoutAuditPanel.tsx";
 
 /**
@@ -338,12 +339,16 @@ export default function CardLab() {
 						<CardStudio
 							cardId={s.id}
 							ctx={ctxFor(s.id ?? featured())}
-							onSaved={(id, name, specJson) => {
+							onSaved={(id, name, specJson, meta) => {
 								if (id === null) {
-									const minted = outer.config.addCustomCard(name, specJson);
+									// sanitizeCardMeta is the ONE gate and also the patch→meta
+									// conversion: nulls (= clear) simply fail its predicates
+									// and drop out, which on a brand-new card is exactly
+									// "absent".
+									const minted = outer.config.addCustomCard(name, specJson, sanitizeCardMeta(meta));
 									setFeatured(minted); // straight onto the bench
 								} else {
-									outer.config.updateCustomCard(id, { name, spec: specJson });
+									outer.config.updateCustomCard(id, { name, spec: specJson, ...meta });
 								}
 								setStudio(null);
 							}}

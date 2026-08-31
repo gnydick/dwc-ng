@@ -149,6 +149,12 @@ export type CustomCardMeta = Pick<CustomCardDef, "colSpan" | "rowSpan" | "tip" |
  * Ledger row: card-meta-single-gate, rung 5 (shared helper — a future
  * writer could still assign a field directly on a draft). Promote by
  * branding CustomCardMeta so an unsanitized record cannot be assigned.
+ * NOTE (integration, 2026-08-30): converting this prose row into a real
+ * register tag was attempted and reverted — a rung-5 row takes the
+ * below-rung-6 count to 28 past the committed ceiling of 27
+ * (packages/invariants/debt-ceiling.json), verified by the RATCHET gate
+ * test failing. Needs Gabe's ruling: promote (brand the type) or bump the
+ * ceiling with a note, per that file's own convention.
  */
 export function sanitizeCardMeta(raw: { [K in keyof CustomCardMeta]?: unknown }): CustomCardMeta {
 	const span = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v) && v >= 1;

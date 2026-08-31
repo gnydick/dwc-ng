@@ -228,17 +228,32 @@ const CUSTOM_CARD_SIZE = { colSpan: 156, rowSpan: 40 };
  * absurd stored value cannot place an illegal rect and no second min/max
  * exists anywhere.
  *
- * `cards` is optional only because a call site frozen by this round's
- * advisory file locks passes two arguments (see the design spec §2);
- * absent, a custom id answers the stock default. Promote to required at
- * integration so a new call site cannot silently ignore authored sizes.
+ * @invariant custom-size-feeds-placement
+ * @rung 6  choke-point — this is the sole sizing route (addCard's one
+ *          placement path takes its footprint from here, for registry and
+ *          custom ids alike), and the `cards` record is a REQUIRED
+ *          parameter (promoted at integration, discharging the design
+ *          spec §2's ledger row): a call site cannot OMIT the stored defs
+ *          — the compile error names it — only hand an explicit `{}` when
+ *          it truly has none in scope. Promote by minting a sized-slot
+ *          type only this function constructs, so a placement without a
+ *          size decision is unrepresentable
+ * @why an optional record made ignoring authored sizes silent: a new call
+ *      site that forgot the argument placed every custom card at the stock
+ *      156×40 and compiled clean, which is exactly how the drawer and the
+ *      canvas would drift apart on what a card's default footprint is
+ *
+ * `cards` is REQUIRED (promoted at integration, as the design spec §2's
+ * ledger row demanded): a call site cannot silently ignore authored sizes,
+ * because omitting the record no longer compiles. A caller with no custom
+ * defs in scope says so explicitly with `{}`.
  */
 export function defaultCardSize(
 	id: SlotId,
-	cards?: Partial<Record<CustomCardId, { colSpan?: number; rowSpan?: number }>>,
+	cards: Partial<Record<CustomCardId, { colSpan?: number; rowSpan?: number }>>,
 ): CardSize {
 	if (!isCustomCardId(id)) return CARD_DEFS[id].size;
-	const def = cards?.[id];
+	const def = cards[id];
 	const clamped = clampRect({
 		col: 0, row: 0,
 		colSpan: def?.colSpan ?? CUSTOM_CARD_SIZE.colSpan,
@@ -256,7 +271,7 @@ export function defaultCardSize(
 export function addCard(
 	composition: Composition,
 	id: SlotId,
-	cards?: Partial<Record<CustomCardId, { colSpan?: number; rowSpan?: number }>>,
+	cards: Partial<Record<CustomCardId, { colSpan?: number; rowSpan?: number }>>,
 ): Composition {
 	if (composition[id] !== undefined) return composition;
 	const size = defaultCardSize(id, cards);

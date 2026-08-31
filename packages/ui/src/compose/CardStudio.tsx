@@ -29,12 +29,28 @@ import { emptyButton, emptyForm, emptyReadout, emptySlider, emptyToggle, toSpec,
 import type { CustomCardId } from "./composition.ts";
 import type { CardCtx } from "./ctx.ts";
 
+/**
+ * What a save says about the card's chrome metadata (#194 inc 4, spec §7):
+ * shaped exactly like updateCustomCard's metadata patch — a value sets the
+ * field, null clears it back to the default its absence means. Metadata is
+ * card CHROME, not spec content: it never rides the spec JSON (so it cannot
+ * make a form-refusing spec lift) and it is validated only at the one gate
+ * (config/types.ts sanitizeCardMeta), which both store doors already run —
+ * the studio does not re-validate, the formModel.ts rule.
+ */
+export interface CardMetaPatch {
+	colSpan: number | null;
+	rowSpan: number | null;
+	tip: string | null;
+	padding: number | null;
+}
+
 export function CardStudio(props: {
 	/** null = authoring a new card. */
 	cardId: CustomCardId | null;
 	/** For the live preview. */
 	ctx: CardCtx;
-	onSaved: (id: CustomCardId | null, name: string, specJson: string) => void;
+	onSaved: (id: CustomCardId | null, name: string, specJson: string, meta: CardMetaPatch) => void;
 	onClose: () => void;
 }) {
 	const app = useApp();
@@ -62,6 +78,13 @@ export function CardStudio(props: {
 	})();
 
 	const [name, setName] = createSignal(existing?.name ?? "");
+	// Chrome metadata, as the text of its fields ("" = absent → null = clear).
+	// Kept OUTSIDE the form/JSON mode switch: metadata is not spec content, so
+	// it is editable whichever mode the spec is in.
+	const [metaColSpan, setMetaColSpan] = createSignal(existing?.colSpan?.toString() ?? "");
+	const [metaRowSpan, setMetaRowSpan] = createSignal(existing?.rowSpan?.toString() ?? "");
+	const [metaTip, setMetaTip] = createSignal(existing?.tip ?? "");
+	const [metaPadding, setMetaPadding] = createSignal(existing?.padding?.toString() ?? "");
 	const [mode, setMode] = createSignal<"form" | "json">(initialForm.mode);
 	const [form, setForm] = createStore<FormState>(initialForm.form);
 	const [json, setJson] = createSignal(initialForm.json);
@@ -136,7 +159,13 @@ export function CardStudio(props: {
 			setError(parsed.error);
 			return;
 		}
-		props.onSaved(props.cardId, trimmed, text);
+		const num = (s: string): number | null => (s.trim() === "" ? null : Number(s.trim()));
+		props.onSaved(props.cardId, trimmed, text, {
+			colSpan: num(metaColSpan()),
+			rowSpan: num(metaRowSpan()),
+			tip: metaTip().trim() === "" ? null : metaTip().trim(),
+			padding: num(metaPadding()),
+		});
 	};
 
 	/**
@@ -203,6 +232,27 @@ export function CardStudio(props: {
 					<button class="fb-act" aria-pressed={mode() === "json"} onClick={switchMode}>
 						{mode() === "form" ? "Edit as JSON" : "Edit as form"}
 					</button>
+				</div>
+
+				{/* ---- card chrome: authored size, tip, padding (#194 inc 4) ----
+				    Blank = the stock default (custom size 156×40, "custom card"
+				    tip, house padding). Values pass the one sanitizeCardMeta gate
+				    at the store — a bad field is dropped there, not re-validated
+				    here. */}
+				<div class="studio-inputrow">
+					<span class="lab-cap">Card</span>
+					<input class="fb-input st-default" type="number" min="1" placeholder="width"
+						title="Default footprint width in grid cells (blank = stock 156)"
+						value={metaColSpan()} onInput={e => setMetaColSpan(e.currentTarget.value)} />
+					<input class="fb-input st-default" type="number" min="1" placeholder="height"
+						title="Default footprint height in grid cells (blank = stock 40)"
+						value={metaRowSpan()} onInput={e => setMetaRowSpan(e.currentTarget.value)} />
+					<input class="fb-input st-label" placeholder="tip"
+						title={'Click-to-copy tip text on the card head (blank = "custom card")'}
+						value={metaTip()} onInput={e => setMetaTip(e.currentTarget.value)} />
+					<input class="fb-input st-default" type="number" min="0" placeholder="padding"
+						title="Uniform card-body padding in u (blank = house padding)"
+						value={metaPadding()} onInput={e => setMetaPadding(e.currentTarget.value)} />
 				</div>
 
 				<div class="studio-body">

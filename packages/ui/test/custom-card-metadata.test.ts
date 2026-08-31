@@ -90,11 +90,13 @@ test("sanitizeCardMeta is the one gate: passes the valid, drops the rest", () =>
 // ---- sizing: one placement path for registry and custom cards ----
 
 test("defaultCardSize: registry from CARD_DEFS, custom from authored fields, fallback otherwise", () => {
-	assert.deepEqual(defaultCardSize("position"), CARD_DEFS.position.size);
+	assert.deepEqual(defaultCardSize("position", {}), CARD_DEFS.position.size);
 	const cards = { "c-x": { name: "X", spec: "{}", colSpan: 120, rowSpan: 48 } } as const;
 	assert.deepEqual(defaultCardSize("c-x", cards), { colSpan: 120, rowSpan: 48 });
-	// Absent record or absent fields fall back to the stock custom default.
-	assert.deepEqual(defaultCardSize("c-x"), { colSpan: 156, rowSpan: 40 });
+	// An id absent from the record, or absent fields, fall back to the stock
+	// custom default. (The record itself is REQUIRED — promoted at integration
+	// so omitting it is a compile error, not a silent stock size.)
+	assert.deepEqual(defaultCardSize("c-x", {}), { colSpan: 156, rowSpan: 40 });
 	const oneAxis = { "c-x": { name: "X", spec: "{}", rowSpan: 48 } } as const;
 	assert.deepEqual(defaultCardSize("c-x", oneAxis), { colSpan: 156, rowSpan: 48 });
 	// Spans normalize through clampRect — the ONE bound: rounded, capped at the grid.
@@ -107,8 +109,40 @@ test("addCard places a custom card at its authored footprint through the same pa
 	const placed = addCard({}, "c-x", cards)["c-x"]!;
 	assert.equal(placed.colSpan, 120);
 	assert.equal(placed.rowSpan, 48);
-	// Without the defs record the stock default still applies (2-arg call sites).
-	const stock = addCard({}, "c-x")["c-x"]!;
+	// A card with no stored def still places at the stock default.
+	const stock = addCard({}, "c-x", {})["c-x"]!;
 	assert.equal(stock.colSpan, 156);
 	assert.equal(stock.rowSpan, 40);
+});
+
+// ---- serialize side: the metadata rides the actual SD payload ----
+// (Review fix, #194 inc 4: the parse-boundary tests above drive hand-built
+// literals; this drives saveToMachine's OWN serialization and reads it back
+// through loadFromMachine — the full save → SD file → load cycle.)
+
+test("save → load through the machine's SD card carries the metadata byte-for-byte", async () => {
+	const { createMockServer } = await import("../../mock-duet/src/server.ts");
+	const { PollConnector } = await import("@dwc-ng/connector/testing");
+	const { openMachineStore } = await import("../src/config/machineStore.ts");
+	const mock = createMockServer({ tickMs: 0 });
+	const port = await mock.listen(0);
+	const connector = new PollConnector({ baseUrl: `http://127.0.0.1:${port}`, autoPoll: false, retryDelayMs: 10 });
+	try {
+		await connector.connect();
+		const machine = openMachineStore({ kind: "board", uniqueId: "card-meta-roundtrip" });
+		const author = createConfigStore({ machineStore: () => machine });
+		const id = author.addCustomCard("Meta card", SPINDLE_EXAMPLE_JSON, META);
+		await author.saveToMachine(connector);
+
+		const reader = createConfigStore({ machineStore: () => machine });
+		await reader.loadFromMachine(connector);
+		assert.deepEqual(
+			reader.config.cards[id],
+			{ name: "Meta card", spec: SPINDLE_EXAMPLE_JSON, ...META },
+			"what saveToMachine serialized, loadFromMachine restores — fields and spec text intact",
+		);
+	} finally {
+		await connector.disconnect().catch(() => undefined);
+		await mock.close();
+	}
 });

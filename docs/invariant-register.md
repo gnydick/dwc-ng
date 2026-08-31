@@ -21,7 +21,7 @@ and invariant claim mentions 13 -> 23, so no mechanism was deleted and no
 claim was lost in the gap. From here the ratchets make a dropped rung visible
 in the diff that drops it.
 
-**Totals:** 179 invariants · 152 at rung 6 or above · 27 below rung 6 (ceiling 27).
+**Totals:** 180 invariants · 153 at rung 6 or above · 27 below rung 6 (ceiling 27).
 
 ## bed
 
@@ -183,6 +183,14 @@ in the diff that drops it.
 
 ## compose
 
+### `compose/custom-size-feeds-placement` — rung 6
+
+**Mechanism.** choke-point — this is the sole sizing route (addCard's one placement path takes its footprint from here, for registry and custom ids alike), and the `cards` record is a REQUIRED parameter (promoted at integration, discharging the design spec §2's ledger row): a call site cannot OMIT the stored defs — the compile error names it — only hand an explicit `{}` when it truly has none in scope. Promote by minting a sized-slot type only this function constructs, so a placement without a size decision is unrepresentable
+
+**Why.** an optional record made ignoring authored sizes silent: a new call site that forgot the argument placed every custom card at the stock 156×40 and compiled clean, which is exactly how the drawer and the canvas would drift apart on what a card's default footprint is `cards` is REQUIRED (promoted at integration, as the design spec §2's ledger row demanded): a call site cannot silently ignore authored sizes, because omitting the record no longer compiles. A caller with no custom defs in scope says so explicitly with `{}`.
+
+`packages/ui/src/compose/composition.ts:231`
+
 ### `compose/def-body-totality` — rung 7
 
 **Mechanism.** ./cards.tsx is a Record<CardId, body>, so the compiler makes the two halves total over each other in BOTH directions — a def with no body, or a body with no def, is a type error rather than a review item
@@ -205,7 +213,7 @@ in the diff that drops it.
 
 **Why.** a second delete surface is how the blast-radius report gets skipped: the old drawer ✕ deleted from every screen while showing only a tooltip warning. One surface, armed with the plan, keeps "delete" and "here is what that does" inseparable
 
-`packages/ui/src/compose/CardStudio.tsx:150`
+`packages/ui/src/compose/CardStudio.tsx:179`
 
 ### `compose/one-run-at-a-time-per-screen` — rung 7
 
@@ -309,7 +317,7 @@ in the diff that drops it.
 
 **Why.** an unscoped section defaults to whichever half the code happens to write, and the half it must not default into is the machine one: that is how an envelope crosses machines
 
-`packages/ui/src/config/types.ts:417`
+`packages/ui/src/config/types.ts:423`
 
 ### `config/envelope-is-config-not-default` — rung 6
 
@@ -319,7 +327,7 @@ in the diff that drops it.
 
 **Debt — promotion.** promote to rung 7 by branding `Envelope` so a hand-written object literal is not assignable and a future writer physically cannot skip `asEnvelope`. Blocked on the brand having to survive JSON round-trips to the SD card; today the guarantee is "one gate, two callers".
 
-`packages/ui/src/config/types.ts:291`
+`packages/ui/src/config/types.ts:297`
 
 ### `config/id-namespace` — rung 7
 

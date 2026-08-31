@@ -6,11 +6,23 @@
  * it can ever emit. Nothing is written until the operator clicks Import.
  */
 import { For, Show } from "solid-js";
-import type { ShareImport, SpecReview } from "./share.ts";
+import { describeCardMeta, type ShareImport, type SpecReview } from "./share.ts";
+import type { CustomCardMeta } from "../config/types.ts";
 
-function ReviewBlock(props: { review: SpecReview }) {
+function ReviewBlock(props: { review: SpecReview; meta: CustomCardMeta }) {
 	return (
 		<div class="import-review">
+			<Show when={describeCardMeta(props.meta).length > 0}>
+				<div class="import-sect">
+					<span class="lab-cap">Card</span>
+					{/* The chrome the card arrives wearing — authored footprint, tip,
+					    padding — shown with the commands so the reviewer sees the
+					    whole definition, not just what it can emit. describeCardMeta
+					    is total over CustomCardMeta (a new field fails compile there,
+					    never silently skips this list). */}
+					<div class="import-code"><code>{describeCardMeta(props.meta).join(" · ")}</code></div>
+				</div>
+			</Show>
 			<Show when={props.review.buttons.length > 0}>
 				<div class="import-sect">
 					<span class="lab-cap">Sends</span>
@@ -126,7 +138,7 @@ export function ImportReview(props: {
 								unsaved config (Save to machine to keep them).
 							</p>
 							<Show when={ok().kind === "card" ? ok() as Extract<ShareImport, { kind: "card" }> : null}>
-								{card => <ReviewBlock review={card().review} />}
+								{card => <ReviewBlock review={card().review} meta={card().meta} />}
 							</Show>
 							<Show when={ok().kind === "screen" ? ok() as Extract<ShareImport, { kind: "screen" }> : null}>
 								{screen => (
@@ -141,7 +153,7 @@ export function ImportReview(props: {
 											{card => (
 												<div class="import-embedded">
 													<span class="import-title">{card.name}</span>
-													<ReviewBlock review={card.review} />
+													<ReviewBlock review={card.review} meta={card.meta} />
 												</div>
 											)}
 										</For>

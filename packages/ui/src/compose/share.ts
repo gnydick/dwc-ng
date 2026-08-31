@@ -21,7 +21,7 @@ import { omReadsOf } from "./controls/template.ts";
 import { isInputRef, type CompiledControlSpec, type CompiledNode, type CompiledRowItem, type InputDef } from "./controls/spec.ts";
 import { isCustomCardId } from "./composition.ts";
 import { cardTitleOf, parseCardId } from "./defs.ts";
-import type { SlotRect, UiConfig } from "../config/types.ts";
+import { sanitizeCardMeta, type CustomCardMeta, type SlotRect, type UiConfig } from "../config/types.ts";
 import type { ScreenEntry } from "./screens.ts";
 import { isPlainObject, safeEntries } from "@dwc-ng/connector";
 import { unreachable } from "../util/unreachable.ts";
@@ -136,14 +136,19 @@ function fileNameOf(name: string, kind: "card" | "screen"): string {
 	return `${slug}.dwcng-${kind}.json`;
 }
 
-/** A stored card (name + spec text) → share-file text. Null if the stored
- *  spec no longer parses (nothing broken should be exported). */
-export function exportCard(name: string, specText: string): { fileName: string; text: string } | null {
+/** A stored card (name + spec text + chrome metadata) → share-file text.
+ *  Null if the stored spec no longer parses (nothing broken should be
+ *  exported). The metadata rides BESIDE the spec in the card object — never
+ *  inside the spec JSON — and passes the ONE gate (sanitizeCardMeta) on the
+ *  way out, so export and import agree field-for-field by construction: a
+ *  field the gate does not know cannot travel, and a new CustomCardMeta
+ *  field must be added to the gate to exist at all. */
+export function exportCard(name: string, specText: string, meta: CustomCardMeta = {}): { fileName: string; text: string } | null {
 	const parsed = parseControlSpecText(specText);
 	if (!parsed.ok) return null;
 	return {
 		fileName: fileNameOf(name, "card"),
-		text: JSON.stringify({ dwcng: "card", version: SHARE_VERSION, card: { name, spec: parsed.data } }, null, 2),
+		text: JSON.stringify({ dwcng: "card", version: SHARE_VERSION, card: { name, spec: parsed.data, ...sanitizeCardMeta(meta) } }, null, 2),
 	};
 }
 
@@ -160,7 +165,7 @@ export function exportCard(name: string, specText: string): { fileName: string; 
  */
 export function exportScreen(entry: ScreenEntry, config: UiConfig): { fileName: string; text: string } {
 	const cards: Record<string, SlotRect> = {};
-	const customCards: Record<string, { name: string; spec: unknown }> = {};
+	const customCards: Record<string, { name: string; spec: unknown } & CustomCardMeta> = {};
 	for (const [id, slot] of safeEntries(entry.def.composition)) {
 		if (slot === undefined) continue;
 		if (isCustomCardId(id)) {
@@ -168,7 +173,9 @@ export function exportScreen(entry: ScreenEntry, config: UiConfig): { fileName: 
 			if (def === undefined) continue;
 			const parsed = parseControlSpecText(def.spec);
 			if (!parsed.ok) continue;
-			customCards[id] = { name: def.name, spec: parsed.data };
+			// Chrome metadata travels beside the spec, through the one gate —
+			// see exportCard.
+			customCards[id] = { name: def.name, spec: parsed.data, ...sanitizeCardMeta(def) };
 		}
 		cards[id] = {
 			col: slot.col, row: slot.row, colSpan: slot.colSpan, rowSpan: slot.rowSpan,
@@ -195,7 +202,33 @@ export interface CardImport {
 	name: string;
 	/** Normalized spec text, ready for addCustomCard. */
 	specText: string;
+	/** Chrome metadata (authored size, tip, padding) — already through the
+	 *  one gate, ready to pass to addCustomCard's meta argument. */
+	meta: CustomCardMeta;
 	review: SpecReview;
+}
+
+/**
+ * The review's rendering of chrome metadata, one line per present field —
+ * total over CustomCardMeta by construction: the describer record is keyed
+ * `Required<CustomCardMeta>`, so a new metadata field refuses to compile
+ * until it says how the import review shows it (the same weld reviewSpec's
+ * `unreachable` gives the control vocabulary — a field cannot be silently
+ * unreviewed).
+ */
+export function describeCardMeta(meta: CustomCardMeta): string[] {
+	const describers: { [K in keyof Required<CustomCardMeta>]: (v: NonNullable<CustomCardMeta[K]>) => string } = {
+		colSpan: v => `default width ${v} cells`,
+		rowSpan: v => `default height ${v} cells`,
+		tip: v => `tip "${v}"`,
+		padding: v => `body padding ${v}u`,
+	};
+	const lines: string[] = [];
+	for (const key of Object.keys(describers) as Array<keyof Required<CustomCardMeta>>) {
+		const value = meta[key];
+		if (value !== undefined) lines.push(describers[key](value as never));
+	}
+	return lines;
 }
 
 export interface ScreenImport {
@@ -204,7 +237,7 @@ export interface ScreenImport {
 	/** Slot key → rect, keys still the FILE's ids (remapped at commit). */
 	cards: Record<string, SlotRect>;
 	/** File id → definition + its complete review. */
-	customCards: Array<{ fileId: string; name: string; specText: string; review: SpecReview }>;
+	customCards: Array<{ fileId: string; name: string; specText: string; meta: CustomCardMeta; review: SpecReview }>;
 	/** Registry cards the screen uses (stable ids, shown by title). */
 	registryCards: string[];
 	/** Slot keys that reference nothing known — dropped at commit. */
@@ -242,7 +275,9 @@ export function parseShareFile(text: string): ShareImport {
 		if (!isPlainObject(card) || typeof card.name !== "string") return { kind: "error", error: "Malformed card file." };
 		const { specText, parsed } = specOf(card.spec);
 		if (!parsed.ok) return { kind: "error", error: `The card's spec is invalid: ${parsed.error}` };
-		return { kind: "card", name: card.name, specText, review: reviewSpec(parsed.spec) };
+		// Metadata rides beside the spec; the gate keeps what passes and drops
+		// each bad field by itself (the house per-leaf tolerance).
+		return { kind: "card", name: card.name, specText, meta: sanitizeCardMeta(card), review: reviewSpec(parsed.spec) };
 	}
 
 	if (root.dwcng === "screen") {
@@ -259,7 +294,7 @@ export function parseShareFile(text: string): ShareImport {
 			}
 			const { specText, parsed } = specOf(entry.spec);
 			if (!parsed.ok) return { kind: "error", error: `Embedded card "${entry.name}" is invalid: ${parsed.error}` };
-			customCards.push({ fileId, name: entry.name, specText, review: reviewSpec(parsed.spec) });
+			customCards.push({ fileId, name: entry.name, specText, meta: sanitizeCardMeta(entry), review: reviewSpec(parsed.spec) });
 		}
 		const cards: Record<string, SlotRect> = {};
 		const registryCards: string[] = [];

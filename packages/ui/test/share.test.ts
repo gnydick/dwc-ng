@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { exportCard, exportScreen, parseShareFile, remapScreenCards, reviewSpec } from "../src/compose/share.ts";
+import { describeCardMeta, exportCard, exportScreen, parseShareFile, remapScreenCards, reviewSpec } from "../src/compose/share.ts";
 import { parseControlSpecText } from "../src/compose/controls/parse.ts";
 import { SPINDLE_EXAMPLE_JSON } from "../src/compose/controls/examples.ts";
 import { createConfigStore } from "../src/config/store.ts";
@@ -113,6 +113,68 @@ test("exportCard → parseShareFile round-trips with a complete review", () => {
 
 test("a card whose stored spec no longer parses refuses to export", () => {
 	assert.equal(exportCard("Broken", "not json"), null);
+});
+
+// ---- chrome metadata travels the share file (#194 inc 4, spec §7) ----
+
+const META = { colSpan: 120, rowSpan: 48, tip: "state.status · M300", padding: 6 };
+
+test("exportCard embeds the chrome metadata beside the spec, and import returns it through the one gate", () => {
+	const file = exportCard("Meta", SPINDLE_EXAMPLE_JSON, META);
+	assert.ok(file !== null);
+	// Beside the spec, never inside it: the fields sit on the card object.
+	const raw = JSON.parse(file!.text) as { card: Record<string, unknown> };
+	assert.equal(raw.card.colSpan, 120);
+	assert.equal(raw.card.tip, META.tip);
+	assert.equal((raw.card.spec as Record<string, unknown>).colSpan, undefined, "metadata does not ride the spec JSON");
+
+	const parsed = parseShareFile(file!.text);
+	assert.equal(parsed.kind, "card");
+	if (parsed.kind !== "card") return;
+	assert.deepEqual(parsed.meta, META, "ready for addCustomCard's meta argument");
+});
+
+test("a card exported without metadata imports with empty meta (old files read identically)", () => {
+	const file = exportCard("Plain", SPINDLE_EXAMPLE_JSON);
+	assert.ok(file !== null);
+	const parsed = parseShareFile(file!.text);
+	assert.equal(parsed.kind, "card");
+	if (parsed.kind !== "card") return;
+	assert.deepEqual(parsed.meta, {});
+});
+
+test("a foreign file's bad metadata drops FIELD BY FIELD, never the card", () => {
+	const text = JSON.stringify({
+		dwcng: "card", version: 1,
+		card: { name: "Hostile", spec: JSON.parse(SPINDLE_EXAMPLE_JSON), colSpan: "wide", rowSpan: 48, tip: "   ", padding: -1 },
+	});
+	const parsed = parseShareFile(text);
+	assert.equal(parsed.kind, "card");
+	if (parsed.kind !== "card") return;
+	assert.deepEqual(parsed.meta, { rowSpan: 48 }, "the one valid field survives; each bad one drops itself");
+});
+
+test("describeCardMeta is the review's total rendering: every present field, one line each", () => {
+	assert.deepEqual(describeCardMeta({}), [], "no metadata, no lines — the section stays absent");
+	assert.deepEqual(describeCardMeta(META), [
+		"default width 120 cells",
+		"default height 48 cells",
+		`tip "${META.tip}"`,
+		"body padding 6u",
+	]);
+	assert.deepEqual(describeCardMeta({ padding: 0 }), ["body padding 0u"], "zero padding is a choice, not absence");
+});
+
+test("exportScreen embeds each custom card's metadata with its definition", () => {
+	const source = createConfigStore({ machineStore: () => null });
+	const cardId = source.addCustomCard("Meta", SPINDLE_EXAMPLE_JSON, META) as CustomCardId;
+	const screenId = source.addScreen("Meta screen");
+	source.replaceAllScreenCards(screenId, { [cardId]: { col: 0, row: 0, colSpan: 120, rowSpan: 48 } });
+	const entry = resolveScreen(source.config, screenId)!;
+	const parsed = parseShareFile(exportScreen(entry, source.config).text);
+	assert.equal(parsed.kind, "screen");
+	if (parsed.kind !== "screen") return;
+	assert.deepEqual(parsed.customCards[0]!.meta, META);
 });
 
 // ---- screen round trip with embedded custom cards + remap ----

@@ -129,7 +129,7 @@ test("a custom card lands on a screen via the same addCard path and survives res
 	const store = createConfigStore({ machineStore: () => null });
 	const cardId = store.addCustomCard("Spindle", SPINDLE_EXAMPLE_JSON) as CustomCardId;
 	const screenId = store.addScreen("CNC");
-	const composition = addCard({}, cardId);
+	const composition = addCard({}, cardId, store.config.cards);
 	assert.ok(composition[cardId], "auto-placed at the custom default size");
 	store.replaceAllScreenCards(screenId, composition as Record<string, { col: number; row: number; colSpan: number; rowSpan: number }>);
 	const entry = resolveScreen(store.config, screenId)!;

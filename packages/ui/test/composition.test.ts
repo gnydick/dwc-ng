@@ -63,14 +63,14 @@ test("findFreePosition on an empty screen is the origin", () => {
 
 test("addCard places at natural size and NEVER moves existing slots", () => {
 	const before: Composition = {};
-	const one = addCard(before, "build-objects");
+	const one = addCard(before, "build-objects", {});
 	assert.deepEqual(one["build-objects"], { col: 0, row: 0, ...CARD_DEFS["build-objects"].size });
 	assert.deepEqual(before, {}, "input untouched — placement is pure");
 });
 
 test("addCard is idempotent (I2: the duplicate has no encoding)", () => {
-	const once = addCard({}, "build-objects");
-	const twice = addCard(once, "build-objects");
+	const once = addCard({}, "build-objects", {});
+	const twice = addCard(once, "build-objects", {});
 	assert.equal(twice, once, "re-adding returns the same composition");
 	assert.equal(slotsOf(twice).length, 1);
 });

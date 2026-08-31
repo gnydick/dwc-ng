@@ -29,7 +29,8 @@ import { addCard, compositionRects, customCardIds, isCustomCardId, slotsOf, type
 import { createServicePool } from "./services.ts";
 import { orientationsOf, planScreenImport, replaceScreenLayout, resolveScreen, savedScreenLayout, screenList, type ScreenEntry } from "./screens.ts";
 import { CustomCard } from "./CustomCard.tsx";
-import { CardStudio } from "./CardStudio.tsx";
+import { CardStudio, type CardMetaPatch } from "./CardStudio.tsx";
+import { sanitizeCardMeta } from "../config/types.ts";
 import { ImportReview } from "./ImportReview.tsx";
 import { exportCard, exportScreen, parseShareFile, remapScreenCards, type ShareImport } from "./share.ts";
 import type { CardCtx } from "./ctx.ts";
@@ -360,7 +361,10 @@ function ComposeDrawer(props: { screenId: string; entry: ScreenEntry | null; com
 		const parsed = importing();
 		if (parsed === null || parsed.kind === "error") return;
 		if (parsed.kind === "card") {
-			const minted = app.config.addCustomCard(parsed.name, parsed.specText);
+			// The reviewed metadata lands with the definition — a shared card
+			// keeps its authored size, tip and padding (already through the one
+			// gate in parseShareFile).
+			const minted = app.config.addCustomCard(parsed.name, parsed.specText, parsed.meta);
 			placeOne(minted);
 		} else {
 			// Re-importing a screen with the same name REPLACES it rather than
@@ -388,7 +392,7 @@ function ComposeDrawer(props: { screenId: string; entry: ScreenEntry | null; com
 
 			const idMap = new Map<string, string>();
 			for (const card of parsed.customCards) {
-				idMap.set(card.fileId, app.config.addCustomCard(card.name, card.specText));
+				idMap.set(card.fileId, app.config.addCustomCard(card.name, card.specText, card.meta));
 			}
 			// An import REBUILDS the page: every card lands where the file says.
 			// replaceScreenLayout is the only writer that touches both the config
@@ -427,15 +431,18 @@ function ComposeDrawer(props: { screenId: string; entry: ScreenEntry | null; com
 		else placeOne(id);
 	};
 
-	/** The studio already validated through the one boundary; just store. */
-	const onStudioSaved = (id: CustomCardId | null, name: string, specJson: string): void => {
+	/** The studio already validated through the one boundary; just store.
+	 *  The chrome metadata patch goes the same two doors: nulls fall out of
+	 *  sanitizeCardMeta on a create (a cleared field on a new card IS absent),
+	 *  and pass to updateCustomCard verbatim, where null means clear. */
+	const onStudioSaved = (id: CustomCardId | null, name: string, specJson: string, meta: CardMetaPatch): void => {
 		if (id === null) {
-			const minted = app.config.addCustomCard(name, specJson);
+			const minted = app.config.addCustomCard(name, specJson, sanitizeCardMeta(meta));
 			// A just-made card lands on the current screen immediately — the
 			// author is composing here, not filing it away.
 			placeOne(minted);
 		} else {
-			app.config.updateCustomCard(id, { name, spec: specJson });
+			app.config.updateCustomCard(id, { name, spec: specJson, ...meta });
 		}
 		setStudio(null);
 	};
@@ -627,7 +634,9 @@ function ComposeDrawer(props: { screenId: string; entry: ScreenEntry | null; com
 											title="Download as a share file"
 											onClick={() => {
 												const def = app.config.config.cards[id]!;
-												const file = exportCard(def.name, def.spec);
+												// The whole def travels: exportCard gates the chrome
+												// metadata (size/tip/padding) into the file beside the spec.
+												const file = exportCard(def.name, def.spec, def);
 												if (file !== null) downloadShare(file);
 											}}
 										>
