@@ -221,7 +221,7 @@ in the diff that drops it.
 
 **Why.** a second delete surface is how the blast-radius report gets skipped: the old drawer ✕ deleted from every screen while showing only a tooltip warning. One surface, armed with the plan, keeps "delete" and "here is what that does" inseparable
 
-`packages/ui/src/compose/CardStudio.tsx:180`
+`packages/ui/src/compose/CardStudio.tsx:200`
 
 ### `compose/one-run-at-a-time-per-screen` — rung 7
 
@@ -1567,11 +1567,11 @@ in the diff that drops it.
 
 ### `shell/grid-metrics-unoverridable` — rung 7
 
-**Mechanism.** illegal state unrepresentable, in two halves. The four grid metric keys cannot be shadowed because GRID_STYLE spreads LAST — a caller's value for the same key is overwritten by the object spread, structurally, not reviewed-for (the metrics are the drag math's other half; see GRID_STYLE). And a caller cannot smuggle any OTHER real CSS property in through `vars` either: the prop's keys are typed `--${string}`, so `vars={{ display: "block" }}` — which would destroy the grid as inline style while leaving the four metrics intact — is a compile error, not a reviewed-for convention. Custom properties are the only thing the type can say, and custom properties are the only thing the scope is FOR
+**Mechanism.** illegal state unrepresentable, in two halves. The four grid metric keys cannot be shadowed because GRID_STYLE spreads LAST — a caller's value for the same key is overwritten by the object spread, structurally, not reviewed-for (the metrics are the drag math's other half; see GRID_STYLE). And `vars` takes ONLY the branded ScreenSpacingVars whose sole producer is spacingVars (config/screenSpacing.ts): a call site cannot pass a literal at all — not `{ display: "block" }` (a real CSS property that would destroy the grid as inline style), not `{ "--u": "0px" }` (which would re-ground the drawn grid's var(--u) while the drag math reads the root's, splitting cursor from card), and not a widened Record<string, string> laundering either key past a shape check. The earlier `--${string}` key type admitted the last two — found by the inc-5 integration review
 
 **Why.** the canvas's inline grid metrics and the drag math are two halves of one geometry (unitPx reads the same --u token); a screen-level style scope that could override the metrics — or the container's display — would let a config-driven token walk the cursor away from the card it is dragging
 
-`packages/ui/src/shell/PanelCanvas.tsx:35`
+`packages/ui/src/shell/PanelCanvas.tsx:36`
 
 ### `shell/only-an-operator-gesture-reports-unsaved-work` — rung 6
 

@@ -22,6 +22,7 @@ import { AppContext, useApp, type AppServices } from "../shell/context.ts";
 import { createArmed } from "../control/armed.ts";
 import { planCardDelete, type CardDeletePlan } from "./screens.ts";
 import { createStubConnector } from "@dwc-ng/connector";
+import { sanitizeCardMeta, type CustomCardMeta } from "../config/types.ts";
 import { ControlList } from "./controls/ControlList.tsx";
 import { parseControlSpecText } from "./controls/parse.ts";
 import { SPINDLE_EXAMPLE, SPINDLE_EXAMPLE_NAME } from "./controls/examples.ts";
@@ -161,12 +162,31 @@ export function CardStudio(props: {
 			return;
 		}
 		const num = (s: string): number | null => (s.trim() === "" ? null : Number(s.trim()));
-		props.onSaved(props.cardId, trimmed, text, {
+		const meta: CardMetaPatch = {
 			colSpan: num(metaColSpan()),
 			rowSpan: num(metaRowSpan()),
 			tip: metaTip().trim() === "" ? null : metaTip().trim(),
 			padding: num(metaPadding()),
-		});
+		};
+		// Honesty for the chrome fields (integration review of inc 4): a typed
+		// value the one gate would DROP used to save as a silent no-op — the
+		// input showed -5 while the stored card kept its old width. The gate
+		// (sanitizeCardMeta) stays the sole authority on validity; this only
+		// compares what was PROVIDED against what it kept and refuses the save
+		// with a named field error (the "needs a name" precedent) on any gap.
+		const provided: { [K in keyof CustomCardMeta]?: unknown } = {};
+		for (const key of ["colSpan", "rowSpan", "tip", "padding"] as const) {
+			if (meta[key] !== null) provided[key] = meta[key];
+		}
+		const kept = sanitizeCardMeta(provided);
+		const fieldNames = { colSpan: "width", rowSpan: "height", tip: "tip", padding: "padding" } as const;
+		for (const key of ["colSpan", "rowSpan", "tip", "padding"] as const) {
+			if (provided[key] !== undefined && kept[key] === undefined) {
+				setError(`Card ${fieldNames[key]}: not a value the card can keep — fix it, or leave it blank for the default.`);
+				return;
+			}
+		}
+		props.onSaved(props.cardId, trimmed, text, meta);
 	};
 
 	/**

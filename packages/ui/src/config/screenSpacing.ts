@@ -111,22 +111,32 @@ export function sanitizeScreenSpacing(raw: unknown): ScreenSpacing | undefined {
  * fail the suite. `gutterU: 0` emits a REAL zero-length, not absence:
  * absence means "shipped default", zero means "the operator asked for none".
  *
- * The return type says CUSTOM PROPERTIES ONLY (`--${string}` keys) — the
- * same shape PanelCanvas's `vars` prop demands (its
- * grid-metrics-unoverridable invariant), so this producer cannot emit a
- * real CSS property that would land as inline style on the canvas.
+ * The return type is BRANDED and this function is its sole producer (the
+ * CompiledControlSpec pattern): PanelCanvas's `vars` prop takes only a
+ * ScreenSpacingVars, so a call site cannot hand the canvas a literal at all
+ * — not `{"--u": "0px"}` (which would re-ground the drawn grid's var(--u)
+ * while the drag math reads the root's, splitting cursor from card), and not
+ * a widened Record<string, string> laundering any key past a template-literal
+ * check. The keys are additionally `--sp-card-${string}`, so even code
+ * writing through the index type cannot name --u. Integration review of
+ * inc 5 found the earlier `--${string}` prop admitted both holes.
  */
-export type ScreenSpacingVars = { [key: `--${string}`]: string };
+declare const spacingVarsBrand: unique symbol;
+export type ScreenSpacingVars =
+	{ readonly [key: `--sp-card-${string}`]: string } & { readonly [spacingVarsBrand]: true };
 
 export function spacingVars(spacing: ScreenSpacing | undefined): ScreenSpacingVars {
-	const vars: ScreenSpacingVars = {};
-	if (spacing === undefined) return vars;
-	if (spacing.gutterU !== undefined) {
-		vars["--sp-card-gutter"] = `calc(${spacing.gutterU} * var(--u))`;
+	const vars: { [key: `--sp-card-${string}`]: string } = {};
+	if (spacing !== undefined) {
+		if (spacing.gutterU !== undefined) {
+			vars["--sp-card-gutter"] = `calc(${spacing.gutterU} * var(--u))`;
+		}
+		if (spacing.padU !== undefined) {
+			vars["--sp-card-x"] = `calc(${spacing.padU} * var(--u))`;
+			vars["--sp-card-b"] = `calc(${spacing.padU / 2} * var(--u))`;
+		}
 	}
-	if (spacing.padU !== undefined) {
-		vars["--sp-card-x"] = `calc(${spacing.padU} * var(--u))`;
-		vars["--sp-card-b"] = `calc(${spacing.padU / 2} * var(--u))`;
-	}
-	return vars;
+	// The one blessed cast: obtaining a ScreenSpacingVars IS having gone
+	// through this producer.
+	return vars as ScreenSpacingVars;
 }

@@ -1,5 +1,6 @@
 import type { JSX } from "solid-js";
 import { GAP_PX, GRID_COLS, ROW_GAP_PX } from "./panelCanvas.ts";
+import type { ScreenSpacingVars } from "../config/screenSpacing.ts";
 
 /**
  * The grid metrics, emitted from the SAME constants the drag math uses
@@ -37,20 +38,23 @@ const GRID_STYLE: JSX.CSSProperties = {
  *          metric keys cannot be shadowed because GRID_STYLE spreads LAST —
  *          a caller's value for the same key is overwritten by the object
  *          spread, structurally, not reviewed-for (the metrics are the drag
- *          math's other half; see GRID_STYLE). And a caller cannot smuggle
- *          any OTHER real CSS property in through `vars` either: the prop's
- *          keys are typed `--${string}`, so `vars={{ display: "block" }}` —
- *          which would destroy the grid as inline style while leaving the
- *          four metrics intact — is a compile error, not a reviewed-for
- *          convention. Custom properties are the only thing the type can
- *          say, and custom properties are the only thing the scope is FOR
+ *          math's other half; see GRID_STYLE). And `vars` takes ONLY the
+ *          branded ScreenSpacingVars whose sole producer is spacingVars
+ *          (config/screenSpacing.ts): a call site cannot pass a literal at
+ *          all — not `{ display: "block" }` (a real CSS property that would
+ *          destroy the grid as inline style), not `{ "--u": "0px" }` (which
+ *          would re-ground the drawn grid's var(--u) while the drag math
+ *          reads the root's, splitting cursor from card), and not a widened
+ *          Record<string, string> laundering either key past a shape check.
+ *          The earlier `--${string}` key type admitted the last two — found
+ *          by the inc-5 integration review
  * @why the canvas's inline grid metrics and the drag math are two halves of
  *      one geometry (unitPx reads the same --u token); a screen-level style
  *      scope that could override the metrics — or the container's display —
  *      would let a config-driven token walk the cursor away from the card
  *      it is dragging
  */
-export function PanelCanvas(props: { class?: string; vars?: { [key: `--${string}`]: string }; children: JSX.Element }) {
+export function PanelCanvas(props: { class?: string; vars?: ScreenSpacingVars; children: JSX.Element }) {
 	return (
 		<div class={props.class ? `panel-canvas ${props.class}` : "panel-canvas"} style={{ ...props.vars, ...GRID_STYLE }}>
 			{props.children}
