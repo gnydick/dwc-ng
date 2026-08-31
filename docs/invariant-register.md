@@ -21,7 +21,7 @@ and invariant claim mentions 13 -> 23, so no mechanism was deleted and no
 claim was lost in the gap. From here the ratchets make a dropped rung visible
 in the diff that drops it.
 
-**Totals:** 181 invariants · 154 at rung 6 or above · 27 below rung 6 (ceiling 27).
+**Totals:** 182 invariants · 155 at rung 6 or above · 27 below rung 6 (ceiling 27).
 
 ## bed
 
@@ -1556,6 +1556,14 @@ in the diff that drops it.
 **Why.** the geometry engine computes spans in cells while the browser lays them out in pixels. When those were two facts, a card's computed position and its painted position could differ by a whole column with nothing failing — and the arithmetic looks right in both places
 
 `packages/ui/src/shell/panelCanvas.ts:109`
+
+### `shell/grid-metrics-unoverridable` — rung 7
+
+**Mechanism.** illegal state unrepresentable, in two halves. The four grid metric keys cannot be shadowed because GRID_STYLE spreads LAST — a caller's value for the same key is overwritten by the object spread, structurally, not reviewed-for (the metrics are the drag math's other half; see GRID_STYLE). And a caller cannot smuggle any OTHER real CSS property in through `vars` either: the prop's keys are typed `--${string}`, so `vars={{ display: "block" }}` — which would destroy the grid as inline style while leaving the four metrics intact — is a compile error, not a reviewed-for convention. Custom properties are the only thing the type can say, and custom properties are the only thing the scope is FOR
+
+**Why.** the canvas's inline grid metrics and the drag math are two halves of one geometry (unitPx reads the same --u token); a screen-level style scope that could override the metrics — or the container's display — would let a config-driven token walk the cursor away from the card it is dragging
+
+`packages/ui/src/shell/PanelCanvas.tsx:35`
 
 ### `shell/only-an-operator-gesture-reports-unsaved-work` — rung 6
 

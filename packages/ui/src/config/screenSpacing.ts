@@ -110,9 +110,16 @@ export function sanitizeScreenSpacing(raw: unknown): ScreenSpacing | undefined {
  * (test/unit-lengths.test.ts) scans TS too, and a literal unit here would
  * fail the suite. `gutterU: 0` emits a REAL zero-length, not absence:
  * absence means "shipped default", zero means "the operator asked for none".
+ *
+ * The return type says CUSTOM PROPERTIES ONLY (`--${string}` keys) — the
+ * same shape PanelCanvas's `vars` prop demands (its
+ * grid-metrics-unoverridable invariant), so this producer cannot emit a
+ * real CSS property that would land as inline style on the canvas.
  */
-export function spacingVars(spacing: ScreenSpacing | undefined): Record<string, string> {
-	const vars: Record<string, string> = {};
+export type ScreenSpacingVars = { [key: `--${string}`]: string };
+
+export function spacingVars(spacing: ScreenSpacing | undefined): ScreenSpacingVars {
+	const vars: ScreenSpacingVars = {};
 	if (spacing === undefined) return vars;
 	if (spacing.gutterU !== undefined) {
 		vars["--sp-card-gutter"] = `calc(${spacing.gutterU} * var(--u))`;
