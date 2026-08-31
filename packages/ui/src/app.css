@@ -4045,12 +4045,28 @@ input[type="checkbox"].fw-check { accent-color: var(--accent); width: calc(3.75 
    REPLACES the class (Movement's .jog-controls grid) — the
    `node.class ?? "ctl-group"` precedent — so that grid still owns its direct
    children. NO min-width: 0 here: the root is not a ratio track and must
-   stay honest to contentColSpan's measurement. */
+   stay honest to contentColSpan's measurement.
+
+   The GROW is what makes a ROOT-LEVEL flexible spacer real (F1, review of
+   66b9bd2): `{ "type": "spacer" }` among the top-level nodes is the footer
+   idiom — content, spacer, a row pinned to the card's bottom — and it only
+   works if this list has free space to hand the spacer. Before this class
+   existed the root nodes sat directly in `.panel-body` (flex column,
+   definite height) and the idiom worked; a content-height list made every
+   root spacer silently inert. `1 0 auto`: grows into the body's slack,
+   never shrinks below content (the body scrolls instead), content-based —
+   so a card WITHOUT a root spacer renders exactly as before, slack below
+   its top-anchored children. contentRowSpan must NOT see this grow — a
+   growing body child is measured as a slack absorber (min-height, i.e.
+   zero) — so the vertical measurement collapses it under `.measuring-rows`
+   below; the pair is held by test/layout-nodes.test.ts ("root-level
+   flexible spacer"). */
 .ctl-list {
 	display: flex;
 	flex-direction: column;
 	gap: var(--ctl-gap);
 	align-items: flex-start;
+	flex: 1 0 auto;
 }
 /* Columns stretch to the tallest sibling (grid default), which is what gives
    a column's own vertical justify real space to distribute. */
@@ -4083,6 +4099,16 @@ input[type="checkbox"].fw-check { accent-color: var(--accent); width: calc(3.75 
 .measuring-intrinsic .ctl-col,
 .measuring-intrinsic .ctl-group {
 	min-width: min-content;
+}
+/* The VERTICAL twin: worn by shell/panelCanvas.ts contentRowSpan on the body
+   around its synchronous child-height read (never painted). The list's grow
+   above exists for the ROOT SPACER's free space, but a growing body child is
+   measured as a slack absorber (declared min-height, i.e. zero) — under this
+   class the list is content height again, its flexible spacers at their zero
+   basis, so the rendered height the loop reads IS the content's true floor.
+   Pinned with the grow and the wearer by test/layout-nodes.test.ts. */
+.measuring-rows .ctl-list {
+	flex: 0 0 auto;
 }
 /* Cross axis, the other half of the flex-start default above: the elements
    that ARE layout — rows, the columns split, equal-width grids, nested

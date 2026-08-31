@@ -349,7 +349,13 @@ function currentOverlay(frozenScreen = false): Record<string, unknown> {
 		// gap keeps them apart), buttons stacked inside a column and a nested
 		// group (the cross-axis fix: atoms keep intrinsic width instead of
 		// stretching rule-to-edge), a column justify, and a flexible row
-		// spacer. The UI side pins this spec through its sole compile
+		// spacer. A flexible ROOT spacer sits between the two top-level
+		// siblings (F1, review of 66b9bd2): the Pitch row is the footer
+		// idiom — pinned to the card's bottom edge, the card's slack
+		// absorbed above it — so driving the seed exercises the restored
+		// root-spacer semantics (.ctl-list grows; contentRowSpan collapses
+		// it while measuring) that no built-in otherwise shows.
+		// The UI side pins this spec through its sole compile
 		// boundary (packages/ui/test/layout-nodes.test.ts), so a vocabulary
 		// change that invalidates this seed fails tests rather than serving
 		// a broken card. G-code M300 S<Hz> P<ms> verified against
@@ -389,6 +395,7 @@ function currentOverlay(frozenScreen = false): Record<string, unknown> {
 								},
 							],
 						},
+						{ type: "spacer" },
 						{
 							type: "row",
 							label: "Pitch",

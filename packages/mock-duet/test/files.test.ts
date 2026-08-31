@@ -94,11 +94,16 @@ test("mock SD seeds dwc-ng-config.json at the current version, stamped and mappe
 	assert.equal(card.padding, 6);
 	const spec = JSON.parse(card.spec);
 	assert.equal(spec.nodes[0].type, "columns", "top-level sibling 1: the columns split");
-	assert.equal(spec.nodes[1].type, "row", "top-level sibling 2: the row below it — the pair the root-stack gap keeps apart");
+	// F1 (review of 66b9bd2): a flexible ROOT spacer between content and the
+	// footer row — the restored footer idiom, seeded so it is drivable. No
+	// size: a fixed spacer never exercises the free-space path.
+	assert.equal(spec.nodes[1].type, "spacer", "top-level sibling 2: the flexible root spacer — the footer idiom");
+	assert.equal(spec.nodes[1].size, undefined, "the root spacer must be FLEXIBLE to exercise the free-space path");
+	assert.equal(spec.nodes[2].type, "row", "top-level sibling 3: the footer row the root spacer pins to the card's bottom");
 	assert.equal(spec.nodes[0].columns.length, 2);
 	assert.equal(spec.nodes[0].columns[0].nodes[1].type, "gcode-button", "a button stacked inside a column — the intrinsic-width case");
 	assert.equal(spec.nodes[0].columns[1].nodes[0].type, "group", "a nested group — the other stacking level");
-	assert.ok(spec.nodes[1].items.some((i: { type?: string }) => i.type === "spacer"), "the row carries a flexible spacer");
+	assert.ok(spec.nodes[2].items.some((i: { type?: string }) => i.type === "spacer"), "the row carries a flexible spacer");
 });
 
 test("--config-version 1 seeds the byte-identical pre-v3 shape (no stamp, no accelByTool)", async t => {

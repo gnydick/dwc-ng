@@ -79,6 +79,25 @@ convention, cited.
 - Direction-agnostic by construction: the fixed form is `flex-basis`, which
   is main-axis in a row and in a group/column alike — one node, no
   horizontal/vertical variants to keep in sync (A5.7).
+- **Root level — the footer idiom (F1, review of 66b9bd2, restored
+  2026-08-31).** A flexible spacer among the TOP-LEVEL nodes pins what
+  follows it to the card's bottom edge (`nodes: [content…, spacer,
+  footerRow]` — the DRO/footer idiom). This worked when root nodes were
+  direct children of `.panel-body` and went silently inert when the round-2
+  `.ctl-list` wrapper (content-height) took them over: valid vocabulary, no
+  effect. Restored by `.ctl-list { flex: 1 0 auto }` — the list grows into
+  the body's slack (never shrinks below content; a card without a root
+  spacer renders unchanged, slack below its top-anchored children) — PAIRED
+  with a vertical measurement mode: a growing body child is a slack
+  absorber to `contentRowSpan` (measured at declared `min-height`, i.e.
+  zero), which would have collapsed every control card's row floor, so
+  `contentRowSpan` — the ONE vertical measurement route — wears
+  `measuring-rows` on the body for its synchronous read and app.css
+  collapses the list to `flex: 0 0 auto` under it (the `measuring-intrinsic`
+  construction, on the other axis). The grow, the collapse rule and the
+  wearer are held together by `test/layout-nodes.test.ts` ("root-level
+  flexible spacer…"); the mock's seeded Beeper card carries the idiom so a
+  fresh mock demonstrates it (its Pitch row is the pinned footer).
 - A spacer emits nothing, reads nothing, and has no children: in the share
   review it contributes NOTHING to the inventory, and the walk says so
   explicitly (a `return` under the totality weld, like jog-pad's motion note).

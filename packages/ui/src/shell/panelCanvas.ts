@@ -675,6 +675,20 @@ export function contentRowSpan(
 	// absolutely-positioned child (the toolpath canvas is one); and an emptied
 	// body counts its single header and so spans no gaps at all.
 	let counted = 0;
+	// Measurement mode — the vertical twin of intrinsicWidthPx's
+	// `measuring-intrinsic`, worn for the same synchronous set/read/restore
+	// (no yield, so the collapsed state never paints). `.ctl-list` grows
+	// (flex: 1 0 auto, app.css) so a ROOT-LEVEL flexible spacer has free
+	// space to distribute — but the slack-absorber rule below measures any
+	// growing child at its declared min-height, i.e. zero, which would floor
+	// every control card at header + padding. Under `.measuring-rows` the
+	// sheet collapses the list to content height (its flexible spacers at
+	// their zero basis), the flexGrow this loop reads is 0, and the rendered
+	// height IS the content's true minimum. Inside the ONE vertical
+	// measurement route on purpose, so every caller measures in truth mode
+	// without knowing the class exists (the intrinsicWidthPx precedent).
+	// Pinned by test/layout-nodes.test.ts ("root-level flexible spacer").
+	body.classList.add("measuring-rows");
 	for (const child of Array.from(body.children)) {
 		// The audit's "with the body emptied" measurement. `.card-head` is the
 		// header by the same selector headerColSpan uses, so "the header" means
@@ -714,6 +728,7 @@ export function contentRowSpan(
 		contentBottom += height
 			+ (parseFloat(style.marginTop) || 0) + (parseFloat(style.marginBottom) || 0);
 	}
+	body.classList.remove("measuring-rows");
 	const bodyStyle = getComputedStyle(body);
 	// The gaps a flex/grid body puts BETWEEN its children are part of the stack.
 	const rowGap = parseFloat(bodyStyle.rowGap);

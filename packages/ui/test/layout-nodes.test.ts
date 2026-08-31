@@ -115,16 +115,89 @@ test("control atoms keep intrinsic width in a stack; layout containers span it",
 	// The elements that ARE layout span the stack. One rule; every stack
 	// container and every spanning child named in it, so adding a stack (or a
 	// container node) without deciding its cross-axis behaviour fails here.
+	// Coverage is asserted on the PARSED :is() argument lists, token by token,
+	// never by substring: `.ctl-col` is a substring of `.ctl-columns` and
+	// `.ctl-group` also sits in the CHILD list, so a `sel.includes(...)` read
+	// stayed green with either dropped from the PARENT list (F2, review of
+	// 66b9bd2 — the aliasing the paren-aware splitter above exists to stop).
 	const span = rules().find(r =>
 		/align-self:\s*stretch/.test(r.body) && r.sel.includes(".ctl-list") && r.sel.includes(".ctl-wrap"));
 	assert.ok(span !== undefined,
 		"no rule stretches layout containers inside the stacks — rows/columns would shrink-wrap and their spacers stop distributing");
+	const shape = /^:is\(([^)]*)\)\s*>\s*:is\(([^)]*)\)$/.exec(span!.sel);
+	assert.ok(shape !== null,
+		`the spanning rule is not the parent :is() > child :is() form this test knows how to read: ${span!.sel}`);
+	const parents = splitSelectors(shape![1]!);
+	const children = splitSelectors(shape![2]!);
 	for (const cls of [".ctl-list", ".ctl-col", ".ctl-group"]) {
-		assert.ok(span!.sel.includes(cls), `the spanning rule does not cover children of ${cls}`);
+		assert.ok(parents.includes(cls),
+			`the spanning rule's PARENT list does not name ${cls} — layout children of that stack shrink-wrap`);
 	}
 	for (const child of [".ctl-wrap", ".ctl-columns", ".ctl-grid", ".ctl-group", ".ctl-slider"]) {
-		assert.ok(span!.sel.includes(child), `${child} is layout (or an elastic strip) and must span the stack`);
+		assert.ok(children.includes(child), `${child} is layout (or an elastic strip) and must span the stack`);
 	}
+});
+
+/**
+ * F1 (review of 66b9bd2) — A ROOT-LEVEL FLEXIBLE SPACER MUST HAVE FREE SPACE,
+ * AND THE ROW FLOOR MUST NOT SEE IT.
+ *
+ * `{ "type": "spacer" }` at the top level of a spec is valid vocabulary
+ * (parse.ts reaches the spacer case from the root nodes walk) and is the
+ * footer idiom: content, spacer, footer row pinned to the card's bottom.
+ * Before .ctl-list existed the root nodes were direct children of
+ * `.panel-body` (flex column, definite height via flex: 1), so the spacer
+ * had free space to eat. Wrapping them in a content-height `.ctl-list`
+ * silently made every root spacer inert: valid vocabulary, no effect.
+ *
+ * Restoring the semantics is `.ctl-list { flex: 1 0 auto }` — but a body
+ * child with flex-grow > 0 is a SLACK ABSORBER to contentRowSpan
+ * (shell/panelCanvas.ts), measured at its declared min-height (else zero),
+ * so the grow alone would floor every control card at header + padding.
+ * The pair that keeps both true is the measuring-intrinsic construction,
+ * on the vertical axis: contentRowSpan — the ONE vertical measurement
+ * route — wears `measuring-rows` on the body for its synchronous read, and
+ * app.css collapses the list back to content height under that class. The
+ * grows check then reads flex-grow 0 and the rendered height IS the true
+ * minimum, with the spacer at its zero basis.
+ *
+ * Three parts, none visible from the others, held together here — the
+ * ratio-zero/lift/wearer pattern from intrinsic-floors.test.ts.
+ */
+test("a root-level flexible spacer has free space to distribute, and the floor cannot see it", () => {
+	// 1. The grow: without it a root spacer is inert (the F1 defect).
+	const list = ruleFor(".ctl-list").body;
+	const grow = /flex:\s*([\d.]+)/.exec(list);
+	assert.ok(grow !== null && Number(grow[1]) >= 1,
+		".ctl-list does not grow in .panel-body — a root-level flexible spacer has no free space and the footer idiom renders flush under the content");
+	// …and the spacer itself is still the free-space eater the idiom rides on.
+	assert.match(ruleFor(".ctl-spacer").body, /flex:\s*1 1 0/,
+		".ctl-spacer lost its flexible default — nothing distributes the space the grow above provides");
+
+	// 2. The collapse: under measurement the list is content height again.
+	const collapse = rules().find(r =>
+		splitSelectors(r.sel).some(s => s === ".measuring-rows .ctl-list"));
+	assert.ok(collapse !== undefined,
+		"no .measuring-rows .ctl-list rule — contentRowSpan measures a growing list at min-height 0 and every control card's floor collapses to header + padding");
+	assert.match(collapse!.body, /flex:\s*0 0 auto/,
+		"the measurement rule does not collapse the grow — the floor still cannot see the content");
+
+	// 3. The wearer: inside contentRowSpan itself, not a caller — the sole
+	// vertical measurement route is the choke point (the intrinsicWidthPx
+	// precedent), added BEFORE the child loop reads and removed after.
+	const canvas = readFileSync(
+		fileURLToPath(new URL("../src/shell/panelCanvas.ts", import.meta.url)), "utf8");
+	const fn = /export function contentRowSpan[\s\S]*?\n\}/.exec(canvas);
+	assert.ok(fn !== null, "contentRowSpan not found in panelCanvas.ts — the sole vertical measurer moved; move this pin with it");
+	const add = fn![0]!.indexOf('classList.add("measuring-rows")');
+	const remove = fn![0]!.indexOf('classList.remove("measuring-rows")');
+	const loop = fn![0]!.indexOf("for (const child");
+	assert.ok(add !== -1,
+		"contentRowSpan never enters measuring-rows — a growing .ctl-list is measured as a slack absorber and reports zero");
+	assert.ok(remove !== -1,
+		"measuring-rows is never left — live rendering would lose the grow the root spacer needs");
+	assert.ok(add < loop && loop < remove,
+		"measuring-rows must be worn around the child loop — worn elsewhere, the loop still reads the growing list");
 });
 
 test("the mock's seeded demo card compiles whole and exercises the round-2 shapes", async t => {
@@ -163,7 +236,15 @@ test("the mock's seeded demo card compiles whole and exercises the round-2 shape
 	assert.ok(parsed.ok);
 	const nodes = parsed.spec.nodes;
 	assert.equal(nodes[0]!.type, "columns", "top-level sibling 1 is the columns split");
-	assert.equal(nodes[1]!.type, "row", "top-level sibling 2 is a row — the pair the .ctl-list gap keeps apart");
+	// The F1 idiom, seeded so it is DRIVABLE: a flexible root spacer between
+	// the content and the footer row. Driving the seed shows the Pitch row
+	// pinned to the card's bottom edge — the behaviour the .ctl-list grow
+	// restores and the "root-level flexible spacer" test above holds up.
+	const spacer = nodes[1]!;
+	assert.equal(spacer.type, "spacer", "a flexible ROOT spacer separates content from the footer row");
+	assert.ok(spacer.type !== "spacer" || spacer.size === undefined,
+		"the root spacer must be FLEXIBLE — a fixed size never exercises the free-space path");
+	assert.equal(nodes[2]!.type, "row", "the footer row the root spacer pins to the card's bottom");
 	const cols = nodes[0]!.type === "columns" ? nodes[0]!.columns : [];
 	assert.ok(
 		cols.some(col => col.nodes.some(n => n.type === "gcode-button")),
