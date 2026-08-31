@@ -21,7 +21,7 @@ and invariant claim mentions 13 -> 23, so no mechanism was deleted and no
 claim was lost in the gap. From here the ratchets make a dropped rung visible
 in the diff that drops it.
 
-**Totals:** 177 invariants · 150 at rung 6 or above · 27 below rung 6 (ceiling 27).
+**Totals:** 178 invariants · 151 at rung 6 or above · 27 below rung 6 (ceiling 27).
 
 ## bed
 
@@ -171,7 +171,7 @@ in the diff that drops it.
 
 **Why.** a half-compiled spec renders controls that look operable and send nothing, or send the wrong thing. Built-in specs run this at module load, so a broken one fails the build rather than the machine
 
-`packages/ui/src/compose/controls/spec.ts:102`
+`packages/ui/src/compose/controls/spec.ts:136`
 
 ### `compose/controls/template-compiles-whole` — rung 7
 
@@ -205,7 +205,7 @@ in the diff that drops it.
 
 **Why.** a second delete surface is how the blast-radius report gets skipped: the old drawer ✕ deleted from every screen while showing only a tooltip warning. One surface, armed with the plan, keeps "delete" and "here is what that does" inseparable
 
-`packages/ui/src/compose/CardStudio.tsx:144`
+`packages/ui/src/compose/CardStudio.tsx:149`
 
 ### `compose/one-run-at-a-time-per-screen` — rung 7
 
@@ -1095,6 +1095,14 @@ in the diff that drops it.
 
 `packages/ui/src/om/types.ts:513`
 
+### `om/pickable-implies-parseable` — rung 7
+
+**Mechanism.** the return type is the branded OmSelector, whose sole constructor is parseOmSelector — this function cannot hand out a string the parser did not accept, because it has no way to mint the brand itself. Null means "this node has no selector" and the affordance is absent, not disabled-with-garbage
+
+**Why.** the inspector offers selectors for pasting into binding fields. Parsing the composed text is necessary but NOT sufficient: a key like "a.b" composes into text that parses fine and denotes a DIFFERENT path. So the parse result is also compared segment-by-segment against the path it was built from — "parses but means something else" fails to null exactly like "does not parse" Construction: key steps become dot-separated segments; an index step becomes a `[n]` qualifier on the preceding key segment. Unbuildable shapes (empty path, index at root, index straight after an index — one bracket per segment in the grammar) return null before composing. Filter qualifiers ([visible], [letter=C]) are never synthesized — the path cannot know which filter the user means; indices are the only qualifier a traversal implies.
+
+`packages/ui/src/om/inspect.ts:54`
+
 ## shaping
 
 ### `shaping/a-capture-is-proved-not-named` — rung 6
@@ -1597,7 +1605,7 @@ in the diff that drops it.
 
 **Debt — promotion.** ONLY WHAT THE STYLESHEET CAN SAY. The predicate reads app.css text, so it does not see a height arriving from an inline style, from a `classList` addition, or from a JS-set custom property, and it does not resolve specificity — a floor declared in a rule that loses the cascade reads as present. It also cannot distinguish a flex COLUMN item, where the collapse actually happens, from a flex ROW item, where the fixed height is the cross size and the block axis was never at risk; both are required to declare the floor, which is conservative in the right direction but is the reason `.color-clash` and `.accel-status` carry a min-height equal to their own height rather than a measured one. Promote by making the guard travel with the geometry instead of beside it: ONE shared declaration that every fixed-height clipped row extends, so the floor is not something a new row can be written without, and this scan becomes structurally unnecessary rather than merely green
 
-`packages/ui/src/app.css:5213`
+`packages/ui/src/app.css:5263`
 
 ### `ui/heavy-libraries-stay-behind-a-dynamic-import` — rung 4
 

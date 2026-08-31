@@ -1,0 +1,60 @@
+/* OM picker — the inspector's copy-as-selector affordance (GIT_194 inc 6).
+   Lives beside OmInspector.tsx rather than in app.css: the picker is the only
+   consumer, and the rules ride the same --u unit + zero-layout-decoration
+   discipline as everything else (the px lint walks this file too).
+
+   Positional stability: the slot has a fixed width in EVERY row — it holds
+   the button, or nothing for a node with no selector — and every state change
+   (hover, copied, failed) is color/opacity/inset-shadow only, so no gesture
+   ever moves a row's geometry. The slot also sits BEFORE the live value, so a
+   value changing width at poll rate never slides the button under the cursor. */
+
+.om-copy-slot {
+	width: calc(4.5 * var(--u));
+	height: calc(4.5 * var(--u));
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.om-copy {
+	width: calc(4.5 * var(--u));
+	height: calc(4.5 * var(--u));
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex: none;
+	padding: 0;
+	background: none;
+	border: none;
+	border-radius: 3px;
+	cursor: pointer;
+	color: var(--silk-dim);
+	font-size: calc(3.25 * var(--u));
+	line-height: 1;
+	/* Discoverable but quiet: always present, brightening on row hover —
+	   visibility changes ride opacity, never display/visibility, so the row
+	   never reflows and touch devices still see it. */
+	opacity: 0.4;
+}
+.om-row:hover .om-copy,
+.om-copy:focus-visible {
+	opacity: 1;
+}
+.om-copy:hover {
+	color: var(--accent);
+}
+/* State cues last, so they win the same-specificity race against :hover. */
+.om-copy.copied {
+	color: var(--ok);
+	box-shadow: inset 0 0 0 1px var(--ok);
+	opacity: 1;
+}
+/* A refused copy says so — same rule as CardTip: a broken clipboard must not
+   look like a dead button. */
+.om-copy.failed {
+	color: var(--fault);
+	box-shadow: inset 0 0 0 1px var(--fault);
+	opacity: 1;
+}
