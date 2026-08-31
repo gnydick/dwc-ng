@@ -41,7 +41,7 @@
  * citation was not.
  */
 import { clampRect, findFreePosition, type PanelRect } from "../shell/panelCanvas.ts";
-import { CARD_DEFS, parseCardId, type CardId } from "./defs.ts";
+import { CARD_DEFS, parseCardId, type CardId, type CardSize } from "./defs.ts";
 import { isCustomCardId, type CustomCardId, type SlotRect, type UiConfig } from "../config/types.ts";
 
 /** Placement is geometry — it lives in panelCanvas.ts (one implementation,
@@ -216,17 +216,50 @@ export function compositionRects(composition: Composition): Record<string, SlotR
 	return Object.fromEntries(slotsOf(composition).map(([id, slot]) => [id, toSlotRect(slot)]));
 }
 
-/** A custom card's default footprint until its author resizes it. */
+/** A custom card's default footprint when its author declared none. */
 const CUSTOM_CARD_SIZE = { colSpan: 156, rowSpan: 40 };
 
 /**
- * Add a card at its natural size (registry cards) or the custom default in
+ * THE answer to "what footprint does this slot id default to" (#194 inc 4)
+ * — registry ids from CARD_DEFS (the natural geometry, I4), custom ids
+ * from the AUTHORED colSpan/rowSpan on their definition, per axis, with
+ * CUSTOM_CARD_SIZE as the fallback. Authored spans are normalized through
+ * clampRect — the one existing bound (round, ≥1, colSpan ≤ grid) — so an
+ * absurd stored value cannot place an illegal rect and no second min/max
+ * exists anywhere.
+ *
+ * `cards` is optional only because a call site frozen by this round's
+ * advisory file locks passes two arguments (see the design spec §2);
+ * absent, a custom id answers the stock default. Promote to required at
+ * integration so a new call site cannot silently ignore authored sizes.
+ */
+export function defaultCardSize(
+	id: SlotId,
+	cards?: Partial<Record<CustomCardId, { colSpan?: number; rowSpan?: number }>>,
+): CardSize {
+	if (!isCustomCardId(id)) return CARD_DEFS[id].size;
+	const def = cards?.[id];
+	const clamped = clampRect({
+		col: 0, row: 0,
+		colSpan: def?.colSpan ?? CUSTOM_CARD_SIZE.colSpan,
+		rowSpan: def?.rowSpan ?? CUSTOM_CARD_SIZE.rowSpan,
+	});
+	return { colSpan: clamped.colSpan, rowSpan: clamped.rowSpan };
+}
+
+/**
+ * Add a card at its natural size (registry cards) or its authored/default
+ * custom footprint (defaultCardSize — ONE sizing path for both kinds) in
  * the first free spot. No-op if already present (I2 makes the duplicate
  * unrepresentable; this makes re-adding idempotent rather than an error).
  */
-export function addCard(composition: Composition, id: SlotId): Composition {
+export function addCard(
+	composition: Composition,
+	id: SlotId,
+	cards?: Partial<Record<CustomCardId, { colSpan?: number; rowSpan?: number }>>,
+): Composition {
 	if (composition[id] !== undefined) return composition;
-	const size = isCustomCardId(id) ? CUSTOM_CARD_SIZE : CARD_DEFS[id].size;
+	const size = defaultCardSize(id, cards);
 	const occupied = Object.values(composition).filter((s): s is Slot => s !== undefined);
 	const { col, row } = findFreePosition(occupied, size);
 	return { ...composition, [id]: { col, row, ...size } };

@@ -416,7 +416,9 @@ function ComposeDrawer(props: { screenId: string; entry: ScreenEntry | null; com
 	 * need the second tier too (see config/screen-layout-two-tier).
 	 */
 	const placeOne = (id: SlotId): void => {
-		const rect = asRects(addCard(props.composition, id))[id];
+		// The custom defs feed the ONE sizing path (defaultCardSize), so an
+		// authored footprint places exactly like a registry card's natural size.
+		const rect = asRects(addCard(props.composition, id, app.config.config.cards))[id];
 		if (rect !== undefined) app.config.setScreenCard(props.screenId, id, rect);
 	};
 

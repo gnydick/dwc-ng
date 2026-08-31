@@ -27,7 +27,12 @@ export function CustomCard(props: { id: CustomCardId; canvas: PanelCanvasControl
 	return (
 		<Show when={def()}>
 			{d => (
-				<Card id={props.id} canvas={props.canvas} ariaLabel={d().name} title={d().name} tip="custom card">
+				// Authored metadata (#194 inc 4): the tip replaces the stock
+				// "custom card" only when the author wrote one (same CardTip,
+				// same click-to-copy); padU overrides the house body padding.
+				// Provenance no longer rides the tip — the import review's
+				// complete inventory is the gate a foreign card cannot skip.
+				<Card id={props.id} canvas={props.canvas} ariaLabel={d().name} title={d().name} tip={d().tip ?? "custom card"} padU={d().padding}>
 					<Show
 						when={(() => { const p = parsed(); return p !== null && p.ok ? p.spec : null; })()}
 						fallback={

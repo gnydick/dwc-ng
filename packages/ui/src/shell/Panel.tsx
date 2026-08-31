@@ -30,6 +30,14 @@ export function Panel(props: {
 	tip?: JSX.Element;
 	/** Header float-right zone: the card's own controls (close, save, reset…). */
 	actions?: JSX.Element;
+	/**
+	 * Card-body padding override in `--u` UNITS (#194 inc 4) — a number,
+	 * never a px string; it renders as `calc(n * var(--u))` so it scales
+	 * with everything else. Absent = no inline style at all, so the
+	 * stylesheet's house tokens (`--sp-card-t/x/b`) stay in charge — the
+	 * default is the absence, not a copy of the tokens' values.
+	 */
+	padU?: number;
 	children: JSX.Element;
 }) {
 	let bodyEl!: HTMLDivElement;
@@ -100,7 +108,11 @@ export function Panel(props: {
 					onPointerDown={event => startHoldScroll(-1, event)}
 				/>
 			</Show>
-			<div class="panel-body" ref={bodyEl}>
+			<div
+				class="panel-body"
+				ref={bodyEl}
+				style={props.padU === undefined ? undefined : { padding: `calc(${props.padU} * var(--u))` }}
+			>
 				{/* The header, in four zones. The grip+toggle (right, sacred) are a
 				    real child here — not a floating overlay — so nothing can sit to
 				    their right by construction. See CardHead's doc for the zones. */}

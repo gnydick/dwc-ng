@@ -24,7 +24,7 @@
  *       at a new load site a compile error instead of merely absent.
  */
 import {
-	CONFIG_VERSION, isCustomCardId, isUserScreenId,
+	CONFIG_VERSION, isCustomCardId, isUserScreenId, sanitizeCardMeta,
 	type ConfigOverlay, type CustomScreen, type Envelope, type PinnedCommand,
 	type Range, type ShapingDefaults, type SlotRect,
 	type ThermalColors, type UserScreenId,
@@ -296,8 +296,11 @@ function parseCards(raw: unknown): ConfigOverlay["cards"] {
 		if (!isPlainObject(value) || typeof value.name !== "string" || typeof value.spec !== "string") continue;
 		// The spec STAYS opaque text here — it re-passes its own boundary
 		// (compose/controls/parse.ts) at the use site, where a broken spec
-		// costs that card an error body, never the screen.
-		out[key] = { name: value.name, spec: value.spec };
+		// costs that card an error body, never the screen. The metadata
+		// fields (authored size, tip, padding — flat scalars, #194 inc 4)
+		// pass through the ONE gate the store mutators also use; a bad
+		// field drops itself, never the card.
+		out[key] = { name: value.name, spec: value.spec, ...sanitizeCardMeta(value) };
 	}
 	return Object.keys(out).length > 0 ? out : undefined;
 }

@@ -7,8 +7,9 @@ import { asEnvelope, isAccelAddr, parseOverlay, parseOverlayPayload, parseShapin
 import {
 	CONFIG_CACHE_KEY, CONFIG_FILE, CONFIG_VERSION, DEFAULT_CONFIG, MAX_SNAPSHOTS,
 	MAX_LABEL_LEN, DEFAULT_SNAPSHOT_LABEL,
-	isUserScreenId, joinOverlay, splitOverlay,
+	isUserScreenId, joinOverlay, sanitizeCardMeta, splitOverlay,
 	type CameraConfig, type CameraPrefsConfig, type ConfigOverlay, type ConfigSnapshot, type CustomCardId,
+	type CustomCardMeta,
 	type DeepPartial, type DockSensorRef, type BedConfig, type Envelope, type MachineConfig, type MacrosConfig,
 	type PersonConfig, type ShapingDefaults,
 	type SlotRect, type ThermalColors, type UiConfig, type UserScreenId,
@@ -224,9 +225,24 @@ export interface ConfigStore {
 	 */
 	setScreenCard(screenId: string, cardId: string, rect: SlotRect | null): void;
 
-	/** Create a user-authored card; returns its minted stable id ("c-…"). */
-	addCustomCard(name: string, spec: string): CustomCardId;
-	updateCustomCard(id: CustomCardId, patch: { name?: string; spec?: string }): void;
+	/**
+	 * Create a user-authored card; returns its minted stable id ("c-…").
+	 * `meta` (#194 inc 4) carries the optional authored footprint, tip and
+	 * padding — validated through the ONE gate (types.ts sanitizeCardMeta),
+	 * so an invalid field is dropped here exactly as the overlay parser
+	 * drops it on load.
+	 */
+	addCustomCard(name: string, spec: string, meta?: CustomCardMeta): CustomCardId;
+	/**
+	 * Patch a card. For the metadata fields, `undefined` = leave untouched
+	 * and `null` = clear (back to the default the absence means); values
+	 * pass the same sanitizeCardMeta gate as everywhere else.
+	 */
+	updateCustomCard(id: CustomCardId, patch: {
+		name?: string; spec?: string;
+		colSpan?: number | null; rowSpan?: number | null;
+		tip?: string | null; padding?: number | null;
+	}): void;
 	removeCustomCard(id: CustomCardId): void;
 
 	/** Append an arbitrary pinned command (disabled). Returns its minted id. */
@@ -793,9 +809,9 @@ export function createConfigStore(options: { machineStore: Accessor<MachineStore
 			});
 		},
 
-		addCustomCard(name, spec) {
+		addCustomCard(name, spec, meta) {
 			const id = mintId("c-");
-			apply(draft => { (draft.cards ??= {})[id] = { name, spec }; });
+			apply(draft => { (draft.cards ??= {})[id] = { name, spec, ...sanitizeCardMeta(meta ?? {}) }; });
 			return id;
 		},
 		updateCustomCard(id, patch) {
@@ -804,6 +820,14 @@ export function createConfigStore(options: { machineStore: Accessor<MachineStore
 				if (card === undefined) return;
 				if (patch.name !== undefined) card.name = patch.name;
 				if (patch.spec !== undefined) card.spec = patch.spec;
+				// Metadata: null clears a field (absence IS the default), and
+				// everything else passes the one gate — sanitizeCardMeta simply
+				// yields nothing for a null or invalid value, so the delete and
+				// the assign cannot disagree about what counts as valid.
+				for (const key of ["colSpan", "rowSpan", "tip", "padding"] as const) {
+					if (patch[key] === null) delete card[key];
+				}
+				Object.assign(card, sanitizeCardMeta(patch));
 			});
 		},
 		removeCustomCard(id) {

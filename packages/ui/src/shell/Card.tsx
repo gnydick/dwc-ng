@@ -20,6 +20,8 @@ export function Card(props: {
 	class?: string;
 	orientationToggle?: boolean;
 	labelsToggle?: boolean;
+	/** Body padding in `--u` units (see Panel.padU) — absent = house padding. */
+	padU?: number;
 	children: JSX.Element;
 }) {
 	return (
@@ -33,6 +35,7 @@ export function Card(props: {
 			title={props.title}
 			tip={props.tip}
 			actions={props.actions}
+			padU={props.padU}
 		>
 			{props.children}
 		</Panel>
