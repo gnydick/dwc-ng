@@ -24,6 +24,19 @@ function ReviewBlock(props: { review: SpecReview }) {
 					</For>
 				</div>
 			</Show>
+			<Show when={props.review.sliders.length > 0}>
+				<div class="import-sect">
+					<span class="lab-cap">Slider sends</span>
+					<For each={props.review.sliders}>
+						{s => (
+							<div class="import-code">
+								<span class="import-label">{s.input} · {s.min}–{s.max}</span>
+								<code>{s.template}</code>
+							</div>
+						)}
+					</For>
+				</div>
+			</Show>
 			<Show when={props.review.motion.length > 0}>
 				<div class="import-sect">
 					<span class="lab-cap">Motion</span>

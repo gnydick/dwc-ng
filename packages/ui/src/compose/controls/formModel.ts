@@ -13,7 +13,7 @@
  * one untrusted boundary (parseControlSpecText), so the form, the JSON mode,
  * and a future import file are accepted or refused by identical rules.
  */
-import type { ButtonVariant, ControlNode, ControlSpec, InputDef, RowItem } from "./spec.ts";
+import { isInputRef, type ButtonVariant, type ControlNode, type ControlSpec, type InputDef, type RowItem } from "./spec.ts";
 
 export interface FormInput {
 	name: string;
@@ -27,7 +27,10 @@ export interface FormInput {
 
 export type FormItem =
 	| { kind: "input"; name: string }
-	| { kind: "button"; label: string; template: string; variant: ButtonVariant | ""; stamp: boolean };
+	| { kind: "button"; label: string; template: string; variant: ButtonVariant | ""; stamp: boolean }
+	// Optional spec fields ride as ""/null in the form ("" lowers to absent).
+	| { kind: "readout"; om: string; label: string; unit: string; decimals: number | null }
+	| { kind: "slider"; input: string; min: number; max: number; step: number | null; template: string; stamp: boolean };
 
 export interface FormRow {
 	label: string;
@@ -47,6 +50,16 @@ export function emptyButton(): FormItem {
 	return { kind: "button", label: "", template: "", variant: "", stamp: true };
 }
 
+export function emptyReadout(): FormItem {
+	return { kind: "readout", om: "", label: "", unit: "", decimals: null };
+}
+
+/** Seeded with an input name (the first declared one, or "" — the compile
+ *  boundary's path-named error then names what's missing in the preview). */
+export function emptySlider(input: string): FormItem {
+	return { kind: "slider", input, min: 0, max: 100, step: null, template: "", stamp: true };
+}
+
 /** Form → spec. Total: any form state lowers (validity is the boundary's job). */
 export function toSpec(form: FormState): ControlSpec {
 	const inputs: Record<string, InputDef> = {};
@@ -59,16 +72,38 @@ export function toSpec(form: FormState): ControlSpec {
 	const nodes: ControlNode[] = form.rows.map(row => ({
 		type: "row",
 		...(row.label !== "" ? { label: row.label } : {}),
-		items: row.items.map((item): RowItem =>
-			item.kind === "input"
-				? { input: item.name }
-				: {
-					type: "gcode-button",
-					label: item.label,
-					template: item.template,
-					...(item.variant !== "" ? { variant: item.variant } : {}),
-					...(item.stamp ? {} : { stamp: false }),
-				}),
+		items: row.items.map((item): RowItem => {
+			switch (item.kind) {
+				case "input":
+					return { input: item.name };
+				case "button":
+					return {
+						type: "gcode-button",
+						label: item.label,
+						template: item.template,
+						...(item.variant !== "" ? { variant: item.variant } : {}),
+						...(item.stamp ? {} : { stamp: false }),
+					};
+				case "readout":
+					return {
+						type: "readout",
+						om: item.om,
+						...(item.label !== "" ? { label: item.label } : {}),
+						...(item.unit !== "" ? { unit: item.unit } : {}),
+						...(item.decimals !== null ? { decimals: item.decimals } : {}),
+					};
+				case "slider":
+					return {
+						type: "slider",
+						input: item.input,
+						min: item.min,
+						max: item.max,
+						...(item.step !== null ? { step: item.step } : {}),
+						template: item.template,
+						...(item.stamp ? {} : { stamp: false }),
+					};
+			}
+		}),
 	}));
 	return { inputs, nodes };
 }
@@ -95,12 +130,17 @@ export function tryFromSpec(spec: ControlSpec): FormState | null {
 		if (node.type !== "row" || node.sub !== undefined || node.class !== undefined) return null;
 		const items: FormItem[] = [];
 		for (const item of node.items) {
-			if ("input" in item && !("type" in item)) {
+			if (isInputRef(item)) {
 				items.push({ kind: "input", name: item.input });
-			} else if ((item as ControlNode).type === "gcode-button") {
-				const b = item as ControlNode & { type: "gcode-button" };
-				if (b.class !== undefined) return null;
-				items.push({ kind: "button", label: b.label, template: b.template, variant: b.variant ?? "", stamp: b.stamp !== false });
+			} else if (item.type === "gcode-button") {
+				if (item.class !== undefined) return null;
+				items.push({ kind: "button", label: item.label, template: item.template, variant: item.variant ?? "", stamp: item.stamp !== false });
+			} else if (item.type === "readout") {
+				// Every readout field is form-representable — a readout always lifts.
+				items.push({ kind: "readout", om: item.om, label: item.label ?? "", unit: item.unit ?? "", decimals: item.decimals ?? null });
+			} else if (item.type === "slider") {
+				// Likewise: min/max/step/template/stamp all have form fields.
+				items.push({ kind: "slider", input: item.input, min: item.min, max: item.max, step: item.step ?? null, template: item.template, stamp: item.stamp !== false });
 			} else {
 				return null; // jog primitives / nested structure — JSON territory
 			}

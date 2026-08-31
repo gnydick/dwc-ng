@@ -43,6 +43,33 @@ test("garbage, unknown types, and injection-shaped specs are named errors, never
 	);
 });
 
+test("readout and slider pass the untrusted boundary; malformed fields are named errors", () => {
+	const good = parseControlSpecText(JSON.stringify({
+		inputs: { speed: { kind: "number", label: "Speed", default: 100, unit: "%" } },
+		nodes: [
+			{ type: "readout", om: "heat.heaters[1].current", label: "Nozzle", unit: "°C", decimals: 1 },
+			{ type: "slider", input: "speed", min: 0, max: 200, step: 5, template: "M220 S{input.speed}" },
+		],
+	}));
+	assert.ok(good.ok, good.ok ? "" : good.error);
+	assert.match(
+		(parseControlSpecText('{"nodes":[{"type":"readout"}]}') as { error: string }).error,
+		/nodes\[0\]\.om: expected a string/,
+	);
+	assert.match(
+		(parseControlSpecText('{"nodes":[{"type":"readout","om":"state.status","decimals":"2"}]}') as { error: string }).error,
+		/nodes\[0\]\.decimals: expected a number/,
+	);
+	assert.match(
+		(parseControlSpecText('{"inputs":{"s":{"kind":"number","label":"s","default":1}},"nodes":[{"type":"slider","input":"s","template":"M220 S{input.s}"}]}') as { error: string }).error,
+		/nodes\[0\]\.min: expected a number/,
+	);
+	assert.match(
+		(parseControlSpecText('{"inputs":{"s":{"kind":"number","label":"s","default":1}},"nodes":[{"type":"slider","input":"s","min":0,"max":100,"stamp":"yes","template":"M220 S{input.s}"}]}') as { error: string }).error,
+		/nodes\[0\]\.stamp: expected a boolean/,
+	);
+});
+
 // ---- custom cards in config + compositions ----
 
 test("addCustomCard mints c- ids; the spec text round-trips exactly", () => {
@@ -87,6 +114,27 @@ test("form → spec → form round-trips; the spindle example lifts to the form"
 	assert.ok(lifted !== null, "the example is form-shaped");
 	assert.deepEqual(toSpec(lifted!), SPINDLE_EXAMPLE, "lower(lift(spec)) is identity");
 	// and the lowered spec passes the one true boundary
+	assert.ok(parseControlSpecText(JSON.stringify(toSpec(lifted!))).ok);
+});
+
+test("readout and slider items round-trip through the form model", async () => {
+	const { toSpec, tryFromSpec } = await import("../src/compose/controls/formModel.ts");
+	const spec = {
+		inputs: { speed: { kind: "number" as const, label: "Speed", default: 100, unit: "%" } },
+		nodes: [{
+			type: "row" as const,
+			label: "Tuning",
+			items: [
+				{ type: "readout" as const, om: "heat.heaters[1].current", label: "Nozzle", unit: "°C", decimals: 1 },
+				{ type: "readout" as const, om: "state.status" },
+				{ type: "slider" as const, input: "speed", min: 0, max: 200, step: 5, template: "M220 S{input.speed}" },
+				{ type: "slider" as const, input: "speed", min: 0, max: 200, template: "M220 S{input.speed}", stamp: false },
+			],
+		}],
+	};
+	const lifted = tryFromSpec(spec);
+	assert.ok(lifted !== null, "both kinds are form-shaped");
+	assert.deepEqual(toSpec(lifted!), spec, "lower(lift(spec)) is identity");
 	assert.ok(parseControlSpecText(JSON.stringify(toSpec(lifted!))).ok);
 });
 

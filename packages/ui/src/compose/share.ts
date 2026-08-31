@@ -18,7 +18,7 @@
  */
 import { parseControlSpecText, type ParsedSpec } from "./controls/parse.ts";
 import { omReadsOf } from "./controls/template.ts";
-import type { CompiledControlSpec, CompiledNode, CompiledRowItem } from "./controls/spec.ts";
+import { isInputRef, type CompiledControlSpec, type CompiledNode, type CompiledRowItem } from "./controls/spec.ts";
 import { isCustomCardId } from "./composition.ts";
 import { cardTitleOf, parseCardId } from "./defs.ts";
 import type { SlotRect, UiConfig } from "../config/types.ts";
@@ -34,7 +34,9 @@ export interface SpecReview {
 	inputs: string[];
 	/** Every button, with the RAW template (placeholders visible). */
 	buttons: Array<{ label: string; template: string }>;
-	/** Every object-model read ({om:…} in templates). */
+	/** Every slider — an emitter like a button, so its RAW template is here. */
+	sliders: Array<{ input: string; template: string; min: number; max: number }>;
+	/** Every object-model read ({om:…} in templates, and readout bindings). */
 	omReads: string[];
 	/** Every forEach enumeration source. */
 	loops: string[];
@@ -46,6 +48,7 @@ export function reviewSpec(spec: CompiledControlSpec): SpecReview {
 	const review: SpecReview = {
 		inputs: Object.keys(spec.inputs),
 		buttons: [],
+		sliders: [],
 		omReads: [],
 		loops: [],
 		motion: [],
@@ -60,8 +63,8 @@ export function reviewSpec(spec: CompiledControlSpec): SpecReview {
 		}
 	};
 	const walkItem = (item: CompiledRowItem): void => {
-		if ("input" in item && !("type" in item)) return;
-		walk(item as CompiledNode);
+		if (isInputRef(item)) return;
+		walk(item);
 	};
 	const walk = (node: CompiledNode): void => {
 		switch (node.type) {
@@ -75,6 +78,16 @@ export function reviewSpec(spec: CompiledControlSpec): SpecReview {
 				return;
 			case "axis-jog":
 				review.motion.push(`axis-jog (cmd.jog on {${node.axisVar}})`);
+				return;
+			case "readout":
+				// A readout is a read and nothing else — its binding (and any
+				// {om:…} in its label) joins the Reads inventory; no new category.
+				takeOm([node.om.text]);
+				if (node.label !== undefined) takeOm(omReadsOf(node.label));
+				return;
+			case "slider":
+				review.sliders.push({ input: node.input, template: node.template.text, min: node.min, max: node.max });
+				takeOm(omReadsOf(node.template));
 				return;
 			case "row":
 				node.items.forEach(walkItem);

@@ -55,6 +55,8 @@ function validateInput(raw: unknown, where: string): InputDef {
 
 function validateRowItem(raw: unknown, where: string): RowItem {
 	const o = asRecord(raw, where);
+	// Same rule as spec.ts isInputRef, applied to the raw record: "type"
+	// absence decides, because a slider NODE also carries an `input` key.
 	if ("input" in o && !("type" in o)) return { input: asString(o.input, `${where}.input`) };
 	return validateNode(raw, where);
 }
@@ -91,6 +93,36 @@ function validateNode(raw: unknown, where: string): ControlNode {
 				step: asString(o.step, `${where}.step`),
 				feed: asString(o.feed, `${where}.feed`),
 			};
+		case "readout": {
+			const node: ControlNode = { type, om: asString(o.om, `${where}.om`) };
+			node.label = asOptString(o.label, `${where}.label`);
+			node.unit = asOptString(o.unit, `${where}.unit`);
+			if (o.decimals !== undefined) {
+				if (typeof o.decimals !== "number") fail(`${where}.decimals: expected a number`);
+				node.decimals = o.decimals;
+			}
+			return node;
+		}
+		case "slider": {
+			if (typeof o.min !== "number") fail(`${where}.min: expected a number`);
+			if (typeof o.max !== "number") fail(`${where}.max: expected a number`);
+			const node: ControlNode = {
+				type,
+				input: asString(o.input, `${where}.input`),
+				min: o.min,
+				max: o.max,
+				template: asString(o.template, `${where}.template`),
+			};
+			if (o.step !== undefined) {
+				if (typeof o.step !== "number") fail(`${where}.step: expected a number`);
+				node.step = o.step;
+			}
+			if (o.stamp !== undefined) {
+				if (typeof o.stamp !== "boolean") fail(`${where}.stamp: expected a boolean`);
+				node.stamp = o.stamp;
+			}
+			return node;
+		}
 		case "row": {
 			if (!Array.isArray(o.items)) fail(`${where}.items: expected an array`);
 			return {

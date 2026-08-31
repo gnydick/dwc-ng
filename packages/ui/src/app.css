@@ -2891,6 +2891,56 @@ input[type="checkbox"] {
 .ctl-name { font: 600 calc(3.75 * var(--u))/1 var(--font-display); text-transform: uppercase; letter-spacing: 0.03em; color: var(--silk); min-width: calc(18.5 * var(--u)); }
 .ctl-name small { color: var(--accent); margin-left: calc(1.25 * var(--u)); font-weight: 600; }
 
+/* ---------- data-defined readout + slider (GIT_194) ---------- */
+.ctl-readout { display: flex; align-items: center; gap: calc(2 * var(--u)); min-height: var(--ctl-h); }
+.ctl-readout-value {
+	font: 600 calc(4.5 * var(--u))/1 var(--font-display);
+	color: var(--silk);
+	font-variant-numeric: tabular-nums;
+	/* RESERVED width (the .dro-h-val discipline): the value changes every poll
+	   and its digit count with it; absence renders the placeholder in the same
+	   box, so the card cannot jitter whatever the machine reports. */
+	min-width: calc(16.5 * var(--u));
+	text-align: right;
+	white-space: nowrap;
+}
+.ctl-readout-value small { font-size: calc(3 * var(--u)); color: var(--silk-dim); margin-left: calc(0.75 * var(--u)); font-weight: 600; }
+
+.ctl-slider { display: flex; align-items: center; gap: calc(2.5 * var(--u)); min-height: var(--ctl-h); flex: 1; }
+/* The range chrome (track/thumb) is the ONE set of rules under .speed-input,
+   co-selected as .ctl-range-input — never a second copy. */
+/* Grows to fill the row and SAYS WHERE IT STOPS (the GIT_144 rule): a
+   pointer-aimed track gains nothing past ~2× its comfortable reach, and an
+   uncapped one re-floors the card around whatever shares the row. */
+.ctl-slider .ctl-range-input { flex: 1; width: auto; min-width: calc(30 * var(--u)); max-width: calc(120 * var(--u)); }
+.ctl-slider-value {
+	font: 600 calc(3.75 * var(--u))/1 var(--font-display); color: var(--silk);
+	font-variant-numeric: tabular-nums;
+	/* Reserved (same rule as .speed-value): the value changes during a drag
+	   and must not shove the track under the finger. */
+	min-width: calc(11.5 * var(--u)); text-align: right; white-space: nowrap;
+}
+.ctl-slider-value small { font-size: calc(2.75 * var(--u)); color: var(--silk-dim); margin-left: calc(0.5 * var(--u)); font-weight: 600; }
+.ctl-slider-value.is-sent { color: var(--ok); }
+.ctl-slider-value.is-failed { color: var(--fault); }
+/* The worn command (I15): mono like .gcode-cmd, truncating rather than
+   pushing — the row's geometry does not depend on the resolved text. */
+.ctl-slider-cmd {
+	font: 400 calc(3.125 * var(--u))/1 ui-monospace, "Cascadia Code", "SF Mono", Menlo, Consolas, monospace;
+	color: var(--silk-dim); opacity: 0.75; white-space: nowrap;
+	overflow: hidden; text-overflow: ellipsis; max-width: calc(50 * var(--u));
+}
+/* Refusal slot: laid out always, visible on failure — colour and visibility
+   only, never geometry (the .speed-error discipline). */
+.ctl-slider-error {
+	font: 600 calc(3 * var(--u))/1 var(--font-display); letter-spacing: 0.08em; text-transform: uppercase;
+	color: var(--fault);
+	min-width: 0; text-align: right;
+	overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+	visibility: hidden;
+}
+.ctl-slider-error.show { visibility: visible; }
+
 /* heater / fan / factor rows */
 .heater-list { display: flex; flex-direction: column; gap: calc(2.5 * var(--u)); }
 /* A GRID, not a wrapping flex row. With two setpoint fields plus Set the row
@@ -4034,7 +4084,7 @@ input[type="checkbox"].fw-check { accent-color: var(--accent); width: calc(3.75 
 	display: flex; flex-direction: column; justify-content: flex-start;
 }
 
-.speed-input {
+.speed-input, .ctl-range-input {
 	appearance: none; -webkit-appearance: none;
 	/* 18px of the 28px row: leaves the bottom clear for the stops. */
 	width: 100%; height: calc(4.5 * var(--u)); margin: 0; background: none; cursor: pointer;
@@ -4046,17 +4096,17 @@ input[type="checkbox"].fw-check { accent-color: var(--accent); width: calc(3.75 
    comfortable target size and the hardest thing on this card to grab. A hit
    target must not shrink with a readability preference.
    SpeedSlider.tsx's stopOffset() carries the SAME 14px, and says so. */
-.speed-input::-webkit-slider-runnable-track {
+.speed-input::-webkit-slider-runnable-track, .ctl-range-input::-webkit-slider-runnable-track {
 	height: 6px; /* px-ok: hit target — must not follow the scale it controls */
 	border-radius: 3px;
 	background: var(--mask-900); box-shadow: inset 0 0 0 1px var(--hairline);
 }
-.speed-input::-moz-range-track {
+.speed-input::-moz-range-track, .ctl-range-input::-moz-range-track {
 	height: 6px; /* px-ok: hit target — must not follow the scale it controls */
 	border-radius: 3px;
 	background: var(--mask-900); box-shadow: inset 0 0 0 1px var(--hairline);
 }
-.speed-input::-webkit-slider-thumb {
+.speed-input::-webkit-slider-thumb, .ctl-range-input::-webkit-slider-thumb {
 	-webkit-appearance: none;
 	width: 14px; height: 14px; /* px-ok: hit target — must not follow the scale it controls */
 	border-radius: 50%;
@@ -4067,14 +4117,14 @@ input[type="checkbox"].fw-check { accent-color: var(--accent); width: calc(3.75 
 	   input and the extra px reads level against the stops below it. */
 	cursor: grab;
 }
-.speed-input::-moz-range-thumb {
+.speed-input::-moz-range-thumb, .ctl-range-input::-moz-range-thumb {
 	width: 14px; height: 14px; /* px-ok: hit target — must not follow the scale it controls */
 	border-radius: 50%;
 	background: var(--accent-bright); box-shadow: inset 0 0 0 1px var(--mask-900);
 	cursor: grab;
 }
-.speed-input:active::-webkit-slider-thumb { cursor: grabbing; }
-.speed-input:focus-visible { outline: 2px solid var(--accent-bright); outline-offset: 3px; border-radius: 4px; }
+.speed-input:active::-webkit-slider-thumb, .ctl-range-input:active::-webkit-slider-thumb { cursor: grabbing; }
+.speed-input:focus-visible, .ctl-range-input:focus-visible { outline: 2px solid var(--accent-bright); outline-offset: 3px; border-radius: 4px; }
 
 /* Stops sit ON the bar. The layer ignores pointer events so dragging the track
    still works; only the dots themselves are clickable. */

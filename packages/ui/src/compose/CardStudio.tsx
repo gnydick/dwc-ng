@@ -16,7 +16,7 @@
  * events off and `inert` are the visual/focus half; the provider swap is
  * the enforcement.
  */
-import { For, Show, createEffect, createMemo, createSignal, onCleanup } from "solid-js";
+import { For, Match, Show, Switch, createEffect, createMemo, createSignal, onCleanup } from "solid-js";
 import { createStore, produce } from "solid-js/store";
 import { AppContext, useApp, type AppServices } from "../shell/context.ts";
 import { createArmed } from "../control/armed.ts";
@@ -25,7 +25,7 @@ import { createStubConnector } from "@dwc-ng/connector";
 import { ControlList } from "./controls/ControlList.tsx";
 import { parseControlSpecText } from "./controls/parse.ts";
 import { SPINDLE_EXAMPLE, SPINDLE_EXAMPLE_NAME } from "./controls/examples.ts";
-import { emptyButton, emptyForm, toSpec, tryFromSpec, type FormItem, type FormState } from "./controls/formModel.ts";
+import { emptyButton, emptyForm, emptyReadout, emptySlider, toSpec, tryFromSpec, type FormItem, type FormState } from "./controls/formModel.ts";
 import type { CustomCardId } from "./composition.ts";
 import type { CardCtx } from "./ctx.ts";
 
@@ -75,13 +75,18 @@ export function CardStudio(props: {
 	const currentJson = (): string =>
 		mode() === "json" ? json() : JSON.stringify(toSpec(form), null, 2);
 
-	/** Patch one button row item — typed narrowing instead of path-setter
-	 *  casts (the union item type defeats Solid's typed paths). */
-	const patchButton = (row: number, item: number, patch: Partial<Extract<FormItem, { kind: "button" }>>): void => {
-		setForm("rows", row, "items", item, produce(it => {
-			if (it.kind === "button") Object.assign(it, patch);
-		}));
-	};
+	/** Patch one row item of a given kind — typed narrowing instead of
+	 *  path-setter casts (the union item type defeats Solid's typed paths).
+	 *  One patcher for all kinds: the kind guard is the sole discriminator. */
+	const patchItem = <K extends FormItem["kind"]>(kind: K) =>
+		(row: number, item: number, patch: Partial<Extract<FormItem, { kind: K }>>): void => {
+			setForm("rows", row, "items", item, produce(it => {
+				if (it.kind === kind) Object.assign(it, patch);
+			}));
+		};
+	const patchButton = patchItem("button");
+	const patchReadout = patchItem("readout");
+	const patchSlider = patchItem("slider");
 
 	/** Live preview through the one boundary — errors render as themselves. */
 	const preview = createMemo(() => parseControlSpecText(currentJson()));
@@ -257,6 +262,8 @@ export function CardStudio(props: {
 											<input class="fb-input st-rowlabel" placeholder="row label (optional)" value={row.label}
 												onInput={e => setForm("rows", r(), "label", e.currentTarget.value)} />
 											<button class="link-btn" onClick={() => setForm("rows", r(), "items", produce(items => { items.push(emptyButton()); }))}>+ button</button>
+											<button class="link-btn" onClick={() => setForm("rows", r(), "items", produce(items => { items.push(emptyReadout()); }))}>+ readout</button>
+											<button class="link-btn" onClick={() => setForm("rows", r(), "items", produce(items => { items.push(emptySlider(form.inputs[0]?.name ?? "")); }))}>+ slider</button>
 											<Show when={form.inputs.length > 0}>
 												<select
 													class="fb-input st-addinput"
@@ -276,38 +283,86 @@ export function CardStudio(props: {
 										</div>
 										<For each={row.items}>
 											{(item, i) => (
-												<Show
-													when={item.kind === "button" ? item : null}
-													fallback={
-														<div class="studio-itemrow st-inputref">
-															<span class="lab-cap">input</span>
-															<span class="st-refname">{(item as { name: string }).name}</span>
-															<button class="link-btn" onClick={() => setForm("rows", r(), "items", produce(items => { items.splice(i(), 1); }))}>✕</button>
-														</div>
-													}
-												>
-													{btn => (
-														<div class="studio-itemrow">
-															<input class="fb-input st-btnlabel" placeholder="label" value={btn().label}
-																onInput={e => patchButton(r(), i(), { label: e.currentTarget.value })} />
-															<input class="fb-input st-template mono" placeholder='G-code, e.g. M3 S{input.rpm}' value={btn().template}
-																onInput={e => patchButton(r(), i(), { template: e.currentTarget.value })} />
-															<select class="fb-input st-variant" value={btn().variant}
-																onChange={e => patchButton(r(), i(), { variant: e.currentTarget.value as "" | "go" | "danger" | "quiet" })}>
-																<option value="">plain</option>
-																<option value="go">go</option>
-																<option value="danger">danger</option>
-																<option value="quiet">quiet</option>
-															</select>
-															<label class="check st-stamp" title="Show the mono G-code stamp on the button">
-																<input type="checkbox" checked={btn().stamp}
-																	onChange={e => patchButton(r(), i(), { stamp: e.currentTarget.checked })} />
-																stamp
-															</label>
-															<button class="link-btn" onClick={() => setForm("rows", r(), "items", produce(items => { items.splice(i(), 1); }))}>✕</button>
-														</div>
-													)}
-												</Show>
+												<Switch>
+													<Match when={item.kind === "button" ? item : null}>
+														{btn => (
+															<div class="studio-itemrow">
+																<input class="fb-input st-btnlabel" placeholder="label" value={btn().label}
+																	onInput={e => patchButton(r(), i(), { label: e.currentTarget.value })} />
+																<input class="fb-input st-template mono" placeholder='G-code, e.g. M3 S{input.rpm}' value={btn().template}
+																	onInput={e => patchButton(r(), i(), { template: e.currentTarget.value })} />
+																<select class="fb-input st-variant" value={btn().variant}
+																	onChange={e => patchButton(r(), i(), { variant: e.currentTarget.value as "" | "go" | "danger" | "quiet" })}>
+																	<option value="">plain</option>
+																	<option value="go">go</option>
+																	<option value="danger">danger</option>
+																	<option value="quiet">quiet</option>
+																</select>
+																<label class="check st-stamp" title="Show the mono G-code stamp on the button">
+																	<input type="checkbox" checked={btn().stamp}
+																		onChange={e => patchButton(r(), i(), { stamp: e.currentTarget.checked })} />
+																	stamp
+																</label>
+																<button class="link-btn" onClick={() => setForm("rows", r(), "items", produce(items => { items.splice(i(), 1); }))}>✕</button>
+															</div>
+														)}
+													</Match>
+													<Match when={item.kind === "readout" ? item : null}>
+														{ro => (
+															<div class="studio-itemrow">
+																<span class="lab-cap">readout</span>
+																<input class="fb-input st-template mono" placeholder="OM selector, e.g. heat.heaters[1].current" value={ro().om}
+																	onInput={e => patchReadout(r(), i(), { om: e.currentTarget.value })} />
+																<input class="fb-input st-btnlabel" placeholder="label" value={ro().label}
+																	onInput={e => patchReadout(r(), i(), { label: e.currentTarget.value })} />
+																<input class="fb-input st-unit" placeholder="unit" value={ro().unit}
+																	onInput={e => patchReadout(r(), i(), { unit: e.currentTarget.value })} />
+																<input class="fb-input st-default" type="number" placeholder="dp" title="decimal places (blank = as reported)"
+																	value={ro().decimals ?? ""}
+																	onInput={e => patchReadout(r(), i(), { decimals: e.currentTarget.value === "" ? null : Number(e.currentTarget.value) })} />
+																<button class="link-btn" onClick={() => setForm("rows", r(), "items", produce(items => { items.splice(i(), 1); }))}>✕</button>
+															</div>
+														)}
+													</Match>
+													<Match when={item.kind === "slider" ? item : null}>
+														{sl => (
+															<div class="studio-itemrow">
+																<span class="lab-cap">slider</span>
+																<select class="fb-input st-kind" title="bound input" value={sl().input}
+																	onChange={e => patchSlider(r(), i(), { input: e.currentTarget.value })}>
+																	<Show when={form.inputs.every(input => input.name !== sl().input)}>
+																		<option value={sl().input}>{sl().input === "" ? "input…" : sl().input}</option>
+																	</Show>
+																	<For each={form.inputs}>{input => <option value={input.name}>{input.name}</option>}</For>
+																</select>
+																<input class="fb-input st-default" type="number" placeholder="min" title="min" value={sl().min}
+																	onInput={e => patchSlider(r(), i(), { min: Number(e.currentTarget.value) })} />
+																<input class="fb-input st-default" type="number" placeholder="max" title="max" value={sl().max}
+																	onInput={e => patchSlider(r(), i(), { max: Number(e.currentTarget.value) })} />
+																<input class="fb-input st-default" type="number" placeholder="step" title="step (blank = 1)"
+																	value={sl().step ?? ""}
+																	onInput={e => patchSlider(r(), i(), { step: e.currentTarget.value === "" ? null : Number(e.currentTarget.value) })} />
+																<input class="fb-input st-template mono" placeholder='sent on release, e.g. M220 S{input.speed}' value={sl().template}
+																	onInput={e => patchSlider(r(), i(), { template: e.currentTarget.value })} />
+																<label class="check st-stamp" title="Show the mono G-code stamp beside the slider">
+																	<input type="checkbox" checked={sl().stamp}
+																		onChange={e => patchSlider(r(), i(), { stamp: e.currentTarget.checked })} />
+																	stamp
+																</label>
+																<button class="link-btn" onClick={() => setForm("rows", r(), "items", produce(items => { items.splice(i(), 1); }))}>✕</button>
+															</div>
+														)}
+													</Match>
+													<Match when={item.kind === "input" ? item : null}>
+														{ref => (
+															<div class="studio-itemrow st-inputref">
+																<span class="lab-cap">input</span>
+																<span class="st-refname">{ref().name}</span>
+																<button class="link-btn" onClick={() => setForm("rows", r(), "items", produce(items => { items.splice(i(), 1); }))}>✕</button>
+															</div>
+														)}
+													</Match>
+												</Switch>
 											)}
 										</For>
 									</div>

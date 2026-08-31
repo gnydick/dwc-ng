@@ -74,6 +74,8 @@ via any compose drawer.
 | `gcode-button` | a button wearing its command | `label`, `template`, `variant?` (`go`/`danger`/`quiet`), `stamp?` (false hides the mono code), `class?` |
 | `jog-pad` | the cardinal XY pad + Z column | `step`, `feed` (input names) — emits via `cmd.jog` |
 | `axis-jog` | one −/+ row for a loop axis | `axisVar`, `step`, `feed` |
+| `readout` | a live OM value, display-only | `om` (selector), `label?`, `unit?`, `decimals?` (integer 0–8). Absent/null reads render a reserved `—`, never a collapse |
+| `slider` | a range over an input; sends **on release** | `input` (input name — its label/unit label the slider), `min`, `max`, `step?` (default 1), `template`, `stamp?` (false hides the worn code). One send per gesture, never per pixel |
 | `row` | a labelled flex row | `label?`, `sub?`, `class?`, `items` (nodes and/or `{ "input": name }`) |
 | `grid` | equal-column button grid | `items` |
 | `forEach` | stamp a node per OM item | `from` (selector), `as` (var name), `except?` `{prop, values}`, `enrich?` (`axisLabel`) |
@@ -92,6 +94,22 @@ can ever say.
 Tricks: `forEach` over an equality filter doubles as an existence gate (the
 coupler row renders only when a C axis exists); `enrich: "axisLabel"` gives
 axis items a `label` of letter + the user's role name.
+
+A readout + slider row, e.g. speed factor with the nozzle temperature beside
+it:
+
+```json
+{ "type": "row", "label": "Tuning", "items": [
+	{ "type": "readout", "om": "heat.heaters[1].current", "label": "Nozzle", "unit": "°C", "decimals": 1 },
+	{ "type": "slider", "input": "speed", "min": 0, "max": 200, "step": 5, "template": "M220 S{input.speed}" }
+]}
+```
+
+The slider drags freely and resolves its worn command live, but nothing is
+sent until release — RRF tolerates very few requests, so it is one command
+per gesture, exactly like the Tuning card's speed slider. `min`/`max`/`step`
+are the range control's attributes and nothing more: the firmware remains
+the authority on what the sent value does.
 
 ## 2. A registry card — in code
 

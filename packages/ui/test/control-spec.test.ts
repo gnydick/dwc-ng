@@ -2,10 +2,11 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { parseOmSelector, readOm, readOmList } from "../src/compose/controls/omSelector.ts";
 import { compileTemplate, resolveTemplate, type TemplateScope } from "../src/compose/controls/template.ts";
-import { compileControlSpec, type CompiledControlSpec, type CompiledNode } from "../src/compose/controls/spec.ts";
+import { compileControlSpec, isInputRef, type CompiledControlSpec, type CompiledNode } from "../src/compose/controls/spec.ts";
 import type { CompiledTemplate } from "../src/compose/controls/template.ts";
 import { HOMING_SPEC, MOVEMENT_SPEC } from "../src/compose/controls/builtin.ts";
 import { cmd } from "../src/control/commands.ts";
+import { unreachable } from "../src/util/unreachable.ts";
 
 // ---- I14: the selector grammar — no eval form representable ----
 
@@ -97,6 +98,86 @@ test("a spec referencing an unknown input or bad template cannot compile", () =>
 	}), /invalid selector/);
 });
 
+// ---- readout + slider (GIT_194): compile boundary ----
+
+test("readout and slider compile through the sole boundary", () => {
+	const spec = compileControlSpec({
+		inputs: { speed: { kind: "number", label: "Speed", default: 100, unit: "%" } },
+		nodes: [
+			{ type: "readout", om: "heat.heaters[1].current", label: "Nozzle", unit: "°C", decimals: 1 },
+			{ type: "slider", input: "speed", min: 0, max: 200, step: 5, template: "M220 S{input.speed}" },
+			{ type: "slider", input: "speed", min: 0, max: 200, template: "M220 S{input.speed}" },
+		],
+	});
+	const readout = spec.nodes[0]!;
+	assert.equal(readout.type, "readout");
+	if (readout.type === "readout") {
+		assert.equal(readout.om.text, "heat.heaters[1].current", "selector compiled, not carried raw");
+		assert.equal(readout.decimals, 1);
+	}
+	const slider = spec.nodes[2]!;
+	assert.equal(slider.type, "slider");
+	if (slider.type === "slider") {
+		assert.equal(slider.step, 1, "omitted step compiles to the concrete default");
+		assert.equal(slider.template.text, "M220 S{input.speed}");
+	}
+});
+
+test("readout rejects bad selectors and out-of-range decimals, path-named", () => {
+	assert.throws(() => compileControlSpec({
+		inputs: {},
+		nodes: [{ type: "readout", om: "a[b()]" }],
+	}), /nodes\[0\]\.om: invalid selector/);
+	for (const decimals of [9, 1.5, -1, Number.NaN]) {
+		assert.throws(() => compileControlSpec({
+			inputs: {},
+			nodes: [{ type: "readout", om: "state.status", decimals }],
+		}), /nodes\[0\]\.decimals/, `decimals ${decimals} must not compile`);
+	}
+});
+
+test("slider rejects unknown inputs, empty ranges, bad steps, bad templates", () => {
+	const inputs = { speed: { kind: "number", label: "Speed", default: 100 } } as const;
+	assert.throws(() => compileControlSpec({
+		inputs: {},
+		nodes: [{ type: "slider", input: "speed", min: 0, max: 200, template: "M220 S{input.speed}" }],
+	}), /nodes\[0\]\.input: unknown input "speed"/);
+	assert.throws(() => compileControlSpec({
+		inputs: { ...inputs },
+		nodes: [{ type: "slider", input: "speed", min: 200, max: 200, template: "M220 S{input.speed}" }],
+	}), /nodes\[0\]: min must be less than max/);
+	assert.throws(() => compileControlSpec({
+		inputs: { ...inputs },
+		nodes: [{ type: "slider", input: "speed", min: 0, max: Number.POSITIVE_INFINITY, template: "M220 S{input.speed}" }],
+	}), /nodes\[0\]: min must be less than max/, "non-finite bounds are not a range");
+	assert.throws(() => compileControlSpec({
+		inputs: { ...inputs },
+		nodes: [{ type: "slider", input: "speed", min: 0, max: 200, step: 0, template: "M220 S{input.speed}" }],
+	}), /nodes\[0\]\.step/);
+	assert.throws(() => compileControlSpec({
+		inputs: { ...inputs },
+		nodes: [{ type: "slider", input: "speed", min: 0, max: 200, template: "M220 S{input.}" }],
+	}), /nodes\[0\]\.template: invalid template/);
+});
+
+// ---- readout formatting: one total pipeline, never a throw ----
+
+test("formatReadoutValue is total: numbers format, absence is the placeholder", async () => {
+	const { formatReadoutValue, READOUT_PLACEHOLDER } = await import("../src/compose/controls/readout.ts");
+	assert.equal(READOUT_PLACEHOLDER, "—");
+	assert.equal(formatReadoutValue(undefined, 1), "—");
+	assert.equal(formatReadoutValue(null, undefined), "—");
+	assert.equal(formatReadoutValue(214.267, 1), "214.3");
+	assert.equal(formatReadoutValue(214.267, 0), "214");
+	assert.equal(formatReadoutValue(214.267, undefined), "214.267");
+	assert.equal(formatReadoutValue(Number.NaN, 2), "—", "non-finite numbers are absence, not 'NaN'");
+	assert.equal(formatReadoutValue(Number.POSITIVE_INFINITY, undefined), "—");
+	assert.equal(formatReadoutValue("printing", 2), "printing", "decimals apply to numbers only");
+	assert.equal(formatReadoutValue(true, undefined), "true");
+	assert.equal(formatReadoutValue({ current: 20 }, undefined), "—", "a readout binds a leaf, not a subtree");
+	assert.equal(formatReadoutValue([1, 2], undefined), "—");
+});
+
 // ---- the weld: built-in templates equal the commands.ts authority ----
 //
 // The weld walks the ACTUAL compiled specs and resolves the templates they
@@ -116,7 +197,7 @@ function extractButtons(spec: CompiledControlSpec): Array<{ label: string; templ
 				return;
 			case "row":
 				for (const item of node.items) {
-					if (!("input" in item && !("type" in item))) walk(item as CompiledNode);
+					if (!isInputRef(item)) walk(item);
 				}
 				return;
 			case "grid":
@@ -128,7 +209,17 @@ function extractButtons(spec: CompiledControlSpec): Array<{ label: string; templ
 			case "jog-pad":
 			case "axis-jog":
 				return; // motion primitives emit via cmd.jog inside the renderer
+			case "readout":
+				return; // display-only — emits nothing
+			case "slider":
+				// No builtin uses a slider yet; when one does, its template joins
+				// the weld table below like any button's (it is an emitter).
+				found.push({ label: node.input, template: node.template });
+				return;
 		}
+		// Totality weld (matches the renderer's): a new CompiledNode variant
+		// must be enumerated here or this test file fails to compile.
+		unreachable(node);
 	};
 	spec.nodes.forEach(walk);
 	return found;

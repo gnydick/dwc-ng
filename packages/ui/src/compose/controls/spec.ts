@@ -47,6 +47,17 @@ export type ControlNode =
 	| { type: "gcode-button"; label: string; template: string; variant?: ButtonVariant; stamp?: boolean; class?: string; aria?: string }
 	| { type: "jog-pad"; step: string; feed: string }
 	| { type: "axis-jog"; axisVar: string; step: string; feed: string }
+	// Display-only OM value: selector + optional label/unit/format. The label
+	// is a template (row-label precedent) so a readout stamped by a forEach
+	// can name its item; the VALUE binding stays a plain selector — a read,
+	// nothing more.
+	| { type: "readout"; om: string; label?: string; unit?: string; decimals?: number }
+	// A range control over a declared input. Label and unit come from the
+	// input's own def (derive, don't duplicate); min/max/step are the HTML
+	// range attributes and nothing more — no GUI clamping, the firmware is
+	// the authority. The template is emitted ON RELEASE only (one request
+	// per gesture — RRF tolerates very few), never per input event.
+	| { type: "slider"; input: string; min: number; max: number; step?: number; template: string; stamp?: boolean }
 	| { type: "row"; label?: string; sub?: string; class?: string; items: RowItem[] }
 	| { type: "grid"; items: ControlNode[] }
 	| {
@@ -61,7 +72,27 @@ export type ControlNode =
 		node: ControlNode;
 	};
 
-export type RowItem = ControlNode | { input: string };
+/**
+ * An input PLACEMENT inside a row. `type?: undefined` is load-bearing: a
+ * slider NODE also carries an `input` field, so without it an InputRef and
+ * a slider are structurally overlapping and TypeScript's negative narrowing
+ * silently drops the slider from the union after an isInputRef check.
+ */
+export type InputRef = { input: string; type?: undefined };
+
+export type RowItem = ControlNode | InputRef;
+
+/**
+ * THE row-item discriminator — "type" absence, not "input" presence: a
+ * slider NODE also carries an `input` field, and matching on the key alone
+ * passed a slider through the row compiler raw (found red on GIT_194, when
+ * two of six hand-rolled copies of this check had drifted to the key-only
+ * form). One helper, every typed site calls it; parse.ts applies the same
+ * rule to its raw records at the untrusted boundary.
+ */
+export function isInputRef(item: RowItem | CompiledRowItem): item is InputRef {
+	return "input" in item && !("type" in item);
+}
 
 export interface ControlSpec {
 	inputs: Record<string, InputDef>;
@@ -78,6 +109,9 @@ export type CompiledNode =
 	| { type: "gcode-button"; label: CompiledTemplate; template: CompiledTemplate; variant?: ButtonVariant; stamp?: boolean; class?: string; aria?: CompiledTemplate }
 	| { type: "jog-pad"; step: string; feed: string }
 	| { type: "axis-jog"; axisVar: string; step: string; feed: string }
+	| { type: "readout"; om: OmSelector; label?: CompiledTemplate; unit?: string; decimals?: number }
+	// step is CONCRETE here (authored default 1 applied once, at compile).
+	| { type: "slider"; input: string; min: number; max: number; step: number; template: CompiledTemplate; stamp?: boolean }
 	// label/sub are TEMPLATES here, not plain strings: a row emitted inside a
 	// forEach needs to name its own item ("{axis.letter}"), which a literal
 	// cannot do. Authored form stays a string; the compiler converts.
@@ -85,7 +119,7 @@ export type CompiledNode =
 	| { type: "grid"; items: CompiledNode[] }
 	| { type: "forEach"; from: OmSelector; as: string; except?: { prop: string; values: string[] }; enrich?: EnrichmentId; node: CompiledNode };
 
-export type CompiledRowItem = CompiledNode | { input: string };
+export type CompiledRowItem = CompiledNode | InputRef;
 
 declare const brand: unique symbol;
 export type CompiledControlSpec = {
@@ -145,9 +179,39 @@ export function compileControlSpec(spec: ControlSpec): CompiledControlSpec {
 				needInput(node.step, `${where}.step`);
 				needInput(node.feed, `${where}.feed`);
 				return node;
+			case "readout": {
+				const om = parseOmSelector(node.om);
+				if (om === null) throw new Error(`${where}.om: invalid selector "${node.om}"`);
+				// 0–8 covers any machine value; outside it (or fractional) is a
+				// mistake, and rejecting HERE — the one compile boundary — is what
+				// lets the renderer's toFixed be total without a second check.
+				if (node.decimals !== undefined && (!Number.isInteger(node.decimals) || node.decimals < 0 || node.decimals > 8)) {
+					throw new Error(`${where}.decimals: expected an integer 0–8`);
+				}
+				const compiled: CompiledNode = { type: "readout", om, unit: node.unit, decimals: node.decimals };
+				if (node.label !== undefined) compiled.label = tpl(node.label, `${where}.label`);
+				return compiled;
+			}
+			case "slider": {
+				needInput(node.input, `${where}.input`);
+				if (!Number.isFinite(node.min) || !Number.isFinite(node.max) || !(node.min < node.max)) {
+					throw new Error(`${where}: min must be less than max (finite numbers)`);
+				}
+				const step = node.step ?? 1;
+				if (!Number.isFinite(step) || !(step > 0)) throw new Error(`${where}.step: expected a positive number`);
+				return {
+					type: "slider",
+					input: node.input,
+					min: node.min,
+					max: node.max,
+					step,
+					template: tpl(node.template, `${where}.template`),
+					stamp: node.stamp,
+				};
+			}
 			case "row": {
 				const items = node.items.map((item, i) => {
-					if ("input" in item) {
+					if (isInputRef(item)) {
 						needInput(item.input, `${where}.items[${i}]`);
 						return item;
 					}

@@ -33,6 +33,28 @@ test("reviewSpec enumerates every template, om read, loop, and motion primitive"
 	assert.deepEqual(review.inputs, ["step", "feed"]);
 });
 
+test("reviewSpec inventories a slider's raw template and a readout's OM read", () => {
+	const parsed = parseControlSpecText(JSON.stringify({
+		inputs: { speed: { kind: "number", label: "Speed", default: 100 } },
+		nodes: [
+			{ type: "readout", om: "heat.heaters[1].current", label: "T {om:state.currentTool}", unit: "°C" },
+			{ type: "row", items: [
+				{ type: "slider", input: "speed", min: 0, max: 200, template: "M220 S{input.speed} ;{om:move.speedFactor}" },
+			] },
+		],
+	}));
+	assert.ok(parsed.ok, parsed.ok ? "" : parsed.error);
+	const review = reviewSpec(parsed.ok ? parsed.spec : (undefined as never));
+	assert.deepEqual(review.sliders, [
+		{ input: "speed", template: "M220 S{input.speed} ;{om:move.speedFactor}", min: 0, max: 200 },
+	], "the slider's raw template is in the inventory — it is an emitter");
+	assert.deepEqual(
+		review.omReads,
+		["heat.heaters[1].current", "state.currentTool", "move.speedFactor"],
+		"the readout's selector and every template read are inventoried",
+	);
+});
+
 // ---- card round trip ----
 
 test("exportCard → parseShareFile round-trips with a complete review", () => {

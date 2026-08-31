@@ -7,13 +7,15 @@
  * cmd.jog stays the single authority for jog G-code, data only picks axes
  * and binds the step/feed inputs.
  */
-import { For, Show, createMemo, type JSX } from "solid-js";
+import { For, Show, createMemo, createSignal, onCleanup, type JSX } from "solid-js";
 import { createStore } from "solid-js/store";
 import { GcodeButton } from "../../control/GcodeButton.tsx";
 import { cmd } from "../../control/commands.ts";
-import { readOmList } from "./omSelector.ts";
+import { useApp } from "../../shell/context.ts";
+import { readOm, readOmList } from "./omSelector.ts";
+import { formatReadoutValue } from "./readout.ts";
 import { resolveTemplate, type TemplateScope } from "./template.ts";
-import type { CompiledControlSpec, CompiledNode, CompiledRowItem, EnrichmentId } from "./spec.ts";
+import { isInputRef, type CompiledControlSpec, type CompiledNode, type CompiledRowItem, type EnrichmentId } from "./spec.ts";
 import type { CardCtx } from "../ctx.ts";
 import { unreachable } from "../../util/unreachable.ts";
 
@@ -32,6 +34,10 @@ const ENRICHMENTS: Record<EnrichmentId, (item: Record<string, unknown>, ctx: Car
 };
 
 export function ControlList(props: { spec: CompiledControlSpec; ctx: CardCtx }) {
+	// The send route for the slider — the SAME guarded connector GcodeButton
+	// resolves, so the Card Studio preview's provider swap (stub connector)
+	// covers a previewed slider exactly as it covers a previewed button.
+	const app = useApp();
 	// Shared live inputs (step sizes, feeds) — card-local state, seeded from
 	// the spec's defaults, consumed by templates and the motion primitives.
 	const [inputs, setInputs] = createStore<Record<string, number>>(
@@ -135,6 +141,104 @@ export function ControlList(props: { spec: CompiledControlSpec; ctx: CardCtx }) 
 					</div>
 				);
 			}
+			case "readout": {
+				// readOm is total and formatReadoutValue is total: absence, a
+				// non-finite number, or a non-leaf value all render the reserved
+				// placeholder — the box (and its unit) never changes shape.
+				const text = (): string => formatReadoutValue(readOm(props.ctx.om.om, node.om), node.decimals);
+				const label = (): string =>
+					node.label === undefined ? "" : resolveTemplate(node.label, scopeWith(p.vars));
+				return (
+					<div class="ctl-readout">
+						<Show when={label()}>
+							<span class="ctl-name">{label()}</span>
+						</Show>
+						<span class="ctl-readout-value">
+							{text()}
+							<Show when={node.unit !== undefined}>
+								<small>{node.unit}</small>
+							</Show>
+						</span>
+					</div>
+				);
+			}
+			case "slider": {
+				const def = props.spec.inputs[node.input]!; // compile guarantees the reference
+				const value = (): number => inputs[node.input] ?? node.min;
+				const command = () => resolveTemplate(node.template, scopeWith(p.vars));
+				// Send on RELEASE only, SpeedSlider's commit semantics: dragging
+				// updates the shared input (worn stamps re-resolve live, nothing is
+				// sent), and the resolved template goes out once per gesture. The
+				// dragging flag is what keeps pointerup + change from double-firing.
+				const [dragging, setDragging] = createSignal(false);
+				const [state, setState] = createSignal<"idle" | "sending" | "sent" | "failed">("idle");
+				const [error, setError] = createSignal("");
+				let ackTimer: ReturnType<typeof setTimeout> | undefined;
+				onCleanup(() => clearTimeout(ackTimer));
+				const send = async (): Promise<void> => {
+					clearTimeout(ackTimer);
+					setState("sending");
+					setError("");
+					try {
+						await app.connector.sendCode(command());
+						setState("sent");
+						ackTimer = setTimeout(() => setState("idle"), 1100);
+					} catch (err) {
+						// Refused (board, or the write guard). Colour only — the row's
+						// geometry is fixed, so a refusal cannot move the handle.
+						setState("failed");
+						setError(err instanceof Error ? err.message : String(err));
+					}
+				};
+				const grab = (): void => {
+					setDragging(true);
+				};
+				const release = (): void => {
+					if (!dragging()) return;
+					setDragging(false);
+					void send();
+				};
+				return (
+					<div class="ctl-slider" title={command()}>
+						<span class="ctl-name">{def.label}</span>
+						<input
+							class="ctl-range-input"
+							type="range"
+							min={node.min}
+							max={node.max}
+							step={node.step}
+							value={value()}
+							aria-label={def.label}
+							onPointerDown={grab}
+							onPointerUp={release}
+							onKeyDown={grab}
+							onKeyUp={release}
+							onInput={e => setInputs(node.input, Number(e.currentTarget.value))}
+							onChange={release}
+						/>
+						{/* Tabular figures, reserved width: the value changes during a
+						    drag and must not shove the track under the finger. */}
+						<span
+							class="ctl-slider-value"
+							classList={{ "is-sent": state() === "sent", "is-failed": state() === "failed" }}
+						>
+							{value()}
+							<Show when={def.unit !== undefined}>
+								<small>{def.unit}</small>
+							</Show>
+						</span>
+						<Show when={node.stamp !== false}>
+							{/* The slider wears its LIVE-resolved command (I15): what a
+							    release will send is on screen before it is sent. */}
+							<span class="ctl-slider-cmd">{command()}</span>
+						</Show>
+						{/* Always present so a refusal cannot reflow the row. */}
+						<span class="ctl-slider-error" classList={{ show: error() !== "" }} title={error()}>
+							{error() === "" ? " " : "refused"}
+						</span>
+					</div>
+				);
+			}
 			case "row": {
 				// Resolved, not read: a row inside a forEach names its own item
 				// ("{axis.letter}"). Gating <Show> on the RESOLVED text keeps an
@@ -190,7 +294,7 @@ export function ControlList(props: { spec: CompiledControlSpec; ctx: CardCtx }) 
 	};
 
 	const RenderRowItem = (p: { item: CompiledRowItem; vars: Record<string, unknown> }): JSX.Element => (
-		<Show when={"input" in p.item ? p.item : null} fallback={<RenderNode node={p.item as CompiledNode} vars={p.vars} />}>
+		<Show when={isInputRef(p.item) ? p.item : null} fallback={<RenderNode node={p.item as CompiledNode} vars={p.vars} />}>
 			{ref => <InputControl name={ref().input} />}
 		</Show>
 	);
