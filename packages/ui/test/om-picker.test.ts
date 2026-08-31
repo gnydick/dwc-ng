@@ -86,3 +86,36 @@ test("selectorForPath: a dotted key must NOT yield a selector that merely parses
 test("selectorForPath: underscore identifiers are fine", () => {
 	assert.equal(selectorForPath([key("_private"), key("v2_value")])?.text, "_private.v2_value");
 });
+
+// ---- review F1: the index guard and the round-trip identity, targeted ----
+
+test("selectorForPath: null for non-integer, negative and non-finite indices", () => {
+	// Pins the inspect.ts index guard's CONTRACT (Number.isInteger, >= 0).
+	// Layering note, traced for the red-check: composing "a[1.5]" splits on
+	// the dot, "a[-1]"/"a[NaN]"/"a[Infinity]" fail the parser's digit rule or
+	// come back as a truthy/equals qualifier the round-trip refuses — so the
+	// parse + identity layers refuse these even without the guard. The test
+	// therefore holds the RESULT fixed (null, affordance absent) against any
+	// rework of that stack, rather than distinguishing the guard alone.
+	for (const bad of [1.5, -1, -0.5, Number.NaN, Number.POSITIVE_INFINITY, 1e21]) {
+		assert.equal(selectorForPath([key("a"), index(bad)]), null, `index ${bad} must not build`);
+		assert.equal(
+			selectorForPath([key("heat"), key("heaters"), index(bad), key("current")]),
+			null,
+			`index ${bad} must not build mid-path`,
+		);
+	}
+});
+
+test("selectorForPath: a whitespace-padded key at the ROOT fails the round-trip identity", () => {
+	// The one case where composing text and parsing it back SUCCEEDS with a
+	// different meaning: "a " parses (the parser trims) to the segment "a",
+	// which denotes root.a — not the node reached by the literal key "a ".
+	// Only the segment-by-segment identity check refuses it; delete that
+	// check (inspect.ts round-trip loop) and this returns a selector whose
+	// text silently points at a DIFFERENT node. Red-checked: with the
+	// identity comparison removed, this test fails.
+	assert.equal(selectorForPath([key("a ")]), null);
+	assert.equal(selectorForPath([key(" a")]), null);
+	assert.equal(selectorForPath([key("a "), key("b")]), null, "padded root key with a child");
+});

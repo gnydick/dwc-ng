@@ -125,6 +125,12 @@ dot-separated identifiers, each with at most one bracket —
 imported card can *read* the model and *emit templates*, and that is all it
 can ever say.
 
+The OM inspector (System → object model) writes selectors for you: every
+node row has a copy affordance (`⧉`) that puts that node's selector on the
+clipboard, ready to paste into a binding field. It copies indices only —
+`heat.heaters[1].current`, never a guessed `[visible]`/`[letter=C]` filter;
+hand-edit the pasted text when a filter is what you mean.
+
 Tricks: `forEach` over an equality filter doubles as an existence gate (the
 coupler row renders only when a C axis exists); `enrich: "axisLabel"` gives
 axis items a `label` of letter + the user's role name.
