@@ -744,12 +744,26 @@ export function contentRowSpan(
  * Synchronous — set, read, restore inside one call, with no yield in between,
  * so the browser never paints the intermediate size. It does force a reflow,
  * which is why it is called ONCE at the start of a drag and never per frame.
+ *
+ * Measurement mode: some containers zero their min-width for LIVE layout —
+ * `.ctl-col`/`.ctl-group` keep a columns split's fr tracks pure ratios so a
+ * sibling's content cannot move a ruler — and would therefore lie to this
+ * measurement, reporting a floor of roughly gaps + padding. The
+ * `measuring-intrinsic` class, worn here for the same synchronous set/read/
+ * restore, lifts those zeros back to `min-content` (app.css, beside the zero
+ * rule) so the number returned is the content's true wall. Inside the ONE
+ * measurement route on purpose: every caller — contentColSpan, headerColSpan,
+ * whatever comes next — measures in truth mode without knowing the class
+ * exists. Paired assertions: test/intrinsic-floors.test.ts ("…ratio zero is
+ * lifted…").
  */
 function intrinsicWidthPx(el: HTMLElement, sizing: "min-content" | "max-content"): number {
 	const previous = el.style.width;
+	el.classList.add("measuring-intrinsic");
 	el.style.width = sizing;
 	const width = el.getBoundingClientRect().width;
 	el.style.width = previous;
+	el.classList.remove("measuring-intrinsic");
 	return width;
 }
 

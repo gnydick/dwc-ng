@@ -4045,7 +4045,24 @@ input[type="checkbox"].fw-check { accent-color: var(--accent); width: calc(3.75 
 	flex-direction: column;
 	gap: var(--ctl-gap);
 	align-items: stretch;
+	/* Load-bearing zero: with an auto minimum, a grid item's min-content
+	   holds its fr track open, so a sibling column's content would move the
+	   ruler — the tracks must stay pure ratios (positional stability). The
+	   zero also makes these containers LIE to contentColSpan's min-content
+	   measurement, so the lift below restores the truth for exactly the
+	   duration of that measurement. The pair is held together by
+	   test/intrinsic-floors.test.ts ("…ratio zero is lifted…"). */
 	min-width: 0;
+}
+/* Measurement mode: worn by shell/panelCanvas.ts intrinsicWidthPx around its
+   synchronous set/read/restore (never painted). Under it the zeroed
+   containers report their real min-content, so a card whose widest content
+   sits inside a columns split gets a width stop at its widest leaf instead
+   of at gaps + ruler padding. Every selector of the zero rule above must
+   appear here — the test named there enforces that coverage. */
+.measuring-intrinsic .ctl-col,
+.measuring-intrinsic .ctl-group {
+	min-width: min-content;
 }
 /* Authored whitespace. Fixed spacers override flex inline with a --u basis;
    flex-basis is main-axis, so one node serves rows and stacks alike. */

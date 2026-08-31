@@ -97,6 +97,12 @@ export function reviewSpec(spec: CompiledControlSpec): SpecReview {
 				review.buttons.push({ label: node.label.text, template: node.template.text });
 				takeOm(omReadsOf(node.label));
 				takeOm(omReadsOf(node.template));
+				// aria is a template like the label (found on inc 3, the second
+				// time a template field was silently absent from the review —
+				// share.test.ts now enumerates every template/selector-typed
+				// field of every variant, so a third has to fail a deepEqual
+				// before it can fail a reviewer).
+				if (node.aria !== undefined) takeOm(omReadsOf(node.aria));
 				return;
 			case "jog-pad":
 				review.motion.push("jog-pad (cmd.jog on X/Y/Z)");

@@ -18,8 +18,41 @@ import { splitOverlay, joinOverlay } from "../src/config/types.ts";
 import { parseOverlay } from "../src/config/parse.ts";
 import {
 	DEFAULT_GUTTER_U, DEFAULT_PAD_U, GUTTER_MAX_U, PAD_MAX_U,
-	sanitizeScreenSpacing, spacingVars,
+	sanitizeScreenSpacing, spacingVars, type ScreenSpacingVars,
 } from "../src/config/screenSpacing.ts";
+
+// ---------------------------------------------------------------------------
+// The ScreenSpacingVars brand (inc 3 review): compile-time counterexamples.
+// PanelCanvas's `vars` prop accepts only the branded type whose SOLE producer
+// is spacingVars(). Each @ts-expect-error below is a pin, not a suppression:
+// if a refactor widens the prop again (drops the brand, or the
+// `--sp-card-${string}` key template), the error it expects disappears and
+// `tsc -b` fails on the then-unsatisfied directive. Never executed — the
+// function exists for the compiler, which checks test/ at the same bar as
+// src (tsconfig.test.json).
+// ---------------------------------------------------------------------------
+
+export function screenSpacingVarsCompilePins(
+	consume: (vars: ScreenSpacingVars) => void,
+	widened: Record<string, string>,
+): void {
+	// The first hole the brand closed: {"--u": "0px"} would re-ground the
+	// drawn grid's var(--u) while the drag math reads the root's, splitting
+	// cursor from card.
+	// @ts-expect-error — "--u" is not a `--sp-card-*` key and the literal has no brand
+	consume({ "--u": "0px" });
+	// The second: a Record<string, string> launders ANY key past the
+	// template-literal check.
+	// @ts-expect-error — a widened record carries no brand
+	consume(widened);
+	// Even the right key is not enough: obtaining the type IS having gone
+	// through the producer.
+	// @ts-expect-error — an unbranded literal with a legal key still refuses
+	consume({ "--sp-card-gutter": "calc(1 * var(--u))" });
+	// And the producer's own result IS accepted — proof the three refusals
+	// above are the brand at work, not an unsatisfiable parameter.
+	consume(spacingVars({ gutterU: 2 }));
+}
 
 // ---------------------------------------------------------------------------
 // D1: spacing is a MACHINE fact riding `screens`, exactly like layouts.

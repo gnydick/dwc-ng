@@ -11,6 +11,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { createConfigStore } from "../src/config/store.ts";
 import { parseOverlay } from "../src/config/parse.ts";
 import { sanitizeCardMeta } from "../src/config/types.ts";
@@ -85,6 +86,52 @@ test("sanitizeCardMeta is the one gate: passes the valid, drops the rest", () =>
 		{},
 	);
 	assert.deepEqual(sanitizeCardMeta({ padding: 0 }), { padding: 0 }, "zero padding is a choice, not absence");
+	// The two shapes the studio's width field actually produces from bad typing
+	// — Number("-5") and Number("abc") — both drop at the gate, which is what
+	// the studio's refusal (below) detects by comparing provided against kept.
+	assert.deepEqual(sanitizeCardMeta({ colSpan: -5 }), {}, "a negative span drops");
+	assert.deepEqual(sanitizeCardMeta({ colSpan: Number.NaN }), {}, "NaN drops");
+});
+
+/**
+ * THE STUDIO'S META REFUSAL (inc 4 integration fix, pinned on inc 3's round):
+ * a typed value the gate would drop used to save as a silent no-op — the
+ * input showed -5 while the stored card kept its old width. CardStudio.save()
+ * now compares what was PROVIDED against what sanitizeCardMeta KEPT and
+ * refuses the save with a named field error.
+ *
+ * CardStudio is JSX and cannot be mounted under node:test (the machine-card
+ * precedent), so the behavioural half above pins the gate on the exact values
+ * (-5, NaN) and this half pins, on the source, the three things that must
+ * stay true for those values to surface as a refusal instead of a no-op:
+ * the comparison runs through the ONE gate, the refusal names the field, and
+ * the error lands in the reserved .fb-msg line.
+ */
+test("CardStudio's save refuses a dropped meta field through the one gate, into .fb-msg", () => {
+	const studio = readFileSync(new URL("../src/compose/CardStudio.tsx", import.meta.url), "utf8");
+
+	// The comparison is against the gate's own verdict — not a re-implemented
+	// predicate, which could drift from the gate and re-open the silent no-op.
+	assert.match(studio, /const kept = sanitizeCardMeta\(provided\)/,
+		"save() no longer asks the one gate what it kept");
+	assert.match(studio, /provided\[key\] !== undefined && kept\[key\] === undefined/,
+		"the provided-vs-kept comparison is gone — a dropped field saves as a silent no-op again");
+
+	// NaN must REACH the gate: the only pre-filter may be the null (= blank =
+	// clear) check. A well-meaning isFinite guard here would turn NaN back
+	// into a silent no-op, because the gate would never see it to drop it.
+	assert.match(studio, /if \(meta\[key\] !== null\) provided\[key\] = meta\[key\]/,
+		"the provided set is filtered by something other than the blank/null check");
+
+	// The refusal names the field in the operator's words...
+	assert.match(studio, /colSpan: "width", rowSpan: "height"/,
+		"the field-name map is gone — the error cannot name what to fix");
+	assert.match(studio, /Card \$\{fieldNames\[key\]\}: not a value the card can keep/,
+		"the named refusal message is gone");
+	// ...and lands in the reserved message line, which renders error() so a
+	// refusal appears without reflowing the buttons.
+	assert.match(studio, /class="fb-msg" classList=\{\{ show: armed\(\) !== null \|\| error\(\) !== "" \}\}/,
+		".fb-msg is no longer gated on error() — the refusal has nowhere to surface");
 });
 
 // ---- sizing: one placement path for registry and custom cards ----

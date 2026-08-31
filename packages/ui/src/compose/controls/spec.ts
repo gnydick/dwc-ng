@@ -106,11 +106,16 @@ export type ButtonVariant = "go" | "danger" | "quiet";
  * the container nodes (row: horizontal; group and each columns entry:
  * vertical), never a node of its own. Rendered as one of four static classes;
  * untrusted strings are refused in parse.ts (the gcode-button variant
- * precedent). Positional stability holds because justify redistributes FREE
- * space only: every leaf control reserves its geometry against live updates
- * (tabular-nums + min-width value slots, reserved error/stamp slots), so a
- * polled value change cannot change any box and therefore cannot move a
- * justified sibling.
+ * precedent). Justify redistributes FREE space only, and what that buys is
+ * exactly this: a polled VALUE change cannot move a justified sibling,
+ * because every leaf control boxes its values against live updates
+ * (tabular-nums + min-width value slots, reserved error/stamp slots).
+ * LABELS are the stated exception: a row/group/readout label carrying {om:}
+ * has a min-width floor and no max, so a poll that resolves to a longer
+ * label CAN grow its box and take free space from the distribution — by
+ * design, a legitimate long label renders whole rather than clipping.
+ * An author who wants complete stillness under justify keeps {om:} out of
+ * labels; the import review shows every label read (share.ts omReads).
  */
 export type Justify = "start" | "center" | "end" | "between";
 

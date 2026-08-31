@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { describeCardMeta, exportCard, exportScreen, parseShareFile, remapScreenCards, reviewSpec } from "../src/compose/share.ts";
 import { parseControlSpecText } from "../src/compose/controls/parse.ts";
 import { SPINDLE_EXAMPLE_JSON } from "../src/compose/controls/examples.ts";
@@ -132,6 +133,87 @@ test("a row label's {om:} reads join the Reads inventory (found: were silently a
 	const review = reviewSpec(parsed.ok ? parsed.spec : (undefined as never));
 	assert.ok(review.omReads.includes("state.status"), "row label reads are inventoried");
 	assert.ok(review.omReads.includes("state.machineMode"), "row sub reads are inventoried");
+});
+
+/**
+ * THE ENUMERATION BEHIND "labels are templates too", redone honestly (inc 3
+ * review, F2). The row-label fix above was filed as a class ruling — "walk
+ * every template-typed field" — but the class was never enumerated, and
+ * gcode-button.aria (compiled at spec.ts, resolved at ControlList.tsx) was a
+ * CompiledTemplate reviewSpec never walked: aria:"home while {om:state.status}"
+ * yielded omReads []. Found red by exactly the fixture below.
+ *
+ * This test is the enumeration in its falsifiable form: it reads the
+ * CompiledNode union out of spec.ts and lists, per variant, every field typed
+ * CompiledTemplate or OmSelector. A new variant, or a new template/selector
+ * field on an existing one, fails the deepEqual — and then must ALSO join the
+ * fixture in the next test, which proves each enumerated field's reads
+ * actually reach the review.
+ */
+test("every CompiledNode template/selector-typed field is enumerated by name", () => {
+	const source = readFileSync(new URL("../src/compose/controls/spec.ts", import.meta.url), "utf8");
+	const union = /export type CompiledNode =([\s\S]*?)\nexport type CompiledRowItem/.exec(source);
+	assert.ok(union !== null, "CompiledNode union not found in spec.ts — the scanner needs re-pointing");
+	// Variants begin `| { type: "name";` — a variant's chunk runs to the next
+	// variant. Comment lines between variants land in the PRECEDING chunk,
+	// which is safe as long as no comment writes `field: CompiledTemplate`
+	// verbatim — the deepEqual below fails loudly if one ever does.
+	const chunks = union![1]!.split(/\|\s*\{\s*type:\s*"/).slice(1);
+	const scanned: Record<string, string[]> = {};
+	for (const chunk of chunks) {
+		const name = /^([A-Za-z-]+)"/.exec(chunk);
+		assert.ok(name !== null, "unparseable CompiledNode variant");
+		scanned[name![1]!] = [...chunk.matchAll(/(\w+)\??:\s*(?:CompiledTemplate|OmSelector)/g)].map(m => m[1]!);
+	}
+	assert.deepEqual(scanned, {
+		"gcode-button": ["label", "template", "aria"],
+		"jog-pad": [],
+		"axis-jog": [],
+		readout: ["om", "label"],
+		slider: ["template"],
+		toggle: ["om", "label", "whenOn", "whenOff"],
+		row: ["label", "sub"],
+		grid: [],
+		columns: [],
+		group: ["label"],
+		spacer: [],
+		forEach: ["from"],
+	}, "a new template/selector-typed field must join this enumeration AND the reads fixture below");
+});
+
+test("every enumerated field's {om:} read reaches the Reads inventory — aria included (found red)", () => {
+	// One node per variant that carries a template/selector field, one DISTINCT
+	// read per field, so a missing takeOm names the exact field that lost it.
+	const parsed = parseControlSpecText(JSON.stringify({
+		inputs: { speed: { kind: "number", label: "Speed", default: 100 } },
+		nodes: [
+			{ type: "gcode-button", label: "B {om:reads.btnLabel}", template: "M117 {om:reads.btnTemplate}",
+				aria: "home while {om:reads.btnAria}" },
+			{ type: "readout", om: "reads.readoutBinding", label: "{om:reads.readoutLabel}" },
+			{ type: "row", label: "{om:reads.rowLabel}", sub: "{om:reads.rowSub}", items: [
+				{ type: "slider", input: "speed", min: 0, max: 200, template: "M220 S{input.speed} ;{om:reads.sliderTemplate}" },
+				{ type: "toggle", om: "reads.toggleBinding", label: "{om:reads.toggleLabel}",
+					whenOn: "M106 S0 ;{om:reads.toggleOn}", whenOff: "M106 S1 ;{om:reads.toggleOff}" },
+			] },
+			{ type: "group", label: "{om:reads.groupLabel}", nodes: [] },
+			{ type: "forEach", from: "reads.loopSource", as: "it",
+				node: { type: "gcode-button", label: "L", template: "M117 {om:reads.forEachInner}" } },
+		],
+	}));
+	assert.ok(parsed.ok, parsed.ok ? "" : parsed.error);
+	const review = reviewSpec(parsed.ok ? parsed.spec : (undefined as never));
+	for (const read of [
+		"reads.btnLabel", "reads.btnTemplate", "reads.btnAria",
+		"reads.readoutBinding", "reads.readoutLabel",
+		"reads.rowLabel", "reads.rowSub",
+		"reads.sliderTemplate",
+		"reads.toggleBinding", "reads.toggleLabel", "reads.toggleOn", "reads.toggleOff",
+		"reads.groupLabel",
+		"reads.forEachInner",
+	]) {
+		assert.ok(review.omReads.includes(read), `${read} is missing from the Reads inventory`);
+	}
+	assert.deepEqual(review.loops, ["reads.loopSource"], "the forEach source is the loop inventory");
 });
 
 // ---- card round trip ----

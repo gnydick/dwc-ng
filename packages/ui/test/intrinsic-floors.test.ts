@@ -45,6 +45,14 @@ function ruleBody(sel: string): string {
  * Containers whose intrinsic width IS the card's stop. Each holds controls of a
  * declared size, so its min-content is a real number the card must respect —
  * there is no reflow available to any of them that would make zero honest.
+ *
+ * `.ctl-col` / `.ctl-group` hold controls too and are deliberately NOT here:
+ * their `min-width: 0` is load-bearing (fr tracks stay pure ratios, so a
+ * sibling column's content cannot move a ruler), and the honesty this list
+ * defends is restored by a MEASUREMENT-MODE lift instead — see "the
+ * ctl-col/ctl-group ratio zero is lifted while intrinsic width is measured"
+ * at the end of this file, which holds the zero, the lift and the wearer
+ * together as one pair.
  */
 const MUST_NOT_ZERO = [
 	".filament-feed-fields", // Feed distance + rate: 48 + "mm" + 70 + "F" = 159
@@ -1022,6 +1030,69 @@ test("red check — the floor may be a token, and the cap is still compared to i
 	}];
 	assert.match(unboundedGrowth(broken)[0] ?? "", /below its own 7.5u floor/,
 		"a floor written as a token must still be compared against the cap");
+});
+
+/**
+ * GIT_194 inc 3 — THE RATIO ZERO AND ITS MEASUREMENT LIFT, a pair that must
+ * travel together.
+ *
+ * `.ctl-col` / `.ctl-group` declare `min-width: 0`, and unlike every entry in
+ * MUST_NOT_ZERO at the top of this file, this zero is LOAD-BEARING: a columns
+ * split's fr tracks are pure ratios only while no item's min-content can hold
+ * a track open, which is what keeps a ruler where the author put it when a
+ * sibling column's content changes (positional stability — the primary
+ * concern, uniformity-alignment-positional-stability).
+ *
+ * But contentColSpan (shell/panelCanvas.ts) finds the card's width stop by
+ * measuring the body's min-content, and a zeroed container reports roughly
+ * gaps + ruler padding: the stop lands INSIDE the widest leaf and the card
+ * can be dragged over its own controls — the .filament-feed-fields defect
+ * this file opens with, reintroduced by a structural node.
+ *
+ * The resolution is a measurement mode: intrinsicWidthPx — the ONE function
+ * that asks the layout engine for an intrinsic width, called by contentColSpan
+ * and headerColSpan alike — wears `measuring-intrinsic` on the element for
+ * the duration of its synchronous set/read/restore, and app.css lifts the
+ * zero to `min-content` under that class. Live rendering keeps the ratios;
+ * the measurement sees the true floor; no frame ever paints the lifted state
+ * (same no-yield argument intrinsicWidthPx already makes for its width swap).
+ *
+ * Three parts, none visible from the others, held together here: the zero,
+ * the lift (covering EVERY selector the zero rule names), and the wearer.
+ */
+test("the ctl-col/ctl-group ratio zero is lifted while intrinsic width is measured", () => {
+	const rules = flatCssRules();
+	const zero = rules.find(r =>
+		r.sel.split(",").some(s => s.trim() === ".ctl-col") && /min-width:\s*0/.test(r.body));
+	assert.ok(zero !== undefined,
+		"no .ctl-col rule declares min-width: 0 — if the ratio zero is gone, the measurement lift " +
+		"has nothing to lift: remove the pair TOGETHER, or the lift rule is dead weight that reads like a mechanism");
+	const zeroSels = zero!.sel.split(",").map(s => s.trim());
+	assert.ok(zeroSels.includes(".ctl-group"),
+		".ctl-group left the zero rule — the pair below no longer describes the sheet");
+
+	const lift = rules.find(r =>
+		r.sel.includes(".measuring-intrinsic") && /min-width:\s*min-content/.test(r.body));
+	assert.ok(lift !== undefined,
+		"no measurement lift (.measuring-intrinsic … { min-width: min-content }) — contentColSpan " +
+		"measures ≈ 0 for a columns split and the card can be dragged over its own controls");
+	const liftSels = new Set(lift!.sel.split(",").map(s => s.trim()));
+	for (const sel of zeroSels) {
+		assert.ok(liftSels.has(`.measuring-intrinsic ${sel}`),
+			`${sel} is zeroed for ratios but not lifted for measurement — its content is invisible to the card's width stop`);
+	}
+
+	// The wearer: inside intrinsicWidthPx itself, not a caller — the sole
+	// measurement route is the choke point, so every present and future
+	// caller measures in truth mode without knowing the class exists.
+	const canvas = readFileSync(
+		fileURLToPath(new URL("../src/shell/panelCanvas.ts", import.meta.url)), "utf8");
+	const fn = /function intrinsicWidthPx[\s\S]*?\n\}/.exec(canvas);
+	assert.ok(fn !== null, "intrinsicWidthPx not found in panelCanvas.ts — the sole measurer moved; move this pin with it");
+	assert.match(fn[0]!, /classList\.add\("measuring-intrinsic"\)/,
+		"intrinsicWidthPx never enters measurement mode — the zeroed containers under-report their floor");
+	assert.match(fn[0]!, /classList\.remove\("measuring-intrinsic"\)/,
+		"measurement mode is never left — live rendering would lose the fr-ratio purity the zero exists for");
 });
 
 /**
