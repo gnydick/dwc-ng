@@ -7,18 +7,31 @@
  * cmd.jog stays the single authority for jog G-code, data only picks axes
  * and binds the step/feed inputs.
  */
-import { For, Show, createMemo, createSignal, onCleanup, type JSX } from "solid-js";
+import { For, Match, Show, Switch, createMemo, onCleanup, type JSX } from "solid-js";
 import { createStore } from "solid-js/store";
 import { GcodeButton } from "../../control/GcodeButton.tsx";
 import { cmd } from "../../control/commands.ts";
 import { createRangeGesture } from "../../control/rangeGesture.ts";
 import { useApp } from "../../shell/context.ts";
 import { readOm, readOmList } from "./omSelector.ts";
-import { formatReadoutValue } from "./readout.ts";
+import { formatReadoutValue, READOUT_PLACEHOLDER } from "./readout.ts";
+import { createSendFeedback } from "./sendFeedback.ts";
+import { toggleStateOf, type ToggleState } from "./toggle.ts";
 import { resolveTemplate, type TemplateScope } from "./template.ts";
 import { isInputRef, type CompiledControlSpec, type CompiledNode, type CompiledRowItem, type EnrichmentId } from "./spec.ts";
 import type { CardCtx } from "../ctx.ts";
 import { unreachable } from "../../util/unreachable.ts";
+import type { GcodeCommand } from "@dwc-ng/connector";
+
+/**
+ * Total numeric read over the shared inputs store. The string branch is
+ * unreachable for the bindings that use this — compileControlSpec's
+ * needNumericInput refuses jog/slider bindings whose input can stage a
+ * string — but the store's TYPE admits strings (selects), so the read
+ * states its fallback instead of asserting.
+ */
+const numeric = (value: number | string | undefined, fallback: number): number =>
+	typeof value === "number" ? value : fallback;
 
 /** Closed enrichment registry (data names one; code defines it — rung 8). */
 const ENRICHMENTS: Record<EnrichmentId, (item: Record<string, unknown>, ctx: CardCtx) => Record<string, unknown>> = {
@@ -39,9 +52,12 @@ export function ControlList(props: { spec: CompiledControlSpec; ctx: CardCtx }) 
 	// resolves, so the Card Studio preview's provider swap (stub connector)
 	// covers a previewed slider exactly as it covers a previewed button.
 	const app = useApp();
-	// Shared live inputs (step sizes, feeds) — card-local state, seeded from
-	// the spec's defaults, consumed by templates and the motion primitives.
-	const [inputs, setInputs] = createStore<Record<string, number>>(
+	// Shared live inputs (step sizes, feeds, select choices) — card-local
+	// state, seeded from the spec's defaults, consumed by templates and the
+	// motion primitives. Strings enter ONLY as a select's author-enumerated
+	// option values (vetted at the compile boundary); no handler below writes
+	// operator free text.
+	const [inputs, setInputs] = createStore<Record<string, number | string>>(
 		Object.fromEntries(Object.entries(props.spec.inputs).map(([name, def]) => [name, def.default])),
 	);
 
@@ -54,31 +70,57 @@ export function ControlList(props: { spec: CompiledControlSpec; ctx: CardCtx }) 
 	const InputControl = (p: { name: string }): JSX.Element => {
 		const def = props.spec.inputs[p.name]!;
 		return (
-			<Show
-				when={def.kind === "chips"}
-				fallback={
+			<Switch>
+				<Match when={def.kind === "chips" ? def : null}>
+					{chips => (
+						<For each={chips().options ?? []}>
+							{opt => (
+								<button
+									class="chip-btn"
+									classList={{ active: inputs[p.name] === opt }}
+									onClick={() => setInputs(p.name, opt)}
+								>
+									{opt}{chips().unit ? ` ${chips().unit}` : ""}
+								</button>
+							)}
+						</For>
+					)}
+				</Match>
+				<Match when={def.kind === "select" ? def : null}>
+					{sel => (
+						<label class="feed-field">
+							{sel().label}
+							{/* Staged by option INDEX: the <option> carries the index and
+							    the store receives options[i].value, so a numeric value
+							    stages as a number and a string as a string — never the
+							    DOM's stringification (which would let 100 and "100"
+							    collide, and would retype every numeric pick). */}
+							<select
+								class="fb-input ctl-select"
+								value={String(sel().options.findIndex(opt => opt.value === inputs[p.name]))}
+								onChange={e => {
+									const opt = sel().options[Number(e.currentTarget.value)];
+									if (opt !== undefined) setInputs(p.name, opt.value);
+								}}
+							>
+								<For each={sel().options}>
+									{(opt, i) => <option value={String(i())}>{opt.label}</option>}
+								</For>
+							</select>
+						</label>
+					)}
+				</Match>
+				<Match when={def.kind === "number"}>
 					<label class="feed-field">
 						{def.label}
 						<input
 							type="number"
-							value={inputs[p.name]}
+							value={numeric(inputs[p.name], 0)}
 							onInput={e => setInputs(p.name, Number(e.currentTarget.value))}
 						/>
 					</label>
-				}
-			>
-				<For each={def.options ?? []}>
-					{opt => (
-						<button
-							class="chip-btn"
-							classList={{ active: inputs[p.name] === opt }}
-							onClick={() => setInputs(p.name, opt)}
-						>
-							{opt}{def.unit ? ` ${def.unit}` : ""}
-						</button>
-					)}
-				</For>
-			</Show>
+				</Match>
+			</Switch>
 		);
 	};
 
@@ -99,8 +141,8 @@ export function ControlList(props: { spec: CompiledControlSpec; ctx: CardCtx }) 
 			case "jog-pad": {
 				const has = (letter: string): boolean =>
 					props.ctx.om.om.move.axes.some(a => a.visible && a.letter === letter);
-				const step = (): number => inputs[node.step] ?? 0;
-				const feed = (): number => inputs[node.feed] ?? 0;
+				const step = (): number => numeric(inputs[node.step], 0);
+				const feed = (): number => numeric(inputs[node.feed], 0);
 				return (
 					<div class="jog-pad">
 						<Show when={has("X") && has("Y")}>
@@ -129,8 +171,8 @@ export function ControlList(props: { spec: CompiledControlSpec; ctx: CardCtx }) 
 				});
 				const letter = (): string => String(item().letter ?? "");
 				const role = (): string | undefined => props.ctx.config.config.axisRoles[letter()];
-				const step = (): number => inputs[node.step] ?? 0;
-				const feed = (): number => inputs[node.feed] ?? 0;
+				const step = (): number => numeric(inputs[node.step], 0);
+				const feed = (): number => numeric(inputs[node.feed], 0);
 				return (
 					<div class="jog-row">
 						{/* Always rendered, even with labels off — see .no-labels in app.css.
@@ -165,39 +207,20 @@ export function ControlList(props: { spec: CompiledControlSpec; ctx: CardCtx }) 
 			}
 			case "slider": {
 				const def = props.spec.inputs[node.input]!; // compile guarantees the reference
-				const value = (): number => inputs[node.input] ?? node.min;
+				const value = (): number => numeric(inputs[node.input], node.min);
 				const command = () => resolveTemplate(node.template, scopeWith(p.vars));
 				// One send per completed value-change gesture: dragging (or
 				// arrowing) updates the shared input — worn stamps re-resolve
 				// live, nothing is sent — and the resolved template goes out once
 				// when the gesture completes, via the shared rangeGesture machine
 				// (keyboard events are not wired at all; only value changes open
-				// a gesture, so a held arrow key settles into ONE send).
-				const [state, setState] = createSignal<"idle" | "sending" | "sent" | "failed">("idle");
-				const [error, setError] = createSignal("");
-				let ackTimer: ReturnType<typeof setTimeout> | undefined;
-				onCleanup(() => clearTimeout(ackTimer));
-				const send = async (): Promise<void> => {
-					clearTimeout(ackTimer);
-					setState("sending");
-					setError("");
-					try {
-						await app.connector.sendCode(command());
-						setState("sent");
-						ackTimer = setTimeout(() => setState("idle"), 1100);
-					} catch (err) {
-						// Refused (board, or the write guard). Colour only — the row's
-						// geometry is fixed, so a refusal cannot move the handle.
-						setState("failed");
-						setError(err instanceof Error ? err.message : String(err));
-					}
-				};
-				// One send per completed value-change gesture — the shared machine
-				// (control/rangeGesture.ts) SpeedSlider drives too. The template
-				// resolves from the inputs store, which every change has already
-				// updated by the time the gesture completes.
-				const gesture = createRangeGesture({ onSend: () => void send() });
+				// a gesture, so a held arrow key settles into ONE send). Send/ack
+				// through the shared feedback helper the toggle also uses.
+				const fb = createSendFeedback(code => app.connector.sendCode(code));
+				const gesture = createRangeGesture({ onSend: () => void fb.fire(command()) });
 				onCleanup(gesture.dispose);
+				const state = fb.state;
+				const error = fb.error;
 				return (
 					<div class="ctl-slider" title={command()}>
 						<span class="ctl-name">{def.label}</span>
@@ -239,6 +262,70 @@ export function ControlList(props: { spec: CompiledControlSpec; ctx: CardCtx }) 
 						{/* Always present so a refusal cannot reflow the row. */}
 						<span class="ctl-slider-error" classList={{ show: error() !== "" }} title={error()}>
 							{error() === "" ? " " : "refused"}
+						</span>
+					</div>
+				);
+			}
+			case "toggle": {
+				// State comes ONLY from the polled OM — there is no latched
+				// boolean anywhere, so the control converges to the board when a
+				// command fails, a macro overrides it, or another client acts.
+				const st = (): ToggleState => toggleStateOf(readOm(props.ctx.om.om, node.om));
+				// The worn command is the ACTIVE alternative (GcodeButton's title
+				// discipline: title/stamp show exactly what THIS press sends).
+				// Unknown state has NO command — null, never a placeholder cast to
+				// a command — which is what makes the inert branch honest.
+				const command = (): GcodeCommand | null => {
+					switch (st()) {
+						case "on": return resolveTemplate(node.whenOn, scopeWith(p.vars));
+						case "off": return resolveTemplate(node.whenOff, scopeWith(p.vars));
+						case "unknown": return null;
+					}
+				};
+				const label = (): string =>
+					node.label === undefined ? "" : resolveTemplate(node.label, scopeWith(p.vars));
+				const fb = createSendFeedback(code => app.connector.sendCode(code));
+				const activate = (): void => {
+					// Total guard, not a GUI safety: with unknown state neither
+					// alternative is truthfully "what this press sends". `disabled`
+					// below is the UX half; this is the handler's own totality.
+					const code = command();
+					if (code !== null) void fb.fire(code);
+				};
+				return (
+					<div class="ctl-toggle">
+						<Show when={label()}>
+							<span class="ctl-name">{label()}</span>
+						</Show>
+						{/* One send per activation press — native button semantics. */}
+						<button
+							type="button"
+							class="ctl-toggle-btn"
+							classList={{ "is-on": st() === "on", "is-unknown": st() === "unknown" }}
+							disabled={st() === "unknown"}
+							aria-pressed={st() === "unknown" ? "mixed" : st() === "on"}
+							aria-label={label() === "" ? undefined : label()}
+							title={command() ?? ""}
+							onClick={activate}
+						>
+							<span class="ctl-toggle-track"><span class="ctl-toggle-thumb" /></span>
+							{/* Reserved word slot: ON/OFF/— are colour+text in a fixed
+							    box, so a state change cannot reflow the row. */}
+							<span class="ctl-toggle-word">{st() === "on" ? "ON" : st() === "off" ? "OFF" : READOUT_PLACEHOLDER}</span>
+						</button>
+						<Show when={node.stamp !== false}>
+							{/* Wears the live-resolved ACTIVE command (I15); unknown
+							    state shows the placeholder in the same reserved slot. */}
+							<span
+								class="ctl-toggle-cmd"
+								classList={{ "is-sent": fb.state() === "sent", "is-failed": fb.state() === "failed" }}
+							>
+								{command() ?? READOUT_PLACEHOLDER}
+							</span>
+						</Show>
+						{/* Always present so a refusal cannot reflow the row. */}
+						<span class="ctl-toggle-error" classList={{ show: fb.error() !== "" }} title={fb.error()}>
+							{fb.error() === "" ? " " : "refused"}
 						</span>
 					</div>
 				);

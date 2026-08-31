@@ -44,7 +44,23 @@ function asOptString(value: unknown, where: string): string | undefined {
 function validateInput(raw: unknown, where: string): InputDef {
 	const o = asRecord(raw, where);
 	const kind = asString(o.kind, `${where}.kind`);
-	if (kind !== "number" && kind !== "chips") fail(`${where}.kind: "number" or "chips"`);
+	if (kind === "select") {
+		// Structure only — the semantic rules (non-empty, default among the
+		// values, no control characters) live in compileControlSpec, the one
+		// boundary built-ins share.
+		const label = asString(o.label, `${where}.label`);
+		if (typeof o.default !== "number" && typeof o.default !== "string") fail(`${where}.default: expected a number or a string`);
+		if (!Array.isArray(o.options)) fail(`${where}.options: expected an array of { label, value }`);
+		const options = o.options.map((opt, i) => {
+			const rec = asRecord(opt, `${where}.options[${i}]`);
+			if (typeof rec.value !== "number" && typeof rec.value !== "string") fail(`${where}.options[${i}].value: expected a number or a string`);
+			return { label: asString(rec.label, `${where}.options[${i}].label`), value: rec.value };
+		});
+		const def: InputDef = { kind, label, default: o.default, options };
+		if (o.unit !== undefined) def.unit = asString(o.unit, `${where}.unit`);
+		return def;
+	}
+	if (kind !== "number" && kind !== "chips") fail(`${where}.kind: "number", "chips" or "select"`);
 	if (typeof o.default !== "number") fail(`${where}.default: expected a number`);
 	const def: InputDef = { kind, label: asString(o.label, `${where}.label`), default: o.default };
 	if (o.options !== undefined) {
@@ -119,6 +135,20 @@ function validateNode(raw: unknown, where: string): ControlNode {
 				if (typeof o.step !== "number") fail(`${where}.step: expected a number`);
 				node.step = o.step;
 			}
+			if (o.stamp !== undefined) {
+				if (typeof o.stamp !== "boolean") fail(`${where}.stamp: expected a boolean`);
+				node.stamp = o.stamp;
+			}
+			return node;
+		}
+		case "toggle": {
+			const node: ControlNode = {
+				type,
+				om: asString(o.om, `${where}.om`),
+				whenOn: asString(o.whenOn, `${where}.whenOn`),
+				whenOff: asString(o.whenOff, `${where}.whenOff`),
+			};
+			node.label = asOptString(o.label, `${where}.label`);
 			if (o.stamp !== undefined) {
 				if (typeof o.stamp !== "boolean") fail(`${where}.stamp: expected a boolean`);
 				node.stamp = o.stamp;

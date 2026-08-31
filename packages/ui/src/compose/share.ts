@@ -18,7 +18,7 @@
  */
 import { parseControlSpecText, type ParsedSpec } from "./controls/parse.ts";
 import { omReadsOf } from "./controls/template.ts";
-import { isInputRef, type CompiledControlSpec, type CompiledNode, type CompiledRowItem } from "./controls/spec.ts";
+import { isInputRef, type CompiledControlSpec, type CompiledNode, type CompiledRowItem, type InputDef } from "./controls/spec.ts";
 import { isCustomCardId } from "./composition.ts";
 import { cardTitleOf, parseCardId } from "./defs.ts";
 import type { SlotRect, UiConfig } from "../config/types.ts";
@@ -36,7 +36,16 @@ export interface SpecReview {
 	buttons: Array<{ label: string; template: string }>;
 	/** Every slider — an emitter like a button, so its RAW template is here. */
 	sliders: Array<{ input: string; template: string; min: number; max: number }>;
-	/** Every object-model read ({om:…} in templates, and readout bindings). */
+	/** Every toggle — an emitter with TWO alternatives: BOTH raw templates
+	 *  are here, because accepting the card means having seen both, not just
+	 *  whichever the current state resolves. */
+	toggles: Array<{ om: string; whenOn: string; whenOff: string }>;
+	/** Every select input's labeled options. A select never emits, but its
+	 *  STRING values interpolate into templates verbatim, expanding what a
+	 *  reviewed template can say beyond digits — so the reviewer sees every
+	 *  author-enumerated value a placeholder can become. */
+	selects: Array<{ input: string; options: Array<{ label: string; value: number | string }> }>;
+	/** Every object-model read ({om:…} in templates, readout and toggle bindings). */
 	omReads: string[];
 	/** Every forEach enumeration source. */
 	loops: string[];
@@ -49,6 +58,10 @@ export function reviewSpec(spec: CompiledControlSpec): SpecReview {
 		inputs: Object.keys(spec.inputs),
 		buttons: [],
 		sliders: [],
+		toggles: [],
+		selects: safeEntries(spec.inputs)
+			.filter((entry): entry is [string, Extract<InputDef, { kind: "select" }>] => entry[1].kind === "select")
+			.map(([input, def]) => ({ input, options: def.options.map(opt => ({ label: opt.label, value: opt.value })) })),
 		omReads: [],
 		loops: [],
 		motion: [],
@@ -88,6 +101,13 @@ export function reviewSpec(spec: CompiledControlSpec): SpecReview {
 			case "slider":
 				review.sliders.push({ input: node.input, template: node.template.text, min: node.min, max: node.max });
 				takeOm(omReadsOf(node.template));
+				return;
+			case "toggle":
+				review.toggles.push({ om: node.om.text, whenOn: node.whenOn.text, whenOff: node.whenOff.text });
+				takeOm([node.om.text]);
+				if (node.label !== undefined) takeOm(omReadsOf(node.label));
+				takeOm(omReadsOf(node.whenOn));
+				takeOm(omReadsOf(node.whenOff));
 				return;
 			case "row":
 				node.items.forEach(walkItem);

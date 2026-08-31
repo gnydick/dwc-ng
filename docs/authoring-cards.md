@@ -65,7 +65,17 @@ via any compose drawer.
 ```
 
 **Inputs** (shared live values, referenced by name):
-`number` (a small field) or `chips` (a preset row, like Movement's step sizes).
+`number` (a small field), `chips` (a preset row of bare numbers, like
+Movement's step sizes), or `select` (a dropdown of **labeled** options —
+`"options": [ { "label": "Purge", "value": "purge" }, … ]` — whose values
+may be strings, e.g. for `M98 P"/macros/{input.macro}"`). Select rules,
+enforced at the one compile boundary: at least one option, `default` must
+be one of the option values, and string values may not contain control
+characters (a picked value can never add a line to a template). A select
+whose options are all numbers can bind anywhere `chips` could; one that
+lists any string value cannot bind jog `step`/`feed` or a `slider` (those
+value spaces are numeric). Select inputs are edited as JSON — the form
+refuses to lift them rather than approximating the option list.
 
 **Nodes:**
 
@@ -75,7 +85,8 @@ via any compose drawer.
 | `jog-pad` | the cardinal XY pad + Z column | `step`, `feed` (input names) — emits via `cmd.jog` |
 | `axis-jog` | one −/+ row for a loop axis | `axisVar`, `step`, `feed` |
 | `readout` | a live OM value, display-only | `om` (selector), `label?`, `unit?`, `decimals?` (integer 0–8). Absent/null reads render a reserved `—`, never a collapse |
-| `slider` | a range over an input; sends **on release** | `input` (input name — its label/unit label the slider), `min`, `max`, `step?` (default 1), `template`, `stamp?` (false hides the worn code). One send per gesture, never per pixel |
+| `slider` | a range over an input; one send per completed gesture | `input` (input name — its label/unit label the slider), `min`, `max`, `step?` (default 1), `template`, `stamp?` (false hides the worn code). Never per pixel or per arrow step — the shared gesture machine settles a drag or a key burst into ONE send |
+| `toggle` | a two-state switch that READS the board and sends the alternative | `om` (state selector — truthy leaf = on, `0`/`false`/`""` = off; absent/non-leaf/non-finite = unknown), `whenOn` (sent while on, i.e. the turn-off command), `whenOff` (the converse), `label?`, `stamp?`. State comes only from the polled OM (no internal latch — it converges when a command fails or the state moves externally); unknown renders indeterminate and is inert. Wears the ACTIVE alternative; bind numeric/boolean leaves, not status strings |
 | `row` | a labelled flex row | `label?`, `sub?`, `class?`, `items` (nodes and/or `{ "input": name }`) |
 | `grid` | equal-column button grid | `items` |
 | `forEach` | stamp a node per OM item | `from` (selector), `as` (var name), `except?` `{prop, values}`, `enrich?` (`axisLabel`) |
@@ -106,10 +117,37 @@ it:
 ```
 
 The slider drags freely and resolves its worn command live, but nothing is
-sent until release — RRF tolerates very few requests, so it is one command
-per gesture, exactly like the Tuning card's speed slider. `min`/`max`/`step`
-are the range control's attributes and nothing more: the firmware remains
-the authority on what the sent value does.
+sent until the gesture completes — RRF tolerates very few requests, so it is
+one command per gesture (a drag, or a settled run of arrow keys), exactly
+like the Tuning card's speed slider. `min`/`max`/`step` are the range
+control's attributes and nothing more: the firmware remains the authority on
+what the sent value does.
+
+A fan toggle plus a macro select feeding a button:
+
+```json
+{
+	"inputs": {
+		"macro": { "kind": "select", "label": "Macro", "default": "purge",
+			"options": [ { "label": "Purge", "value": "purge" }, { "label": "Wipe", "value": "wipe" } ] }
+	},
+	"nodes": [
+		{ "type": "row", "items": [
+			{ "type": "toggle", "om": "fans[0].requestedValue", "label": "Part fan",
+				"whenOn": "M106 P0 S0", "whenOff": "M106 P0 S1" },
+			{ "input": "macro" },
+			{ "type": "gcode-button", "label": "Run", "template": "M98 P\"/macros/{input.macro}\"" }
+		]}
+	]
+}
+```
+
+The toggle shows the board's own state and sends the alternative for the
+state it shows: while the fan runs it wears (and sends) `M106 P0 S0`. If the
+command fails, or a macro flips the fan from elsewhere, the switch follows
+the next poll — there is nothing else it could show. The import review lists
+BOTH of a toggle's templates (it is an emitter with two alternatives) and
+every select option value (string values reach templates verbatim).
 
 ## 2. A registry card — in code
 

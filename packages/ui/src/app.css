@@ -2930,22 +2930,68 @@ input[type="checkbox"] {
 .ctl-slider-value.is-sent { color: var(--ok); }
 .ctl-slider-value.is-failed { color: var(--fault); }
 /* The worn command (I15): mono like .gcode-cmd, truncating rather than
-   pushing — the row's geometry does not depend on the resolved text. */
-.ctl-slider-cmd {
+   pushing — the row's geometry does not depend on the resolved text.
+   The toggle's stamp co-selects the ONE set of rules (never a second copy). */
+.ctl-slider-cmd, .ctl-toggle-cmd {
 	font: 400 calc(3.125 * var(--u))/1 ui-monospace, "Cascadia Code", "SF Mono", Menlo, Consolas, monospace;
 	color: var(--silk-dim); opacity: 0.75; white-space: nowrap;
 	overflow: hidden; text-overflow: ellipsis; max-width: calc(50 * var(--u));
 }
 /* Refusal slot: laid out always, visible on failure — colour and visibility
-   only, never geometry (the .speed-error discipline). */
-.ctl-slider-error {
+   only, never geometry (the .speed-error discipline). Toggle co-selects. */
+.ctl-slider-error, .ctl-toggle-error {
 	font: 600 calc(3 * var(--u))/1 var(--font-display); letter-spacing: 0.08em; text-transform: uppercase;
 	color: var(--fault);
 	min-width: 0; text-align: right;
 	overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 	visibility: hidden;
 }
-.ctl-slider-error.show { visibility: visible; }
+.ctl-slider-error.show, .ctl-toggle-error.show { visibility: visible; }
+
+/* ---------- data-defined toggle + select (GIT_194 increment 2) ---------- */
+.ctl-toggle { display: flex; align-items: center; gap: calc(2.5 * var(--u)); min-height: var(--ctl-h); }
+.ctl-toggle-btn {
+	display: inline-flex; align-items: center; gap: calc(1.5 * var(--u));
+	background: none; padding: calc(1 * var(--u)); cursor: pointer;
+	color: var(--silk-dim);
+}
+.ctl-toggle-btn:hover { color: var(--silk); }
+/* Inert while the OM has not reported a leaf — representation honesty, not a
+   GUI safety: with no state there is no alternative a press could send. */
+.ctl-toggle-btn:disabled { cursor: default; }
+/* The switch body: fixed geometry in every state, colour and thumb position
+   are the only things that change. */
+.ctl-toggle-track {
+	position: relative; width: calc(9 * var(--u)); height: calc(4.5 * var(--u));
+	border-radius: calc(2.25 * var(--u));
+	background: var(--mask-500);
+	box-shadow: inset 0 0 0 1px var(--hairline);
+}
+.ctl-toggle-thumb {
+	position: absolute; top: calc(0.75 * var(--u)); left: calc(0.75 * var(--u));
+	width: calc(3 * var(--u)); height: calc(3 * var(--u)); border-radius: 50%;
+	background: var(--silk-dim);
+	transition: left 120ms ease, background 120ms ease;
+}
+.ctl-toggle-btn.is-on .ctl-toggle-track { background: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.ctl-toggle-btn.is-on .ctl-toggle-thumb { left: calc(5.25 * var(--u)); background: var(--mask-900); }
+/* Unknown: centred hollow thumb — indeterminate in the SAME box. */
+.ctl-toggle-btn.is-unknown .ctl-toggle-thumb {
+	left: calc(3 * var(--u));
+	background: none; box-shadow: inset 0 0 0 1px var(--silk-dim);
+}
+/* Reserved word slot: ON/OFF/— must all fit without moving the stamp. */
+.ctl-toggle-word {
+	font: 600 calc(3.75 * var(--u))/1 var(--font-display); letter-spacing: 0.05em;
+	min-width: calc(7 * var(--u)); text-align: left; white-space: nowrap;
+}
+.ctl-toggle-btn.is-on .ctl-toggle-word { color: var(--accent-bright); }
+/* Worn command + refusal slot: the ONE set of rules under the slider's
+   selectors, co-selected — never a second copy. */
+.ctl-toggle-cmd.is-sent { color: var(--ok); opacity: 1; }
+.ctl-toggle-cmd.is-failed { color: var(--fault); opacity: 1; }
+/* A select input staging a labeled choice inside a control row. */
+.ctl-select { min-width: calc(20 * var(--u)); max-width: calc(40 * var(--u)); }
 
 /* heater / fan / factor rows */
 .heater-list { display: flex; flex-direction: column; gap: calc(2.5 * var(--u)); }

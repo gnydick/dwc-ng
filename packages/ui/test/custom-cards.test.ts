@@ -70,6 +70,41 @@ test("readout and slider pass the untrusted boundary; malformed fields are named
 	);
 });
 
+test("select and toggle pass the untrusted boundary; malformed fields are named errors", () => {
+	const good = parseControlSpecText(JSON.stringify({
+		inputs: {
+			mode: { kind: "select", label: "Mode", default: 0, options: [
+				{ label: "Off", value: 0 }, { label: "Full", value: 1 },
+			] },
+		},
+		nodes: [
+			{ type: "toggle", om: "fans[0].requestedValue", label: "Part fan", whenOn: "M106 P0 S0", whenOff: "M106 P0 S1" },
+			{ type: "gcode-button", label: "Set", template: "M106 S{input.mode}" },
+		],
+	}));
+	assert.ok(good.ok, good.ok ? "" : good.error);
+	assert.match(
+		(parseControlSpecText('{"inputs":{"m":{"kind":"select","label":"m","default":0}},"nodes":[]}') as { error: string }).error,
+		/inputs\.m\.options: expected an array/,
+	);
+	assert.match(
+		(parseControlSpecText('{"inputs":{"m":{"kind":"select","label":"m","default":0,"options":[{"value":0}]}},"nodes":[]}') as { error: string }).error,
+		/inputs\.m\.options\[0\]\.label: expected a string/,
+	);
+	assert.match(
+		(parseControlSpecText('{"inputs":{"m":{"kind":"select","label":"m","default":0,"options":[{"label":"x","value":true}]}},"nodes":[]}') as { error: string }).error,
+		/inputs\.m\.options\[0\]\.value: expected a number or a string/,
+	);
+	assert.match(
+		(parseControlSpecText('{"nodes":[{"type":"toggle","om":"fans[0].requestedValue","whenOn":"M106 S0"}]}') as { error: string }).error,
+		/nodes\[0\]\.whenOff: expected a string/,
+	);
+	assert.match(
+		(parseControlSpecText('{"nodes":[{"type":"toggle","om":"fans[0].requestedValue","whenOn":"M106 S0","whenOff":"M106 S1","stamp":"yes"}]}') as { error: string }).error,
+		/nodes\[0\]\.stamp: expected a boolean/,
+	);
+});
+
 // ---- custom cards in config + compositions ----
 
 test("addCustomCard mints c- ids; the spec text round-trips exactly", () => {
@@ -136,6 +171,32 @@ test("readout and slider items round-trip through the form model", async () => {
 	assert.ok(lifted !== null, "both kinds are form-shaped");
 	assert.deepEqual(toSpec(lifted!), spec, "lower(lift(spec)) is identity");
 	assert.ok(parseControlSpecText(JSON.stringify(toSpec(lifted!))).ok);
+});
+
+test("toggle items round-trip through the form model", async () => {
+	const { toSpec, tryFromSpec } = await import("../src/compose/controls/formModel.ts");
+	const spec = {
+		inputs: {},
+		nodes: [{
+			type: "row" as const,
+			items: [
+				{ type: "toggle" as const, om: "fans[0].requestedValue", label: "Part fan", whenOn: "M106 P0 S0", whenOff: "M106 P0 S1" },
+				{ type: "toggle" as const, om: "state.atxPower", whenOn: "M81", whenOff: "M80", stamp: false },
+			],
+		}],
+	};
+	const lifted = tryFromSpec(spec);
+	assert.ok(lifted !== null, "a toggle is form-shaped — every field has a form slot");
+	assert.deepEqual(toSpec(lifted!), spec, "lower(lift(spec)) is identity");
+	assert.ok(parseControlSpecText(JSON.stringify(toSpec(lifted!))).ok);
+});
+
+test("a spec with a select input refuses to lift — null over approximation", async () => {
+	const { tryFromSpec } = await import("../src/compose/controls/formModel.ts");
+	assert.equal(tryFromSpec({
+		inputs: { mode: { kind: "select", label: "Mode", default: 0, options: [{ label: "Off", value: 0 }] } },
+		nodes: [{ type: "row", items: [{ input: "mode" }] }],
+	}), null, "a labeled option list cannot ride the form's flat input row");
 });
 
 test("power-vocabulary specs refuse to lift (edited as JSON, never approximated)", async () => {

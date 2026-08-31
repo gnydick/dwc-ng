@@ -55,6 +55,47 @@ test("reviewSpec inventories a slider's raw template and a readout's OM read", (
 	);
 });
 
+test("reviewSpec inventories BOTH of a toggle's raw templates and its OM binding", () => {
+	const parsed = parseControlSpecText(JSON.stringify({
+		nodes: [
+			{ type: "row", items: [
+				{ type: "toggle", om: "fans[0].requestedValue", label: "Fan {om:state.currentTool}",
+					whenOn: "M106 P0 S0", whenOff: "M106 P0 S{om:move.speedFactor}" },
+			] },
+		],
+	}));
+	assert.ok(parsed.ok, parsed.ok ? "" : parsed.error);
+	const review = reviewSpec(parsed.ok ? parsed.spec : (undefined as never));
+	// A toggle is an emitter with TWO alternatives — accepting the card means
+	// having seen BOTH raw templates, not just whichever the state resolves.
+	assert.deepEqual(review.toggles, [
+		{ om: "fans[0].requestedValue", whenOn: "M106 P0 S0", whenOff: "M106 P0 S{om:move.speedFactor}" },
+	]);
+	assert.deepEqual(
+		review.omReads,
+		["fans[0].requestedValue", "state.currentTool", "move.speedFactor"],
+		"the state binding, the label read, and every template read are inventoried",
+	);
+});
+
+test("reviewSpec inventories a select input's labeled options — string values reach templates verbatim", () => {
+	const parsed = parseControlSpecText(JSON.stringify({
+		inputs: {
+			macro: { kind: "select", label: "Macro", default: "purge", options: [
+				{ label: "Purge", value: "purge" }, { label: "Wipe", value: "wipe" },
+			] },
+			speed: { kind: "number", label: "Speed", default: 100 },
+		},
+		nodes: [{ type: "gcode-button", label: "Run", template: 'M98 P"/macros/{input.macro}"' }],
+	}));
+	assert.ok(parsed.ok, parsed.ok ? "" : parsed.error);
+	const review = reviewSpec(parsed.ok ? parsed.spec : (undefined as never));
+	assert.deepEqual(review.selects, [
+		{ input: "macro", options: [{ label: "Purge", value: "purge" }, { label: "Wipe", value: "wipe" }] },
+	], "every author-enumerated value a placeholder can become is on the review");
+	assert.deepEqual(review.inputs, ["macro", "speed"], "select inputs still list among inputs");
+});
+
 // ---- card round trip ----
 
 test("exportCard → parseShareFile round-trips with a complete review", () => {

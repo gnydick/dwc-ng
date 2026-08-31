@@ -25,7 +25,7 @@ import { createStubConnector } from "@dwc-ng/connector";
 import { ControlList } from "./controls/ControlList.tsx";
 import { parseControlSpecText } from "./controls/parse.ts";
 import { SPINDLE_EXAMPLE, SPINDLE_EXAMPLE_NAME } from "./controls/examples.ts";
-import { emptyButton, emptyForm, emptyReadout, emptySlider, toSpec, tryFromSpec, type FormItem, type FormState } from "./controls/formModel.ts";
+import { emptyButton, emptyForm, emptyReadout, emptySlider, emptyToggle, toSpec, tryFromSpec, type FormItem, type FormState } from "./controls/formModel.ts";
 import type { CustomCardId } from "./composition.ts";
 import type { CardCtx } from "./ctx.ts";
 
@@ -87,6 +87,7 @@ export function CardStudio(props: {
 	const patchButton = patchItem("button");
 	const patchReadout = patchItem("readout");
 	const patchSlider = patchItem("slider");
+	const patchToggle = patchItem("toggle");
 
 	/** Live preview through the one boundary — errors render as themselves. */
 	const preview = createMemo(() => parseControlSpecText(currentJson()));
@@ -105,7 +106,7 @@ export function CardStudio(props: {
 		}
 		const lifted = tryFromSpec(parsed.data);
 		if (lifted === null) {
-			setError("This spec uses features the form can't show (forEach / grid / jog / classes) — keep editing as JSON.");
+			setError("This spec uses features the form can't show (forEach / grid / jog / classes / select inputs) — keep editing as JSON.");
 			return;
 		}
 		setForm(lifted);
@@ -264,6 +265,7 @@ export function CardStudio(props: {
 											<button class="link-btn" onClick={() => setForm("rows", r(), "items", produce(items => { items.push(emptyButton()); }))}>+ button</button>
 											<button class="link-btn" onClick={() => setForm("rows", r(), "items", produce(items => { items.push(emptyReadout()); }))}>+ readout</button>
 											<button class="link-btn" onClick={() => setForm("rows", r(), "items", produce(items => { items.push(emptySlider(form.inputs[0]?.name ?? "")); }))}>+ slider</button>
+											<button class="link-btn" onClick={() => setForm("rows", r(), "items", produce(items => { items.push(emptyToggle()); }))}>+ toggle</button>
 											<Show when={form.inputs.length > 0}>
 												<select
 													class="fb-input st-addinput"
@@ -347,6 +349,27 @@ export function CardStudio(props: {
 																<label class="check st-stamp" title="Show the mono G-code stamp beside the slider">
 																	<input type="checkbox" checked={sl().stamp}
 																		onChange={e => patchSlider(r(), i(), { stamp: e.currentTarget.checked })} />
+																	stamp
+																</label>
+																<button class="link-btn" onClick={() => setForm("rows", r(), "items", produce(items => { items.splice(i(), 1); }))}>✕</button>
+															</div>
+														)}
+													</Match>
+													<Match when={item.kind === "toggle" ? item : null}>
+														{tg => (
+															<div class="studio-itemrow">
+																<span class="lab-cap">toggle</span>
+																<input class="fb-input st-template mono" placeholder="state OM selector, e.g. fans[0].requestedValue" value={tg().om}
+																	onInput={e => patchToggle(r(), i(), { om: e.currentTarget.value })} />
+																<input class="fb-input st-btnlabel" placeholder="label" value={tg().label}
+																	onInput={e => patchToggle(r(), i(), { label: e.currentTarget.value })} />
+																<input class="fb-input st-template mono" placeholder="sent while ON, e.g. M106 P0 S0" title="sent when the state reads on (turn off)" value={tg().whenOn}
+																	onInput={e => patchToggle(r(), i(), { whenOn: e.currentTarget.value })} />
+																<input class="fb-input st-template mono" placeholder="sent while OFF, e.g. M106 P0 S1" title="sent when the state reads off (turn on)" value={tg().whenOff}
+																	onInput={e => patchToggle(r(), i(), { whenOff: e.currentTarget.value })} />
+																<label class="check st-stamp" title="Show the mono G-code stamp beside the toggle">
+																	<input type="checkbox" checked={tg().stamp}
+																		onChange={e => patchToggle(r(), i(), { stamp: e.currentTarget.checked })} />
 																	stamp
 																</label>
 																<button class="link-btn" onClick={() => setForm("rows", r(), "items", produce(items => { items.splice(i(), 1); }))}>✕</button>

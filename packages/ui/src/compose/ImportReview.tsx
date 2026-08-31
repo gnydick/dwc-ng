@@ -37,6 +37,37 @@ function ReviewBlock(props: { review: SpecReview }) {
 					</For>
 				</div>
 			</Show>
+			<Show when={props.review.toggles.length > 0}>
+				<div class="import-sect">
+					<span class="lab-cap">Toggle sends</span>
+					{/* BOTH alternatives, always: accepting the card means having
+					    seen both, not whichever the state would resolve today. */}
+					<For each={props.review.toggles}>
+						{t => (
+							<div class="import-code">
+								<span class="import-label">{t.om}</span>
+								<code>on → {t.whenOn}</code>
+								<code>off → {t.whenOff}</code>
+							</div>
+						)}
+					</For>
+				</div>
+			</Show>
+			<Show when={props.review.selects.length > 0}>
+				<div class="import-sect">
+					<span class="lab-cap">Choices</span>
+					{/* Every author-enumerated value a {input.…} placeholder can
+					    become — string values reach templates verbatim. */}
+					<For each={props.review.selects}>
+						{s => (
+							<div class="import-code">
+								<span class="import-label">{s.input}</span>
+								<code>{s.options.map(opt => `${opt.label} = ${typeof opt.value === "string" ? `"${opt.value}"` : opt.value}`).join(" · ")}</code>
+							</div>
+						)}
+					</For>
+				</div>
+			</Show>
 			<Show when={props.review.motion.length > 0}>
 				<div class="import-sect">
 					<span class="lab-cap">Motion</span>

@@ -160,6 +160,123 @@ test("slider rejects unknown inputs, empty ranges, bad steps, bad templates", ()
 	}), /nodes\[0\]\.template: invalid template/);
 });
 
+// ---- select + toggle (GIT_194 increment 2): compile boundary ----
+
+test("a select input compiles, with numeric or author-enumerated string values", () => {
+	const spec = compileControlSpec({
+		inputs: {
+			mode: { kind: "select", label: "Mode", default: 0, options: [
+				{ label: "Off", value: 0 }, { label: "Half", value: 0.5 }, { label: "Full", value: 1 },
+			] },
+			macro: { kind: "select", label: "Macro", default: "purge", options: [
+				{ label: "Purge", value: "purge" }, { label: "Wipe", value: "wipe" },
+			] },
+		},
+		nodes: [
+			// A select whose options are ALL numeric is number-valued and binds
+			// anywhere chips could — including a slider.
+			{ type: "slider", input: "mode", min: 0, max: 1, step: 0.5, template: "M106 S{input.mode}" },
+			{ type: "gcode-button", label: "Run", template: 'M98 P"/macros/{input.macro}"' },
+		],
+	});
+	assert.equal(spec.nodes.length, 2);
+});
+
+test("select rejects empty options, off-list defaults, and control characters — path-named", () => {
+	assert.throws(() => compileControlSpec({
+		inputs: { m: { kind: "select", label: "m", default: 0, options: [] } },
+		nodes: [],
+	}), /inputs\.m\.options: a select needs at least one option/);
+	assert.throws(() => compileControlSpec({
+		inputs: { m: { kind: "select", label: "m", default: 2, options: [{ label: "One", value: 1 }] } },
+		nodes: [],
+	}), /inputs\.m\.default: must be one of the option values/);
+	// The line-count invariant's new mechanism: an author-enumerated string
+	// is refused at the SOLE compile boundary if it carries a control
+	// character — a staged value still cannot add a line to any template.
+	assert.throws(() => compileControlSpec({
+		inputs: { m: { kind: "select", label: "m", default: "a", options: [{ label: "A", value: "a" }, { label: "Evil", value: "x\nM112" }] } },
+		nodes: [],
+	}), /inputs\.m\.options\[1\]\.value: control characters/);
+	assert.throws(() => compileControlSpec({
+		inputs: { m: { kind: "select", label: "m", default: 1, options: [{ label: "Bad", value: Number.POSITIVE_INFINITY }, { label: "One", value: 1 }] } },
+		nodes: [],
+	}), /inputs\.m\.options\[0\]\.value/, "a non-finite numeric option is not a value");
+});
+
+test("string-valued selects cannot bind where the value space must be numeric", () => {
+	const inputs = {
+		macro: { kind: "select" as const, label: "Macro", default: "a", options: [{ label: "A", value: "a" }] },
+		feed: { kind: "number" as const, label: "Feed", default: 3000 },
+	};
+	assert.throws(() => compileControlSpec({
+		inputs: { ...inputs },
+		nodes: [{ type: "slider", input: "macro", min: 0, max: 1, template: "M106 S{input.macro}" }],
+	}), /nodes\[0\]\.input: input "macro" can stage a string/, "an HTML range cannot hold a string");
+	assert.throws(() => compileControlSpec({
+		inputs: { ...inputs },
+		nodes: [{ type: "jog-pad", step: "macro", feed: "feed" }],
+	}), /nodes\[0\]\.step: input "macro" can stage a string/, "cmd.jog takes numbers");
+	assert.throws(() => compileControlSpec({
+		inputs: { ...inputs },
+		nodes: [{ type: "axis-jog", axisVar: "a", step: "feed", feed: "macro" }],
+	}), /nodes\[0\]\.feed: input "macro" can stage a string/);
+});
+
+test("toggle compiles both templates and its selector through the sole boundary", () => {
+	const spec = compileControlSpec({
+		inputs: {},
+		nodes: [{ type: "toggle", om: "fans[0].requestedValue", label: "Part fan", whenOn: "M106 P0 S0", whenOff: "M106 P0 S1" }],
+	});
+	const toggle = spec.nodes[0]!;
+	assert.equal(toggle.type, "toggle");
+	if (toggle.type === "toggle") {
+		assert.equal(toggle.om.text, "fans[0].requestedValue", "selector compiled, not carried raw");
+		assert.equal(toggle.whenOn.text, "M106 P0 S0");
+		assert.equal(toggle.whenOff.text, "M106 P0 S1");
+	}
+});
+
+test("toggle rejects bad selectors and bad templates, path-named", () => {
+	assert.throws(() => compileControlSpec({
+		inputs: {},
+		nodes: [{ type: "toggle", om: "a[b()]", whenOn: "M106 S0", whenOff: "M106 S1" }],
+	}), /nodes\[0\]\.om: invalid selector/);
+	assert.throws(() => compileControlSpec({
+		inputs: {},
+		nodes: [{ type: "toggle", om: "fans[0].requestedValue", whenOn: "M106 S{input.}", whenOff: "M106 S1" }],
+	}), /nodes\[0\]\.whenOn: invalid template/);
+	assert.throws(() => compileControlSpec({
+		inputs: {},
+		nodes: [{ type: "toggle", om: "fans[0].requestedValue", whenOn: "M106 S0", whenOff: "M106 {nope}" }],
+	}), /nodes\[0\]\.whenOff: invalid template/);
+	assert.throws(() => compileControlSpec({
+		inputs: {},
+		nodes: [{ type: "toggle", om: "fans[0].requestedValue", label: "{bad", whenOn: "M106 S0", whenOff: "M106 S1" }],
+	}), /nodes\[0\]\.label: invalid template/);
+});
+
+// ---- toggle state: one total pipeline from an OM read to on/off/unknown ----
+
+test("toggleStateOf is total: absence and non-leaf are unknown; leaf truthiness decides", async () => {
+	const { toggleStateOf } = await import("../src/compose/controls/toggle.ts");
+	assert.equal(toggleStateOf(undefined), "unknown", "state not yet polled");
+	assert.equal(toggleStateOf(null), "unknown");
+	assert.equal(toggleStateOf({ value: 1 }), "unknown", "a toggle binds a leaf, not a subtree");
+	assert.equal(toggleStateOf([1]), "unknown");
+	assert.equal(toggleStateOf(0), "off");
+	assert.equal(toggleStateOf(0.8), "on", "any nonzero fan fraction is on");
+	assert.equal(toggleStateOf(false), "off");
+	assert.equal(toggleStateOf(true), "on");
+	assert.equal(toggleStateOf(""), "off");
+	assert.equal(toggleStateOf("busy"), "on", "strings follow truthiness — bind numeric/boolean leaves");
+	// Non-finite numbers are ABSENCE, not a state — the formatReadoutValue
+	// precedent: a broken numeric leaf must render indeterminate/inert, never
+	// claim the board is off (or on) on garbage.
+	assert.equal(toggleStateOf(Number.NaN), "unknown");
+	assert.equal(toggleStateOf(Number.POSITIVE_INFINITY), "unknown");
+});
+
 // ---- readout formatting: one total pipeline, never a throw ----
 
 test("formatReadoutValue is total: numbers format, absence is the placeholder", async () => {
@@ -215,6 +332,12 @@ function extractButtons(spec: CompiledControlSpec): Array<{ label: string; templ
 				// No builtin uses a slider yet; when one does, its template joins
 				// the weld table below like any button's (it is an emitter).
 				found.push({ label: node.input, template: node.template });
+				return;
+			case "toggle":
+				// An emitter with TWO alternatives — BOTH templates join the
+				// inventory, so a builtin toggle would weld both to cmd.* forms.
+				found.push({ label: `${node.om.text} whenOn`, template: node.whenOn });
+				found.push({ label: `${node.om.text} whenOff`, template: node.whenOff });
 				return;
 		}
 		// Totality weld (matches the renderer's): a new CompiledNode variant

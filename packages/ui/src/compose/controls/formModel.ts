@@ -30,7 +30,8 @@ export type FormItem =
 	| { kind: "button"; label: string; template: string; variant: ButtonVariant | ""; stamp: boolean }
 	// Optional spec fields ride as ""/null in the form ("" lowers to absent).
 	| { kind: "readout"; om: string; label: string; unit: string; decimals: number | null }
-	| { kind: "slider"; input: string; min: number; max: number; step: number | null; template: string; stamp: boolean };
+	| { kind: "slider"; input: string; min: number; max: number; step: number | null; template: string; stamp: boolean }
+	| { kind: "toggle"; om: string; label: string; whenOn: string; whenOff: string; stamp: boolean };
 
 export interface FormRow {
 	label: string;
@@ -58,6 +59,10 @@ export function emptyReadout(): FormItem {
  *  boundary's path-named error then names what's missing in the preview). */
 export function emptySlider(input: string): FormItem {
 	return { kind: "slider", input, min: 0, max: 100, step: null, template: "", stamp: true };
+}
+
+export function emptyToggle(): FormItem {
+	return { kind: "toggle", om: "", label: "", whenOn: "", whenOff: "", stamp: true };
 }
 
 /** Form → spec. Total: any form state lowers (validity is the boundary's job). */
@@ -102,6 +107,15 @@ export function toSpec(form: FormState): ControlSpec {
 						template: item.template,
 						...(item.stamp ? {} : { stamp: false }),
 					};
+				case "toggle":
+					return {
+						type: "toggle",
+						om: item.om,
+						...(item.label !== "" ? { label: item.label } : {}),
+						whenOn: item.whenOn,
+						whenOff: item.whenOff,
+						...(item.stamp ? {} : { stamp: false }),
+					};
 			}
 		}),
 	}));
@@ -116,6 +130,10 @@ export function toSpec(form: FormState): ControlSpec {
 export function tryFromSpec(spec: ControlSpec): FormState | null {
 	const inputs: FormInput[] = [];
 	for (const [name, def] of Object.entries(spec.inputs)) {
+		// A select's labeled option list cannot ride the form's flat input row
+		// without approximating (its chips precedent is a bare number list) —
+		// null over approximation, the forEach/grid/jog rule: JSON territory.
+		if (def.kind === "select") return null;
 		inputs.push({
 			name,
 			kind: def.kind,
@@ -141,6 +159,9 @@ export function tryFromSpec(spec: ControlSpec): FormState | null {
 			} else if (item.type === "slider") {
 				// Likewise: min/max/step/template/stamp all have form fields.
 				items.push({ kind: "slider", input: item.input, min: item.min, max: item.max, step: item.step ?? null, template: item.template, stamp: item.stamp !== false });
+			} else if (item.type === "toggle") {
+				// Every toggle field is form-representable — a toggle always lifts.
+				items.push({ kind: "toggle", om: item.om, label: item.label ?? "", whenOn: item.whenOn, whenOff: item.whenOff, stamp: item.stamp !== false });
 			} else {
 				return null; // jog primitives / nested structure — JSON territory
 			}

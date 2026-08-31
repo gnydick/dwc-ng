@@ -18,27 +18,64 @@
 import { compileTemplate, type CompiledTemplate } from "./template.ts";
 import { parseOmSelector, type OmSelector } from "./omSelector.ts";
 
+/** A select's labeled option — the value may be a string, see the invariant. */
+export interface SelectOption {
+	label: string;
+	value: number | string;
+}
+
 /**
  * @invariant operator-input-cannot-add-a-line
- * @rung 8  illegal state unrepresentable — every value an operator can supply
- *          to a data-defined control is a NUMBER. There is no free-text kind,
- *          `default` is a number and `options` is number[], so what
- *          resolveTemplate interpolates is always String(number) and a newline
- *          has no representation. Not achieved by escaping the value
- * @why a control's template is arbitrary G-code by design, reviewed at import.
- *      The line COUNT of what it sends must still be the author's, not the
- *      operator's: an input able to carry a newline would let a typed value
- *      append a second command to a control whose stamp shows one. That is not
- *      an escalation for the author, who writes the template anyway — it is a
- *      trap for the operator using the card, on a machine with heaters
+ * @rung 7  parse, don't validate at the sole constructor — every value an
+ *          operator can stage is either a NUMBER (number/chips, and selects
+ *          whose options are all numeric) or one of the AUTHOR'S OWN
+ *          enumerated select strings, admitted only after compileControlSpec —
+ *          the only producer of the branded CompiledControlSpec — has refused
+ *          control characters in it (the same refusal gcodeQuote applies: a
+ *          newline has no escape in RRF, so it is rejected, not encoded).
+ *          There is still no free-text kind, and the select renderer stages by
+ *          option INDEX, so nothing an operator types can reach a template.
+ *          (Was rung 8 by "everything is a number" before selects existed.)
+ * @why a control's template is arbitrary G-code by design, reviewed at import
+ *      — including, now, every select option value (SpecReview.selects). The
+ *      line COUNT of what it sends must still be the author's, not the
+ *      operator's: a stageable value able to carry a newline would let a
+ *      picked option append a second command to a control whose stamp shows
+ *      one. That is not an escalation for the author, who writes the template
+ *      anyway — it is a trap for the operator using the card, on a machine
+ *      with heaters
  */
-export interface InputDef {
-	kind: "number" | "chips";
-	label: string;
-	default: number;
-	/** chips only: the selectable values. */
-	options?: number[];
-	unit?: string;
+export type InputDef =
+	| {
+		kind: "number" | "chips";
+		label: string;
+		default: number;
+		/** chips only: the selectable values. */
+		options?: number[];
+		unit?: string;
+	}
+	| {
+		/** An enumerated choice with LABELED values (a dropdown): what chips
+		 *  cannot say — named options, and string values for templates like
+		 *  `M98 P"/macros/{input.macro}"`. Validated by compileControlSpec:
+		 *  at least one option, default among the values, no control
+		 *  characters in string values. */
+		kind: "select";
+		label: string;
+		default: number | string;
+		options: SelectOption[];
+		unit?: string;
+	};
+
+/**
+ * Whether every value this input can stage is a number. jog-pad/axis-jog
+ * (cmd.jog) and slider (an HTML range) bind numeric value SPACES only —
+ * compileControlSpec enforces it via needNumericInput, so the renderer's
+ * numeric reads are total without a second check.
+ */
+export function isNumericInput(def: InputDef): boolean {
+	return def.kind !== "select"
+		|| (typeof def.default === "number" && def.options.every(opt => typeof opt.value === "number"));
 }
 
 export type ButtonVariant = "go" | "danger" | "quiet";
@@ -61,6 +98,14 @@ export type ControlNode =
 	// value changes open a gesture — and falsified by range-gesture.test.ts
 	// (a held arrow key's change burst must settle into ONE send).
 	| { type: "slider"; input: string; min: number; max: number; step?: number; template: string; stamp?: boolean }
+	// A two-state control that READS its state from the polled OM (never an
+	// internal latch — the board is the authority, so it converges when a
+	// command fails or the state moves from elsewhere) and, on activation,
+	// emits the alternative for the CURRENT state: whenOn while on (i.e. the
+	// turn-off command), whenOff while off. Truthiness lives in ONE pipeline
+	// (toggle.ts toggleStateOf); unknown state renders reserved-indeterminate
+	// and is inert — representation honesty, not a GUI safety.
+	| { type: "toggle"; om: string; label?: string; whenOn: string; whenOff: string; stamp?: boolean }
 	| { type: "row"; label?: string; sub?: string; class?: string; items: RowItem[] }
 	| { type: "grid"; items: ControlNode[] }
 	| {
@@ -115,6 +160,7 @@ export type CompiledNode =
 	| { type: "readout"; om: OmSelector; label?: CompiledTemplate; unit?: string; decimals?: number }
 	// step is CONCRETE here (authored default 1 applied once, at compile).
 	| { type: "slider"; input: string; min: number; max: number; step: number; template: CompiledTemplate; stamp?: boolean }
+	| { type: "toggle"; om: OmSelector; label?: CompiledTemplate; whenOn: CompiledTemplate; whenOff: CompiledTemplate; stamp?: boolean }
 	// label/sub are TEMPLATES here, not plain strings: a row emitted inside a
 	// forEach needs to name its own item ("{axis.letter}"), which a literal
 	// cannot do. Authored form stays a string; the compiler converts.
@@ -148,8 +194,40 @@ export type CompiledControlSpec = {
 export function compileControlSpec(spec: ControlSpec): CompiledControlSpec {
 	const inputNames = new Set(Object.keys(spec.inputs));
 
+	// Input defs are validated HERE, the one boundary, so built-in literals
+	// and untrusted JSON meet identical rules. Select is where the rules
+	// have teeth: the operator-input-cannot-add-a-line invariant now admits
+	// author-enumerated strings, and this walk is the mechanism that keeps
+	// a newline (any control character) out of every stageable value.
+	const CONTROL_CHARS = /[\u0000-\u001F\u007F]/;
+	for (const [name, def] of Object.entries(spec.inputs)) {
+		if (def.kind !== "select") continue;
+		const where = `inputs.${name}`;
+		if (!Array.isArray(def.options) || def.options.length === 0) {
+			throw new Error(`${where}.options: a select needs at least one option`);
+		}
+		def.options.forEach((opt, i) => {
+			if (typeof opt.value === "string") {
+				if (CONTROL_CHARS.test(opt.value)) throw new Error(`${where}.options[${i}].value: control characters are not allowed in an option value`);
+			} else if (!Number.isFinite(opt.value)) {
+				throw new Error(`${where}.options[${i}].value: expected a finite number or a string`);
+			}
+		});
+		if (!def.options.some(opt => opt.value === def.default)) {
+			throw new Error(`${where}.default: must be one of the option values`);
+		}
+	}
+
 	const needInput = (name: string, where: string): void => {
 		if (!inputNames.has(name)) throw new Error(`${where}: unknown input "${name}"`);
+	};
+
+	/** For bindings whose value space must be numeric (cmd.jog, HTML range). */
+	const needNumericInput = (name: string, where: string): void => {
+		needInput(name, where);
+		if (!isNumericInput(spec.inputs[name]!)) {
+			throw new Error(`${where}: input "${name}" can stage a string — this binding needs a numeric input`);
+		}
 	};
 
 	const tpl = (raw: string, where: string): CompiledTemplate => {
@@ -175,12 +253,12 @@ export function compileControlSpec(spec: ControlSpec): CompiledControlSpec {
 				return compiled;
 			}
 			case "jog-pad":
-				needInput(node.step, `${where}.step`);
-				needInput(node.feed, `${where}.feed`);
+				needNumericInput(node.step, `${where}.step`);
+				needNumericInput(node.feed, `${where}.feed`);
 				return node;
 			case "axis-jog":
-				needInput(node.step, `${where}.step`);
-				needInput(node.feed, `${where}.feed`);
+				needNumericInput(node.step, `${where}.step`);
+				needNumericInput(node.feed, `${where}.feed`);
 				return node;
 			case "readout": {
 				const om = parseOmSelector(node.om);
@@ -196,7 +274,7 @@ export function compileControlSpec(spec: ControlSpec): CompiledControlSpec {
 				return compiled;
 			}
 			case "slider": {
-				needInput(node.input, `${where}.input`);
+				needNumericInput(node.input, `${where}.input`);
 				if (!Number.isFinite(node.min) || !Number.isFinite(node.max) || !(node.min < node.max)) {
 					throw new Error(`${where}: min must be less than max (finite numbers)`);
 				}
@@ -211,6 +289,19 @@ export function compileControlSpec(spec: ControlSpec): CompiledControlSpec {
 					template: tpl(node.template, `${where}.template`),
 					stamp: node.stamp,
 				};
+			}
+			case "toggle": {
+				const om = parseOmSelector(node.om);
+				if (om === null) throw new Error(`${where}.om: invalid selector "${node.om}"`);
+				const compiled: CompiledNode = {
+					type: "toggle",
+					om,
+					whenOn: tpl(node.whenOn, `${where}.whenOn`),
+					whenOff: tpl(node.whenOff, `${where}.whenOff`),
+					stamp: node.stamp,
+				};
+				if (node.label !== undefined) compiled.label = tpl(node.label, `${where}.label`);
+				return compiled;
 			}
 			case "row": {
 				const items = node.items.map((item, i) => {
