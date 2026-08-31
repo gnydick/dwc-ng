@@ -32,6 +32,7 @@ import {
 import { isPlainObject, safeEntries } from "@dwc-ng/connector";
 import { COL_GRANULARITY_FACTOR } from "../shell/panelCanvas.ts";
 import { isHexColor } from "../util/colorDistance.ts";
+import { sanitizeScreenSpacing, type ScreenSpacing } from "./screenSpacing.ts";
 
 /** A slot rect is exactly four finite numbers. */
 export function asSlotRect(value: unknown): SlotRect | null {
@@ -284,6 +285,17 @@ function parseScreens(raw: unknown): ConfigOverlay["screens"] {
 			if (rects !== undefined) layouts[id] = rects;
 		}
 		if (Object.keys(layouts).length > 0) out.layouts = layouts;
+	}
+	if (isPlainObject(raw.spacing)) {
+		// Per-screen spacing rides the same untrusted boundary as everything
+		// else, but through ITS one gate (config/screenSpacing.ts) — a bad leaf
+		// drops, an off-grid number becomes a safe one, and nothing throws.
+		const spacing: Record<string, ScreenSpacing> = {};
+		for (const [id, value] of safeEntries(raw.spacing)) {
+			const s = sanitizeScreenSpacing(value);
+			if (s !== undefined) spacing[id] = s;
+		}
+		if (Object.keys(spacing).length > 0) out.spacing = spacing;
 	}
 	return Object.keys(out).length > 0 ? out : undefined;
 }

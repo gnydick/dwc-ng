@@ -4,6 +4,7 @@ import type { Connector } from "@dwc-ng/connector";
 import { FileNotFoundError } from "@dwc-ng/connector";
 import { isPlainObject, safeEntries } from "@dwc-ng/connector";
 import { asEnvelope, isAccelAddr, parseOverlay, parseOverlayPayload, parseShapingDefaults } from "./parse.ts";
+import { sanitizeScreenSpacing, type ScreenSpacing } from "./screenSpacing.ts";
 import {
 	CONFIG_CACHE_KEY, CONFIG_FILE, CONFIG_VERSION, DEFAULT_CONFIG, MAX_SNAPSHOTS,
 	MAX_LABEL_LEN, DEFAULT_SNAPSHOT_LABEL,
@@ -224,6 +225,18 @@ export interface ConfigStore {
 	 * only this method cannot get that wrong.
 	 */
 	setScreenCard(screenId: string, cardId: string, rect: SlotRect | null): void;
+
+	/**
+	 * Set or clear ONE per-screen spacing key (GIT_194 inc 5): the
+	 * between-cards gutter or the default in-card padding, in u. `null`
+	 * clears that key; when both are cleared the screen's entry is dropped
+	 * entirely — reset = drop the override, and the shipped tokens stand.
+	 * A numeric value passes the one gate (config/screenSpacing.ts
+	 * sanitizeScreenSpacing): clamped and quantized, never trusted raw.
+	 * Machine-scoped — spacing rides `screens` beside `layouts` through
+	 * splitOverlay, so it can never follow the operator across machines.
+	 */
+	setScreenSpacing(screenId: string, key: "gutterU" | "padU", value: number | null): void;
 
 	/**
 	 * Create a user-authored card; returns its minted stable id ("c-…").
@@ -744,7 +757,16 @@ export function createConfigStore(options: { machineStore: Accessor<MachineStore
 			});
 		},
 		removeScreen(id) {
-			apply(draft => { if (isUserScreenId(id)) delete draft.screens?.custom?.[id]; });
+			apply(draft => {
+				if (!isUserScreenId(id)) return;
+				delete draft.screens?.custom?.[id];
+				// The screen's spacing override goes with it — an orphan entry
+				// keyed by a dead id would silently re-attach if the id were
+				// ever minted again (it cannot be, but the husk still bloats
+				// every save) and is unreachable from any UI once the screen
+				// is gone.
+				delete draft.screens?.spacing?.[id];
+			});
 		},
 		setScreenHidden(id, hidden) {
 			apply(draft => {
@@ -806,6 +828,28 @@ export function createConfigStore(options: { machineStore: Accessor<MachineStore
 				// back on the next render.
 				const target = (((draft.screens ??= {}).layouts ??= {})[screenId] ??= {});
 				target[cardId] = rect;
+			});
+		},
+
+		setScreenSpacing(screenId, key, value) {
+			apply(draft => {
+				const spacing = ((draft.screens ??= {}).spacing ??= {});
+				const entry: ScreenSpacing = { ...spacing[screenId] };
+				if (value === null) {
+					delete entry[key];
+				} else {
+					// Through the ONE gate — the same one the untrusted SD
+					// boundary uses (config/screenSpacing.ts). A value the gate
+					// refuses (NaN, Infinity) writes nothing at all.
+					const clean = sanitizeScreenSpacing({ [key]: value });
+					if (clean === undefined) return;
+					entry[key] = clean[key];
+				}
+				// Both keys cleared = no override left: drop the entry so reset
+				// leaves no husk and the shipped tokens stand (overlay
+				// philosophy — absence means never-customized).
+				if (entry.gutterU === undefined && entry.padU === undefined) delete spacing[screenId];
+				else spacing[screenId] = entry;
 			});
 		},
 

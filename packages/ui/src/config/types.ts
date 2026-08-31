@@ -18,6 +18,8 @@
  * (config/parse.ts) drops foreign keys that don't match, so a hand-edited
  * SD file cannot smuggle an id into someone else's namespace either.
  */
+import type { ScreenSpacing } from "./screenSpacing.ts";
+
 export type CustomCardId = `c-${string}`;
 export type UserScreenId = `u-${string}`;
 
@@ -354,8 +356,12 @@ export interface MachineConfig {
 	 *  accelerometer address. */
 	shaping: ShapingConfig;
 	/** Built-in screen layout overrides — geometry belongs to the machine that
-	 *  renders it (see ScreenLayouts). */
-	screens: { layouts: ScreenLayouts };
+	 *  renders it (see ScreenLayouts) — and per-screen spacing overrides
+	 *  (screen id → ScreenSpacing, GIT_194 inc 5): how far apart THIS
+	 *  machine's cards draw is a fact about this machine's screens, exactly
+	 *  like where they sit. Both leaves ride the machine side of
+	 *  `splitOverlay`. */
+	screens: { layouts: ScreenLayouts; spacing: Record<string, ScreenSpacing> };
 }
 
 /**
@@ -455,8 +461,16 @@ export function splitOverlay(o: ConfigOverlay): { machine: DeepPartial<MachineCo
 	for (const k of PERSON_SECTIONS) if (k in o) person[k] = o[k];
 	const screens = o.screens;
 	if (screens !== undefined) {
-		const { layouts, ...rest } = screens;
-		if (layouts !== undefined) machine.screens = { layouts };
+		// TWO machine leaves now: layouts and spacing (GIT_194 inc 5). A leaf
+		// not pulled out here defaults into the person half — the direction
+		// that carries a machine fact across machines — so every machine leaf
+		// must be named in this destructure, and test/screen-spacing.test.ts
+		// falsifies the routing.
+		const { layouts, spacing, ...rest } = screens;
+		const machineScreens: Record<string, unknown> = {};
+		if (layouts !== undefined) machineScreens.layouts = layouts;
+		if (spacing !== undefined) machineScreens.spacing = spacing;
+		if (Object.keys(machineScreens).length > 0) machine.screens = machineScreens;
 		if (Object.keys(rest).length > 0) person.screens = rest;
 	}
 	return { machine: machine as DeepPartial<MachineConfig>, person: person as DeepPartial<PersonConfig> };
@@ -486,7 +500,7 @@ export const DEFAULT_MACHINE_CONFIG: MachineConfig = {
 		defaults: { distMm: 60, speedMmS: 200, repeats: 3 },
 		accelByTool: {},
 	},
-	screens: { layouts: {} },
+	screens: { layouts: {}, spacing: {} },
 };
 
 export const DEFAULT_PERSON_CONFIG: PersonConfig = {

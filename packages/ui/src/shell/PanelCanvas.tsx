@@ -24,10 +24,20 @@ const GRID_STYLE: JSX.CSSProperties = {
 	"row-gap": `${ROW_GAP_PX}px`, // px-ok: ROW_GAP_PX is 0
 };
 
-/** The 48-column grid container a view renders its <Panel>s into. */
-export function PanelCanvas(props: { class?: string; children: JSX.Element }) {
+/**
+ * The 48-column grid container a view renders its <Panel>s into.
+ *
+ * `vars` is a custom-property scope for the screen (GIT_194 inc 5: the
+ * per-screen spacing tokens from config/screenSpacing.ts spacingVars) —
+ * custom properties inherit, so a token set here re-grounds every var()
+ * read by the cards below. Spread UNDER the grid metrics, deliberately:
+ * the metrics are the drag math's other half (see GRID_STYLE) and no
+ * caller may override them — the object spread makes that structural, not
+ * reviewed-for.
+ */
+export function PanelCanvas(props: { class?: string; vars?: Record<string, string>; children: JSX.Element }) {
 	return (
-		<div class={props.class ? `panel-canvas ${props.class}` : "panel-canvas"} style={GRID_STYLE}>
+		<div class={props.class ? `panel-canvas ${props.class}` : "panel-canvas"} style={{ ...props.vars, ...GRID_STYLE }}>
 			{props.children}
 		</div>
 	);
