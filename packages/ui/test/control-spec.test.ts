@@ -204,6 +204,55 @@ test("select rejects empty options, off-list defaults, and control characters �
 	}), /inputs\.m\.options\[0\]\.value/, "a non-finite numeric option is not a value");
 });
 
+test("a double quote in a string option value is refused at the compile boundary", () => {
+	// RRF starts a new command at any G/M letter OUTSIDE a quoted string
+	// (reference/duet-gcode.md, quoting rules), so in a quoted context like
+	// M98 P"/macros/{input.macro}" a value carrying `"` closes the string and
+	// smuggles a second command behind the one the stamp and the import
+	// review's per-option inventory show. Refused like the control characters
+	// — never escaped: auto-encoding would silently rewrite the author's
+	// command, which the 1:1 rule forbids. Labels stay free ("" is fine in
+	// display text).
+	assert.throws(() => compileControlSpec({
+		inputs: { m: { kind: "select", label: "m", default: "wipe", options: [
+			{ label: "Wipe", value: "wipe" },
+			{ label: "Evil", value: 'wipe" M112' },
+		] } },
+		nodes: [],
+	}), /inputs\.m\.options\[1\]\.value: a double quote/);
+	// A quote in the LABEL is display text, not a stageable value — it compiles.
+	const spec = compileControlSpec({
+		inputs: { m: { kind: "select", label: "m", default: 1, options: [{ label: '"fast"', value: 1 }] } },
+		nodes: [],
+	});
+	assert.ok(spec);
+});
+
+test("legal string option values splice into templates RAW — verbatim, unquoted, unescaped", () => {
+	// The mechanism is enumeration + review, NOT encoding: resolveTemplate
+	// splices the staged string exactly as the author enumerated it (slashes,
+	// dots, spaces and all), because rewriting it would emit a command the
+	// author never wrote. This pins the splice so a future "helpful" escape
+	// layer shows up as a failure here.
+	const spec = compileControlSpec({
+		inputs: { macro: { kind: "select", label: "Macro", default: "purge/all v2.g", options: [
+			{ label: "Purge", value: "purge/all v2.g" },
+			{ label: "Wipe", value: "wipe.g" },
+		] } },
+		nodes: [{ type: "row", items: [{ type: "gcode-button", label: "Run", template: 'M98 P"/macros/{input.macro}"' }] }],
+	});
+	const row = spec.nodes[0]!;
+	assert.ok(row.type === "row");
+	const button = row.items[0]!;
+	assert.ok(!isInputRef(button) && button.type === "gcode-button");
+	const resolved = resolveTemplate(button.template, {
+		input: () => "purge/all v2.g",
+		om: {},
+		vars: {},
+	});
+	assert.equal(resolved, 'M98 P"/macros/purge/all v2.g"', "the enumerated value lands verbatim inside the author's own quotes");
+});
+
 test("string-valued selects cannot bind where the value space must be numeric", () => {
 	const inputs = {
 		macro: { kind: "select" as const, label: "Macro", default: "a", options: [{ label: "A", value: "a" }] },

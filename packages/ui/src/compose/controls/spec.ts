@@ -17,6 +17,7 @@
  */
 import { compileTemplate, type CompiledTemplate } from "./template.ts";
 import { parseOmSelector, type OmSelector } from "./omSelector.ts";
+import { unreachable } from "../../util/unreachable.ts";
 
 /** A select's labeled option — the value may be a string, see the invariant. */
 export interface SelectOption {
@@ -27,23 +28,33 @@ export interface SelectOption {
 /**
  * @invariant operator-input-cannot-add-a-line
  * @rung 7  parse, don't validate at the sole constructor — every value an
- *          operator can stage is either a NUMBER (number/chips, and selects
+ *          OPERATOR can stage is either a NUMBER (number/chips, and selects
  *          whose options are all numeric) or one of the AUTHOR'S OWN
  *          enumerated select strings, admitted only after compileControlSpec —
  *          the only producer of the branded CompiledControlSpec — has refused
- *          control characters in it (the same refusal gcodeQuote applies: a
- *          newline has no escape in RRF, so it is rejected, not encoded).
- *          There is still no free-text kind, and the select renderer stages by
- *          option INDEX, so nothing an operator types can reach a template.
- *          (Was rung 8 by "everything is a number" before selects existed.)
+ *          control characters (a newline has no escape in RRF — rejected, not
+ *          encoded) AND double quotes (RRF starts a new command at a G/M
+ *          letter outside a quoted string, so `"` in a value spliced into a
+ *          quoted context like M98 P"…" is a quote-breakout) in it. There is
+ *          still no free-text kind, and the select renderer stages by option
+ *          INDEX, so nothing an operator TYPES can reach a template. What
+ *          this deliberately does NOT do: quote or escape the value at
+ *          resolution — resolveTemplate splices the enumerated string RAW,
+ *          because rewriting it would emit a command the author never wrote
+ *          (1:1 rule). The author-side power is unchanged by design: the
+ *          author who enumerates option values is the same principal who
+ *          writes the raw templates they land in, so enumeration + the
+ *          import review's verbatim per-option inventory is the mechanism,
+ *          not encoding. (Was rung 8 by "everything is a number" before
+ *          selects existed.)
  * @why a control's template is arbitrary G-code by design, reviewed at import
  *      — including, now, every select option value (SpecReview.selects). The
  *      line COUNT of what it sends must still be the author's, not the
- *      operator's: a stageable value able to carry a newline would let a
- *      picked option append a second command to a control whose stamp shows
- *      one. That is not an escalation for the author, who writes the template
- *      anyway — it is a trap for the operator using the card, on a machine
- *      with heaters
+ *      operator's: a stageable value able to carry a newline — or to break
+ *      out of the author's quoted string — would let a picked option append
+ *      a second command to a control whose stamp shows one. That is not an
+ *      escalation for the author, who writes the template anyway — it is a
+ *      trap for the operator using the card, on a machine with heaters
  */
 export type InputDef =
 	| {
@@ -74,8 +85,18 @@ export type InputDef =
  * numeric reads are total without a second check.
  */
 export function isNumericInput(def: InputDef): boolean {
-	return def.kind !== "select"
-		|| (typeof def.default === "number" && def.options.every(opt => typeof opt.value === "number"));
+	// Exhaustive over the kinds, NOT `kind !== "select"`: a negative check
+	// would silently classify a future string-capable kind as numeric — the
+	// exact bindings (cmd.jog, HTML range) that must never see a string.
+	// A new kind fails to compile here until it declares its value space.
+	switch (def.kind) {
+		case "number":
+		case "chips":
+			return true;
+		case "select":
+			return typeof def.default === "number" && def.options.every(opt => typeof opt.value === "number");
+	}
+	return unreachable(def);
 }
 
 export type ButtonVariant = "go" | "danger" | "quiet";
@@ -209,6 +230,11 @@ export function compileControlSpec(spec: ControlSpec): CompiledControlSpec {
 		def.options.forEach((opt, i) => {
 			if (typeof opt.value === "string") {
 				if (CONTROL_CHARS.test(opt.value)) throw new Error(`${where}.options[${i}].value: control characters are not allowed in an option value`);
+				// A `"` in a value spliced into a quoted context (M98 P"…")
+				// closes the author's string — a quote-breakout, the in-line
+				// sibling of the newline above. Refused, never escaped: see
+				// the invariant.
+				if (opt.value.includes('"')) throw new Error(`${where}.options[${i}].value: a double quote is not allowed in an option value`);
 			} else if (!Number.isFinite(opt.value)) {
 				throw new Error(`${where}.options[${i}].value: expected a finite number or a string`);
 			}

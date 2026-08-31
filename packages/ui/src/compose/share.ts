@@ -18,7 +18,7 @@
  */
 import { parseControlSpecText, type ParsedSpec } from "./controls/parse.ts";
 import { omReadsOf } from "./controls/template.ts";
-import { isInputRef, type CompiledControlSpec, type CompiledNode, type CompiledRowItem, type InputDef } from "./controls/spec.ts";
+import { isInputRef, type CompiledControlSpec, type CompiledNode, type CompiledRowItem } from "./controls/spec.ts";
 import { isCustomCardId } from "./composition.ts";
 import { cardTitleOf, parseCardId } from "./defs.ts";
 import { sanitizeCardMeta, type CustomCardMeta, type SlotRect, type UiConfig } from "../config/types.ts";
@@ -59,9 +59,21 @@ export function reviewSpec(spec: CompiledControlSpec): SpecReview {
 		buttons: [],
 		sliders: [],
 		toggles: [],
-		selects: safeEntries(spec.inputs)
-			.filter((entry): entry is [string, Extract<InputDef, { kind: "select" }>] => entry[1].kind === "select")
-			.map(([input, def]) => ({ input, options: def.options.map(opt => ({ label: opt.label, value: opt.value })) })),
+		// Exhaustive over input kinds, not a filter: a future kind must SAY
+		// what the review shows for it — numeric-only kinds contribute
+		// nothing beyond digits, anything string-capable must be inventoried
+		// — instead of silently classifying out of the review (the same
+		// totality weld the node walk gets from `unreachable` below).
+		selects: safeEntries(spec.inputs).flatMap(([input, def]): SpecReview["selects"] => {
+			switch (def.kind) {
+				case "number":
+				case "chips":
+					return [];
+				case "select":
+					return [{ input, options: def.options.map(opt => ({ label: opt.label, value: opt.value })) }];
+			}
+			return unreachable(def);
+		}),
 		omReads: [],
 		loops: [],
 		motion: [],

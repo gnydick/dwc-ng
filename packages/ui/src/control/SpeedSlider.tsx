@@ -1,9 +1,9 @@
-import { For, createEffect, createSignal, onCleanup } from "solid-js";
+import { For, createSignal, onCleanup } from "solid-js";
 import { useApp } from "../shell/context.ts";
 import { cmd } from "./commands.ts";
-import { createRangeGesture } from "./rangeGesture.ts";
+import { createSpeedHold } from "./speedHold.ts";
 import { GcodeButton } from "./GcodeButton.tsx";
-import { speedScale, speedStepDown, speedStepUp, type SpeedScale } from "./speedScale.ts";
+import { speedStepDown, speedStepUp } from "./speedScale.ts";
 
 type SendState = "idle" | "sending" | "sent" | "failed";
 
@@ -37,43 +37,11 @@ type SendState = "idle" | "sending" | "sent" | "failed";
  */
 export function SpeedSlider(props: { currentPct: number }) {
 	const app = useApp();
-	const [dragging, setDragging] = createSignal(false);
-	const [value, setValue] = createSignal(props.currentPct);
 	const [state, setState] = createSignal<SendState>("idle");
 	const [error, setError] = createSignal("");
 
-	/**
-	 * The centre the scale is built around while we are ahead of the machine:
-	 * during a drag, and after one until the machine reports the new speed.
-	 * null means "follow the machine".
-	 */
-	const [centre, setCentre] = createSignal<number | null>(null);
-	/** What we asked the machine for, so we can tell when it has caught up. */
-	const [target, setTarget] = createSignal<number | null>(null);
-
 	let ackTimer: ReturnType<typeof setTimeout> | undefined;
 	onCleanup(() => clearTimeout(ackTimer));
-
-	const scale = (): SpeedScale => speedScale(centre() ?? props.currentPct);
-
-	// Follow the machine, except while the operator is holding the handle or a
-	// commanded change is still in flight — either would clobber the value the
-	// operator is looking at with a reading we know to be stale.
-	createEffect(() => {
-		const live = props.currentPct;
-		if (!dragging() && target() === null) setValue(live);
-	});
-
-	// The machine caught up: hand back to it. No jump, because the scale it
-	// derives from `live` is the scale already on screen.
-	createEffect(() => {
-		const live = props.currentPct;
-		const want = target();
-		if (want !== null && Math.round(live) === Math.round(want)) {
-			setTarget(null);
-			setCentre(null);
-		}
-	});
 
 	const send = async (pct: number): Promise<void> => {
 		clearTimeout(ackTimer);
@@ -81,9 +49,7 @@ export function SpeedSlider(props: { currentPct: number }) {
 		setError("");
 		// Step 1 and 2: the requested value IS the centre now, and the scale
 		// recalculates around it before the machine has said anything.
-		setValue(pct);
-		setCentre(pct);
-		setTarget(pct);
+		hold.claim(pct);
 		try {
 			await app.connector.sendCode(cmd.speedFactor(pct));
 			setState("sent");
@@ -93,28 +59,25 @@ export function SpeedSlider(props: { currentPct: number }) {
 			// leaving a speed on screen that nothing is running at.
 			setState("failed");
 			setError(err instanceof Error ? err.message : String(err));
-			setTarget(null);
-			setCentre(null);
-			setValue(props.currentPct);
+			hold.release();
 		}
 	};
 
-	// The shared gesture machine (rangeGesture.ts): one send per completed
-	// value-change gesture on every modality. The historical release-order bug
-	// — Solid re-entering the follow-the-machine effect on setDragging(false)
-	// and clobbering the dragged value — cannot recur because the machine
-	// passes the gesture's final value INTO onSend and invokes onSend before
-	// onActive(false); send(pct) claims the commit (setTarget) before the
-	// dragging flag drops.
-	const gesture = createRangeGesture({
-		// Freeze the scale for the duration of the gesture — a live scale
-		// derives from the speed the gesture is changing and would rescale
-		// under the finger (or under a held arrow key).
-		onOpen: () => setCentre(props.currentPct),
-		onActive: setDragging,
-		onSend: pct => void send(pct),
+	// The freeze/follow machine and the shared range gesture, as ONE module
+	// (speedHold.ts) so speed-hold.test.ts drives the exact wiring on screen.
+	// The historical release-order bug — Solid re-entering the
+	// follow-the-machine effect on the drag flag dropping and clobbering the
+	// dragged value — cannot recur because the gesture machine passes the
+	// final value INTO onSend and invokes onSend before onActive(false);
+	// send(pct) claims the commit (hold.claim) before the flag drops. The
+	// same ordering is why a NET-ZERO gesture unfreezes the scale: no send,
+	// no claim, so completion clears the grab-time centre (the inc 2 review's
+	// permanent-freeze fix, pinned by speed-hold.test.ts).
+	const hold = createSpeedHold({
+		currentPct: () => props.currentPct,
+		send: pct => void send(pct),
 	});
-	onCleanup(gesture.dispose);
+	const { value, setValue, scale, gesture } = hold;
 
 	/**
 	 * Thumb width, so the stops line up with where the thumb CENTRE can

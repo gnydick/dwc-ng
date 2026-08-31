@@ -12,13 +12,18 @@
  *          arrow step, a send on a bare Shift keyup — have no encoding.
  *          range-gesture.test.ts drives the reducer with the exact
  *          sequences that used to misfire and counts the send effects.
- *          Promote by making the machine the only party able to construct
- *          the sendable command, once a second machine appears
  * @why RRF's embedded server tolerates very few requests. A held arrow key
  *      fires `input`+`change` on EVERY auto-repeat step (~20/s); wiring
  *      send to those events (increment 1 did, gated only on a flag that a
  *      keydown re-armed) bursts rr_gcode at the board. One send per
  *      completed value-change gesture is the review-set invariant
+ * @debt the choke-point is voluntary at the component seam: nothing stops a
+ *       slider from wiring onChange straight to sendCode again, and no test
+ *       pins the component→machine wiring, so that regression would pass
+ *       the suite (the reducer tests only prove the machine itself). Promote
+ *       by making this machine the only party able to construct the
+ *       sendable command — a branded send token minted per completed
+ *       gesture — so a bypass send has nothing to hand the connector
  *
  * The gesture model:
  *
