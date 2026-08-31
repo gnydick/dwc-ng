@@ -96,6 +96,44 @@ test("reviewSpec inventories a select input's labeled options — string values 
 	assert.deepEqual(review.inputs, ["macro", "speed"], "select inputs still list among inputs");
 });
 
+test("the weld forces the walk: emitters inside columns and groups are inventoried", () => {
+	const parsed = parseControlSpecText(JSON.stringify({
+		inputs: { speed: { kind: "number", label: "Speed", default: 100 } },
+		nodes: [{
+			type: "columns",
+			rulers: true,
+			columns: [
+				{ weight: 2, nodes: [
+					{ type: "group", label: "Grp {om:state.status}", nodes: [
+						{ type: "gcode-button", label: "Deep", template: "G28 X" },
+						{ type: "spacer", size: 2 },
+					] },
+				] },
+				{ nodes: [
+					{ type: "slider", input: "speed", min: 0, max: 200, template: "M220 S{input.speed}" },
+					{ type: "toggle", om: "fans[0].requestedValue", whenOn: "M106 P0 S0", whenOff: "M106 P0 S1" },
+				] },
+			],
+		}],
+	}));
+	assert.ok(parsed.ok, parsed.ok ? "" : parsed.error);
+	const review = reviewSpec(parsed.ok ? parsed.spec : (undefined as never));
+	assert.deepEqual(review.buttons, [{ label: "Deep", template: "G28 X" }], "a button nested two structural levels down is still on the review");
+	assert.deepEqual(review.sliders, [{ input: "speed", template: "M220 S{input.speed}", min: 0, max: 200 }]);
+	assert.deepEqual(review.toggles, [{ om: "fans[0].requestedValue", whenOn: "M106 P0 S0", whenOff: "M106 P0 S1" }]);
+	assert.ok(review.omReads.includes("state.status"), "a group label's {om:} read joins the Reads inventory");
+});
+
+test("a row label's {om:} reads join the Reads inventory (found: were silently absent)", () => {
+	const parsed = parseControlSpecText(JSON.stringify({
+		nodes: [{ type: "row", label: "Status {om:state.status}", sub: "{om:state.machineMode}", items: [] }],
+	}));
+	assert.ok(parsed.ok, parsed.ok ? "" : parsed.error);
+	const review = reviewSpec(parsed.ok ? parsed.spec : (undefined as never));
+	assert.ok(review.omReads.includes("state.status"), "row label reads are inventoried");
+	assert.ok(review.omReads.includes("state.machineMode"), "row sub reads are inventoried");
+});
+
 // ---- card round trip ----
 
 test("exportCard → parseShareFile round-trips with a complete review", () => {

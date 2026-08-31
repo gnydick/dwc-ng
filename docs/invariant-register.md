@@ -21,7 +21,7 @@ and invariant claim mentions 13 -> 23, so no mechanism was deleted and no
 claim was lost in the gap. From here the ratchets make a dropped rung visible
 in the diff that drops it.
 
-**Totals:** 182 invariants · 155 at rung 6 or above · 27 below rung 6 (ceiling 27).
+**Totals:** 183 invariants · 156 at rung 6 or above · 27 below rung 6 (ceiling 27).
 
 ## bed
 
@@ -157,6 +157,14 @@ in the diff that drops it.
 
 `packages/ui/src/compose/controls/omSelector.ts:4`
 
+### `compose/controls/layout-nesting-refused-at-compile` — rung 7
+
+**Mechanism.** sole-constructor boundary — compileControlSpec, the only producer of the branded CompiledControlSpec, refuses a columns node anywhere inside another columns node's subtree and any node tree deeper than MAX_NODE_DEPTH levels, so a compiled spec that violates either cannot exist and the renderer/review walks are bounded by type, not by care
+
+**Why.** a nested column split produces sub-quantum tracks that defeat the --u scale discipline (the GIT_170 quantum ruling), and an unbounded tree lets a hostile import trade a named error for a stack overflow deep in render. Refusal at the one compile boundary means built-ins fail the build and imported JSON gets the same path-named error
+
+`packages/ui/src/compose/controls/spec.ts:128`
+
 ### `compose/controls/operator-input-cannot-add-a-line` — rung 7
 
 **Mechanism.** parse, don't validate at the sole constructor — every value an OPERATOR can stage is either a NUMBER (number/chips, and selects whose options are all numeric) or one of the AUTHOR'S OWN enumerated select strings, admitted only after compileControlSpec — the only producer of the branded CompiledControlSpec — has refused control characters (a newline has no escape in RRF — rejected, not encoded) AND double quotes (RRF starts a new command at a G/M letter outside a quoted string, so `"` in a value spliced into a quoted context like M98 P"…" is a quote-breakout) in it. There is still no free-text kind, and the select renderer stages by option INDEX, so nothing an operator TYPES can reach a template. What this deliberately does NOT do: quote or escape the value at resolution — resolveTemplate splices the enumerated string RAW, because rewriting it would emit a command the author never wrote (1:1 rule). The author-side power is unchanged by design: the author who enumerates option values is the same principal who writes the raw templates they land in, so enumeration + the import review's verbatim per-option inventory is the mechanism, not encoding. (Was rung 8 by "everything is a number" before selects existed.)
@@ -171,7 +179,7 @@ in the diff that drops it.
 
 **Why.** a half-compiled spec renders controls that look operable and send nothing, or send the wrong thing. Built-in specs run this at module load, so a broken one fails the build rather than the machine
 
-`packages/ui/src/compose/controls/spec.ts:206`
+`packages/ui/src/compose/controls/spec.ts:258`
 
 ### `compose/controls/template-compiles-whole` — rung 7
 
@@ -213,7 +221,7 @@ in the diff that drops it.
 
 **Why.** a second delete surface is how the blast-radius report gets skipped: the old drawer ✕ deleted from every screen while showing only a tooltip warning. One surface, armed with the plan, keeps "delete" and "here is what that does" inseparable
 
-`packages/ui/src/compose/CardStudio.tsx:179`
+`packages/ui/src/compose/CardStudio.tsx:180`
 
 ### `compose/one-run-at-a-time-per-screen` — rung 7
 
@@ -1641,7 +1649,7 @@ in the diff that drops it.
 
 **Debt — promotion.** ONLY WHAT THE STYLESHEET CAN SAY. The predicate reads app.css text, so it does not see a height arriving from an inline style, from a `classList` addition, or from a JS-set custom property, and it does not resolve specificity — a floor declared in a rule that loses the cascade reads as present. It also cannot distinguish a flex COLUMN item, where the collapse actually happens, from a flex ROW item, where the fixed height is the cross size and the block axis was never at risk; both are required to declare the floor, which is conservative in the right direction but is the reason `.color-clash` and `.accel-status` carry a min-height equal to their own height rather than a measured one. Promote by making the guard travel with the geometry instead of beside it: ONE shared declaration that every fixed-height clipped row extends, so the floor is not something a new row can be written without, and this scan becomes structurally unnecessary rather than merely green
 
-`packages/ui/src/app.css:5315`
+`packages/ui/src/app.css:5349`
 
 ### `ui/heavy-libraries-stay-behind-a-dynamic-import` — rung 4
 

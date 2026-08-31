@@ -31,7 +31,9 @@ export type FormItem =
 	// Optional spec fields ride as ""/null in the form ("" lowers to absent).
 	| { kind: "readout"; om: string; label: string; unit: string; decimals: number | null }
 	| { kind: "slider"; input: string; min: number; max: number; step: number | null; template: string; stamp: boolean }
-	| { kind: "toggle"; om: string; label: string; whenOn: string; whenOff: string; stamp: boolean };
+	| { kind: "toggle"; om: string; label: string; whenOn: string; whenOff: string; stamp: boolean }
+	// null = flexible (absent size in the spec); a number = fixed n × u.
+	| { kind: "spacer"; size: number | null };
 
 export interface FormRow {
 	label: string;
@@ -63,6 +65,11 @@ export function emptySlider(input: string): FormItem {
 
 export function emptyToggle(): FormItem {
 	return { kind: "toggle", om: "", label: "", whenOn: "", whenOff: "", stamp: true };
+}
+
+/** Flexible by default — the free-space eater is the common alignment move. */
+export function emptySpacer(): FormItem {
+	return { kind: "spacer", size: null };
 }
 
 /** Form → spec. Total: any form state lowers (validity is the boundary's job). */
@@ -116,6 +123,11 @@ export function toSpec(form: FormState): ControlSpec {
 						whenOff: item.whenOff,
 						...(item.stamp ? {} : { stamp: false }),
 					};
+				case "spacer":
+					return {
+						type: "spacer",
+						...(item.size !== null ? { size: item.size } : {}),
+					};
 			}
 		}),
 	}));
@@ -145,7 +157,9 @@ export function tryFromSpec(spec: ControlSpec): FormState | null {
 	}
 	const rows: FormRow[] = [];
 	for (const node of spec.nodes) {
-		if (node.type !== "row" || node.sub !== undefined || node.class !== undefined) return null;
+		// justify joins sub/class in the refusal: the form has no field for it,
+		// and null-over-approximation beats silently dropping it on save.
+		if (node.type !== "row" || node.sub !== undefined || node.class !== undefined || node.justify !== undefined) return null;
 		const items: FormItem[] = [];
 		for (const item of node.items) {
 			if (isInputRef(item)) {
@@ -162,8 +176,10 @@ export function tryFromSpec(spec: ControlSpec): FormState | null {
 			} else if (item.type === "toggle") {
 				// Every toggle field is form-representable — a toggle always lifts.
 				items.push({ kind: "toggle", om: item.om, label: item.label ?? "", whenOn: item.whenOn, whenOff: item.whenOff, stamp: item.stamp !== false });
+			} else if (item.type === "spacer") {
+				items.push({ kind: "spacer", size: item.size ?? null });
 			} else {
-				return null; // jog primitives / nested structure — JSON territory
+				return null; // jog primitives / columns / groups / nested structure — JSON territory
 			}
 		}
 		rows.push({ label: node.label ?? "", items });

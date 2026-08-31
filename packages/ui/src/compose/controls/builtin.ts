@@ -111,9 +111,18 @@ export const MOVEMENT_SPEC = compileControlSpec({
 			// are about to move furthest from the keys that move it. As a column
 			// beside the keys it costs no height at all and sits next to what it
 			// governs.
-			type: "row",
+			//
+			// A `group`, because that is what it always was — the old form was a
+			// `row` whose class turned it into a flex COLUMN, with the coupler
+			// pinned to the bottom by a stylesheet hack (`margin-top: auto`).
+			// The vertical stack and the pin are now said in the data: group +
+			// justify "between" (step bank at the top, coupler at the bottom;
+			// with no C axis the forEach stamps nothing and one child under
+			// space-between sits at the top, exactly as before). GIT_194 inc 3.
+			type: "group",
 			class: "jog-side",
-			items: [
+			justify: "between",
+			nodes: [
 				{ type: "row", label: "Step", class: "step-row", items: [{ input: "step" }, { input: "feed" }] },
 				{
 					// The coupler row exists exactly when a C axis does — a forEach

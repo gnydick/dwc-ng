@@ -3147,12 +3147,14 @@ input[type="checkbox"] {
 	justify-content: start;
 }
 /* The right-hand column: step bank at the top, coupler pushed to the bottom.
-   `margin-top: auto` rather than a grid row pinned to the table's last row —
-   the column is a stretched grid item, so its bottom edge IS the jog table's
-   bottom edge, and the coupler lands on the last axis row (C, the axis these
-   two buttons act on) for as long as that holds. When the side column's own
-   content outgrows the table it simply gets taller; the old pinned form would
-   have overlapped instead. */
+   The pin is AUTHORED IN THE DATA now, not here: the node is a `group` with
+   `justify: "between"` (builtin.ts, GIT_194 inc 3 — the old
+   `.jog-side > .coupler-row { margin-top: auto; }` hack said the same thing
+   where no card author could see or reuse it). The column is a stretched grid
+   item, so its bottom edge IS the jog table's bottom edge, and the coupler
+   lands on the last axis row (C, the axis these two buttons act on) for as
+   long as that holds. When the side column's own content outgrows the table
+   it simply gets taller; a pinned grid row would have overlapped instead. */
 /* Centred, not stretched. The column's WIDTH comes from its widest child (the
    Lock/Unlock pair), and the step bank is deliberately narrower than that —
    it is pinned to the jog-key width. Left-aligned, the bank sat hard against
@@ -3164,7 +3166,6 @@ input[type="checkbox"] {
 	gap: var(--ctl-gap);
 	align-items: center;
 }
-.jog-side > .coupler-row { margin-top: auto; }
 /* The step bank runs DOWN this column, not across a row of its own — but each
    LABEL stays beside what it names, so the bank is two tracks rather than four
    stacked pairs: names on the left, values on the right.
@@ -4020,6 +4021,39 @@ input[type="checkbox"].fw-check { accent-color: var(--accent); width: calc(3.75 
    reach it, at any grid position; it also avoids the 1px bloom an outset ring
    added on snap (border-box unchanged → no reflow, no shift). */
 .card.at-limit { box-shadow: inset 0 0 0 1px var(--accent); }
+
+/* ---- layout nodes (GIT_194 inc 3): columns / group / spacer / justify ----
+   Structural containers for data-authored cards. Every length is n × --u;
+   the ruler hairline is an inset box-shadow (zero layout — the card hairline
+   ruling above; box-shadow is an exempt prop in the px lint). */
+.ctl-columns {
+	display: grid;
+	/* grid-template-columns comes inline from the compiled weights (fr only). */
+	column-gap: calc(4 * var(--u));
+}
+/* Ruler between columns: hairline on every column after the first, with
+   matching padding so the line sits centred in a symmetric 4u+4u gutter. */
+.ctl-columns.has-rulers > .ctl-col + .ctl-col {
+	box-shadow: inset 1px 0 0 var(--hairline);
+	padding-left: calc(4 * var(--u));
+}
+/* Columns stretch to the tallest sibling (grid default), which is what gives
+   a column's own vertical justify real space to distribute. */
+.ctl-col,
+.ctl-group {
+	display: flex;
+	flex-direction: column;
+	gap: var(--ctl-gap);
+	align-items: stretch;
+	min-width: 0;
+}
+/* Authored whitespace. Fixed spacers override flex inline with a --u basis;
+   flex-basis is main-axis, so one node serves rows and stacks alike. */
+.ctl-spacer { flex: 1 1 0; align-self: stretch; }
+.ctl-justify-start { justify-content: flex-start; }
+.ctl-justify-center { justify-content: center; }
+.ctl-justify-end { justify-content: flex-end; }
+.ctl-justify-between { justify-content: space-between; }
 
 /* Equal-width control grid. Used where labels vary in length and a ragged
    flex-wrap would leave no two buttons sharing a width or an edge. */

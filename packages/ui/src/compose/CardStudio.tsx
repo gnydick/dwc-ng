@@ -25,7 +25,7 @@ import { createStubConnector } from "@dwc-ng/connector";
 import { ControlList } from "./controls/ControlList.tsx";
 import { parseControlSpecText } from "./controls/parse.ts";
 import { SPINDLE_EXAMPLE, SPINDLE_EXAMPLE_NAME } from "./controls/examples.ts";
-import { emptyButton, emptyForm, emptyReadout, emptySlider, emptyToggle, toSpec, tryFromSpec, type FormItem, type FormState } from "./controls/formModel.ts";
+import { emptyButton, emptyForm, emptyReadout, emptySlider, emptySpacer, emptyToggle, toSpec, tryFromSpec, type FormItem, type FormState } from "./controls/formModel.ts";
 import type { CustomCardId } from "./composition.ts";
 import type { CardCtx } from "./ctx.ts";
 
@@ -111,6 +111,7 @@ export function CardStudio(props: {
 	const patchReadout = patchItem("readout");
 	const patchSlider = patchItem("slider");
 	const patchToggle = patchItem("toggle");
+	const patchSpacer = patchItem("spacer");
 
 	/** Live preview through the one boundary — errors render as themselves. */
 	const preview = createMemo(() => parseControlSpecText(currentJson()));
@@ -129,7 +130,7 @@ export function CardStudio(props: {
 		}
 		const lifted = tryFromSpec(parsed.data);
 		if (lifted === null) {
-			setError("This spec uses features the form can't show (forEach / grid / jog / classes / select inputs) — keep editing as JSON.");
+			setError("This spec uses features the form can't show (forEach / grid / jog / columns / groups / justify / classes / select inputs) — keep editing as JSON.");
 			return;
 		}
 		setForm(lifted);
@@ -316,6 +317,7 @@ export function CardStudio(props: {
 											<button class="link-btn" onClick={() => setForm("rows", r(), "items", produce(items => { items.push(emptyReadout()); }))}>+ readout</button>
 											<button class="link-btn" onClick={() => setForm("rows", r(), "items", produce(items => { items.push(emptySlider(form.inputs[0]?.name ?? "")); }))}>+ slider</button>
 											<button class="link-btn" onClick={() => setForm("rows", r(), "items", produce(items => { items.push(emptyToggle()); }))}>+ toggle</button>
+											<button class="link-btn" onClick={() => setForm("rows", r(), "items", produce(items => { items.push(emptySpacer()); }))}>+ spacer</button>
 											<Show when={form.inputs.length > 0}>
 												<select
 													class="fb-input st-addinput"
@@ -422,6 +424,17 @@ export function CardStudio(props: {
 																		onChange={e => patchToggle(r(), i(), { stamp: e.currentTarget.checked })} />
 																	stamp
 																</label>
+																<button class="link-btn" onClick={() => setForm("rows", r(), "items", produce(items => { items.splice(i(), 1); }))}>✕</button>
+															</div>
+														)}
+													</Match>
+													<Match when={item.kind === "spacer" ? item : null}>
+														{sp => (
+															<div class="studio-itemrow">
+																<span class="lab-cap">spacer</span>
+																<input class="fb-input st-default" type="number" placeholder="u" title="gap in u (blank = flexible: takes the free space)"
+																	value={sp().size ?? ""}
+																	onInput={e => patchSpacer(r(), i(), { size: e.currentTarget.value === "" ? null : Number(e.currentTarget.value) })} />
 																<button class="link-btn" onClick={() => setForm("rows", r(), "items", produce(items => { items.splice(i(), 1); }))}>✕</button>
 															</div>
 														)}

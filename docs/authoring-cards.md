@@ -110,9 +110,24 @@ refuses to lift them rather than approximating the option list.
 | `readout` | a live OM value, display-only | `om` (selector), `label?`, `unit?`, `decimals?` (integer 0–8). Absent/null reads render a reserved `—`, never a collapse |
 | `slider` | a range over an input; one send per completed gesture | `input` (input name — its label/unit label the slider), `min`, `max`, `step?` (default 1), `template`, `stamp?` (false hides the worn code). Never per pixel or per arrow step — the shared gesture machine settles a drag or a key burst into ONE send |
 | `toggle` | a two-state switch that READS the board and sends the alternative | `om` (state selector — truthy leaf = on, `0`/`false`/`""` = off; absent/non-leaf/non-finite = unknown), `whenOn` (sent while on, i.e. the turn-off command), `whenOff` (the converse), `label?`, `stamp?`. State comes only from the polled OM (no internal latch — it converges when a command fails or the state moves externally); unknown renders indeterminate and is inert. Wears the ACTIVE alternative; bind numeric/boolean leaves, not status strings |
-| `row` | a labelled flex row | `label?`, `sub?`, `class?`, `items` (nodes and/or `{ "input": name }`) |
+| `row` | a labelled flex row | `label?`, `sub?`, `class?`, `justify?`, `items` (nodes and/or `{ "input": name }`) |
 | `grid` | equal-column button grid | `items` |
 | `forEach` | stamp a node per OM item | `from` (selector), `as` (var name), `except?` `{prop, values}`, `enrich?` (`axisLabel`) |
+| `columns` | split into weighted column tracks | `columns` (≥ 2 entries, each `{ weight?, justify?, nodes }` — `weight` an integer ≥ 1, default 1, an `fr` ratio), `rulers?` (hairline verticals between columns). Columns may not nest inside columns, at any depth |
+| `group` | a labelled vertical cluster | `label?` (a template — forEach-stampable, like a row's), `class?`, `justify?`, `nodes` |
+| `spacer` | authored gap — how alignment is written | `size?` (a number of u, > 0 — fixed gap; **absent = flexible**, takes the free space). Works in rows and stacks alike |
+
+**Justify** (`"start" | "center" | "end" | "between"`, on `row`, `group`,
+and each `columns` entry): distribution of the container's children along
+its main axis — horizontal for a row, vertical for a group or a column.
+It is a property of containers, never a node; the free space it
+distributes is also authorable directly with `spacer` (a flexible spacer
+between two items IS "push the rest to the far end"). Live values cannot
+shift a justified layout: every control reserves its geometry
+(tabular figures, fixed value slots), so a polled update changes no box —
+only the model itself changing (a forEach stamping a new axis) reflows,
+exactly as it always did. Note the entire node tree may nest at most 8
+levels deep — past that the spec refuses to compile.
 
 **Placeholders** (in `template` and `label`): `{input.name}` — an input's
 live value; `{om:selector}` — an object-model read; `{var.prop}` — a
@@ -177,6 +192,36 @@ command fails, or a macro flips the fan from elsewhere, the switch follows
 the next poll — there is nothing else it could show. The import review lists
 BOTH of a toggle's templates (it is an emitter with two alternatives) and
 every select option value (string values reach templates verbatim).
+
+A two-column card with a ruler, groups, and a spacer pinning a button to the
+bottom of its column:
+
+```json
+{ "nodes": [
+	{ "type": "columns", "rulers": true, "columns": [
+		{ "weight": 2, "nodes": [
+			{ "type": "group", "label": "Readouts", "nodes": [
+				{ "type": "readout", "om": "heat.heaters[1].current", "label": "Nozzle", "unit": "°C", "decimals": 1 },
+				{ "type": "readout", "om": "heat.heaters[0].current", "label": "Bed", "unit": "°C", "decimals": 1 }
+			]}
+		]},
+		{ "nodes": [
+			{ "type": "group", "label": "Actions", "nodes": [
+				{ "type": "gcode-button", "label": "Home", "template": "G28" }
+			]},
+			{ "type": "spacer" },
+			{ "type": "gcode-button", "label": "Motors off", "template": "M84", "variant": "danger" }
+		]}
+	]}
+]}
+```
+
+The tracks split 2:1; the flexible spacer eats the second column's free
+space, so "Motors off" sits at the bottom edge however tall the readout
+column makes the card. Structural nodes never emit or read anything — the
+import review of this card is exactly the review of the controls inside it.
+(The built-in Movement card authors its own side column this way: a `group`
+with `justify: "between"` keeps the coupler at the foot of the jog table.)
 
 ## 2. A registry card — in code
 

@@ -122,10 +122,27 @@ export function reviewSpec(spec: CompiledControlSpec): SpecReview {
 				takeOm(omReadsOf(node.whenOff));
 				return;
 			case "row":
+				// Labels are templates and can carry {om:…} — inventoried like a
+				// button's label (found on inc 3: row label reads were silently
+				// absent from the review; fixed for row and group together).
+				if (node.label !== undefined) takeOm(omReadsOf(node.label));
+				if (node.sub !== undefined) takeOm(omReadsOf(node.sub));
 				node.items.forEach(walkItem);
 				return;
 			case "grid":
 				node.items.forEach(walk);
+				return;
+			case "columns":
+				// A columns split emits and reads nothing itself — its CONTENTS
+				// are the inventory, walked per column.
+				for (const col of node.columns) col.nodes.forEach(walk);
+				return;
+			case "group":
+				if (node.label !== undefined) takeOm(omReadsOf(node.label));
+				node.nodes.forEach(walk);
+				return;
+			case "spacer":
+				// Pure whitespace: emits nothing, reads nothing, has no children.
 				return;
 			case "forEach":
 				review.loops.push(node.from.text);

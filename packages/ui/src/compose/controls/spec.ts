@@ -101,6 +101,45 @@ export function isNumericInput(def: InputDef): boolean {
 
 export type ButtonVariant = "go" | "danger" | "quiet";
 
+/**
+ * Distribution of a container's children along its main axis — a PROPERTY of
+ * the container nodes (row: horizontal; group and each columns entry:
+ * vertical), never a node of its own. Rendered as one of four static classes;
+ * untrusted strings are refused in parse.ts (the gcode-button variant
+ * precedent). Positional stability holds because justify redistributes FREE
+ * space only: every leaf control reserves its geometry against live updates
+ * (tabular-nums + min-width value slots, reserved error/stamp slots), so a
+ * polled value change cannot change any box and therefore cannot move a
+ * justified sibling.
+ */
+export type Justify = "start" | "center" | "end" | "between";
+
+/** One track of a columns split. The weight rides ON the column — a parallel
+ *  weights array would make a length mismatch representable; this cannot. */
+export interface ColumnDef {
+	/** Track weight (fr ratio). Finite integer ≥ 1; absent = 1. */
+	weight?: number;
+	/** Vertical distribution of this column's stack. */
+	justify?: Justify;
+	nodes: ControlNode[];
+}
+
+/**
+ * @invariant layout-nesting-refused-at-compile
+ * @rung 7  sole-constructor boundary — compileControlSpec, the only producer
+ *          of the branded CompiledControlSpec, refuses a columns node anywhere
+ *          inside another columns node's subtree and any node tree deeper than
+ *          MAX_NODE_DEPTH levels, so a compiled spec that violates either
+ *          cannot exist and the renderer/review walks are bounded by type,
+ *          not by care
+ * @why a nested column split produces sub-quantum tracks that defeat the --u
+ *      scale discipline (the GIT_170 quantum ruling), and an unbounded tree
+ *      lets a hostile import trade a named error for a stack overflow deep in
+ *      render. Refusal at the one compile boundary means built-ins fail the
+ *      build and imported JSON gets the same path-named error
+ */
+export const MAX_NODE_DEPTH = 8;
+
 export type ControlNode =
 	| { type: "gcode-button"; label: string; template: string; variant?: ButtonVariant; stamp?: boolean; class?: string; aria?: string }
 	| { type: "jog-pad"; step: string; feed: string }
@@ -127,8 +166,16 @@ export type ControlNode =
 	// (toggle.ts toggleStateOf); unknown state renders reserved-indeterminate
 	// and is inert — representation honesty, not a GUI safety.
 	| { type: "toggle"; om: string; label?: string; whenOn: string; whenOff: string; stamp?: boolean }
-	| { type: "row"; label?: string; sub?: string; class?: string; items: RowItem[] }
+	| { type: "row"; label?: string; sub?: string; class?: string; justify?: Justify; items: RowItem[] }
 	| { type: "grid"; items: ControlNode[] }
+	// Structural nodes (GIT_194 inc 3, spec: 2026-08-30-layout-nodes-design.md).
+	// They emit nothing and read nothing beyond a group label's template — the
+	// share review walks their CONTENTS, forced by its totality weld.
+	| { type: "columns"; rulers?: boolean; columns: ColumnDef[] }
+	| { type: "group"; label?: string; class?: string; justify?: Justify; nodes: ControlNode[] }
+	// Explicit authored gap: size in u (finite > 0) = fixed flex-basis; absent
+	// = flexible (flex-grow) — the mechanism by which alignment is authored.
+	| { type: "spacer"; size?: number }
 	| {
 		type: "forEach";
 		from: string;
@@ -185,8 +232,13 @@ export type CompiledNode =
 	// label/sub are TEMPLATES here, not plain strings: a row emitted inside a
 	// forEach needs to name its own item ("{axis.letter}"), which a literal
 	// cannot do. Authored form stays a string; the compiler converts.
-	| { type: "row"; label?: CompiledTemplate; sub?: CompiledTemplate; class?: string; items: CompiledRowItem[] }
+	| { type: "row"; label?: CompiledTemplate; sub?: CompiledTemplate; class?: string; justify?: Justify; items: CompiledRowItem[] }
 	| { type: "grid"; items: CompiledNode[] }
+	// weight is CONCRETE here (authored default 1 applied once, at compile —
+	// the slider-step precedent).
+	| { type: "columns"; rulers?: boolean; columns: Array<{ weight: number; justify?: Justify; nodes: CompiledNode[] }> }
+	| { type: "group"; label?: CompiledTemplate; class?: string; justify?: Justify; nodes: CompiledNode[] }
+	| { type: "spacer"; size?: number }
 	| { type: "forEach"; from: OmSelector; as: string; except?: { prop: string; values: string[] }; enrich?: EnrichmentId; node: CompiledNode };
 
 export type CompiledRowItem = CompiledNode | InputRef;
@@ -262,7 +314,16 @@ export function compileControlSpec(spec: ControlSpec): CompiledControlSpec {
 		return compiled;
 	};
 
-	const compileNode = (node: ControlNode, where: string): CompiledNode => {
+	/**
+	 * depth counts every nesting edge (row items, grid items, forEach's node,
+	 * group nodes, columns entries' nodes); inColumns is true anywhere inside a
+	 * columns subtree — both refusals of layout-nesting-refused-at-compile
+	 * live at this one entry, so no case below can be reached in violation.
+	 */
+	const compileNode = (node: ControlNode, where: string, depth: number, inColumns: boolean): CompiledNode => {
+		if (depth > MAX_NODE_DEPTH) {
+			throw new Error(`${where}: the node tree nests deeper than ${MAX_NODE_DEPTH} levels`);
+		}
 		switch (node.type) {
 			case "gcode-button": {
 				const compiled: CompiledNode = {
@@ -335,28 +396,67 @@ export function compileControlSpec(spec: ControlSpec): CompiledControlSpec {
 						needInput(item.input, `${where}.items[${i}]`);
 						return item;
 					}
-					return compileNode(item, `${where}.items[${i}]`);
+					return compileNode(item, `${where}.items[${i}]`, depth + 1, inColumns);
 				});
 				// Built explicitly rather than spread: `...node` would carry the
 				// RAW string label through and the compiled node would hold two
 				// incompatible shapes for the same field.
-				const compiled: CompiledNode = { type: "row", items, class: node.class };
+				const compiled: CompiledNode = { type: "row", items, class: node.class, justify: node.justify };
 				if (node.label !== undefined) compiled.label = tpl(node.label, `${where}.label`);
 				if (node.sub !== undefined) compiled.sub = tpl(node.sub, `${where}.sub`);
 				return compiled;
 			}
 			case "grid":
-				return { ...node, items: node.items.map((n, i) => compileNode(n, `${where}.items[${i}]`)) };
+				return { ...node, items: node.items.map((n, i) => compileNode(n, `${where}.items[${i}]`, depth + 1, inColumns)) };
 			case "forEach": {
 				const from = parseOmSelector(node.from);
 				if (from === null) throw new Error(`${where}.from: invalid selector "${node.from}"`);
-				return { ...node, from, node: compileNode(node.node, `${where}.node`) };
+				return { ...node, from, node: compileNode(node.node, `${where}.node`, depth + 1, inColumns) };
+			}
+			case "columns": {
+				if (inColumns) throw new Error(`${where}: columns cannot nest inside columns`);
+				if (node.columns.length < 2) {
+					throw new Error(`${where}.columns: a columns split needs at least two columns`);
+				}
+				const columns = node.columns.map((col, i) => {
+					const cw = `${where}.columns[${i}]`;
+					const weight = col.weight ?? 1;
+					// Integer, not just finite: weights are fr RATIOS and a ratio
+					// of integers says everything a fraction could (spec §1).
+					if (!Number.isInteger(weight) || weight < 1) {
+						throw new Error(`${cw}.weight: expected an integer ≥ 1`);
+					}
+					return {
+						weight,
+						justify: col.justify,
+						nodes: col.nodes.map((n, j) => compileNode(n, `${cw}.nodes[${j}]`, depth + 1, true)),
+					};
+				});
+				return { type: "columns", rulers: node.rulers, columns };
+			}
+			case "group": {
+				const compiled: CompiledNode = {
+					type: "group",
+					class: node.class,
+					justify: node.justify,
+					nodes: node.nodes.map((n, i) => compileNode(n, `${where}.nodes[${i}]`, depth + 1, inColumns)),
+				};
+				if (node.label !== undefined) compiled.label = tpl(node.label, `${where}.label`);
+				return compiled;
+			}
+			case "spacer": {
+				// size > 0: a zero gap is the absence of a spacer (the slider
+				// step > 0 precedent); absent = flexible, a REAL state, not 0.
+				if (node.size !== undefined && (!Number.isFinite(node.size) || node.size <= 0)) {
+					throw new Error(`${where}.size: expected a positive number of u`);
+				}
+				return node;
 			}
 		}
 	};
 
 	return {
 		inputs: spec.inputs,
-		nodes: spec.nodes.map((n, i) => compileNode(n, `nodes[${i}]`)),
+		nodes: spec.nodes.map((n, i) => compileNode(n, `nodes[${i}]`, 1, false)),
 	} as unknown as CompiledControlSpec;
 }

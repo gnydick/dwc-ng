@@ -105,6 +105,58 @@ test("select and toggle pass the untrusted boundary; malformed fields are named 
 	);
 });
 
+test("layout nodes pass the untrusted boundary; malformed fields are named errors", () => {
+	const good = parseControlSpecText(JSON.stringify({
+		nodes: [{
+			type: "columns",
+			rulers: true,
+			columns: [
+				{ weight: 2, nodes: [{ type: "gcode-button", label: "A", template: "G28" }] },
+				{ justify: "between", nodes: [{ type: "group", label: "G", nodes: [{ type: "spacer", size: 2 }, { type: "spacer" }] }] },
+			],
+		}],
+	}));
+	assert.ok(good.ok, good.ok ? "" : good.error);
+	assert.match(
+		(parseControlSpecText('{"nodes":[{"type":"columns"}]}') as { error: string }).error,
+		/nodes\[0\]\.columns: expected an array/,
+	);
+	assert.match(
+		(parseControlSpecText('{"nodes":[{"type":"columns","columns":[{"nodes":[]},{"weight":"2","nodes":[]}]}]}') as { error: string }).error,
+		/nodes\[0\]\.columns\[1\]\.weight: expected a number/,
+	);
+	assert.match(
+		(parseControlSpecText('{"nodes":[{"type":"columns","columns":[{"nodes":[]},{"justify":"stretch","nodes":[]}]}]}') as { error: string }).error,
+		/nodes\[0\]\.columns\[1\]\.justify/,
+	);
+	assert.match(
+		(parseControlSpecText('{"nodes":[{"type":"columns","columns":[{"nodes":[]},"x"]}]}') as { error: string }).error,
+		/nodes\[0\]\.columns\[1\]: expected an object/,
+	);
+	assert.match(
+		(parseControlSpecText('{"nodes":[{"type":"group"}]}') as { error: string }).error,
+		/nodes\[0\]\.nodes: expected an array/,
+	);
+	assert.match(
+		(parseControlSpecText('{"nodes":[{"type":"spacer","size":"4"}]}') as { error: string }).error,
+		/nodes\[0\]\.size: expected a number/,
+	);
+	assert.match(
+		(parseControlSpecText('{"nodes":[{"type":"row","justify":"sideways","items":[]}]}') as { error: string }).error,
+		/nodes\[0\]\.justify/,
+	);
+});
+
+test("a hostile deep-nesting file is a named error, never a throw or a card", () => {
+	// 1000 nested groups. Whatever refuses it (the compile boundary's depth
+	// cap), parseControlSpecText's contract is ok:false with a message — a
+	// throw here would break every import surface at once.
+	const deep = '{"nodes":[' + '{"type":"group","nodes":['.repeat(1000) + ']}'.repeat(1000) + "]}";
+	const parsed = parseControlSpecText(deep);
+	assert.ok(!parsed.ok, "a pathological nesting depth is not a card");
+	assert.match((parsed as { error: string }).error, /deeper than 8/);
+});
+
 // ---- custom cards in config + compositions ----
 
 test("addCustomCard mints c- ids; the spec text round-trips exactly", () => {
@@ -189,6 +241,42 @@ test("toggle items round-trip through the form model", async () => {
 	assert.ok(lifted !== null, "a toggle is form-shaped — every field has a form slot");
 	assert.deepEqual(toSpec(lifted!), spec, "lower(lift(spec)) is identity");
 	assert.ok(parseControlSpecText(JSON.stringify(toSpec(lifted!))).ok);
+});
+
+test("spacer items round-trip through the form model", async () => {
+	const { toSpec, tryFromSpec } = await import("../src/compose/controls/formModel.ts");
+	const spec = {
+		inputs: {},
+		nodes: [{
+			type: "row" as const,
+			items: [
+				{ type: "gcode-button" as const, label: "A", template: "G28" },
+				{ type: "spacer" as const, size: 4 },
+				{ type: "spacer" as const },
+				{ type: "gcode-button" as const, label: "B", template: "M84" },
+			],
+		}],
+	};
+	const lifted = tryFromSpec(spec);
+	assert.ok(lifted !== null, "a spacer in a flat row is form-shaped");
+	assert.deepEqual(toSpec(lifted!), spec, "lower(lift(spec)) is identity — flexible stays flexible, fixed keeps its size");
+	assert.ok(parseControlSpecText(JSON.stringify(toSpec(lifted!))).ok);
+});
+
+test("columns, groups, and justified rows refuse to lift — JSON territory", async () => {
+	const { tryFromSpec } = await import("../src/compose/controls/formModel.ts");
+	assert.equal(tryFromSpec({
+		inputs: {},
+		nodes: [{ type: "columns", columns: [{ nodes: [] }, { nodes: [] }] }],
+	}), null, "a column split cannot ride the form's flat rows");
+	assert.equal(tryFromSpec({
+		inputs: {},
+		nodes: [{ type: "group", nodes: [] }],
+	}), null, "a group is JSON territory");
+	assert.equal(tryFromSpec({
+		inputs: {},
+		nodes: [{ type: "row", justify: "between", items: [] }],
+	}), null, "the form has no justify field — null over silently dropping it");
 });
 
 test("a spec with a select input refuses to lift — null over approximation", async () => {

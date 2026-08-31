@@ -14,7 +14,7 @@
  * the compiled spec (and a reviewer of a shared card still sees everything
  * the card can do, because the review walks the rebuilt spec).
  */
-import { compileControlSpec, ENRICHMENT_IDS, type CompiledControlSpec, type ControlNode, type ControlSpec, type InputDef, type RowItem } from "./spec.ts";
+import { compileControlSpec, ENRICHMENT_IDS, type ColumnDef, type CompiledControlSpec, type ControlNode, type ControlSpec, type InputDef, type Justify, type RowItem } from "./spec.ts";
 import { isSafeKey } from "@dwc-ng/connector";
 
 export type ParsedSpec =
@@ -22,6 +22,7 @@ export type ParsedSpec =
 	| { ok: false; error: string };
 
 const VARIANTS = new Set(["go", "danger", "quiet"]);
+const JUSTIFY = new Set(["start", "center", "end", "between"]);
 
 function fail(msg: string): never {
 	throw new Error(msg);
@@ -39,6 +40,14 @@ function asString(value: unknown, where: string): string {
 
 function asOptString(value: unknown, where: string): string | undefined {
 	return value === undefined ? undefined : asString(value, where);
+}
+
+/** The closed justify vocabulary (the VARIANTS precedent for variant). */
+function asOptJustify(value: unknown, where: string): Justify | undefined {
+	if (value === undefined) return undefined;
+	const v = asString(value, where);
+	if (!JUSTIFY.has(v)) fail(`${where}: start | center | end | between`);
+	return v as Justify;
 }
 
 function validateInput(raw: unknown, where: string): InputDef {
@@ -157,13 +166,16 @@ function validateNode(raw: unknown, where: string): ControlNode {
 		}
 		case "row": {
 			if (!Array.isArray(o.items)) fail(`${where}.items: expected an array`);
-			return {
+			const node: ControlNode = {
 				type,
 				label: asOptString(o.label, `${where}.label`),
 				sub: asOptString(o.sub, `${where}.sub`),
 				class: asOptString(o.class, `${where}.class`),
 				items: o.items.map((item, i) => validateRowItem(item, `${where}.items[${i}]`)),
 			};
+			const justify = asOptJustify(o.justify, `${where}.justify`);
+			if (justify !== undefined) node.justify = justify;
+			return node;
 		}
 		case "grid": {
 			if (!Array.isArray(o.items)) fail(`${where}.items: expected an array`);
@@ -185,6 +197,52 @@ function validateNode(raw: unknown, where: string): ControlNode {
 				const e = asString(o.enrich, `${where}.enrich`);
 				if (!(ENRICHMENT_IDS as readonly string[]).includes(e)) fail(`${where}.enrich: unknown enrichment "${e}"`);
 				node.enrich = e as (typeof ENRICHMENT_IDS)[number];
+			}
+			return node;
+		}
+		case "columns": {
+			if (!Array.isArray(o.columns)) fail(`${where}.columns: expected an array`);
+			const node: ControlNode = {
+				type,
+				columns: o.columns.map((col, i) => {
+					const cw = `${where}.columns[${i}]`;
+					const c = asRecord(col, cw);
+					if (!Array.isArray(c.nodes)) fail(`${cw}.nodes: expected an array`);
+					const entry: ColumnDef = {
+						nodes: c.nodes.map((n, j) => validateNode(n, `${cw}.nodes[${j}]`)),
+					};
+					if (c.weight !== undefined) {
+						if (typeof c.weight !== "number") fail(`${cw}.weight: expected a number`);
+						entry.weight = c.weight;
+					}
+					const justify = asOptJustify(c.justify, `${cw}.justify`);
+					if (justify !== undefined) entry.justify = justify;
+					return entry;
+				}),
+			};
+			if (o.rulers !== undefined) {
+				if (typeof o.rulers !== "boolean") fail(`${where}.rulers: expected a boolean`);
+				node.rulers = o.rulers;
+			}
+			return node;
+		}
+		case "group": {
+			if (!Array.isArray(o.nodes)) fail(`${where}.nodes: expected an array`);
+			const node: ControlNode = {
+				type,
+				label: asOptString(o.label, `${where}.label`),
+				class: asOptString(o.class, `${where}.class`),
+				nodes: o.nodes.map((n, i) => validateNode(n, `${where}.nodes[${i}]`)),
+			};
+			const justify = asOptJustify(o.justify, `${where}.justify`);
+			if (justify !== undefined) node.justify = justify;
+			return node;
+		}
+		case "spacer": {
+			const node: ControlNode = { type };
+			if (o.size !== undefined) {
+				if (typeof o.size !== "number") fail(`${where}.size: expected a number`);
+				node.size = o.size;
 			}
 			return node;
 		}

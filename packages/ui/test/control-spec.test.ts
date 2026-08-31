@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { parseOmSelector, readOm, readOmList } from "../src/compose/controls/omSelector.ts";
 import { compileTemplate, resolveTemplate, type TemplateScope } from "../src/compose/controls/template.ts";
-import { compileControlSpec, isInputRef, type CompiledControlSpec, type CompiledNode } from "../src/compose/controls/spec.ts";
+import { compileControlSpec, isInputRef, type CompiledControlSpec, type CompiledNode, type ControlNode } from "../src/compose/controls/spec.ts";
 import type { CompiledTemplate } from "../src/compose/controls/template.ts";
 import { HOMING_SPEC, MOVEMENT_SPEC } from "../src/compose/controls/builtin.ts";
 import { cmd } from "../src/control/commands.ts";
@@ -305,6 +305,90 @@ test("toggle rejects bad selectors and bad templates, path-named", () => {
 	}), /nodes\[0\]\.label: invalid template/);
 });
 
+// ---- layout nodes (GIT_194 increment 3): columns, group, spacer, justify ----
+
+test("columns, group, and spacer compile through the sole boundary", () => {
+	const spec = compileControlSpec({
+		inputs: {},
+		nodes: [{
+			type: "columns",
+			rulers: true,
+			columns: [
+				{ weight: 2, nodes: [{ type: "gcode-button", label: "A", template: "G28" }] },
+				{ justify: "between", nodes: [
+					{ type: "group", label: "{axis.letter}", justify: "end", nodes: [{ type: "spacer", size: 4 }, { type: "spacer" }] },
+				] },
+			],
+		}],
+	});
+	const cols = spec.nodes[0]!;
+	assert.equal(cols.type, "columns");
+	if (cols.type === "columns") {
+		assert.equal(cols.columns[0]!.weight, 2);
+		assert.equal(cols.columns[1]!.weight, 1, "omitted weight compiles to the concrete default (the slider-step precedent)");
+		assert.equal(cols.columns[1]!.justify, "between");
+		const group = cols.columns[1]!.nodes[0]!;
+		assert.equal(group.type, "group");
+		if (group.type === "group") {
+			assert.equal(group.label!.text, "{axis.letter}", "group label compiled as a template — forEach-stampable like a row's");
+			const fixed = group.nodes[0]!;
+			const flex = group.nodes[1]!;
+			assert.ok(fixed.type === "spacer" && fixed.size === 4);
+			assert.ok(flex.type === "spacer" && flex.size === undefined, "absent size = flexible");
+		}
+	}
+});
+
+test("columns refuses fewer than two columns and bad weights, path-named", () => {
+	assert.throws(() => compileControlSpec({
+		inputs: {},
+		nodes: [{ type: "columns", columns: [] }],
+	}), /nodes\[0\]\.columns: .*two/);
+	assert.throws(() => compileControlSpec({
+		inputs: {},
+		nodes: [{ type: "columns", columns: [{ nodes: [] }] }],
+	}), /nodes\[0\]\.columns: .*two/, "a one-column split is a group wearing the wrong name");
+	for (const weight of [0, -1, 1.5, Number.POSITIVE_INFINITY, Number.NaN]) {
+		assert.throws(() => compileControlSpec({
+			inputs: {},
+			nodes: [{ type: "columns", columns: [{ weight, nodes: [] }, { nodes: [] }] }],
+		}), /nodes\[0\]\.columns\[0\]\.weight/, `weight ${weight} must not compile`);
+	}
+	// an EMPTY column is authored whitespace — it compiles
+	assert.ok(compileControlSpec({ inputs: {}, nodes: [{ type: "columns", columns: [{ nodes: [] }, { nodes: [] }] }] }));
+});
+
+test("spacer refuses non-positive and non-finite sizes, path-named", () => {
+	for (const size of [0, -2, Number.POSITIVE_INFINITY, Number.NaN]) {
+		assert.throws(() => compileControlSpec({
+			inputs: {},
+			nodes: [{ type: "spacer", size }],
+		}), /nodes\[0\]\.size/, `size ${size} must not compile`);
+	}
+});
+
+test("columns cannot nest inside columns — directly or through any container", () => {
+	const split: ControlNode = { type: "columns", columns: [{ nodes: [] }, { nodes: [] }] };
+	assert.throws(() => compileControlSpec({
+		inputs: {},
+		nodes: [{ type: "columns", columns: [{ nodes: [split] }, { nodes: [] }] }],
+	}), /nodes\[0\]\.columns\[0\]\.nodes\[0\]: columns cannot nest/);
+	assert.throws(() => compileControlSpec({
+		inputs: {},
+		nodes: [{ type: "columns", columns: [{ nodes: [{ type: "group", nodes: [split] }] }, { nodes: [] }] }],
+	}), /columns cannot nest/, "a group between them does not launder the split");
+	// side by side (siblings) is not nesting — both compile
+	assert.ok(compileControlSpec({ inputs: {}, nodes: [split, split] }));
+});
+
+test("the node tree is capped at 8 levels; the 9th is refused, path-named", () => {
+	const nest = (depth: number): ControlNode => depth === 0
+		? { type: "gcode-button", label: "x", template: "G4" }
+		: { type: "group", nodes: [nest(depth - 1)] };
+	assert.ok(compileControlSpec({ inputs: {}, nodes: [nest(7)] }), "8 levels compile (7 groups + the leaf)");
+	assert.throws(() => compileControlSpec({ inputs: {}, nodes: [nest(8)] }), /deeper than 8/);
+});
+
 // ---- toggle state: one total pipeline from an OM read to on/off/unknown ----
 
 test("toggleStateOf is total: absence and non-leaf are unknown; leaf truthiness decides", async () => {
@@ -388,6 +472,14 @@ function extractButtons(spec: CompiledControlSpec): Array<{ label: string; templ
 				found.push({ label: `${node.om.text} whenOn`, template: node.whenOn });
 				found.push({ label: `${node.om.text} whenOff`, template: node.whenOff });
 				return;
+			case "columns":
+				for (const col of node.columns) col.nodes.forEach(walk);
+				return;
+			case "group":
+				node.nodes.forEach(walk);
+				return;
+			case "spacer":
+				return; // pure whitespace — emits nothing
 		}
 		// Totality weld (matches the renderer's): a new CompiledNode variant
 		// must be enumerated here or this test file fails to compile.

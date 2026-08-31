@@ -18,7 +18,7 @@ import { formatReadoutValue, READOUT_PLACEHOLDER } from "./readout.ts";
 import { createSendFeedback } from "./sendFeedback.ts";
 import { toggleStateOf, type ToggleState } from "./toggle.ts";
 import { resolveTemplate, type TemplateScope } from "./template.ts";
-import { isInputRef, type CompiledControlSpec, type CompiledNode, type CompiledRowItem, type EnrichmentId } from "./spec.ts";
+import { isInputRef, type CompiledControlSpec, type CompiledNode, type CompiledRowItem, type EnrichmentId, type Justify } from "./spec.ts";
 import type { CardCtx } from "../ctx.ts";
 import { unreachable } from "../../util/unreachable.ts";
 import type { GcodeCommand } from "@dwc-ng/connector";
@@ -32,6 +32,14 @@ import type { GcodeCommand } from "@dwc-ng/connector";
  */
 const numeric = (value: number | string | undefined, fallback: number): number =>
 	typeof value === "number" ? value : fallback;
+
+/**
+ * Justify → its static class. Four values, four classes (app.css) — a class
+ * is greppable where an inline style string is not, and there is no length
+ * for the px lint to care about.
+ */
+const justifyClass = (justify: Justify | undefined): Record<string, boolean> =>
+	justify === undefined ? {} : { [`ctl-justify-${justify}`]: true };
 
 /** Closed enrichment registry (data names one; code defines it — rung 8). */
 const ENRICHMENTS: Record<EnrichmentId, (item: Record<string, unknown>, ctx: CardCtx) => Record<string, unknown>> = {
@@ -340,7 +348,7 @@ export function ControlList(props: { spec: CompiledControlSpec; ctx: CardCtx }) 
 				const rowSub = (): string =>
 					node.sub === undefined ? "" : resolveTemplate(node.sub, scopeWith(p.vars));
 				return (
-					<div class={node.class ?? "ctl-wrap"}>
+					<div class={node.class ?? "ctl-wrap"} classList={justifyClass(node.justify)}>
 						<Show when={rowLabel()}>
 							<span class="ctl-name">{rowLabel()}<Show when={rowSub()}>{s => <small>{s()}</small>}</Show></span>
 						</Show>
@@ -357,6 +365,56 @@ export function ControlList(props: { spec: CompiledControlSpec; ctx: CardCtx }) 
 							{child => <RenderNode node={child} vars={p.vars} />}
 						</For>
 					</div>
+				);
+			case "columns": {
+				// The compiled tree is immutable data, so the track list is fixed
+				// for the node's life. fr weights only — no length units, nothing
+				// for the px lint or the --u discipline to see.
+				const tracks = node.columns.map(col => `${col.weight}fr`).join(" ");
+				return (
+					<div
+						class="ctl-columns"
+						classList={{ "has-rulers": node.rulers === true }}
+						style={{ "grid-template-columns": tracks }}
+					>
+						<For each={node.columns}>
+							{col => (
+								<div class="ctl-col" classList={justifyClass(col.justify)}>
+									<For each={col.nodes}>
+										{child => <RenderNode node={child} vars={p.vars} />}
+									</For>
+								</div>
+							)}
+						</For>
+					</div>
+				);
+			}
+			case "group": {
+				// Resolved like a row's label: a group stamped by a forEach names
+				// its own item, and an empty resolution costs no slot.
+				const groupLabel = (): string =>
+					node.label === undefined ? "" : resolveTemplate(node.label, scopeWith(p.vars));
+				return (
+					<div class={node.class ?? "ctl-group"} classList={justifyClass(node.justify)}>
+						<Show when={groupLabel()}>
+							<span class="ctl-name">{groupLabel()}</span>
+						</Show>
+						<For each={node.nodes}>
+							{child => <RenderNode node={child} vars={p.vars} />}
+						</For>
+					</div>
+				);
+			}
+			case "spacer":
+				// Pure authored whitespace. Fixed = flex-basis in u (main-axis in
+				// a row and a stack alike — one node, no direction variants);
+				// absent size = the stylesheet's flex: 1 1 0.
+				return (
+					<span
+						class="ctl-spacer"
+						aria-hidden="true"
+						style={node.size === undefined ? undefined : { flex: `0 0 calc(${node.size} * var(--u))` }}
+					/>
 				);
 			case "forEach": {
 				const items = createMemo(() => {
