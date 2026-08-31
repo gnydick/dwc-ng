@@ -166,3 +166,134 @@ Verified against the mock during UAT (M220 via a slider; a live
 ## 8. Docs
 
 `docs/authoring-cards.md` node table + examples gain both kinds.
+
+---
+
+# Addendum — select + toggle (GIT_194, increment 2 of #194)
+
+The two remaining control kinds. Same rule as increment 1: every choice
+derives from an existing convention, cited, and both land the full vertical
+in one change.
+
+## A1. select — an INPUT kind, not a control
+
+Two shapes were on the table: (a) a new input kind whose labeled options
+stage a value for templates, or (b) a control leaf that emits on selection.
+**(a), decided by the 1:1 rule and composition:**
+
+- *Emit-on-selection already exists*: a row of `gcode-button`s IS an
+  enumerated choice that emits — and each button wears exactly the command
+  it will send (I15). A dropdown that emitted on selection would duplicate
+  that power while wearing its command WORSE: the command a pick will send
+  cannot be on screen before the list is open.
+- *Labeled staging does not exist*: `chips` stages bare numbers
+  (`spec.ts:36-40`). The missing power is options with LABELS and — the
+  real capability gap — **string values** (a macro name, a named mode),
+  staged once and consumed by any number of buttons/sliders/toggles via
+  `{input.name}`. An input composes with every emitter; a control composes
+  with nothing.
+
+Authored form (in `inputs`, beside `number`/`chips`):
+
+```json
+"mode": { "kind": "select", "label": "Mode", "default": 0,
+  "options": [ { "label": "Off", "value": 0 }, { "label": "Half", "value": 0.5 },
+               { "label": "Full", "value": 1 } ] }
+```
+
+Rendered as a **dropdown** — the house element for enumerated choice with
+labels (`<select class="fb-input">`, the studio's own kind/variant pickers,
+`CardStudio.tsx`). Chips stay the compact segmented style for BARE numeric
+presets; a select is precisely the case where the value needs a name, which
+is what a dropdown's rows give and a chip row does not. The renderer stages
+by option INDEX (the `<option>` carries the index, the store receives
+`options[i].value`), so a numeric value stages as a number and a string as
+a string — never the DOM's stringification.
+
+**The line-count invariant, restated.** `operator-input-cannot-add-a-line`
+(`spec.ts`) was rung 8 by "every stageable value is a number". String
+option values change its mechanism, not its truth: every string an operator
+can stage is one the AUTHOR enumerated, admitted only after
+`compileControlSpec` — the sole constructor of the branded compiled spec —
+has refused control characters in it (same refusal `gcodeQuote` applies at
+`control/commands.ts:141`: a newline has no escape in RRF, so it is
+rejected, not encoded). The operator still has no free-text path: there is
+no free-text kind, and the dropdown stages by index. Compile also requires
+at least one option and `default` ∈ option values (spec coherence at the
+boundary, like `min < max` — not a GUI safety).
+
+**Numeric-only bindings hold.** `jog-pad`/`axis-jog` step+feed and
+`slider.input` bind value SPACES that must be numeric (they feed `cmd.jog`
+and an HTML range). Compile rejects binding them to a select that lists any
+string value (`isNumericInput` in spec.ts); a select whose options are all
+numbers binds anywhere `chips` could.
+
+**Review** (`share.ts`): a select never emits, so it is not a Sends
+category — but its STRING values interpolate into templates verbatim,
+expanding what a reviewed template can say beyond digits. `SpecReview`
+gains `selects` (input name + full labeled option list), rendered by
+`ImportReview` — accepting a card still means having seen every command it
+can emit, including every author-enumerated string a placeholder can become.
+
+**Form**: select inputs are JSON territory (`tryFromSpec` → null, same rule
+as forEach/grid/jog): the studio's input row is a flat line of scalar
+fields, and a labeled option list cannot ride in it without approximating —
+null over approximation.
+
+## A2. toggle — a two-state control that reads the board and emits the alternative
+
+```json
+{ "type": "toggle", "om": "fans[0].requestedValue", "label": "Part fan",
+  "whenOn": "M106 P0 S0", "whenOff": "M106 P0 S1", "stamp": true }
+```
+
+- `om` (required): the existing selector grammar — the toggle's state comes
+  ONLY from the polled object model. There is no internal latched boolean
+  anywhere: the board is the authority, so the control converges to reality
+  when a command fails, is overridden by a macro, or the state changes from
+  another client — for free, because there is nothing else it could show.
+- **Truthy mapping** (`toggleStateOf`, one pure pipeline in
+  `compose/controls/toggle.ts`, the `formatReadoutValue` precedent):
+  `undefined`/`null` and non-leaf values (object/array — a toggle binds a
+  leaf) → **unknown**; otherwise JS truthiness on the leaf: `false`, `0`,
+  `""` → **off**, everything else → **on**. Documented consequence: bind
+  numeric/boolean leaves (`fans[0].requestedValue`, `state.atxPower`); a
+  STATUS STRING like "off" is truthy and the wrong binding for a toggle.
+- `whenOn` / `whenOff` (required): templates through the one compile
+  boundary. `whenOn` is what activation sends while the state IS on (i.e.
+  the turn-off command), `whenOff` the converse. 1:1 rule intact: each
+  press sends exactly one author-written template, chosen by reported
+  state; no GUI verdict intervenes.
+- `label` (optional): a template, the readout/row precedent.
+- **Worn command** (GcodeButton's title discipline, `GcodeButton.tsx:163`:
+  title/stamp show exactly what THIS press sends): the toggle wears the
+  live-resolved ACTIVE alternative. Both raw templates are what the import
+  review shows (`toggles` category — it is an emitter, both alternatives
+  reviewable like any button's template); the control itself wears the one
+  the next press will send.
+- **Unknown state is inert and reserved**: before the first poll lands (or
+  on a selector that reads nothing) the control renders an indeterminate
+  appearance in the same geometry — centred hollow thumb, placeholder in
+  the word and stamp slots — and activation does nothing, because neither
+  alternative is truthfully "what this press sends". That is representation
+  honesty (the 1:1 rule with no state to be 1:1 WITH), not a GUI safety;
+  the moment the OM reports a leaf, it is live. `aria-pressed` mirrors
+  on/off/`"mixed"`.
+- Send/ack: one send per activation press (native button semantics), via
+  the same guarded connector, colour-only feedback on fixed geometry. The
+  send/ack state machine is extracted to `sendFeedback.ts` and shared by
+  the slider and the toggle (the tripwire: a third hand-rolled copy inside
+  ControlList would have been the second paste) — a rung-5 shared helper
+  with its promotion path named in the file.
+
+## A3. Verticals
+
+Same slices as increment 1: `spec.ts` union + sole-boundary validation
+(path-named), `parse.ts` untrusted cases, `ControlList.tsx` cases behind
+the same `unreachable` weld, `formModel`/`CardStudio` (toggle lifts fully;
+select refuses), `share.ts` review + `ImportReview` sections, docs, and
+red-first tests in control-spec/custom-cards/share suites. Mock parity:
+the toggle demo binds `fans[0].requestedValue` — mock-duet already applies
+`M106 P S` to it (`gcode.ts:178-184`, `M107` at 217) and projects it in the
+live poll (`model-query.ts:140-144`), so no mock change is required; the
+UAT drives that exact path.
