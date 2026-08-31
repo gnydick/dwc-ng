@@ -129,7 +129,9 @@ more concurrency than a Duet ever would. Load-shaped defects do not show up here
 
 ## 4. HTTP: the DSF (SBC) surface
 
-Served under `--dsf` (`src/dsf.ts`): `machine/connect`, `machine/disconnect`,
+Served **by default** since GIT_194 (`src/dsf.ts`; `--standalone` turns it off,
+`--dsf` is now just an explicit spelling of the default): `machine/connect`,
+`machine/disconnect`,
 `machine/noop`, `machine/model`, `machine/status`, `machine/code`,
 `machine/file/*`, `machine/file/move`, `machine/directory/*`,
 `machine/fileinfo/*`, and the `/machine` WebSocket push loop.
@@ -140,6 +142,25 @@ The connector uses `machine/connect`, `machine/model`, `machine/status` and
 exposes for the SBC's own management. The UI does not use them, and a mock that
 answered them would invite code that depends on a mode this project targets
 second.
+
+**One machine, two skins.** Both dialects run over the SAME `Machine`,
+`VirtualSD` and `SessionManager` (`src/server.ts` constructs one of each and
+hands them to `createDsfEndpoint`), so everything stateful is shared by
+construction rather than by two seeds kept in step: the SD tree and its
+`dwc-ng-config.json` seed, `fileInfo` and thumbnail bytes, the object model,
+and G-code execution (`machine.execute` is the one authority both
+`rr_gcode` and `POST /machine/code` call). `test/cli-dialect.test.ts` pins this
+with a byte-equality check on the config seed served both ways — the tripwire
+for anyone who later gives DSF a seed of its own.
+
+**The one deliberate asymmetry:** `--busy-every`'s 503 injection applies to
+`rr_model` / `rr_filelist` / `rr_files` only, never to the `/machine` routes
+(`src/server.ts`, the busy block sits after the rr_ session check). That is not
+an oversight — the 503 models RRF's starved embedded server running out of
+buffers, which is why `PollConnector` carries a retry ladder and `DsfConnector`
+deliberately carries no request queue at all. DCS *can* answer 503 when it is
+down, and that state is **not modelled**; a DSF-side outage is reachable only
+through the disconnect scenario's socket destruction.
 
 **Deployment asymmetry, and it is a real one:** DuetWebServer (Kestrel) neither
 compresses on the fly nor serves `.gz` transparently — verified on hardware

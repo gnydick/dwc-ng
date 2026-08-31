@@ -6,6 +6,7 @@ import { scenarios } from "./scenarios/index.ts";
 import { loadCaptureFile } from "./capture.ts";
 import type { ConfigSeedVersion } from "./files.ts";
 import { stripArgSeparators } from "./argv.ts";
+import { resolveDialect } from "./dialect.ts";
 import { listenAndRegister } from "./pidfile.ts";
 import { UAT_MOCK_PORT, UAT_VITE_PORT, portTag } from "./ports.ts";
 
@@ -51,7 +52,13 @@ const { values } = parseArgs({
 		"max-sessions": { type: "string", default: "" },
 		"session-timeout": { type: "string", default: "" },
 		"no-auth": { type: "boolean", default: false },
+		// BOTH dialects are served by default (dialect.ts): this project's
+		// target is a Duet 3 + SBC, so a mock that omitted DSF unless asked had
+		// the default backwards — and its absence was invisible, which is what
+		// cost a UAT day on 2026-08-31. `--dsf` is kept as an explicit spelling
+		// of the default; `--standalone` is the deliberate opt-out.
 		dsf: { type: "boolean", default: false },
+		standalone: { type: "boolean", default: false },
 		// "3" (current) by default; "1"/"2" stay selectable so the pre-v3
 		// migration a real board's SD can carry is reachable on a live mock,
 		// not only in the UI's own synthetic parser tests (GIT_92 req. 3).
@@ -99,8 +106,15 @@ Options:
       --session-timeout <ms>
                           Idle session expiry (default: 8000).
       --no-auth           Don't require X-Session-Key (handy for curl).
-      --dsf               Also serve the DSF (SBC) surface: /machine/* REST
-                          routes and the /machine WebSocket push loop.
+      --dsf               Serve the DSF (SBC) surface: /machine/* REST routes
+                          and the /machine WebSocket push loop. THIS IS THE
+                          DEFAULT — the flag only says so explicitly. The UI's
+                          Mock and Mock·DSF dev backends both work against a
+                          mock started with no flags at all.
+      --standalone        The opposite: serve the rr_ dialect ONLY, so /machine
+                          does not exist (a bare RRF board). A deliberate
+                          degradation, like --unidentified — it is what makes
+                          the UI's standalone-vs-DSF boot probe testable.
       --config-version <v> Seed shape for 0:/sys/dwc-ng-config.json:
                           1, 2, or 3/current (default: 3).
       --state <file>      Persist the SD tree and machine state to this file and
@@ -149,6 +163,17 @@ if (!(CONFIG_VERSIONS as readonly string[]).includes(values["config-version"])) 
 }
 const configVersion = Number(values["config-version"]) as ConfigSeedVersion;
 
+// The ONE place the dialect flags become a served surface (dialect.ts). Done
+// before any listener is bound, so a contradictory pair costs a message and an
+// exit code rather than a half-configured mock somebody then UATs.
+let dialect;
+try {
+	dialect = resolveDialect(values);
+} catch (err) {
+	console.error((err as Error).message);
+	process.exit(1);
+}
+
 const snapshotPath = values.snapshot === DEFAULT_SNAPSHOT ? BUNDLED_SNAPSHOT : values.snapshot;
 const model = values.snapshot !== "" ? loadCaptureFile(snapshotPath) : undefined;
 
@@ -162,7 +187,7 @@ const mock = createMockServer({
 	...(values["max-sessions"] === "" ? {} : { maxSessions: parseInt(values["max-sessions"], 10) }),
 	...(values["session-timeout"] === "" ? {} : { sessionTimeout: parseInt(values["session-timeout"], 10) }),
 	requireAuth: !values["no-auth"],
-	dsf: values.dsf,
+	dsf: dialect.dsf,
 	configVersion,
 	statePath: values.state !== "" ? values.state : undefined,
 	frozenScreen: values["frozen-screen"],
@@ -184,7 +209,20 @@ if (model !== undefined) {
 	console.log(`snapshot: ${snapshotPath} (${model.tools?.length ?? 0} tools, axes ${axes || "n/a"})`);
 }
 if (values["no-auth"]) console.log("auth disabled (--no-auth): X-Session-Key not required");
-if (values.dsf) console.log(`DSF mode (--dsf): REST http://127.0.0.1:${port}/machine/*, push ws://127.0.0.1:${port}/machine`);
+// Printed either way, never only when the surface is ON. The silent case was
+// the whole defect: a mock with no DSF surface said nothing about it, so the
+// operator had no line to check before spending a day on "it doesn't connect".
+if (dialect.dsf) {
+	console.log(
+		`dialects: rr_ + DSF (${dialect.why}) — REST http://127.0.0.1:${port}/machine/*, ` +
+			`push ws://127.0.0.1:${port}/machine`,
+	);
+} else {
+	console.log(
+		"dialects: rr_ ONLY (--standalone) — /machine is NOT served, so the UI's " +
+			"Mock·DSF / Real·DSF backends cannot connect to this mock.",
+	);
+}
 console.log(`dwc-ng-config.json seed: version ${configVersion}${configVersion === 3 ? " (current)" : ""}`);
 if (mock.stateRestore === null) {
 	console.log("state: not persisted (pass --state <file> to keep it across restarts)");

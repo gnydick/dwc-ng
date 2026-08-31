@@ -21,7 +21,7 @@ and invariant claim mentions 13 -> 23, so no mechanism was deleted and no
 claim was lost in the gap. From here the ratchets make a dropped rung visible
 in the diff that drops it.
 
-**Totals:** 183 invariants · 156 at rung 6 or above · 27 below rung 6 (ceiling 27).
+**Totals:** 184 invariants · 157 at rung 6 or above · 27 below rung 6 (ceiling 27).
 
 ## bed
 
@@ -1002,6 +1002,16 @@ in the diff that drops it.
 **Debt — promotion.** promotion to 7 is a branded `CaptureCsv` string type minted only here, so a hand-built CSV cannot reach the SD write in `onMove`. It is worth doing at the same time as the `CaptureFile` promotion filed under capture-files-come-only-from-the-synth, not before.
 
 `packages/mock-duet/src/accelerometer.ts:287`
+
+### `mock-duet/dsf-flags-cannot-disagree` — rung 6
+
+**Mechanism.** choke point — this is the only function that turns the CLI's two boolean flags into a dialect, `cli.ts` calls nothing else to derive one, and it REFUSES the single input pair that would otherwise pick a winner silently. Downstream sees one resolved value, never two booleans that could be read in either order
+
+**Why.** `--dsf --standalone` names two incompatible boards. Letting either flag win would make the served surface depend on argument order or on which branch was written first, and the whole point of GIT_194 is that "which dialects is this mock serving" must never be a guess
+
+**Debt — promotion.** rung 7 would take a single `--dialect <both|standalone>` option so the contradictory pair is unrepresentable rather than refused. `--dsf` is kept because it is already documented, already passed through by `mockctl`, and already in operators' shell history
+
+`packages/mock-duet/src/dialect.ts:27`
 
 ### `mock-duet/every-shaper-is-modelled` — rung 8
 

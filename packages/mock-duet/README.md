@@ -1,9 +1,10 @@
 # @dwc-ng/mock-duet
 
-A zero-dependency mock of a Duet3D board's embedded HTTP server, speaking the
-RRF `rr_` dialect (3.6.3 line). It lets the UI's `PollConnector` be developed
-and tested without a physical board. Runs directly on Node ≥ 23 (native
-TypeScript type stripping) — no build step, no runtime dependencies.
+A zero-dependency mock of a Duet3D board's HTTP surface. It speaks **both**
+dialects the UI can drive — the RRF `rr_` dialect (3.6.3 line) for
+`PollConnector`, and DSF's `/machine` REST + WebSocket API for `DsfConnector`
+— so neither connector needs a physical board. Runs directly on Node ≥ 23
+(native TypeScript type stripping) — no build step, no runtime dependencies.
 
 ```sh
 pnpm mock                                  # from the repo root (idle scenario)
@@ -11,6 +12,35 @@ pnpm --filter @dwc-ng/mock-duet start -- -s mid-print -p 8971
 pnpm --filter @dwc-ng/mock-duet start -- --list   # list scenarios
 pnpm --filter @dwc-ng/mock-duet test       # protocol test suite (node:test)
 ```
+
+## Dialects: both, unless you ask otherwise
+
+A mock started with no flags serves the `rr_` endpoints **and** DSF's
+`/machine/*` REST routes and `/machine` WebSocket push loop. All four of the
+UI's dev backends work against it: `Mock`, `Mock·DSF`, and their `Real`
+equivalents once `DWC_REAL` is set. The startup banner says which dialects are
+live — check it, don't assume:
+
+```
+dialects: rr_ + DSF (default) — REST http://127.0.0.1:8970/machine/*, push ws://127.0.0.1:8970/machine
+```
+
+`--standalone` serves the `rr_` dialect **only**, so `/machine` does not exist
+at all. That is a deliberate degradation, like `--unidentified`: a bare RRF
+board is a real machine the UI must handle, and it is the only way to exercise
+the standalone side of the boot-time transport probe. `--dsf` still works and
+now just says the default out loud; passing both is refused rather than
+resolved by argument order.
+
+> This default was inverted on 2026-08-31 (GIT_194). DSF used to be opt-in, so
+> the mock a developer got by default served `rr_` only — silently. Flipping the
+> UI to `Mock·DSF` against one then failed as `/machine websocket: socket
+> error`, because `DsfConnector` deliberately tolerates a 404 from
+> `/machine/connect` (DSF before 3.4-b4 has no such route) and the real symptom
+> only appeared at an upgrade the mock had no handler for. The seeded config was
+> therefore never loaded, and its demo card read as missing "in DSF mode". This
+> project's target is a Duet 3 + SBC — the bundled capture is a DSF
+> `GET /machine/model` of it — so DSF-by-default is the honest default.
 
 ## Lifecycle: whoever stands a mock up owns tearing it down
 

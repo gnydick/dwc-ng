@@ -80,6 +80,11 @@ Verbs:
       <anything else>     passed straight through to mock-duet's cli
                           (pnpm mock -- --help)
 
+      A mock started this way serves BOTH dialects — the rr_ endpoints and
+      DSF's /machine REST + WebSocket surface — so the UI's Mock and Mock·DSF
+      dev backends both work against it with no extra flag. Pass --standalone
+      through for a bare RRF board with no /machine routes.
+
   status                Every pidfile in the registry, for every worktree, with
                         its classification, plus the UAT stack and UNTRACKED
                         ORPHANS: live mock-duet processes with no pidfile.
