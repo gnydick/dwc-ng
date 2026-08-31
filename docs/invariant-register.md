@@ -21,7 +21,7 @@ and invariant claim mentions 13 -> 23, so no mechanism was deleted and no
 claim was lost in the gap. From here the ratchets make a dropped rung visible
 in the diff that drops it.
 
-**Totals:** 177 invariants · 150 at rung 6 or above · 27 below rung 6 (ceiling 27).
+**Totals:** 179 invariants · 152 at rung 6 or above · 27 below rung 6 (ceiling 27).
 
 ## bed
 
@@ -157,13 +157,13 @@ in the diff that drops it.
 
 `packages/ui/src/compose/controls/omSelector.ts:4`
 
-### `compose/controls/operator-input-cannot-add-a-line` — rung 8
+### `compose/controls/operator-input-cannot-add-a-line` — rung 7
 
-**Mechanism.** illegal state unrepresentable — every value an operator can supply to a data-defined control is a NUMBER. There is no free-text kind, `default` is a number and `options` is number[], so what resolveTemplate interpolates is always String(number) and a newline has no representation. Not achieved by escaping the value
+**Mechanism.** parse, don't validate at the sole constructor — every value an operator can stage is either a NUMBER (number/chips, and selects whose options are all numeric) or one of the AUTHOR'S OWN enumerated select strings, admitted only after compileControlSpec — the only producer of the branded CompiledControlSpec — has refused control characters in it (the same refusal gcodeQuote applies: a newline has no escape in RRF, so it is rejected, not encoded). There is still no free-text kind, and the select renderer stages by option INDEX, so nothing an operator types can reach a template. (Was rung 8 by "everything is a number" before selects existed.)
 
-**Why.** a control's template is arbitrary G-code by design, reviewed at import. The line COUNT of what it sends must still be the author's, not the operator's: an input able to carry a newline would let a typed value append a second command to a control whose stamp shows one. That is not an escalation for the author, who writes the template anyway — it is a trap for the operator using the card, on a machine with heaters
+**Why.** a control's template is arbitrary G-code by design, reviewed at import — including, now, every select option value (SpecReview.selects). The line COUNT of what it sends must still be the author's, not the operator's: a stageable value able to carry a newline would let a picked option append a second command to a control whose stamp shows one. That is not an escalation for the author, who writes the template anyway — it is a trap for the operator using the card, on a machine with heaters
 
-`packages/ui/src/compose/controls/spec.ts:22`
+`packages/ui/src/compose/controls/spec.ts:28`
 
 ### `compose/controls/spec-compiles-whole` — rung 7
 
@@ -171,7 +171,7 @@ in the diff that drops it.
 
 **Why.** a half-compiled spec renders controls that look operable and send nothing, or send the wrong thing. Built-in specs run this at module load, so a broken one fails the build rather than the machine
 
-`packages/ui/src/compose/controls/spec.ts:102`
+`packages/ui/src/compose/controls/spec.ts:185`
 
 ### `compose/controls/template-compiles-whole` — rung 7
 
@@ -205,7 +205,7 @@ in the diff that drops it.
 
 **Why.** a second delete surface is how the blast-radius report gets skipped: the old drawer ✕ deleted from every screen while showing only a tooltip warning. One surface, armed with the plan, keeps "delete" and "here is what that does" inseparable
 
-`packages/ui/src/compose/CardStudio.tsx:144`
+`packages/ui/src/compose/CardStudio.tsx:150`
 
 ### `compose/one-run-at-a-time-per-screen` — rung 7
 
@@ -640,6 +640,14 @@ in the diff that drops it.
 **Why.** an unquoted operator filename reaching M98 was a real injection: a name containing a quote closed the parameter early and the remainder was parsed as further G-code, against a machine with heaters. Promoted from rung 5 on 2026-08-01 — it had been "the builders below all call it", which is inspection, and inspection is what the next builder skips. Control characters added 2026-08-05: the same early-close, by a route doubling cannot address. Not reachable at the time — a filename is already filtered by files/path.ts, and an `<input type="text">` strips newlines — but both of those barriers belong to OTHER systems (that parser, the DOM), and messagebox/ack.ts already has a path around the second: MessageBoxPrompt seeds its input straight from the board's `default`, so an unedited answer never passes through the DOM at all. What kept it safe was RRF being unable to put a newline in M291's F"..." parameter, which is RRF's guarantee to withdraw, not ours
 
 `packages/ui/src/control/commands.ts:68`
+
+### `control/one-send-per-gesture` — rung 6
+
+**Mechanism.** choke-point + unrepresentable trigger — a keyboard event cannot cause a send because keyboard events are not events of this machine at all: only VALUE CHANGES open a gesture (plus the pointer bracket), so the old defects — one send per auto-repeat arrow step, a send on a bare Shift keyup — have no encoding. range-gesture.test.ts drives the reducer with the exact sequences that used to misfire and counts the send effects. Promote by making the machine the only party able to construct the sendable command, once a second machine appears
+
+**Why.** RRF's embedded server tolerates very few requests. A held arrow key fires `input`+`change` on EVERY auto-repeat step (~20/s); wiring send to those events (increment 1 did, gated only on a flag that a keydown re-armed) bursts rr_gcode at the board. One send per completed value-change gesture is the review-set invariant The gesture model: - POINTER: pointerdown opens (anchor = value at grab), `input` events update `latest`, pointerup/pointercancel completes. No timer — the finger says when the gesture is over. - KEYBOARD (and any other non-pointer value source, e.g. AT): the first value change while idle opens (anchor = the value BEFORE it), each further change re-arms the settle window, and the window closing — or blur — completes. Arming requires an actual change by construction. - Grabbing the handle mid-keyboard-gesture MERGES: the settle timer is cancelled, the anchor survives, and the drag's release completes one combined gesture — still one send. Completion sends the final value ONLY if it differs from the anchor: a gesture whose net change is zero (arrow up then down; a drag returned to its start; a changeless grab) is not a value-change gesture and stays off the wire. The comparison is against the GESTURE'S OWN start value, never a remembered "last sent" — the board is the authority and can move between gestures, so any longer-lived latch would go stale and suppress a needed send.
+
+`packages/ui/src/control/rangeGesture.ts:7`
 
 ## deploy
 
@@ -1094,6 +1102,14 @@ in the diff that drops it.
 **Debt — promotion.** two routes in means the gate is not a gate, and om/speeds.ts re-parses currentMove at the point of DISPLAY to cover the ungated one — a second mechanism for the same property, i.e. the drift hazard. CORRECTED 2026-08-01. This used to say "promote by routing both through one entry that brands what it produces". Following that literally would have introduced a bug, measured rather than reasoned about: this function FILLS IN defaults for absent arrays, so conforming a PARTIAL patch invents them. conformModelKey("heat", { heaters: [...] }) returns that patch plus bedHeaters: [] and chamberHeaters: [], and deep-merging those empties over the store wipes the real lists — on this machine the bed heater would vanish from the UI mid-print. Pinned by test/om-conform.test.ts. The two routes are not one operation with two callers. A wholesale subtree may be completed from defaults because it IS the whole truth; a live patch may never be, because absence there means "unchanged", not "empty". The real promotion is a conform that distinguishes the two — filling only on replacement — and only then can both share an entry. Until that exists, speeds.ts's second parse is load bearing and must not be deleted as redundant.
 
 `packages/ui/src/om/types.ts:513`
+
+### `om/pickable-implies-parseable` — rung 7
+
+**Mechanism.** the return type is the branded OmSelector, whose sole constructor is parseOmSelector — this function cannot hand out a string the parser did not accept, because it has no way to mint the brand itself. Null means "this node has no selector" and the affordance is absent, not disabled-with-garbage
+
+**Why.** the inspector offers selectors for pasting into binding fields. Parsing the composed text is necessary but NOT sufficient: a key like "a.b" composes into text that parses fine and denotes a DIFFERENT path. So the parse result is also compared segment-by-segment against the path it was built from — "parses but means something else" fails to null exactly like "does not parse" Construction: key steps become dot-separated segments; an index step becomes a `[n]` qualifier on the preceding key segment. Unbuildable shapes (empty path, index at root, index straight after an index — one bracket per segment in the grammar) return null before composing. Filter qualifiers ([visible], [letter=C]) are never synthesized — the path cannot know which filter the user means; indices are the only qualifier a traversal implies.
+
+`packages/ui/src/om/inspect.ts:54`
 
 ## shaping
 
@@ -1597,7 +1613,7 @@ in the diff that drops it.
 
 **Debt — promotion.** ONLY WHAT THE STYLESHEET CAN SAY. The predicate reads app.css text, so it does not see a height arriving from an inline style, from a `classList` addition, or from a JS-set custom property, and it does not resolve specificity — a floor declared in a rule that loses the cascade reads as present. It also cannot distinguish a flex COLUMN item, where the collapse actually happens, from a flex ROW item, where the fixed height is the cross size and the block axis was never at risk; both are required to declare the floor, which is conservative in the right direction but is the reason `.color-clash` and `.accel-status` carry a min-height equal to their own height rather than a measured one. Promote by making the guard travel with the geometry instead of beside it: ONE shared declaration that every fixed-height clipped row extends, so the floor is not something a new row can be written without, and this scan becomes structurally unnecessary rather than merely green
 
-`packages/ui/src/app.css:5213`
+`packages/ui/src/app.css:5315`
 
 ### `ui/heavy-libraries-stay-behind-a-dynamic-import` — rung 4
 
