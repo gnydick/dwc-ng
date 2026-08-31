@@ -32,6 +32,10 @@ import { CustomCard } from "./CustomCard.tsx";
 import { CardStudio } from "./CardStudio.tsx";
 import { ImportReview } from "./ImportReview.tsx";
 import { exportCard, exportScreen, parseShareFile, remapScreenCards, type ShareImport } from "./share.ts";
+import {
+	DEFAULT_GUTTER_U, DEFAULT_PAD_U, GUTTER_MAX_U, GUTTER_STEP_U, PAD_MAX_U, PAD_STEP_U,
+	spacingVars, type ScreenSpacing,
+} from "../config/screenSpacing.ts";
 import type { CardCtx } from "./ctx.ts";
 
 /**
@@ -251,7 +255,13 @@ export function ComposedScreen(props: { screenId: string }) {
 								</Show>
 							)}
 						</Show>
-						<PanelCanvas class={entry()?.def.class}>
+						{/* The screen's spacing overrides ride in as a custom-property
+						    scope (GIT_194 inc 5): the tokens the cards already read
+						    (--sp-card-gutter, --sp-card-x/-b) are re-grounded on the
+						    canvas container, so an un-overridden screen renders from
+						    index.css exactly as before. Read inside JSX — a spacing
+						    edit re-renders the vars without remounting a card. */}
+						<PanelCanvas class={entry()?.def.class} vars={spacingVars(app.config.config.screens.spacing[props.screenId])}>
 							<For each={slotIdList()}>
 								{id => (
 									<Show
@@ -329,8 +339,46 @@ function PaletteIcon() {
  *  "atx-like" names naturally — "case doesn't matter". */
 const byName = (a: string, b: string): number => a.localeCompare(b, undefined, { sensitivity: "base" });
 
+/**
+ * One spacing stepper row: label, − effective-value +, and a ↺ that exists
+ * only while an override does. `value` undefined = no override; the shipped
+ * default (`fallback`) is displayed and stepping writes fallback±step. The
+ * buttons disable at the ends, so the range is not overshootable from here —
+ * and whatever this emits still passes the store's one sanitation gate.
+ */
+function SpacingRow(props: { label: string; value: number | undefined; fallback: number; step: number; max: number; onSet: (v: number | null) => void }) {
+	const effective = (): number => props.value ?? props.fallback;
+	return (
+		<div class="compose-row compose-spacing">
+			<span class="lab-cap">{props.label}</span>
+			<button
+				class="fb-act"
+				aria-label={`Decrease ${props.label.toLowerCase()}`}
+				disabled={effective() <= 0}
+				onClick={() => props.onSet(effective() - props.step)}
+			>
+				−
+			</button>
+			<span>{effective()}u</span>
+			<button
+				class="fb-act"
+				aria-label={`Increase ${props.label.toLowerCase()}`}
+				disabled={effective() >= props.max}
+				onClick={() => props.onSet(effective() + props.step)}
+			>
+				+
+			</button>
+			<Show when={props.value !== undefined}>
+				<button class="fb-act" title={`Reset ${props.label.toLowerCase()} to default`} onClick={() => props.onSet(null)}>↺</button>
+			</Show>
+		</div>
+	);
+}
+
 function ComposeDrawer(props: { screenId: string; entry: ScreenEntry | null; composition: Composition; previewCtx: CardCtx; canvas: PanelCanvasController; machineStore: MachineStore }) {
 	const app = useApp();
+	/** THIS screen's spacing override, or {} — read reactively per use. */
+	const spacingOf = (): ScreenSpacing => app.config.config.screens.spacing[props.screenId] ?? {};
 	// The card pickers, alphabetized. Spread before sort so the registry's own
 	// definition order is never mutated.
 	const sortedRegistryCards = createMemo(() =>
@@ -646,6 +694,29 @@ function ComposeDrawer(props: { screenId: string; entry: ScreenEntry | null; com
 						/>
 						<button class="fb-act ok" disabled={newName().trim() === ""} onClick={createScreen}>+ New screen</button>
 					</div>
+					{/* THIS screen's spacing (GIT_194 inc 5). Discrete −/+ steps
+					    applied instantly per click — the UI-scale precedent
+					    (Shell.tsx setScale buttons): no drag exists, so no layout
+					    can jitter under one, and the drawer lives in the rail
+					    portal, outside the canvas the step re-lays-out. The ↺
+					    appears only while overridden; clearing both keys drops the
+					    override entirely (reset = drop, defaults flow back). */}
+					<SpacingRow
+						label="Card gap"
+						value={spacingOf().gutterU}
+						fallback={DEFAULT_GUTTER_U}
+						step={GUTTER_STEP_U}
+						max={GUTTER_MAX_U}
+						onSet={v => app.config.setScreenSpacing(props.screenId, "gutterU", v)}
+					/>
+					<SpacingRow
+						label="Card padding"
+						value={spacingOf().padU}
+						fallback={DEFAULT_PAD_U}
+						step={PAD_STEP_U}
+						max={PAD_MAX_U}
+						onSet={v => app.config.setScreenSpacing(props.screenId, "padU", v)}
+					/>
 					{/* Last, and set apart: everything above edits WHAT is on the
 					    screen, this throws away where the cards were put. It moved in
 					    here when the toolbar went into the rail — one entry was the
