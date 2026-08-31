@@ -175,7 +175,9 @@ export const CARD_RENDER: Record<CardId, CardRender> = {
 	// the next step, and become one prop rather than a second implementation to
 	// keep in step.
 	heaters: { body: ctx => <ToolsHeatersBody orientation={ctx.orientation} heaterControls={false} /> },
-	movement: { body: ctx => <div class="jog-controls"><ControlList spec={MOVEMENT_SPEC} ctx={ctx} /></div> },
+	// The grid class rides the list ROOT (replacing .ctl-list) — a wrapper div
+	// would leave the grid laying out one child (see layout-nodes.test.ts).
+	movement: { body: ctx => <ControlList spec={MOVEMENT_SPEC} ctx={ctx} class="jog-controls" /> },
 	fans: { body: ctx => <FansBody orientation={ctx.orientation} /> },
 	"pinned-commands": { body: () => <PinnedCommandsBody /> },
 	tuning: { body: () => <TuningBody /> },

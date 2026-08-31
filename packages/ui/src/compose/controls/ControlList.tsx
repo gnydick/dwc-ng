@@ -55,7 +55,17 @@ const ENRICHMENTS: Record<EnrichmentId, (item: Record<string, unknown>, ctx: Car
 	},
 };
 
-export function ControlList(props: { spec: CompiledControlSpec; ctx: CardCtx }) {
+export function ControlList(props: {
+	spec: CompiledControlSpec;
+	ctx: CardCtx;
+	/**
+	 * Layout class for the ROOT container, REPLACING the default `.ctl-list`
+	 * stack (the `node.class ?? "ctl-group"` precedent) — for a mount whose
+	 * own layout owns the top-level nodes, e.g. the Movement card's
+	 * `.jog-controls` grid. STATIC ONLY (the GcodeButton `class` rule).
+	 */
+	class?: string;
+}) {
 	// The send route for the slider — the SAME guarded connector GcodeButton
 	// resolves, so the Card Studio preview's provider swap (stub connector)
 	// covers a previewed slider exactly as it covers a previewed button.
@@ -449,8 +459,14 @@ export function ControlList(props: { spec: CompiledControlSpec; ctx: CardCtx }) 
 	);
 
 	return (
-		<For each={props.spec.nodes}>
-			{node => <RenderNode node={node} vars={{}} />}
-		</For>
+		// The root stack: every mount gets the house inter-node gap (.ctl-list)
+		// or hands over its own layout class — never a bare <For> into the card
+		// body, which is how two top-level controls came to render touching
+		// (2026-08-31, pinned by test/layout-nodes.test.ts).
+		<div class={props.class ?? "ctl-list"}>
+			<For each={props.spec.nodes}>
+				{node => <RenderNode node={node} vars={{}} />}
+			</For>
+		</div>
 	);
 }

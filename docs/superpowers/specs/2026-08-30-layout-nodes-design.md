@@ -98,13 +98,44 @@ parse refuses the rest).
 
 **Positional stability** (the PRIMARY concern, uniformity-alignment memory):
 justify redistributes FREE space, so a child's position depends only on
-sibling box sizes. Every leaf control already reserves its geometry against
-live updates — tabular-nums + min-width readout/slider value slots, reserved
-error/stamp slots, fixed toggle word box (ControlList.tsx comments per node)
-— so a polled value change cannot change any box, and therefore cannot move a
-justified sibling. What CAN move siblings is a forEach stamping a new item
-(an axis appearing), which is true of every container today and is the model
+sibling box sizes. Every leaf control boxes its VALUES against live updates —
+tabular-nums + min-width readout/slider value slots, reserved error/stamp
+slots, fixed toggle word box (ControlList.tsx comments per node) — so a
+polled value change cannot move a justified sibling. LABELS are the stated
+exception (corrected on the inc 3 review, F3): a row/group/readout label
+carrying `{om:}` has a min-width floor and no max, so a poll resolving to a
+longer label CAN grow its box and take free space from the distribution — by
+design, a legitimate long label renders whole rather than clipping; an
+author who wants complete stillness under justify keeps `{om:}` out of
+labels. What can also move siblings is a forEach stamping a new item (an
+axis appearing), which is true of every container today and is the model
 changing, not a value updating. Documented in authoring-cards.md.
+
+**Cross axis and the stack rhythm** (round-2 fixes, found by Gabe on the
+mock 2026-08-31): every vertical stack — the ControlList ROOT (`.ctl-list`,
+new: nodes previously rendered bare into `.panel-body` and two top-level
+controls could touch), each columns entry (`.ctl-col`) and each group
+(`.ctl-group`) — carries `gap: var(--ctl-gap)`, the SAME 2u token rows use
+horizontally, and defaults its cross axis to `flex-start`: a control ATOM
+(button, toggle, readout) keeps its intrinsic width. The elements that ARE
+layout — rows, the columns split, grids, nested groups — plus the elastic
+slider strip span the stack via one `align-self: stretch` rule. A mount with
+its own layout hands its class to the list root, REPLACING `.ctl-list` (the
+`node.class ?? "ctl-group"` precedent — Movement's `.jog-controls` grid).
+Pinned by test/layout-nodes.test.ts. The mock's seeded demo card
+(`packages/mock-duet/src/files.ts`, "Beeper") is re-authored in the SAME
+change to the exact shape both defects appeared in — a columns split and a
+row as top-level siblings, buttons stacked in a column and a nested group —
+and the same test file compiles the spec the mock actually serves through
+`parseControlSpecText`, so a vocabulary change that invalidates the seed
+fails tests instead of handing UAT a broken card.
+
+**Open extension, deliberately NOT minted** (be-reasonable/YAGNI, round 2):
+a per-container `stretch` (or `align`) knob letting an author opt an atom
+into spanning the stack — e.g. a deliberately full-width button. No card
+needs it yet; minting it now would be a knob whose absence nobody has felt.
+If an author asks, it joins the container nodes beside `justify` with the
+same VARIANTS-set parse discipline.
 
 ## 2. Nesting rules — enforced at the ONE compile boundary
 

@@ -78,16 +78,27 @@ test("mock SD seeds dwc-ng-config.json at the current version, stamped and mappe
 	// exercises ALL the custom-card metadata fields (authored footprint,
 	// tip, padding in --u units), so the SD → parseOverlay → placement →
 	// render path is drivable on a fresh mock with zero setup. The spec is
-	// stored as text and must itself be valid JSON.
+	// stored as text and must itself be valid JSON. Re-authored on the
+	// round-2 fixes (2026-08-31) to exercise the corrected layout
+	// vocabulary in the shape both defects appeared in: a columns split and
+	// a row as TOP-LEVEL siblings (root-stack gap), buttons stacked in a
+	// column and a nested group (intrinsic width, not cross-axis stretch).
+	// This side checks only shape/metadata — the mock cannot import the
+	// UI's compiler; packages/ui/test/layout-nodes.test.ts compiles the
+	// same seed through the sole spec boundary.
 	const card = parsed.overlay.cards["c-mock-meta"];
 	assert.equal(card.name, "Beeper");
-	assert.equal(card.colSpan, 120);
-	assert.equal(card.rowSpan, 48);
-	assert.equal(card.tip, "state.status · M300");
+	assert.equal(card.colSpan, 156);
+	assert.equal(card.rowSpan, 88);
+	assert.equal(card.tip, "columns · group · spacer · M300");
 	assert.equal(card.padding, 6);
 	const spec = JSON.parse(card.spec);
-	assert.equal(spec.nodes[0].type, "readout");
-	assert.equal(spec.nodes[1].template, "M300 S440 P250");
+	assert.equal(spec.nodes[0].type, "columns", "top-level sibling 1: the columns split");
+	assert.equal(spec.nodes[1].type, "row", "top-level sibling 2: the row below it — the pair the root-stack gap keeps apart");
+	assert.equal(spec.nodes[0].columns.length, 2);
+	assert.equal(spec.nodes[0].columns[0].nodes[1].type, "gcode-button", "a button stacked inside a column — the intrinsic-width case");
+	assert.equal(spec.nodes[0].columns[1].nodes[0].type, "group", "a nested group — the other stacking level");
+	assert.ok(spec.nodes[1].items.some((i: { type?: string }) => i.type === "spacer"), "the row carries a flexible spacer");
 });
 
 test("--config-version 1 seeds the byte-identical pre-v3 shape (no stamp, no accelByTool)", async t => {

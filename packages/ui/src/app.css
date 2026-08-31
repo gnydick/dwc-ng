@@ -4037,6 +4037,21 @@ input[type="checkbox"].fw-check { accent-color: var(--accent); width: calc(3.75 
 	box-shadow: inset 1px 0 0 var(--hairline);
 	padding-left: calc(4 * var(--u));
 }
+/* The ROOT of every ControlList: top-level nodes stack on the same house gap
+   rows use horizontally (--ctl-gap — ONE token, both axes). The root was the
+   one stacking level with no rhythm: nodes rendered bare into .panel-body,
+   so "Motors off" (bottom of a columns split) sat TOUCHING "Run" in the row
+   below (found by Gabe on the mock, 2026-08-31). A mount with its own layout
+   REPLACES the class (Movement's .jog-controls grid) — the
+   `node.class ?? "ctl-group"` precedent — so that grid still owns its direct
+   children. NO min-width: 0 here: the root is not a ratio track and must
+   stay honest to contentColSpan's measurement. */
+.ctl-list {
+	display: flex;
+	flex-direction: column;
+	gap: var(--ctl-gap);
+	align-items: flex-start;
+}
 /* Columns stretch to the tallest sibling (grid default), which is what gives
    a column's own vertical justify real space to distribute. */
 .ctl-col,
@@ -4044,7 +4059,12 @@ input[type="checkbox"].fw-check { accent-color: var(--accent); width: calc(3.75 
 	display: flex;
 	flex-direction: column;
 	gap: var(--ctl-gap);
-	align-items: stretch;
+	/* flex-start, NOT stretch: a control ATOM (button, toggle, readout) keeps
+	   its intrinsic width in a stack. `stretch` pinned a column's button to
+	   the ruler on its left and the card edge on its right, growing it with
+	   every resize (found 2026-08-31). What IS layout spans the stack via the
+	   align-self rule below. */
+	align-items: flex-start;
 	/* Load-bearing zero: with an auto minimum, a grid item's min-content
 	   holds its fr track open, so a sibling column's content would move the
 	   ruler — the tracks must stay pure ratios (positional stability). The
@@ -4063,6 +4083,17 @@ input[type="checkbox"].fw-check { accent-color: var(--accent); width: calc(3.75 
 .measuring-intrinsic .ctl-col,
 .measuring-intrinsic .ctl-group {
 	min-width: min-content;
+}
+/* Cross axis, the other half of the flex-start default above: the elements
+   that ARE layout — rows, the columns split, equal-width grids, nested
+   groups — and the deliberately elastic slider strip (its range input owns
+   min/max caps, the GIT_144 rule) span the stack, so their fr tracks,
+   spacers and justify have the full width to distribute. Everything else —
+   the control atoms — keeps its intrinsic width. A per-container "stretch"
+   knob for atoms is deliberately NOT minted (YAGNI) — recorded as an open
+   extension in 2026-08-30-layout-nodes-design.md §justify. */
+:is(.ctl-list, .ctl-col, .ctl-group) > :is(.ctl-wrap, .ctl-columns, .ctl-grid, .ctl-group, .ctl-slider) {
+	align-self: stretch;
 }
 /* Authored whitespace. Fixed spacers override flex inline with a --u basis;
    flex-basis is main-axis, so one node serves rows and stacks alike. */

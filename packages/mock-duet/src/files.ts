@@ -342,21 +342,67 @@ function currentOverlay(frozenScreen = false): Record<string, unknown> {
 		// footprint, tip, padding in --u units) so the SD → download →
 		// parseOverlay → placement → render path is drivable on a fresh
 		// mock with zero setup — mock parity moves with the change, not
-		// after it. The spec's one G-code, M300 S440 P250, is verified
-		// against reference/duet-gcode.md §M300 (S = Hz, P = ms).
+		// after it. Re-authored on the round-2 fixes (2026-08-31): the spec
+		// now exercises the CORRECTED layout vocabulary in exactly the shape
+		// Gabe's scratch card showed both defects in — a columns split and a
+		// row as TOP-LEVEL siblings (the touching-stack fix: the root list's
+		// gap keeps them apart), buttons stacked inside a column and a nested
+		// group (the cross-axis fix: atoms keep intrinsic width instead of
+		// stretching rule-to-edge), a column justify, and a flexible row
+		// spacer. The UI side pins this spec through its sole compile
+		// boundary (packages/ui/test/layout-nodes.test.ts), so a vocabulary
+		// change that invalidates this seed fails tests rather than serving
+		// a broken card. G-code M300 S<Hz> P<ms> verified against
+		// reference/duet-gcode.md §M300; the pitch input is author-enumerated
+		// numbers, so nothing an operator types reaches the template.
 		cards: {
 			"c-mock-meta": {
 				name: "Beeper",
 				spec: JSON.stringify({
-					inputs: {},
+					inputs: {
+						pitch: { kind: "chips", label: "Pitch", default: 440, options: [220, 440, 880], unit: "Hz" },
+					},
 					nodes: [
-						{ type: "readout", om: "state.status", label: "State" },
-						{ type: "gcode-button", label: "Beep", template: "M300 S440 P250" },
+						{
+							type: "columns",
+							rulers: true,
+							columns: [
+								{
+									weight: 2,
+									nodes: [
+										{ type: "readout", om: "state.status", label: "State" },
+										{ type: "gcode-button", label: "Beep", template: "M300 S{input.pitch} P250" },
+									],
+								},
+								{
+									justify: "end",
+									nodes: [
+										{
+											type: "group",
+											label: "Chirps",
+											nodes: [
+												{ type: "gcode-button", label: "High", template: "M300 S1760 P40", variant: "quiet" },
+												{ type: "gcode-button", label: "Low", template: "M300 S110 P40", variant: "quiet" },
+											],
+										},
+									],
+								},
+							],
+						},
+						{
+							type: "row",
+							label: "Pitch",
+							items: [
+								{ input: "pitch" },
+								{ type: "spacer" },
+								{ type: "gcode-button", label: "Play", template: "M300 S{input.pitch} P100", variant: "go" },
+							],
+						},
 					],
 				}),
-				colSpan: 120,
-				rowSpan: 48,
-				tip: "state.status · M300",
+				colSpan: 156,
+				rowSpan: 88,
+				tip: "columns · group · spacer · M300",
 				padding: 6,
 			},
 		},
