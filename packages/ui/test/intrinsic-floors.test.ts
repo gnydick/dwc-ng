@@ -1286,3 +1286,191 @@ test("the scan reaches inputs styled by class alone", () => {
 	assert.ok(inputRules().length < ALL_RULES.length / 4,
 		`${inputRules().length} of ${ALL_RULES.length} rules read as input rules — the filter is too loose to mean anything`);
 });
+
+/**
+ * GIT_194 / #194 — FR RATIOS ARE RE-IMPOSED ON THE INTRINSIC MEASUREMENT.
+ *
+ * The lift above ("…ratio zero is lifted…") restores each COLUMN's truth, but
+ * CSS Grid discards fr ratios under an intrinsic sizing constraint: every
+ * flexible track sizes to its own base, so a `2fr 1fr` split measures
+ * sum-of-column-mins + gaps — the width of a grid whose tracks are NOT in
+ * ratio. Live layout at that width re-imposes the ratio and hands one column
+ * less than its own minimum: the seeded Beeper card's CHIRPS column overran
+ * the body's padding edge by 41.06px AT the at-limit stop, clipping the HIGH
+ * button while the outline said "cannot shrink further". The honest fit is
+ * max(need_i / weight_i) × Σweights + gaps (verified 547.19 predicted vs
+ * 547.19 binary-searched, 0.00 delta, across 2:1, 1:1, 3:1, 1:3, 5:2).
+ *
+ * That arithmetic CANNOT live in the stylesheet, and it must not become the
+ * second measurement authority inc3's fix round declined: it lives INSIDE the
+ * one measurement route, unexported, and produces a transient CONSTRAINT (an
+ * inline min-width per split) that the same layout engine solves into the
+ * single rect read intrinsicWidthPx has always returned. This pin holds those
+ * properties in source shape — it cannot see behaviour (no DOM here); the
+ * behavioural half is the UAT drag table in the commit that adds it.
+ */
+test("fr ratios are re-imposed on the intrinsic measurement — inside the sole route", () => {
+	const canvas = readFileSync(
+		fileURLToPath(new URL("../src/shell/panelCanvas.ts", import.meta.url)), "utf8");
+
+	const wearer = /function intrinsicWidthPx[\s\S]*?\n\}/.exec(canvas);
+	assert.ok(wearer !== null, "intrinsicWidthPx not found — the sole measurer moved; move this pin with it");
+	assert.match(wearer[0]!, /underRatioHonestSplits\(/,
+		"intrinsicWidthPx no longer routes through underRatioHonestSplits — a weighted split measures " +
+		"sum-of-column-mins again, and the at-limit stop clips one column's content (#194)");
+
+	const law = /function underRatioHonestSplits[\s\S]*?\n\}/.exec(canvas);
+	assert.ok(law !== null, "underRatioHonestSplits not found beside its wearer");
+	// NOT exported: private to the module means no caller outside the sole
+	// route can take the constraint-setter and build a second floor from it.
+	assert.doesNotMatch(canvas, /export\s+function underRatioHonestSplits/,
+		"underRatioHonestSplits is exported — that is the second measurement authority inc3 declined: " +
+		"a caller can now compute a floor the sole route disagrees with");
+	// The law itself: per-fr quotient maximised over columns, scaled back by the
+	// weight total, gaps added, applied as min-width and undone.
+	assert.match(law[0]!, /querySelectorAll<HTMLElement>\("\.ctl-columns"\)/,
+		"the ratio law no longer visits .ctl-columns — weighted splits measure dishonestly");
+	assert.match(law[0]!, /getBoundingClientRect\(\)\.width \/ weights\[i\]/,
+		"no per-fr quotient — without need_i / weight_i the floor cannot honour the ratio");
+	assert.match(law[0]!, /perFr \* total \+ gap \* \(cols\.length - 1\)/,
+		"the honest fit max(need/w)×Σw + gaps is gone — the constraint no longer says the ratio law");
+	assert.match(law[0]!, /grid\.style\.minWidth = `\$\{perFr \* total/,
+		"the fit is computed but never applied as a min-width constraint — the rect read cannot see it");
+	// The needs are read with the split collapsed to the SAME sizing keyword,
+	// not from current rects: a split stretched by a wider sibling reports
+	// ratio SHARES, and the floor would inflate to the card's current width.
+	assert.match(law[0]!, /grid\.style\.width = sizing/,
+		"per-column needs are not read at the split's own intrinsic size — a stretched split " +
+		"reports ratio shares as needs and the floor inflates past honest");
+	// Both mutations undone however the read ends (the measureUnder discipline).
+	const finallyBlocks = law[0]!.match(/finally/g) ?? [];
+	assert.ok(finallyBlocks.length >= 2,
+		"the width swap and the min-width constraints are not both undone in a finally — a throw " +
+		"leaves a split permanently constrained and live layout is no longer pure ratios");
+});
+
+/**
+ * THE CLASS ENUMERATION (#194's class obligation): "a floor derived from
+ * min-content over a weighted track list is wrong" is a CLASS claim, so every
+ * track list with two or more flexible (fr) tracks that can be reached by the
+ * measurement — stylesheet AND inline templates — is enumerated here BY NAME,
+ * fixed or exempted, each exemption's reason re-derived from source rather
+ * than trusted. A new multi-fr grid fails this test until it is dispositioned.
+ */
+test("every weighted (multi-fr) track list is ratio-honest, or exempt by name with a checkable reason", () => {
+	// Track-list tokenizer: split on whitespace at paren depth 0, so
+	// `minmax(calc(46 * var(--u)), 1fr)` stays ONE term — a regex without depth
+	// dropped .ctl-grid from the enumeration on its nested calc() (red-checked).
+	const splitTracks = (s: string): string[] => {
+		const out: string[] = [];
+		let depth = 0;
+		let cur = "";
+		for (const ch of s) {
+			if (ch === "(") depth++;
+			else if (ch === ")") depth--;
+			if (depth === 0 && /\s/.test(ch)) {
+				if (cur !== "") out.push(cur);
+				cur = "";
+			} else cur += ch;
+		}
+		if (cur !== "") out.push(cur);
+		return out;
+	};
+	// repeat(N, T) is N copies of T's tracks; a flexible count
+	// (auto-fill/auto-fit) can render two or more, so it counts as two.
+	const expandTracks = (template: string): string[] =>
+		splitTracks(template).flatMap(term => {
+			const rep = /^repeat\(\s*([^,\s]+)\s*,([\s\S]+)\)$/.exec(term);
+			if (rep === null) return [term];
+			const n = /^\d+$/.test(rep[1]!) ? parseInt(rep[1]!, 10) : 2;
+			return Array<string[]>(n).fill(splitTracks(rep[2]!.trim())).flat();
+		});
+
+	// ---- stylesheet side: every rule declaring >= 2 fr-bearing tracks ----
+	const hits: Array<{ name: string; template: string }> = [];
+	for (const r of flatCssRules()) {
+		const m = /grid-template-columns\s*:\s*([^;]+)/.exec(r.body);
+		if (m === null) continue;
+		const template = m[1]!.trim();
+		if (expandTracks(template).filter(t => /\dfr\b/.test(t)).length >= 2) {
+			hits.push({ name: r.sel.split(",").pop()!.trim(), template });
+		}
+	}
+	assert.ok(hits.length >= 3, `only ${hits.length} multi-fr grids found in app.css — has the scanner stopped matching?`);
+
+	// ---- inline side: every "grid-template-columns" written from a component ----
+	// The compiled columns split (.ctl-columns) carries its weights inline, so a
+	// stylesheet scan cannot see it. Any NEW inline template site must be added
+	// here and dispositioned like the rest.
+	const dir = new URL("../src/", import.meta.url);
+	const inlineSites: string[] = [];
+	for (const rel of readdirSync(dir, { recursive: true, encoding: "utf8" })) {
+		if (!rel.endsWith(".tsx")) continue;
+		const text = readFileSync(new URL(rel.replaceAll("\\", "/"), dir), "utf8");
+		if (/["']grid-template-columns["']\s*:/.test(text)) inlineSites.push(rel.replaceAll("\\", "/"));
+	}
+	assert.deepEqual(inlineSites.sort(), ["compose/controls/ControlList.tsx", "shell/PanelCanvas.tsx"],
+		"an inline grid-template-columns site appeared or moved — if its tracks are fr-weighted it is " +
+		"in #194's class: make it ratio-honest (underRatioHonestSplits) or exempt it in this test with a reason");
+
+	// ControlList's inline template IS fr-weighted (the compiled `${weight}fr`
+	// join) and is the instance the ratio law fixes; PanelCanvas's is the canvas
+	// itself, fixed --u tracks with no fr, excluded by the predicate.
+	const controlList = readFileSync(new URL("compose/controls/ControlList.tsx", dir), "utf8");
+	assert.match(controlList, /\$\{col\.weight\}fr/,
+		"ControlList no longer writes `${weight}fr` tracks — the ratio law's target moved; re-derive this enumeration");
+	const panelCanvasTsx = readFileSync(new URL("shell/PanelCanvas.tsx", dir), "utf8");
+	assert.doesNotMatch(/["']grid-template-columns["']\s*:[^,}]*/.exec(panelCanvasTsx)?.[0] ?? "", /\dfr\b/,
+		"PanelCanvas's canvas template grew an fr track — it joins #194's class and needs a disposition");
+	hits.push({ name: ".ctl-columns", template: "inline `${weight}fr` (ControlList.tsx)" });
+
+	// ---- dispositions: fixed, or exempt with a reason source can falsify ----
+	const seen = new Set(hits.map(h => h.name));
+	const DISPOSED = new Set<string>();
+
+	// FIXED — .ctl-columns: its children are min-width-zeroed (live tracks are
+	// pure ratios, content meant to render whole), so its floor must come from
+	// the ratio law inside the sole measurement route. Both halves checked by
+	// the pin above; here we only require the instance is still the one fixed.
+	assert.ok(seen.has(".ctl-columns"), ".ctl-columns left the enumeration — the fixed instance is gone?");
+	DISPOSED.add(".ctl-columns");
+
+	// EXEMPT (ellipsis-by-design) — the tracks are pure ratios because the
+	// children zero their own minimum via overflow: hidden, and that truncation
+	// is the AUTHORED rendering: the same child rule declares text-overflow:
+	// ellipsis (fixed shares for positional stability; content that may shorten
+	// is the design, so a sum-of-mins floor under-measuring it clips nothing
+	// that was promised whole). Falsifier: the named child rule stops saying
+	// ellipsis, and the exemption dies with its reason.
+	for (const [grid, childSel] of [
+		[".shp-sweep-read", ".shp-sweep-read > span"],
+		[".compose-cards", ".compose-card"],
+	] as const) {
+		if (!seen.has(grid)) continue;
+		const child = flatCssRules().find(r =>
+			r.sel.split(",").some(s => s.trim() === childSel) && /text-overflow:\s*ellipsis/.test(r.body));
+		assert.ok(child !== undefined,
+			`${grid} is exempted because ${childSel} ellipsises by design, but no ${childSel} rule ` +
+			`declares text-overflow: ellipsis — the reason is no longer true: at ${grid}'s measured ` +
+			`floor a ratio-starved track now clips content that was promised whole (#194)`);
+		DISPOSED.add(grid);
+	}
+
+	// EXEMPT (declared-track-floor) — every fr term is inside minmax() with a
+	// non-zero minimum, so the track's floor is DECLARED, not derived from
+	// min-content: the measurement and live layout agree at that declared
+	// width, which is the .shp-decay-plot construction, not this class.
+	for (const h of hits) {
+		if (DISPOSED.has(h.name)) continue;
+		const bare = expandTracks(h.template)
+			.filter(t => /\dfr\b/.test(t))
+			.filter(t => !/^minmax\(\s*(?!0[,)\s])/.test(t));
+		assert.deepEqual(bare, [],
+			`${h.name} (${h.template}) is a multi-fr track list with no disposition — its floor is ` +
+			`sum-of-track-mins while live tracks are ratios: at the at-limit stop one track can be ` +
+			`starved below its content (#194). Make it ratio-honest, or exempt it here with a reason.`);
+		DISPOSED.add(h.name);
+	}
+
+	for (const h of hits) assert.ok(DISPOSED.has(h.name), `${h.name} escaped disposition — the enumeration is not total`);
+});

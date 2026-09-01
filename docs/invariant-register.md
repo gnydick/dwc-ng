@@ -1535,7 +1535,7 @@ in the diff that drops it.
 
 **Why.** the canvas record and the config overlay hold the same fact with no ordering between them, so "which is right" was decided by whichever path ran first. A browser carrying rects from before someone else saved a new layout to this machine kept them, and its next Save uploaded them over the good copy (#87). The basis is what turns "probably the same" into a question with an answer @why-not-a-counter a content digest needs no second field in the overlay to keep in step, and cannot drift from what it describes: it IS the layout, projected. A generation counter is a second writer's opportunity to be wrong @limit `null` (no saved layout at all) is deliberately NOT the digest of an empty layout — "the card has nothing for this screen" and "the card says this screen is empty" are different, and only the first means there is nothing for a local copy to be stale against
 
-`packages/ui/src/shell/panelCanvas.ts:1002`
+`packages/ui/src/shell/panelCanvas.ts:1102`
 
 ### `shell/a-stored-span-is-honoured-verbatim-only-if-the-operator-set-it` — rung 6
 
@@ -1545,7 +1545,7 @@ in the diff that drops it.
 
 **Debt — promotion.** promote by minting a branded OperatorSized value here and accepting only that at serializeCanvas and growToDefaults, so a caller cannot hand over a set it assembled from the wrong side. Records written before #132 carry no marks and cannot be reconstructed — those spans are byte-identical either way — so they grow once, by decision; see growToDefaults' doc. test/canvas-span-provenance.test.ts pins the behaviour meanwhile. A MOVE deliberately marks nothing: dragging a card across the screen says nothing about how tall it should be, and marking on any gesture at all would let an operator freeze a clipped fossil by nudging it. A span landing exactly on its coded default UNMARKS instead. That is resetSlot's entire gesture ("put this one back"), and an operator dragging a card onto its default size is saying the same thing — in both cases there is no longer a chosen span to protect, and a later release that raises the default should be free to raise this too.
 
-`packages/ui/src/shell/panelCanvas.ts:1901`
+`packages/ui/src/shell/panelCanvas.ts:2001`
 
 ### `shell/copy-failure-is-observable` — rung 6
 
@@ -1589,7 +1589,7 @@ in the diff that drops it.
 
 **Why.** one flag used to carry two different facts — "the operator rearranged the screen" and "the canvas emitted a geometry event". `ensureSlot`/`removeSlot` run from ComposedScreen's composition-sync effect, which fires as the screen is being brought up to date with a config change nobody dragged; routing those through the same notifier as a drag is what let a plain reload report unsaved work that did not exist (#120 defect B). The fix is NOT to stop marking dirty: geometry only reaches the overlay at save time (captureScreenGeometry) and Save is gated on the flag, so a canvas that never marks dirty is one whose rearrangement can never be saved at all @enumerated the geometry writers NOT on this route, and why: `reset()` REMOVES the key rather than writing one (the next mount re-seeds from defaults) and has never notified; the construction-time settle write at the top of this function is a deterministic repair, not an edit, and deliberately calls `keys.set` directly. Both are unchanged by #120 and neither can express a notify.
 
-`packages/ui/src/shell/panelCanvas.ts:1870`
+`packages/ui/src/shell/panelCanvas.ts:1970`
 
 ### `shell/reflow-preserves-reading-order` — rung 6
 
@@ -1599,7 +1599,7 @@ in the diff that drops it.
 
 **Debt — promotion.** promote by making the placement order a value produced once and consumed by the loop, so a future caller cannot iterate the state directly and place out of order.
 
-`packages/ui/src/shell/panelCanvas.ts:1376`
+`packages/ui/src/shell/panelCanvas.ts:1476`
 
 ### `shell/reflow-terminates` — rung 3
 
@@ -1609,7 +1609,7 @@ in the diff that drops it.
 
 **Debt — promotion.** make the loop consume a bounded, strictly-increasing cursor rather than mutating a candidate in place — then "a push that advances nothing" has no encoding and the argument stops needing to be believed.
 
-`packages/ui/src/shell/panelCanvas.ts:1388`
+`packages/ui/src/shell/panelCanvas.ts:1488`
 
 ### `shell/stream-dies-with-its-element` — rung 7
 
@@ -1659,7 +1659,7 @@ in the diff that drops it.
 
 **Debt — promotion.** ONLY WHAT THE STYLESHEET CAN SAY. The predicate reads app.css text, so it does not see a height arriving from an inline style, from a `classList` addition, or from a JS-set custom property, and it does not resolve specificity — a floor declared in a rule that loses the cascade reads as present. It also cannot distinguish a flex COLUMN item, where the collapse actually happens, from a flex ROW item, where the fixed height is the cross size and the block axis was never at risk; both are required to declare the floor, which is conservative in the right direction but is the reason `.color-clash` and `.accel-status` carry a min-height equal to their own height rather than a measured one. Promote by making the guard travel with the geometry instead of beside it: ONE shared declaration that every fixed-height clipped row extends, so the floor is not something a new row can be written without, and this scan becomes structurally unnecessary rather than merely green
 
-`packages/ui/src/app.css:5516`
+`packages/ui/src/app.css:5527`
 
 ### `ui/heavy-libraries-stay-behind-a-dynamic-import` — rung 4
 

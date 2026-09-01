@@ -4131,7 +4131,18 @@ input[type="checkbox"].fw-check { accent-color: var(--accent); width: calc(3.75 
    containers report their real min-content, so a card whose widest content
    sits inside a columns split gets a width stop at its widest leaf instead
    of at gaps + ruler padding. Every selector of the zero rule above must
-   appear here — the test named there enforces that coverage. */
+   appear here — the test named there enforces that coverage.
+
+   THIS LIFT ALONE IS NOT THE WHOLE FLOOR (GIT_194 / #194): CSS Grid discards
+   fr RATIOS under an intrinsic sizing constraint — each track sizes to its own
+   base — so with only the lift a `2fr 1fr` split measures sum-of-column-mins,
+   a width at which live layout (pure ratios again) starves one column below
+   its own content and clips it AT the at-limit stop. The ratio law is
+   re-imposed inside the wearer itself (panelCanvas.ts underRatioHonestSplits,
+   private to the one measurement route): the honest fit
+   max(need_i / weight_i) × Σweights + gaps is applied as a transient inline
+   min-width on each split before the single rect read. No stylesheet rule can
+   say that, which is why it lives in the wearer and nowhere else. */
 .measuring-intrinsic .ctl-col,
 .measuring-intrinsic .ctl-group {
 	min-width: min-content;

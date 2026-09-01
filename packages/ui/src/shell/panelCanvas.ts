@@ -840,9 +840,109 @@ function intrinsicWidthPx(el: HTMLElement, sizing: "min-content" | "max-content"
 	const previous = el.style.width;
 	try {
 		el.style.width = sizing;
-		return measureUnder(el, "measuring-intrinsic", () => el.getBoundingClientRect().width);
+		return measureUnder(el, "measuring-intrinsic", () =>
+			underRatioHonestSplits(el, sizing, () => el.getBoundingClientRect().width));
 	} finally {
 		el.style.width = previous;
+	}
+}
+
+/**
+ * THE RATIO LAW, restored for the duration of one intrinsic-width read
+ * (GIT_194 / #194, ruled by Gabe 2026-08-31 — this SUPERSEDES the inc3 fix
+ * round's decline of a ratio-aware floor).
+ *
+ * The defect: a columns split's live tracks are PURE fr ratios (`.ctl-col`
+ * has `min-width: 0` so a track can be squeezed below its content — that is
+ * what keeps a ruler still while a sibling's content changes). But CSS Grid
+ * DISCARDS fr ratios under an intrinsic sizing constraint: each flexible
+ * track sizes to its own base, so the min-content this route measures for a
+ * `2fr 1fr` grid is sum-of-column-mins + gaps — the width of a grid whose
+ * tracks are NOT in ratio. Live layout at that width re-imposes the ratio and
+ * hands one column less than its own minimum: on the seeded Beeper card the
+ * CHIRPS column overran the body's padding edge by 41.06px AT the at-limit
+ * stop, clipping the HIGH button while the outline claimed "cannot shrink
+ * further".
+ *
+ * The honest fit is the smallest W at which every column's ratio share still
+ * holds its content: w_i/Σw × (W − gaps) ≥ need_i for all i, i.e.
+ *
+ *     W = max over i of (need_i / w_i) × Σw + gaps
+ *
+ * verified against an empirically binary-searched fit before this was
+ * written: 547.19 predicted vs 547.19 measured, 0.00 delta, holding across
+ * 2:1, 1:1, 3:1, 1:3 and 5:2 weightings. Beeper's honest floor is 150 cells
+ * against the 115 the sum-of-mins measurement enforced.
+ *
+ * WHY THIS IS NOT THE SECOND MEASUREMENT AUTHORITY inc3 declined, and cannot
+ * become one: inc3's option (b) was a CALLER summing per-column numbers into
+ * its own answer — two functions whose results could be taken independently
+ * and drift. Here the arithmetic never produces the answer at all. It runs
+ * INSIDE the sole measurement route (private to this module, called only from
+ * intrinsicWidthPx's measureUnder read), and what it produces is a CONSTRAINT
+ * — an inline min-width on each split, removed in a finally — which the same
+ * layout engine then solves into the single getBoundingClientRect the route
+ * has always returned. There is no second number to prefer, no exported
+ * helper to forget, and every caller of intrinsicWidthPx (contentColSpan,
+ * headerColSpan, whatever comes next) inherits the honest floor without
+ * knowing this function exists. Pinned by test/intrinsic-floors.test.ts
+ * ("fr ratios are re-imposed on the intrinsic measurement").
+ *
+ * The per-column needs are read with the split itself collapsed to the SAME
+ * sizing keyword (tracks at their bases = each column at its own {sizing}
+ * width, the `.measuring-intrinsic` leaf lifts live) rather than from the
+ * columns' current rects: a split currently stretched wide by a wider sibling
+ * reports ratio SHARES, not needs, and the floor would inflate to whatever
+ * width the card already had. Splits are visited innermost-first so a nested
+ * split's constraint is already standing when its ancestor is read — moot
+ * while the compile boundary refuses nested columns, but the arithmetic does
+ * not lean on that refusal.
+ *
+ * A `.ctl-columns` whose inline template is not the sole renderer's
+ * `<int>fr …` form, or whose child count disagrees with it, is left to the
+ * browser's own sum-of-mins: the class name alone is not the vocabulary, and
+ * ControlList.tsx is the only producer of both the class and the template —
+ * such an element is not a compiled columns node and gets no ratio to honour.
+ */
+function underRatioHonestSplits<T>(
+	el: HTMLElement,
+	sizing: "min-content" | "max-content",
+	read: () => T,
+): T {
+	const undo: Array<() => void> = [];
+	try {
+		const splits = Array.from(el.querySelectorAll<HTMLElement>(".ctl-columns")).reverse();
+		for (const grid of splits) {
+			const terms = grid.style.gridTemplateColumns.trim().split(/\s+/);
+			const weights = terms.map(t => (/^[1-9]\d*fr$/.test(t) ? parseInt(t, 10) : NaN));
+			const cols = Array.from(grid.children).filter(
+				(c): c is HTMLElement => c instanceof HTMLElement,
+			);
+			if (weights.length < 2 || weights.some(w => Number.isNaN(w)) || cols.length !== weights.length) continue;
+			// Collapse the split to its own {sizing} width: each fr track sizes to
+			// its base, so each column's rect IS its need — content + the ruler
+			// gutter's padding, exactly what its track must hold at the fit.
+			let perFr = 0;
+			const prevWidth = grid.style.width;
+			try {
+				grid.style.width = sizing;
+				cols.forEach((col, i) => {
+					perFr = Math.max(perFr, col.getBoundingClientRect().width / weights[i]!);
+				});
+			} finally {
+				grid.style.width = prevWidth;
+			}
+			const total = weights.reduce((a, b) => a + b, 0);
+			const gap = parseFloat(getComputedStyle(grid).columnGap) || 0;
+			const prevMin = grid.style.minWidth;
+			grid.style.minWidth = `${perFr * total + gap * (cols.length - 1)}px`; // px-ok: measured px fed back as a transient constraint — needs and gap were read from the layout engine at the current scale, so the unit rides --u already
+			undo.push(() => {
+				grid.style.minWidth = prevMin;
+			});
+		}
+		return read();
+	} finally {
+		for (const u of undo) u();
 	}
 }
 
