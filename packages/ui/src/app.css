@@ -4160,6 +4160,63 @@ input[type="checkbox"].fw-check { accent-color: var(--accent); width: calc(3.75 
 /* Authored whitespace. Fixed spacers override flex inline with a --u basis;
    flex-basis is main-axis, so one node serves rows and stacks alike. */
 .ctl-spacer { flex: 1 1 0; align-self: stretch; }
+/* THE HORIZONTAL TWIN of the ratio lift above (#196, ruled 2026-08-31).
+   A FLEXIBLE spacer is empty and starts from a zero basis, so its min-content
+   contribution is literally 0 — and contentColSpan takes the card's width stop
+   from min-content. The floor therefore landed at exactly the width where every
+   flexible spacer in the card is starved to zero: the narrowest a card could be
+   dragged was the one width at which its authored alignment does not exist, the
+   item after the spacer sitting flush against the item before it. Measured on
+   the seeded Beeper card before this rule: `spacerW = cardW - 512.98`, i.e. 0 at
+   every width from the 456px stop up to 500px, the Play button walking from
+   409.6px to 245.6px inside the row as the card narrowed.
+
+   A MEASUREMENT LIFT, not a live basis — the same construction as
+   `.measuring-intrinsic .ctl-col` above, worn by the same wearer
+   (shell/panelCanvas.ts intrinsicWidthPx, the sole route to an intrinsic
+   width) for the same synchronous set/read/restore. Live layout is untouched:
+   a spacer still eats all the free space there is, so the alignment an author
+   wrote still reads at every width above the floor. Only the FLOOR moves, by
+   this width, which is what buys the spacer room to exist at the stop.
+
+   WHY min-width AND NOT flex-basis, measured rather than reasoned: a lift
+   written as `flex-basis: calc(2 * var(--ctl-gap))` is INERT — it was tried
+   first and left the floor exactly where it was (contentColSpan 115 before and
+   after, on the seeded Beeper card). A flexible spacer also carries
+   `flex-shrink: 1`, and a min-content constraint asks how narrow the row can
+   get, so the item simply shrinks below its own basis and contributes nothing
+   again. min-width is the property that CLAMPS a min-content contribution
+   upward, which is why the ratio lift above uses it too. Measured on the same
+   card, same session: no lift 115 cells · flex-basis alone 115 · min-width 119
+   · flex-basis + flex-shrink: 0 119 · `flex: 0 0` 119. Three of those work and
+   min-width is the one that matches the existing precedent and stays honest on
+   both axes — this mode is worn ONLY for a width measurement, so a horizontal
+   property is what belongs in it; a basis would be a HEIGHT on the root-level
+   spacer of the footer idiom, silently the wrong axis.
+
+   WHY --ctl-gap x2 and not a fresh number: --ctl-gap is already the house
+   separation between two adjacent items, so a spacer narrower than it would be
+   indistinguishable from an ordinary gap — "push these apart" would render as
+   "these are next to each other". Twice it is the smallest width that still
+   reads as deliberate, and it is derived from the same token rather than
+   invented, so it scales with --u and carries no literal px (the unit-lengths
+   lint). Stated honestly: this makes the authored alignment EXIST at the stop,
+   not read fully — a card at its floor shows a 4u gap, not its authored
+   proportions. That cost was accepted by Gabe with the number in hand.
+
+   SIZED spacers are deliberately NOT lifted and cannot be: `{"type":"spacer",
+   "size":n}` renders an inline `flex: 0 0 calc(n * var(--u))`
+   (compose/controls/ControlList.tsx), and an inline shorthand beats this
+   stylesheet longhand — a definite non-zero basis already contributes itself to
+   min-content, so it measures honestly with no help and must keep its authored
+   width rather than being widened to 4u.
+
+   The pair — the zero-basis rule above, this lift, and the wearer — is held
+   together by test/intrinsic-floors.test.ts ("the flexible-spacer zero basis is
+   lifted while intrinsic width is measured"), which also enumerates every OTHER
+   empty zero-basis spacer in a measured body so a new one cannot be added
+   without either a lift or a documented exemption. */
+.measuring-intrinsic .ctl-spacer { min-width: calc(2 * var(--ctl-gap)); }
 .ctl-justify-start { justify-content: flex-start; }
 .ctl-justify-center { justify-content: center; }
 .ctl-justify-end { justify-content: flex-end; }

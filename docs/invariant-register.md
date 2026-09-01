@@ -1659,7 +1659,7 @@ in the diff that drops it.
 
 **Debt — promotion.** ONLY WHAT THE STYLESHEET CAN SAY. The predicate reads app.css text, so it does not see a height arriving from an inline style, from a `classList` addition, or from a JS-set custom property, and it does not resolve specificity — a floor declared in a rule that loses the cascade reads as present. It also cannot distinguish a flex COLUMN item, where the collapse actually happens, from a flex ROW item, where the fixed height is the cross size and the block axis was never at risk; both are required to declare the floor, which is conservative in the right direction but is the reason `.color-clash` and `.accel-status` carry a min-height equal to their own height rather than a measured one. Promote by making the guard travel with the geometry instead of beside it: ONE shared declaration that every fixed-height clipped row extends, so the floor is not something a new row can be written without, and this scan becomes structurally unnecessary rather than merely green
 
-`packages/ui/src/app.css:5459`
+`packages/ui/src/app.css:5516`
 
 ### `ui/heavy-libraries-stay-behind-a-dynamic-import` — rung 4
 

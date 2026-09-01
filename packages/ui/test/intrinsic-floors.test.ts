@@ -1105,6 +1105,174 @@ test("the ctl-col/ctl-group ratio zero is lifted while intrinsic width is measur
 });
 
 /**
+ * Every EMPTY element whose class carries a growing zero main-axis basis.
+ *
+ * Not a scan for the word "spacer": the name is a convention and conventions
+ * are not mechanisms. This reads the two properties that actually produce the
+ * defect — the element has NO CHILDREN (so its content contributes nothing to
+ * min-content) and its rule grows from a ZERO BASIS (so the basis contributes
+ * nothing either) — which together mean the element is worth exactly 0 to the
+ * card's width stop while still eating free space in live layout.
+ *
+ * `flex: <n>` counts: the one-value shorthand expands to `<n> 1 0%`, a zero
+ * basis written as an absence.
+ */
+function emptyZeroBasisClasses(): string[] {
+	const dir = new URL("../src/", import.meta.url);
+	const found = new Set<string>();
+	let selfClosing = 0;
+	for (const rel of readdirSync(dir, { recursive: true, encoding: "utf8" })) {
+		if (!rel.endsWith(".tsx")) continue;
+		const text = readFileSync(new URL(rel.replaceAll("\\", "/"), dir), "utf8");
+		// Self-closing tags only — an element with children has content whose
+		// min-content it must carry, so a zero basis cannot zero it out.
+		for (const m of text.matchAll(/<[a-z][a-zA-Z]*\b[^<>]*?\/>/g)) {
+			selfClosing++;
+			const cls = /class="([^"]*)"/.exec(m[0]);
+			if (cls === null) continue;
+			for (const token of cls[1]!.split(/\s+/).filter(Boolean)) found.add(token);
+		}
+	}
+	// A scanner that matches nothing passes everything — the same guard the
+	// fixed-height scan above makes.
+	assert.ok(selfClosing >= 20,
+		`only ${selfClosing} self-closing elements found in src/**/*.tsx — has the scanner stopped matching?`);
+
+	const GROWS_FROM_ZERO = /(?:^|;)\s*flex\s*:\s*(?:[0-9.]+\s*(?:[0-9.]+\s+0(?:px|%)?)?|[0-9.]+\s+[0-9.]+\s+0(?:px|%)?)\s*(?:;|$)/;
+	// A DECLARED non-zero min-width takes the element out of the class outright:
+	// min-width clamps an element's min-content contribution up, so it is worth
+	// its floor to the card's stop no matter what its basis says. This is the
+	// mechanism contentColSpan's own doc names — "such controls carry an explicit
+	// min-width in app.css for exactly this reason" — and it is what separates a
+	// uPlot host like .shp-decay-plot (40u floor, contents silenced by
+	// `contain: inline-size`) from a spacer that really is worth nothing.
+	// `min-width: 0` is not a floor and must not count as one.
+	const DECLARES_FLOOR = /(?:^|;)\s*min-width\s*:\s*(?!0\s*(?:;|$))[^;]+/;
+	return [...found].filter(cls => {
+		const rules = flatCssRules().filter(r =>
+			r.sel.split(",").some(s => s.trim().split(/\s+/).pop() === `.${cls}`));
+		return rules.some(r => GROWS_FROM_ZERO.test(r.body)) && !rules.some(r => DECLARES_FLOOR.test(r.body));
+	}).sort();
+}
+
+/**
+ * GIT_194 / #196 — THE FLEXIBLE-SPACER ZERO BASIS AND ITS MEASUREMENT LIFT.
+ *
+ * The horizontal twin of the ratio-zero pair above, and the same three parts:
+ * a zero that is load-bearing in live layout, a lift that restores the truth
+ * for the duration of the measurement, and a wearer.
+ *
+ * The defect it pins: `.ctl-spacer` is an empty span with `flex: 1 1 0`, so it
+ * contributes literally 0 to min-content — and contentColSpan takes the card's
+ * width stop FROM min-content. The narrowest a spacer-bearing card could be
+ * dragged was therefore exactly the width at which its spacer is starved to
+ * zero, i.e. the one width where the authored alignment does not exist. The
+ * item after the spacer sits flush against the item before it and the stop
+ * lights its at-limit cue saying this is correct. Measured on the seeded Beeper
+ * card at 4d14275: spacerW 0 at every width from the 456px stop up to 500px.
+ *
+ * THE WEARER IS NOT RE-PINNED HERE. It is the same intrinsicWidthPx, already
+ * held by "the ctl-col/ctl-group ratio zero is lifted while intrinsic width is
+ * measured" directly above; asserting it twice would put one bound in two
+ * places, which is the drift this file exists to prevent. What is pinned here
+ * is the zero, the lift, and the ENUMERATION.
+ */
+test("the flexible-spacer zero basis is lifted while intrinsic width is measured", () => {
+	const rules = flatCssRules();
+
+	const zero = rules.find(r =>
+		r.sel.split(",").some(s => s.trim() === ".ctl-spacer") && /flex:\s*1\s+1\s+0/.test(r.body));
+	assert.ok(zero !== undefined,
+		"no .ctl-spacer rule declares flex: 1 1 0 — if the flexible spacer is gone, the lift below " +
+		"has nothing to lift: remove the pair TOGETHER, or the lift reads like a mechanism and is dead weight");
+
+	const lift = rules.find(r => r.sel.trim() === ".measuring-intrinsic .ctl-spacer");
+	assert.ok(lift !== undefined,
+		"no measurement lift (.measuring-intrinsic .ctl-spacer) — contentColSpan computes the card's " +
+		"floor at the width where every flexible spacer is starved to zero, so the narrowest legal " +
+		"card is the one width at which its authored alignment does not exist (#196)");
+
+	// MIN-WIDTH, not flex-basis, and this is the assertion that would have caught
+	// the first attempt at this fix: `flex-basis: calc(2 * var(--ctl-gap))` reads
+	// exactly like a lift and does NOTHING (measured: contentColSpan 115 before
+	// and after). A flexible spacer also carries flex-shrink: 1, and min-content
+	// asks how narrow the row can go, so the item shrinks straight back through
+	// its own basis. min-width is what clamps a min-content contribution upward —
+	// the same property, for the same reason, as the ratio lift above.
+	const floor = /(?:^|;)\s*min-width:\s*([^;]+)/.exec(lift!.body);
+	assert.ok(floor !== null,
+		".measuring-intrinsic .ctl-spacer sets no min-width — if this lift is written as flex-basis " +
+		"it is INERT: a flexible spacer has flex-shrink: 1 and shrinks below its own basis under a " +
+		"min-content constraint, so the floor does not move (measured 115 cells before and after)");
+	// The lift must be a REAL width, derived from the house token rather than
+	// invented, and free of literal px so it scales with --u (the unit-lengths
+	// lint and the Card Lab scale sweep both depend on this).
+	assert.match(floor[1]!, /var\(--ctl-gap\)/,
+		"the spacer lift is not derived from --ctl-gap — a spacer narrower than the house gap between " +
+		"two adjacent items is indistinguishable from one, so the floor buys nothing");
+	assert.doesNotMatch(floor[1]!, /\d\s*px/,
+		"the spacer lift carries a literal px — it must scale with --u like every other layout length");
+
+	// THE ENUMERATION. #196's mechanism is a class, not one selector: any empty
+	// element that grows from a zero basis is worth 0 to the card's stop. Every
+	// such class must be lifted, or exempted here BY NAME with a reason that is
+	// itself checkable below.
+	//
+	// An exemption is a claim that the element cannot reach a card's HORIZONTAL
+	// stop. Each one states WHY as a kind, and each kind is re-derived from the
+	// source below rather than trusted — so an exemption whose reason stops
+	// being true fails this test instead of quietly covering a live defect.
+	const EXEMPT: Record<string, { kind: "out-of-flow" | "suspense-fallback"; host: string }> = {
+		// The sweep heatmap's colour-key row is `position: absolute`: the whole
+		// subtree is out of flow and contributes nothing to any ancestor's
+		// intrinsic size, so contentColSpan cannot see this spacer whether it is
+		// lifted or not — the same reason contentRowSpan skips absolutely
+		// positioned children. Its width is bounded by .shp-sweep-stage's own
+		// declared min-width instead.
+		"shp-heat-spacer": { kind: "out-of-flow", host: "shp-heat-key" },
+		// Not a spacer at all: the Suspense fallback that reserves a lazy card's
+		// body box. It separates no siblings — it IS the body until the chunk
+		// lands — and it sits in .panel-body's flex COLUMN, where a zero basis is
+		// a height, not a width. Lifting it would widen the floor of every lazy
+		// card by 4u to reserve space for a box that is never beside anything.
+		"card-lazy": { kind: "suspense-fallback", host: "compose/cards.tsx" },
+	};
+	for (const cls of emptyZeroBasisClasses()) {
+		if (rules.some(r => r.sel.trim() === `.measuring-intrinsic .${cls}`)) continue;
+		const exempt = EXEMPT[cls];
+		assert.ok(exempt !== undefined,
+			`.${cls} is an empty element growing from a zero basis and has no measurement lift — ` +
+			`it contributes 0 to its card's width stop, so the card's floor lands where .${cls} ` +
+			`is starved to zero (#196). Give it a .measuring-intrinsic lift, or exempt it here with a reason.`);
+		if (exempt!.kind === "out-of-flow") {
+			const hostRule = rules.find(r =>
+				r.sel.split(",").some(s => s.trim() === `.${exempt!.host}`) && /position:\s*absolute/.test(r.body));
+			assert.ok(hostRule !== undefined,
+				`.${cls} is exempted because .${exempt!.host} is out of flow, but no .${exempt!.host} rule ` +
+				`declares position: absolute — the exemption's reason is no longer true and .${cls} now ` +
+				`reaches its card's width stop`);
+		} else {
+			// Every use must still be a Suspense fallback. The moment one is
+			// written as an ordinary child, it is a filler in a real flow and the
+			// exemption no longer describes it.
+			const dir = new URL("../src/", import.meta.url);
+			let uses = 0;
+			for (const rel of readdirSync(dir, { recursive: true, encoding: "utf8" })) {
+				if (!rel.endsWith(".tsx")) continue;
+				const text = readFileSync(new URL(rel.replaceAll("\\", "/"), dir), "utf8");
+				for (const m of text.matchAll(new RegExp(`[^\\n]*class="[^"]*\\b${cls}\\b[^"]*"[^\\n]*`, "g"))) {
+					uses++;
+					assert.match(m[0]!, /fallback=\{/,
+						`.${cls} is exempted as a Suspense fallback, but ${rel} renders it as an ordinary ` +
+						`child — in a real flow it is a zero-width filler and reaches its card's width stop`);
+				}
+			}
+			assert.ok(uses > 0, `.${cls} is exempted as a Suspense fallback but is never rendered — drop the exemption`);
+		}
+	}
+});
+
+/**
  * THE SCANNER SEES THE CLASS-ONLY INPUTS, stated as something that would be
  * FALSE if the widening had not happened. The three below are the ones the old
  * filter could not reach, and each is a growing text input.
