@@ -1,3 +1,4 @@
+> RETIRED (2026-09-02): captures now land in .claude/machinery/inbox.md via the machinery plugin (PRULE:/URULE:). Kept verbatim as history.
 
 ## 2026-08-26T21:34:08Z 84a16cf8-421a-45db-b981-f63d00c0ead3
 
