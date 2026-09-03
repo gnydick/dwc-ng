@@ -9,3 +9,9 @@ automatic capture did not fire under the new hook because this was dictated on
 now retired. Verbatim text and original stamp/session kept.)
 
 disposition: filed → .claude/rules/test-loop.md § What a test run feeds back
+
+## DISMISSED 2026-09-03T12:18:06Z PRULE d2748bd0-1095-4b4b-a6d4-a6540958dde8
+
+PRULE: the test loop shouldn't feed the agent unless there is a failure
+
+disposition: dismissed: duplicate of 2026-09-01T02:33:29Z, filed 2026-09-03 to .claude/rules/test-loop.md § What a test run feeds back (commit 336a25b); the rule stands, this re-dictation adds nothing to it
