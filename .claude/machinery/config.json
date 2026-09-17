@@ -1,3 +1,17 @@
 {
-  "worktree": "always"
+  "worktree": "always",
+  "components": {
+    "connector": "packages/connector",
+    "deploy": "packages/deploy",
+    "invariants": "packages/invariants",
+    "mock-duet": "packages/mock-duet",
+    "ui": "packages/ui"
+  },
+  "tiers": {
+    "fast": "node tools/tier-fast.mjs <components>",
+    "merge": "pnpm test && pnpm --filter @dwc-ng/ui exec tsc -b --force && pnpm build",
+    "heavy": "pnpm --filter @dwc-ng/mock-duet test:slow",
+    "declaration": "directory: <component>/test/*.test.ts is fast; <component>/test/slow/*.test.ts runs at push to main only",
+    "assignment": "claude-decides"
+  }
 }

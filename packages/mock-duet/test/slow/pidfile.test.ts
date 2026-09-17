@@ -23,7 +23,7 @@ import {
 	TICKET_PORT_BASE,
 	UAT_MOCK_PORT,
 	UAT_VITE_PORT,
-} from "../src/ports.ts";
+} from "../../src/ports.ts";
 import {
 	identify,
 	isMockCommandLine,
@@ -36,9 +36,9 @@ import {
 	stopEntry,
 	toplevelForSegment,
 	type PidEntry,
-} from "../src/pidfile.ts";
+} from "../../src/pidfile.ts";
 
-const SRC = dirname(fileURLToPath(new URL("../src/cli.ts", import.meta.url)));
+const SRC = dirname(fileURLToPath(new URL("../../src/cli.ts", import.meta.url)));
 const CLI = join(SRC, "cli.ts");
 
 // --------------------------------------------------------------------------
