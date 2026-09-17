@@ -15,3 +15,11 @@ disposition: filed → .claude/rules/test-loop.md § What a test run feeds back
 PRULE: the test loop shouldn't feed the agent unless there is a failure
 
 disposition: dismissed: duplicate of 2026-09-01T02:33:29Z, filed 2026-09-03 to .claude/rules/test-loop.md § What a test run feeds back (commit 336a25b); the rule stands, this re-dictation adds nothing to it
+
+## FILED 2026-09-17T20:51:19Z PRULE 56a12759-a8ee-4242-8b64-e31b0cd4e36c
+
+Use GitHub Issues on gnydick/dwc-ng, via the gh CLI. Every work item is a ticket PAIR — a full parent and one child titled 'Context: #N' — per .claude/rules/tracking-work.md.
+
+Note: automatic capture did not fire. This answer was given in plain words in the issue-tracking setup conversation, which asks for no mark, and was recorded by issue-tracking.mjs record-project.
+
+disposition: filed → .claude/rules/project_issue_tracking.md
