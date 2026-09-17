@@ -1015,7 +1015,7 @@ in the diff that drops it.
 
 **Why.** PIDs recycle, and the ruled pidfile format (name = pid, content = port) has no start time to disambiguate with. A `stop` that dereferenced a PID out of a file and killed it would eventually terminate a stranger's process on this machine. The three factors make that require a mock-duet, listening on exactly the recorded port, that started before the file naming it was written — and a recycled PID's process starts after the original died, hence after that write
 
-`packages/mock-duet/src/pidfile.ts:618`
+`packages/mock-duet/src/pidfile.ts:625`
 
 ### `mock-duet/one-parameter-reader` — rung 6
 
@@ -1035,7 +1035,7 @@ in the diff that drops it.
 
 **Debt — promotion.** rung 7 would make the resolved port a branded `BoundPort` mintable only by the bind, so even a future function inside this module could not write a port it had not watched a socket accept. Today the barrier stops at the module edge
 
-`packages/mock-duet/src/pidfile.ts:803`
+`packages/mock-duet/src/pidfile.ts:810`
 
 ### `mock-duet/shaping-has-one-home` — rung 6
 

@@ -157,11 +157,27 @@ describe("probeTrouble: is this reading usable, and if not, why", () => {
 		assert.equal(probeTrouble(healthy()), null);
 	});
 
-	test("it names the failing probe and carries its reason", () => {
-		const trouble = probeTrouble({ ...healthy(), procs: failedProbe("the RPC server is unavailable") });
+	// Driven through the REAL constructor rather than a hand-written failure:
+	// that is the only way this proves the whole path, from a thrown error to
+	// the sentence a caller reads. A hand-built reason would assert nothing
+	// about what production actually produces.
+	test("it hands back the failing probe's own failure, which names the probe and the error", () => {
+		const procs: Probe<Map<number, ProcInfo>> = probeFailureFrom("powershell.exe", "processes", new Error("the RPC server is unavailable"));
+		const trouble = probeTrouble({ ...healthy(), procs });
 		assert.equal(trouble?.kind, "failed");
 		assert.match(trouble?.reason ?? "", /processes/, "it says WHICH probe failed");
+		assert.match(trouble?.reason ?? "", /powershell\.exe/, "and what it was asked with");
 		assert.match(trouble?.reason ?? "", /RPC server is unavailable/, "and why");
+	});
+
+	// The same reading, end to end: a thrown error must reach `identify`'s
+	// verdict with its cause and its words intact. Classification and verdict
+	// are otherwise only tested apart, which leaves the join untested.
+	test("a thrown error reaches the VERDICT with its cause and its words", () => {
+		const procs: Probe<Map<number, ProcInfo>> = probeFailureFrom("powershell.exe", "processes", new Error("the RPC server is unavailable"));
+		const verdict = unverifiable(identify(entry(), { ...healthy(), procs }));
+		assert.equal(verdict.cause, "probe-failed");
+		assert.match(verdict.reason, /RPC server is unavailable/);
 	});
 
 	test("an unsupported platform is trouble of a different kind, so a caller can retry one and not the other", () => {

@@ -342,7 +342,8 @@ export const unsupportedProbe = <T>(reason: string): Probe<T> => ({ ok: false, f
  */
 export function probeFailureFrom<T>(tool: string, what: string, e: unknown): Probe<T> {
 	const err = e as { code?: string; message?: string; stderr?: string | Buffer };
-	const detail = [String(err.message ?? e).split("\n")[0], String(err.stderr ?? "").trim().split("\n")[0]]
+	const firstLine = (text: string) => text.split(/[\r\n]/)[0]?.trim() ?? "";
+	const detail = [firstLine(String(err.message ?? e)), firstLine(String(err.stderr ?? ""))]
 		.filter((s) => s !== "")
 		.join(" — ")
 		.slice(0, 300);
@@ -468,15 +469,21 @@ export interface Snapshot {
 }
 
 /**
- * Is this reading usable, and if not, why?
+ * The first thing wrong with this reading, or `null` if both probes answered.
  *
- * One place answers that question, so the operator warning, the kill guard and
- * a test waiting for a usable reading cannot disagree about what counts as
- * unreadable. `null` means both probes answered.
+ * A convenience for a caller that wants one yes-or-no about the whole reading —
+ * today that is the slow test, which refuses to assert anything about the kill
+ * guard over a machine it could not read. It is NOT a choke point and nothing
+ * routes through it: {@link identify} narrows each probe itself because it
+ * needs the data, and consults the listener probe only after factor (a) has
+ * passed, which is load-bearing (see its factor order). `mockctl status`
+ * likewise reports BOTH probes where this reports the first.
+ *
+ * Each failure already names what it was reading, so nothing is prefixed here.
  */
 export function probeTrouble(snap: Snapshot): ProbeFailure | null {
-	if (!snap.procs.ok) return { ...snap.procs.failure, reason: `could not read processes: ${snap.procs.failure.reason}` };
-	if (!snap.listeners.ok) return { ...snap.listeners.failure, reason: `could not read listening sockets: ${snap.listeners.failure.reason}` };
+	if (!snap.procs.ok) return snap.procs.failure;
+	if (!snap.listeners.ok) return snap.listeners.failure;
 	return null;
 }
 
