@@ -26,6 +26,7 @@ import { closeSync, existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import process from "node:process";
 import { stripArgSeparators } from "./argv.ts";
+import { slotFor } from "./portSlot.ts";
 import {
 	adoptStartLog,
 	describeSegment,
@@ -169,17 +170,38 @@ function cmdStatus(reg: Registry): void {
 
 	// --- the reserved UAT stack, first, because it is the one with a bookmark
 	console.log(`UAT stack (reserved: mock ${UAT_MOCK_PORT} + vite ${UAT_VITE_PORT}, one at a time)`);
-	const uatEntry = entries.find(e => e.port === UAT_MOCK_PORT);
-	if (uatEntry === undefined) {
-		const stray = pidsOn(snap, UAT_MOCK_PORT);
-		if (stray === null) console.log(`  mock ${UAT_MOCK_PORT} : unknown (cannot enumerate sockets)`);
-		else if (stray.length === 0) console.log(`  mock ${UAT_MOCK_PORT} : not running`);
-		else console.log(`  mock ${UAT_MOCK_PORT} : LISTENING but untracked — pid ${stray.join(", ")}`);
-	} else {
-		console.log(
-			`  mock ${UAT_MOCK_PORT} : ${classify(uatEntry, snap)} — pid ${uatEntry.pid}, ` +
-				`worktree ${uatEntry.segment} (${describeSegment(reg, uatEntry.segment)})`,
-		);
+	const slot = slotFor(entries, snap, UAT_MOCK_PORT);
+	switch (slot.kind) {
+		case "unverifiable":
+			// Naming a claimant here would be a guess wearing a reading's clothes.
+			console.log(`  mock ${UAT_MOCK_PORT} : unknown — ${slot.reason}`);
+			break;
+		case "listening":
+			console.log(
+				`  mock ${UAT_MOCK_PORT} : ${classify(slot.entry, snap)} — pid ${slot.entry.pid}, ` +
+					`worktree ${slot.entry.segment} (${describeSegment(reg, slot.entry.segment)})`,
+			);
+			// Left-behind pidfiles for this port are named rather than hidden: they
+			// are what made the old selection pick the wrong one (GIT_216).
+			for (const other of slot.alsoClaimed) {
+				console.log(
+					`             also claimed, not holding it — pid ${other.pid}, ` +
+						`worktree ${other.segment}: ${classify(other, snap)}`,
+				);
+			}
+			break;
+		case "untracked":
+			console.log(`  mock ${UAT_MOCK_PORT} : LISTENING but untracked — pid ${slot.pids.join(", ")}`);
+			break;
+		case "idle":
+			console.log(`  mock ${UAT_MOCK_PORT} : not running`);
+			for (const other of slot.claimed) {
+				console.log(
+					`             claimed by a pidfile — pid ${other.pid}, ` +
+						`worktree ${other.segment}: ${classify(other, snap)}`,
+				);
+			}
+			break;
 	}
 	const vite = pidsOn(snap, UAT_VITE_PORT);
 	if (vite === null) console.log(`  vite ${UAT_VITE_PORT} : unknown (cannot enumerate sockets)`);

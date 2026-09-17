@@ -21,7 +21,7 @@ and invariant claim mentions 13 -> 23, so no mechanism was deleted and no
 claim was lost in the gap. From here the ratchets make a dropped rung visible
 in the diff that drops it.
 
-**Totals:** 178 invariants · 151 at rung 6 or above · 27 below rung 6 (ceiling 27).
+**Totals:** 179 invariants · 152 at rung 6 or above · 27 below rung 6 (ceiling 27).
 
 ## bed
 
@@ -936,6 +936,14 @@ in the diff that drops it.
 `packages/ui/src/messagebox/ack.ts:121`
 
 ## mock-duet
+
+### `mock-duet/a-port-is-owned-by-its-listener-not-by-a-filename` — rung 6
+
+**Mechanism.** choke point — this is the only place that decides which registry entry owns a port, and it cannot reach an entry except through the listener set: the `listening` arm is constructed solely from `claimants.find(e => holders.includes(e.pid))`, so an entry that is not on the socket has no route into it. A caller can still ignore the answer and read `entries` itself, which is what keeps this at 6 rather than 7; promoting it means the status renderer taking a PortSlot rather than the raw entries
+
+**Why.** one process holds a listening socket, but any number of pidfiles may name that port — a hard kill leaves its file behind by design, and the registry is shared across worktrees. Selecting by registry order names whichever worktree sorts first: on 2026-09-17 `status` called a running UAT stack "process gone" and attributed it to a worktree that had not run in weeks. The reverse costs more than a wrong label — a live process named in the wrong worktree invites tearing down someone else's stack
+
+`packages/mock-duet/src/portSlot.ts:32`
 
 ### `mock-duet/a-reading-that-failed-is-never-used-as-a-reading` — rung 7
 
