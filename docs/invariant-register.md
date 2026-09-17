@@ -21,7 +21,7 @@ and invariant claim mentions 13 -> 23, so no mechanism was deleted and no
 claim was lost in the gap. From here the ratchets make a dropped rung visible
 in the diff that drops it.
 
-**Totals:** 177 invariants · 150 at rung 6 or above · 27 below rung 6 (ceiling 27).
+**Totals:** 178 invariants · 151 at rung 6 or above · 27 below rung 6 (ceiling 27).
 
 ## bed
 
@@ -937,6 +937,14 @@ in the diff that drops it.
 
 ## mock-duet
 
+### `mock-duet/a-reading-that-failed-is-never-used-as-a-reading` — rung 7
+
+**Mechanism.** discriminated union — the failure arm has no `data` field at all, so reaching a reading without first handling its absence is a compile error, not a silent `undefined`. Introducing it named all five existing call sites (`identify` twice, `confirmedGone`, `stopLiveMock`, `mockctl`), which is the mechanism working: the old `T | null` let `snap.procs?.has(pid)` read "absent" out of "could not look" with no diagnostic. The SORT of failure (`unsupported` vs `failed`) is a runtime reading of the thrown error's `code` and sits at rung 3, covered by test/pidfile-verdict.test.ts — a probe that throws something new would be classified `failed`, which is the safe direction: it refuses and says so, rather than claiming the platform cannot answer
+
+**Why.** GIT_210. `probeProcesses` and `probeListeners` each swallowed every failure into one `null` that `identify` reported as "cannot enumerate processes on this platform" — on Windows, which enumerates them fine. Three kill-guard tests failed once with that verdict and the run could not say why, because the error had been discarded by a bare `catch`. A transient failure and an unaskable platform are different facts: only one of them means something is wrong, and only one is worth asking again
+
+`packages/mock-duet/src/pidfile.ts:308`
+
 ### `mock-duet/a-ticket-port-can-never-be-the-uat-port` — rung 6
 
 **Mechanism.** choke point — this is the only function that turns a ticket number into a port, `mockctl start` calls nothing else to derive one, and it throws on the single input (970) whose arithmetic would land on the reserved slot. The number is never returned and then checked; there is no value to check
@@ -1007,7 +1015,7 @@ in the diff that drops it.
 
 **Why.** PIDs recycle, and the ruled pidfile format (name = pid, content = port) has no start time to disambiguate with. A `stop` that dereferenced a PID out of a file and killed it would eventually terminate a stranger's process on this machine. The three factors make that require a mock-duet, listening on exactly the recorded port, that started before the file naming it was written — and a recycled PID's process starts after the original died, hence after that write
 
-`packages/mock-duet/src/pidfile.ts:528`
+`packages/mock-duet/src/pidfile.ts:618`
 
 ### `mock-duet/one-parameter-reader` — rung 6
 
@@ -1027,7 +1035,7 @@ in the diff that drops it.
 
 **Debt — promotion.** rung 7 would make the resolved port a branded `BoundPort` mintable only by the bind, so even a future function inside this module could not write a port it had not watched a socket accept. Today the barrier stops at the module edge
 
-`packages/mock-duet/src/pidfile.ts:713`
+`packages/mock-duet/src/pidfile.ts:803`
 
 ### `mock-duet/shaping-has-one-home` — rung 6
 
