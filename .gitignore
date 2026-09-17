@@ -43,3 +43,8 @@ packages/mock-duet/tsconfig.tsbuildinfo
 # target/run/logs/<worktree>/<pid>.log. See packages/mock-duet/src/pidfile.ts.
 target/
 .claude/machinery/observations.json
+
+# Per-user Claude Code state, not shared: backups of files it rewrote, and
+# scratch design notes. Neither is repo content.
+.claude/backups/
+.claude/design/
