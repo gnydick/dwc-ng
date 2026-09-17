@@ -130,10 +130,10 @@ function classify(entry: PidEntry, snap: Snapshot): string {
 
 /** Live mock-duet processes, with the ports each is listening on. */
 function liveMocks(snap: Snapshot): { proc: ProcInfo; ports: number[] }[] {
-	if (snap.procs === null) return [];
+	if (!snap.procs.ok) return [];
 	const portsByPid = new Map<number, number[]>();
-	if (snap.listeners !== null) {
-		for (const [port, pids] of snap.listeners) {
+	if (snap.listeners.ok) {
+		for (const [port, pids] of snap.listeners.data) {
 			for (const pid of pids) {
 				const list = portsByPid.get(pid) ?? [];
 				list.push(port);
@@ -142,7 +142,7 @@ function liveMocks(snap: Snapshot): { proc: ProcInfo; ports: number[] }[] {
 		}
 	}
 	const out: { proc: ProcInfo; ports: number[] }[] = [];
-	for (const proc of snap.procs.values()) {
+	for (const proc of snap.procs.data.values()) {
 		if (proc.pid === process.pid) continue;
 		if (!isMockProcess(proc)) continue;
 		out.push({ proc, ports: (portsByPid.get(proc.pid) ?? []).sort((a, b) => a - b) });
@@ -151,8 +151,8 @@ function liveMocks(snap: Snapshot): { proc: ProcInfo; ports: number[] }[] {
 }
 
 function pidsOn(snap: Snapshot, port: number): number[] | null {
-	if (snap.listeners === null) return null;
-	return snap.listeners.get(port) ?? [];
+	if (!snap.listeners.ok) return null;
+	return snap.listeners.data.get(port) ?? [];
 }
 
 // ---------------------------------------------------------------------------
@@ -221,8 +221,8 @@ function cmdStatus(reg: Registry): void {
 			);
 		}
 	}
-	if (snap.procs === null) console.log("\nWARNING: could not enumerate processes; nothing above is verified.");
-	if (snap.listeners === null) console.log("\nWARNING: could not enumerate listening sockets; nothing can be stopped safely.");
+	if (!snap.procs.ok) console.log(`\nWARNING: ${snap.procs.failure.reason}; nothing above is verified.`);
+	if (!snap.listeners.ok) console.log(`\nWARNING: ${snap.listeners.failure.reason}; nothing can be stopped safely.`);
 }
 
 // ---------------------------------------------------------------------------
@@ -464,7 +464,7 @@ function cmdReap(reg: Registry, args: string[]): void {
 	}
 
 	const snap = probeMachine();
-	if (snap.procs === null) fail("reap: cannot enumerate processes on this platform; refusing to guess.");
+	if (!snap.procs.ok) fail(`reap: ${snap.procs.failure.reason}; refusing to guess.`);
 	const entries = readEntries(reg);
 	const byPid = new Map(entries.map(e => [e.pid, e]));
 	let found = liveMocks(snap);

@@ -286,6 +286,72 @@ function parseEtime(etime: string): number | null {
 }
 
 /**
+ * Why a probe produced no data. The two are NOT interchangeable:
+ *
+ *  - `unsupported` — this platform has no way to answer. Permanent, and asking
+ *    again on this machine will never help.
+ *  - `failed` — the probe ran and did not answer, carrying the error it hit.
+ *    Says nothing about the platform; the same call a second later may work.
+ *
+ * Collapsing these two into one value is what cost GIT_210: three kill-guard
+ * tests failed once with "cannot enumerate processes on this platform" on a
+ * Windows box that had enumerated processes a second earlier, and the error
+ * that would have explained it had been thrown away by a bare `catch`.
+ */
+export type ProbeFailure =
+	| { kind: "unsupported"; reason: string }
+	| { kind: "failed"; reason: string };
+
+/**
+ * A reading of the machine, or the reason there isn't one.
+ *
+ * @invariant a-reading-that-failed-is-never-used-as-a-reading
+ * @rung 7  discriminated union — the failure arm has no `data` field at all, so
+ *          reaching a reading without first handling its absence is a compile
+ *          error, not a silent `undefined`. Introducing it named all five
+ *          existing call sites (`identify` twice, `confirmedGone`,
+ *          `stopLiveMock`, `mockctl`), which is the mechanism working: the old
+ *          `T | null` let `snap.procs?.has(pid)` read "absent" out of "could
+ *          not look" with no diagnostic. The SORT of failure (`unsupported` vs
+ *          `failed`) is a runtime reading of the thrown error's `code` and sits
+ *          at rung 3, covered by test/pidfile-verdict.test.ts — a probe that
+ *          throws something new would be classified `failed`, which is the safe
+ *          direction: it refuses and says so, rather than claiming the platform
+ *          cannot answer
+ * @why GIT_210. `probeProcesses` and `probeListeners` each swallowed every
+ *      failure into one `null` that `identify` reported as "cannot enumerate
+ *      processes on this platform" — on Windows, which enumerates them fine.
+ *      Three kill-guard tests failed once with that verdict and the run could
+ *      not say why, because the error had been discarded by a bare `catch`. A
+ *      transient failure and an unaskable platform are different facts: only
+ *      one of them means something is wrong, and only one is worth asking again
+ */
+export type Probe<T> = { ok: true; data: T } | { ok: false; failure: ProbeFailure };
+
+export const okProbe = <T>(data: T): Probe<T> => ({ ok: true, data });
+export const failedProbe = <T>(reason: string): Probe<T> => ({ ok: false, failure: { kind: "failed", reason } });
+export const unsupportedProbe = <T>(reason: string): Probe<T> => ({ ok: false, failure: { kind: "unsupported", reason } });
+
+/**
+ * What a thrown probe actually was.
+ *
+ * `ENOENT` means the tool this platform would be asked with is not there —
+ * there is nothing to retry. Anything else is the probe failing at its job, and
+ * the message is the only evidence of it that will ever exist, so it is carried
+ * rather than discarded.
+ */
+export function probeFailureFrom<T>(tool: string, what: string, e: unknown): Probe<T> {
+	const err = e as { code?: string; message?: string; stderr?: string | Buffer };
+	const firstLine = (text: string) => text.split(/[\r\n]/)[0]?.trim() ?? "";
+	const detail = [firstLine(String(err.message ?? e)), firstLine(String(err.stderr ?? ""))]
+		.filter((s) => s !== "")
+		.join(" — ")
+		.slice(0, 300);
+	if (err.code === "ENOENT") return unsupportedProbe(`no \`${tool}\` on this platform to read ${what} with`);
+	return failedProbe(`reading ${what} with \`${tool}\` failed: ${detail}`);
+}
+
+/**
  * EVERY live process, by PID — not just the node ones.
  *
  * The width matters for honesty, not for speed: if this only listed node
@@ -296,11 +362,10 @@ function parseEtime(etime: string): number | null {
  *
  * Windows reads `Win32_Process` (command line and creation time in one query);
  * a process whose command line we may not read comes back blank, which fails
- * the mock-identity factor and so is never killed. POSIX reads `ps`. A
- * platform that answers neither yields `null`, and every caller treats `null`
- * as "cannot verify" rather than "nothing there".
+ * the mock-identity factor and so is never killed. POSIX reads `ps`. Either
+ * way a probe that produces nothing says WHY, and no caller may kill on it.
  */
-export function probeProcesses(): Map<number, ProcInfo> | null {
+export function probeProcesses(): Probe<Map<number, ProcInfo>> {
 	try {
 		if (process.platform === "win32") {
 			const raw = powershell(
@@ -321,7 +386,7 @@ export function probeProcesses(): Map<number, ProcInfo> | null {
 					startedAtMs: Number.isFinite(startedAtMs) ? startedAtMs : 0,
 				});
 			}
-			return out;
+			return okProbe(out);
 		}
 		// `comm` is the real executable; `args` is what the process ADVERTISES,
 		// and --title rewrites it. Both are needed: one for identity, one for
@@ -345,19 +410,20 @@ export function probeProcesses(): Map<number, ProcInfo> | null {
 				startedAtMs: seconds === null ? 0 : now - seconds * 1000,
 			});
 		}
-		return out;
-	} catch {
-		return null;
+		return okProbe(out);
+	} catch (e) {
+		return probeFailureFrom(process.platform === "win32" ? "powershell.exe" : "ps", "processes", e);
 	}
 }
 
 /**
  * PIDs listening on each TCP port.
  *
- * `null` means the platform could not be asked — NOT that nothing is
- * listening. Every caller refuses to kill on `null` rather than guessing.
+ * A failure means the platform could not be asked — NOT that nothing is
+ * listening. Every caller refuses to kill on a failed probe rather than
+ * guessing, and the failure says which of the two it is.
  */
-export function probeListeners(): Map<number, number[]> | null {
+export function probeListeners(): Probe<Map<number, number[]>> {
 	try {
 		if (process.platform === "win32") {
 			const raw = powershell(
@@ -371,7 +437,7 @@ export function probeListeners(): Map<number, number[]> | null {
 				if (!list.includes(r.OwningProcess)) list.push(r.OwningProcess);
 				out.set(r.LocalPort, list);
 			}
-			return out;
+			return okProbe(out);
 		}
 		const raw = execFileSync("lsof", ["-nP", "-iTCP", "-sTCP:LISTEN", "-FpPn"], {
 			encoding: "utf8",
@@ -391,15 +457,34 @@ export function probeListeners(): Map<number, number[]> | null {
 				out.set(port, list);
 			}
 		}
-		return out;
-	} catch {
-		return null;
+		return okProbe(out);
+	} catch (e) {
+		return probeFailureFrom(process.platform === "win32" ? "powershell.exe" : "lsof", "listening sockets", e);
 	}
 }
 
 export interface Snapshot {
-	procs: Map<number, ProcInfo> | null;
-	listeners: Map<number, number[]> | null;
+	procs: Probe<Map<number, ProcInfo>>;
+	listeners: Probe<Map<number, number[]>>;
+}
+
+/**
+ * The first thing wrong with this reading, or `null` if both probes answered.
+ *
+ * A convenience for a caller that wants one yes-or-no about the whole reading —
+ * today that is the slow test, which refuses to assert anything about the kill
+ * guard over a machine it could not read. It is NOT a choke point and nothing
+ * routes through it: {@link identify} narrows each probe itself because it
+ * needs the data, and consults the listener probe only after factor (a) has
+ * passed, which is load-bearing (see its factor order). `mockctl status`
+ * likewise reports BOTH probes where this reports the first.
+ *
+ * Each failure already names what it was reading, so nothing is prefixed here.
+ */
+export function probeTrouble(snap: Snapshot): ProbeFailure | null {
+	if (!snap.procs.ok) return snap.procs.failure;
+	if (!snap.listeners.ok) return snap.listeners.failure;
+	return null;
 }
 
 /** One consistent read of the machine, shared by every entry in a command. */
@@ -425,8 +510,24 @@ export type Verdict =
 	| { kind: "gone"; reason: string }
 	/** A process holds that PID, and it is provably not our mock. */
 	| { kind: "reused"; proc: ProcInfo; reason: string }
-	/** A factor could not be evaluated. Never a licence to kill. */
-	| { kind: "unverifiable"; reason: string };
+	/**
+	 * A factor could not be evaluated. Never a licence to kill.
+	 *
+	 * `cause` is the part a caller can ACT on, and the three are genuinely
+	 * different situations: a pidfile nobody can parse, a platform that cannot
+	 * be asked, and a probe that fell over on a platform that normally answers.
+	 * Only the last one is worth trying again.
+	 */
+	| { kind: "unverifiable"; reason: string; cause: "malformed-pidfile" | "probe-unsupported" | "probe-failed" };
+
+/** The one translation from "the machine could not be read" into a verdict. */
+function unreadable(failure: ProbeFailure): Verdict {
+	return {
+		kind: "unverifiable",
+		reason: failure.reason,
+		cause: failure.kind === "unsupported" ? "probe-unsupported" : "probe-failed",
+	};
+}
 
 /**
  * Decide what a PID file refers to. This is the ONLY place a PID becomes
@@ -434,12 +535,10 @@ export type Verdict =
  */
 export function identify(entry: PidEntry, snap: Snapshot): Verdict {
 	if (entry.port === null) {
-		return { kind: "unverifiable", reason: "pidfile content is not a port number" };
+		return { kind: "unverifiable", reason: "pidfile content is not a port number", cause: "malformed-pidfile" };
 	}
-	if (snap.procs === null) {
-		return { kind: "unverifiable", reason: "cannot enumerate processes on this platform" };
-	}
-	const proc = snap.procs.get(entry.pid);
+	if (!snap.procs.ok) return unreadable(snap.procs.failure);
+	const proc = snap.procs.data.get(entry.pid);
 	if (proc === undefined) {
 		return { kind: "gone", reason: "no live process holds this PID" };
 	}
@@ -448,10 +547,8 @@ export function identify(entry: PidEntry, snap: Snapshot): Verdict {
 		return { kind: "reused", proc, reason: "PID belongs to a process that is not a mock-duet" };
 	}
 	// (b) listening on the recorded port
-	if (snap.listeners === null) {
-		return { kind: "unverifiable", reason: "cannot enumerate listening sockets on this platform" };
-	}
-	const owners = snap.listeners.get(entry.port) ?? [];
+	if (!snap.listeners.ok) return unreadable(snap.listeners.failure);
+	const owners = snap.listeners.data.get(entry.port) ?? [];
 	if (!owners.includes(entry.pid)) {
 		return {
 			kind: "reused",
@@ -510,14 +607,14 @@ function pidExists(pid: number): boolean {
  */
 function confirmedGone(pid: number, port: number | null): boolean {
 	const procs = probeProcesses();
-	if (procs === null) return false; // cannot tell -> never claim success
-	const proc = procs.get(pid);
+	if (!procs.ok) return false; // cannot tell -> never claim success
+	const proc = procs.data.get(pid);
 	const processGone = proc === undefined || !isMockProcess(proc);
 	if (!processGone) return false;
 	if (port === null) return true;
 	const listeners = probeListeners();
-	if (listeners === null) return false;
-	return !(listeners.get(port) ?? []).includes(pid);
+	if (!listeners.ok) return false;
+	return !(listeners.data.get(port) ?? []).includes(pid);
 }
 
 declare const vouched: unique symbol;
@@ -637,8 +734,8 @@ export function stopEntry(entry: PidEntry, snap: Snapshot): StopOutcome {
  */
 export function stopLiveMock(pid: number, port: number | null): { gone: boolean; killed: boolean; detail: string } {
 	const fresh = probeProcesses();
-	if (fresh === null) return { gone: false, killed: false, detail: "REFUSED: cannot enumerate processes" };
-	const proc = fresh.get(pid);
+	if (!fresh.ok) return { gone: false, killed: false, detail: `REFUSED: ${fresh.failure.reason}` };
+	const proc = fresh.data.get(pid);
 	if (proc === undefined) return { gone: true, killed: false, detail: "gone before we reached it — nothing killed" };
 	if (!isMockProcess(proc)) {
 		return { gone: true, killed: false, detail: "PID no longer belongs to a mock — nothing killed" };

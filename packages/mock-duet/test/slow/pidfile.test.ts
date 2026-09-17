@@ -31,9 +31,12 @@ import {
 	LINKED_PREFIX,
 	MAIN_SEGMENT,
 	probeMachine,
+	probeTrouble,
 	readEntries,
 	resolveRegistry,
+	type Snapshot,
 	stopEntry,
+	type Verdict,
 	toplevelForSegment,
 	type PidEntry,
 } from "../../src/pidfile.ts";
@@ -98,6 +101,37 @@ async function waitFor(predicate: () => boolean, ms = 20_000): Promise<boolean> 
 		await new Promise(r => setTimeout(r, 50));
 	}
 	return predicate();
+}
+
+
+/**
+ * A reading the machine actually produced — or a failure in the PROBE's words.
+ *
+ * `probeMachine()` shells out twice, and a probe that falls over returns a
+ * failure rather than data. Feeding that failure to `identify` yields
+ * `unverifiable`, which says nothing whatever about the kill guard these tests
+ * exist to check: on 2026-09-17 exactly that happened once (GIT_210) and three
+ * tests here read as a broken guard, with nothing in the output to say
+ * otherwise.
+ *
+ * It does NOT retry. Gabe, 2026-09-17, ruling on #210: fail, but say why. A
+ * retry would stop the run failing and would also stop anyone ever seeing the
+ * condition again — and this is the only place that condition becomes visible.
+ * So a reading that failed stops the test immediately, naming the probe and
+ * the error it hit, and the kill guard is never blamed for the environment.
+ */
+function machine(): Snapshot {
+	const snap = probeMachine();
+	const trouble = probeTrouble(snap);
+	if (trouble !== null) {
+		assert.fail(`the machine could not be read, so nothing here is a verdict about the kill guard — ${trouble.kind}: ${trouble.reason}`);
+	}
+	return snap;
+}
+
+/** An assertion message that carries the verdict's own reason for being what it is. */
+function said(verdict: Verdict): string {
+	return "kind" in verdict && "reason" in verdict ? `verdict said: ${verdict.reason}` : "verdict carried no reason";
 }
 
 after(() => {
@@ -346,8 +380,8 @@ ${err}`);
 		const reg = resolveRegistry(repo);
 		const entry = readEntries(reg).find(e => e.pid === child.pid);
 		assert.ok(entry !== undefined);
-		const verdict = identify(entry, probeMachine());
-		assert.notEqual(verdict.kind, "running");
+		const verdict = identify(entry, machine());
+		assert.notEqual(verdict.kind, "running", said(verdict));
 	});
 });
 
@@ -359,7 +393,11 @@ describe("Invariant B: the three-factor kill guard", () => {
 		const innocent = spawn(process.execPath, ["-e", "setTimeout(() => {}, 60000)"], { stdio: "ignore" });
 		spawned.push(innocent);
 		const pid = innocent.pid as number;
-		await waitFor(() => (probeMachine().procs?.has(pid) ?? false), 10_000);
+		await waitFor(() => {
+			// A failed probe here means "not yet", never "absent": keep waiting.
+			const procs = probeMachine().procs;
+			return procs.ok && procs.data.has(pid);
+		}, 10_000);
 
 		const file = join(registryDir(repo), String(pid));
 		writeFileSync(file, "8172\n");
@@ -367,16 +405,17 @@ describe("Invariant B: the three-factor kill guard", () => {
 		const entry = readEntries(reg).find(e => e.pid === pid) as PidEntry;
 		assert.ok(entry !== undefined);
 
-		const verdict = identify(entry, probeMachine());
-		assert.equal(verdict.kind, "reused", "a non-mock command line must fail factor (a)");
+		const verdict = identify(entry, machine());
+		assert.equal(verdict.kind, "reused", `a non-mock command line must fail factor (a) — ${said(verdict)}`);
 
-		const outcome = stopEntry(entry, probeMachine());
+		const outcome = stopEntry(entry, machine());
 		assert.equal(outcome.killed, false, "stop must kill NOTHING here");
 		assert.equal(outcome.forgotten, true, "the stale file is removed");
 		assert.equal(existsSync(file), false);
 		// Proof by effect, not by exit code: the bystander is still running.
 		assert.equal(innocent.exitCode, null);
-		assert.ok(probeMachine().procs?.has(pid), "the innocent process must survive");
+		const survivors = (machine()).procs;
+		assert.ok(survivors.ok && survivors.data.has(pid), "the innocent process must survive");
 		innocent.kill("SIGKILL");
 	});
 
@@ -390,11 +429,11 @@ describe("Invariant B: the three-factor kill guard", () => {
 		writeFileSync(realFile, "8173\n");
 		const reg = resolveRegistry(repo);
 		const entry = readEntries(reg).find(e => e.pid === child.pid) as PidEntry;
-		const verdict = identify(entry, probeMachine());
-		assert.equal(verdict.kind, "reused");
+		const verdict = identify(entry, machine());
+		assert.equal(verdict.kind, "reused", said(verdict));
 		assert.match(verdict.kind === "reused" ? verdict.reason : "", /not the process listening on port 8173/);
 
-		const outcome = stopEntry(entry, probeMachine());
+		const outcome = stopEntry(entry, machine());
 		assert.equal(outcome.killed, false);
 		assert.equal(child.exitCode, null, "the mock must still be running");
 
@@ -415,17 +454,18 @@ describe("Invariant B: the three-factor kill guard", () => {
 
 		const reg = resolveRegistry(repo);
 		const before = readEntries(reg).find(e => e.pid === child.pid) as PidEntry;
-		assert.equal(identify(before, probeMachine()).kind, "running", "(a) and (b) hold");
+		const before2 = identify(before, machine());
+		assert.equal(before2.kind, "running", `(a) and (b) hold — ${said(before2)}`);
 
 		const old = new Date(statSync(file).mtimeMs - 10 * 60 * 1000);
 		utimesSync(file, old, old);
 		const after2 = readEntries(reg).find(e => e.pid === child.pid) as PidEntry;
-		const verdict = identify(after2, probeMachine());
-		assert.equal(verdict.kind, "reused");
+		const verdict = identify(after2, machine());
+		assert.equal(verdict.kind, "reused", said(verdict));
 		assert.match(verdict.kind === "reused" ? verdict.reason : "", /started after this pidfile was written/);
 
-		const outcome = stopEntry(after2, probeMachine());
-		assert.equal(outcome.killed, false, "a start-time mismatch must kill nothing");
+		const outcome = stopEntry(after2, machine());
+		assert.equal(outcome.killed, false, `a start-time mismatch must kill nothing — ${outcome.detail}`);
 		assert.equal(child.exitCode, null);
 
 		child.kill("SIGKILL");
@@ -441,7 +481,7 @@ describe("Invariant B: the three-factor kill guard", () => {
 
 		const reg = resolveRegistry(repo);
 		const entry = readEntries(reg).find(e => e.pid === child.pid) as PidEntry;
-		const outcome = stopEntry(entry, probeMachine());
+		const outcome = stopEntry(entry, machine());
 
 		assert.equal(outcome.killed, true, outcome.detail);
 		assert.equal(outcome.forgotten, true);
@@ -462,10 +502,11 @@ describe("Invariant B: the three-factor kill guard", () => {
 		writeFileSync(file, "8172\n");
 		const reg = resolveRegistry(repo);
 		const entry = readEntries(reg)[0] as PidEntry;
-		assert.equal(identify(entry, probeMachine()).kind, "gone");
-		const outcome = stopEntry(entry, probeMachine());
-		assert.equal(outcome.killed, false);
-		assert.equal(outcome.forgotten, true);
+		const gone = identify(entry, machine());
+		assert.equal(gone.kind, "gone", said(gone));
+		const outcome = stopEntry(entry, machine());
+		assert.equal(outcome.killed, false, outcome.detail);
+		assert.equal(outcome.forgotten, true, outcome.detail);
 		assert.equal(existsSync(file), false);
 	});
 
@@ -477,9 +518,12 @@ describe("Invariant B: the three-factor kill guard", () => {
 		const reg = resolveRegistry(repo);
 		const entry = readEntries(reg)[0] as PidEntry;
 		assert.equal(entry.port, null);
-		assert.equal(identify(entry, probeMachine()).kind, "unverifiable");
-		const outcome = stopEntry(entry, probeMachine());
-		assert.equal(outcome.killed, false);
+		const refused = identify(entry, machine());
+		assert.equal(refused.kind, "unverifiable", said(refused));
+		// The pidfile is what cannot be read here — never the machine.
+		assert.equal(refused.kind === "unverifiable" ? refused.cause : null, "malformed-pidfile");
+		const outcome = stopEntry(entry, machine());
+		assert.equal(outcome.killed, false, outcome.detail);
 		assert.equal(outcome.forgotten, false, "an unverifiable entry is left exactly as found");
 		assert.ok(existsSync(file));
 	});
