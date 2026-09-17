@@ -42,3 +42,4 @@ packages/mock-duet/tsconfig.tsbuildinfo
 # worktree's mocks: target/run/mocks/<worktree>/<pid> (content: the port) and
 # target/run/logs/<worktree>/<pid>.log. See packages/mock-duet/src/pidfile.ts.
 target/
+.claude/machinery/observations.json

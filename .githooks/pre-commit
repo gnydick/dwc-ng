@@ -1,3 +1,3 @@
 #!/bin/sh
-# Installed by /machinery:install. Runs the machinery commit gate on every commit.
-exec node .githooks/machinery/gate.mjs
+# Installed by /machinery:install.
+node .githooks/machinery/gate.mjs && exec node .githooks/machinery/tiers.mjs fast

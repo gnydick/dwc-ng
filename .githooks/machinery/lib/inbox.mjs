@@ -2,7 +2,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-const HEAD = /^## (PENDING|FILED|DISMISSED) (\S+) (PRULE|URULE) (\S+)\s*$/;
+// SPEC joined the marks in #81 (owner ruling, 2026-09-07: "make spec: work just like rules"). One
+// entry shape, one parser, one disposition contract — a spec entry is a rule entry in every respect
+// but which inbox it lands in and which gate leg reads it.
+const HEAD = /^## (PENDING|FILED|DISMISSED) (\S+) (PRULE|URULE|SPEC) (\S+)\s*$/;
 const DISP = /^disposition: (.*)$/;
 
 export function parseInbox(text) {
@@ -24,11 +27,14 @@ export function parseInbox(text) {
   return entries;
 }
 
-export function appendEntry(file, { marker, text, session }) {
-  const stamp = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
+// The entry shape, spelled once: appendEntry writes it, and a caller that must know before writing
+// whether an entry will read back (scripts/issue-tracking.mjs record-project) formats it the same way.
+export const newStamp = (date = new Date()) => date.toISOString().replace(/\.\d{3}Z$/, 'Z');
+export const formatEntry = ({ stamp, marker, text, session }) => `\n## PENDING ${stamp} ${marker} ${session}\n\n${text.trim()}\n\ndisposition: PENDING\n`;
+
+export function appendEntry(file, { marker, text, session, stamp = newStamp() }) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  const block = `\n## PENDING ${stamp} ${marker} ${session}\n\n${text.trim()}\n\ndisposition: PENDING\n`;
-  fs.appendFileSync(file, block, 'utf8');
+  fs.appendFileSync(file, formatEntry({ stamp, marker, text, session }), 'utf8');
   return { state: 'PENDING', stamp, marker, session, text: text.trim(), disposition: 'PENDING' };
 }
 

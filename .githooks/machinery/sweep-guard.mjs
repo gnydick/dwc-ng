@@ -1,5 +1,17 @@
 import { git } from './lib/git.mjs';
 // Ported from sweep_guard.sh. ADVISORY: never affects the outcome; silent when nothing to say.
+
+// Declared like every other check (#73, I43) rather than called beside the array. Before this the
+// gate had two execution paths and the closed array described only one of them — the exact rot the
+// ticket exists to remove. `blocking: false` is what keeps it out of the exit code; the gate's loop
+// is the one place that reads it, so an advisory can no longer fail a commit even by throwing.
+export const declaration = Object.freeze({
+  id: 'sweep_guard',
+  run: 'sweepGuard',
+  blocking: false,
+  wired: true,
+});
+
 const DOCS = /^(CLAUDE\.md$|docs\/|\.claude\/rules\/|\.claude\/machinery\/)/;
 const TOOLING = /^(scripts\/|\.githooks\/)/;
 export function sweepGuard({ root }) {
