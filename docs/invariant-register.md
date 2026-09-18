@@ -21,7 +21,7 @@ and invariant claim mentions 13 -> 23, so no mechanism was deleted and no
 claim was lost in the gap. From here the ratchets make a dropped rung visible
 in the diff that drops it.
 
-**Totals:** 179 invariants · 152 at rung 6 or above · 27 below rung 6 (ceiling 27).
+**Totals:** 180 invariants · 153 at rung 6 or above · 27 below rung 6 (ceiling 27).
 
 ## bed
 
@@ -939,11 +939,11 @@ in the diff that drops it.
 
 ### `mock-duet/a-port-is-owned-by-its-listener-not-by-a-filename` — rung 6
 
-**Mechanism.** choke point — this is the only place that decides which registry entry owns a port, and it cannot reach an entry except through the listener set: the `listening` arm is constructed solely from `claimants.find(e => holders.includes(e.pid))`, so an entry that is not on the socket has no route into it. A caller can still ignore the answer and read `entries` itself, which is what keeps this at 6 rather than 7; promoting it means the status renderer taking a PortSlot rather than the raw entries
+**Mechanism.** choke point — this is the only place that decides which registry entry owns a port, and it cannot reach an entry except through the listener set: the `listening` arm is constructed solely from `claimants.find(e => holders.includes(e.pid))`, so an entry that is not on the socket has no route into it. The step this row used to call its promotion — the status renderer taking a PortSlot rather than the raw entries — landed in GIT_218 and is declared on {@link slotLines}, but it did NOT promote either row: the renderer not taking entries says nothing about what `cmdStatus` can print beside it. Both stay at 6 for the same reason — `cmdStatus` holds `entries`, `snap` and `console.log` in scope — and both reach 7 only when nothing in that function can name an entry except through a slot
 
 **Why.** one process holds a listening socket, but any number of pidfiles may name that port — a hard kill leaves its file behind by design, and the registry is shared across worktrees. Selecting by registry order names whichever worktree sorts first: on 2026-09-17 `status` called a running UAT stack "process gone" and attributed it to a worktree that had not run in weeks. The reverse costs more than a wrong label — a live process named in the wrong worktree invites tearing down someone else's stack
 
-`packages/mock-duet/src/portSlot.ts:32`
+`packages/mock-duet/src/portSlot.ts:52`
 
 ### `mock-duet/a-reading-that-failed-is-never-used-as-a-reading` — rung 7
 
@@ -1062,6 +1062,14 @@ in the diff that drops it.
 **Why.** a second hand-rolled framer is how a mock stops being a faithful stand-in for the board: the connector under test would be exercised against two slightly different dialects and pass both. Strict on purpose — fragmentation, RSV bits, unmasked client frames, binary and oversized frames each die with a NAMED close code, so a connector bug surfaces as a diagnosis rather than a hang
 
 `packages/mock-duet/src/ws.ts:4`
+
+### `mock-duet/the-uat-line-is-rendered-from-a-slot-never-from-the-entries` — rung 6
+
+**Mechanism.** choke point — the only function that turns a slot into lines, and it does not take `PidEntry[]` at all, so it cannot reach the registry even by accident. NOT rung 7, and the first draft of this row said 7 wrongly: `cmdStatus` still holds `entries`, `snap` and `console.log` in scope, so a second line printed beside this call compiles and ships. That is the same residual bypass that caps `slotFor`, and both rows reach 7 only when nothing in `cmdStatus` can name an entry except through a slot. What the compiler DOES enforce unaided is narrower: a new `PortSlot` arm fails to compile here — measured 2026-09-17, TS2366 under TypeScript strict mode — but that rests on the declared return type rather than an explicit never arm, so inferring the return type or adding a default arm would remove it silently
+
+**Why.** the line answers "is the UAT stack up?", and both of its failure modes cost real work: naming a dead worktree sends someone to restart a stack that is already serving, and naming a live process in the WRONG worktree invites tearing down someone else's. Rendering from the raw entries is how the first one happened (GIT_216); an arm with nowhere to put its claimants is how the second stayed invisible (GIT_218). Neither is prevented by construction — what this buys is one place to look
+
+`packages/mock-duet/src/portSlot.ts:102`
 
 ## om
 
