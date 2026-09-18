@@ -173,10 +173,10 @@ function cmdStatus(reg: Registry): void {
 	// The lines come from the slot, never from `entries` directly: see the
 	// invariant on slotLines. This supplies only the two lookups that need a
 	// machine reading and a resolved registry.
-	for (const line of slotLines(UAT_MOCK_PORT, slotFor(entries, snap, UAT_MOCK_PORT), e => ({
-		status: classify(e, snap),
-		worktree: describeSegment(reg, e.segment),
-	}))) {
+	for (const line of slotLines(UAT_MOCK_PORT, slotFor(entries, snap, UAT_MOCK_PORT), {
+		status: e => classify(e, snap),
+		where: e => describeSegment(reg, e.segment),
+	})) {
 		console.log(line);
 	}
 	const vite = pidsOn(snap, UAT_VITE_PORT);
