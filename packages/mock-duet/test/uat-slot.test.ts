@@ -137,6 +137,7 @@ describe("the UAT slot names the process that holds the port", () => {
 const shown = {
 	status: (e: PidEntry) => `status(${e.pid})`,
 	where: (e: PidEntry) => `/path/${e.segment}`,
+	named: (pid: number) => `cmdline(${pid})`,
 };
 
 describe("the rendered lines name every entry, and label each one truthfully", () => {
@@ -289,11 +290,66 @@ describe("every process holding the port is reported, registered or not", () => 
 		// machine meant four reads per `status`, every one discarded.
 		let wheres = 0;
 		const counted = {
-			status: (e: PidEntry) => `status(${e.pid})`,
+			...shown,
 			where: (e: PidEntry) => { wheres += 1; return `/path/${e.segment}`; },
 		};
 		const slot = slotFor([claim("wt-a", 77), claim("wt-b", 30092), claim("wt-c", 30093)], twoHolders([77]), PORT);
 		slotLines(PORT, slot, counted);
 		assert.equal(wheres, 1, "only the head entry has a worktree shown");
+	});
+});
+
+
+// ---------------------------------------------------------------------------
+// GIT_222: the stranger is named, from the reading already taken
+// ---------------------------------------------------------------------------
+
+describe("a holder with no pidfile is named, not just numbered", () => {
+	const twoHolders = (pids: number[]): Snapshot => ({
+		procs: okProbe(new Map(pids.map(pid => [pid, {
+			pid,
+			executable: "node.exe",
+			commandLine: `node holder-${pid}`,
+			startedAtMs: Date.now() - 1000,
+		}]))),
+		listeners: okProbe(new Map([[PORT, pids]])),
+	});
+
+	test("the line says WHAT is on the reserved port, not only that something is", () => {
+		const slot = slotFor([claim("wt-a", 77)], twoHolders([77, 999]), PORT);
+		const lines = slotLines(PORT, slot, shown).join("\n");
+		assert.match(lines, /pid 999: cmdline\(999\)/);
+	});
+
+	test("a name the caller cannot supply is absent, never invented", () => {
+		// The process probe can fail while the listener probe succeeds: the PID
+		// is known and the name is not. portSlot must not fill that in with
+		// "unknown" — it would be this module asserting something it never read.
+		const nameless = { ...shown, named: () => null };
+		const slot = slotFor([claim("wt-a", 77)], twoHolders([77, 999]), PORT);
+		const lines = slotLines(PORT, slot, nameless).join("\n");
+
+		assert.match(lines, /no pidfile claims it — pid 999$/m, "the pid still gets its line");
+		assert.doesNotMatch(lines, /unknown/i);
+		assert.doesNotMatch(lines, /pid 999:/, "no empty colon where a name would go");
+	});
+
+	test("control: a CLAIMED holder's line is unchanged — it reads from its entry", () => {
+		// Without this, naming every line would satisfy the first test for the
+		// wrong reason. A claimed holder has an entry, so it keeps status and
+		// worktree and never gets a by-pid name.
+		const slot = slotFor([claim("wt-a", 77), claim("wt-b", 999)], twoHolders([77, 999]), PORT);
+		const lines = slotLines(PORT, slot, shown).join("\n");
+
+		assert.match(lines, /also holding this port — pid 999, worktree wt-b: status\(999\)/);
+		assert.doesNotMatch(lines, /cmdline\(999\)/, "a claimed holder is described by its entry");
+	});
+
+	test("the name is asked for ONCE per unnamed holder, and never for a claimed one", () => {
+		let asked: number[] = [];
+		const counted = { ...shown, named: (pid: number) => { asked.push(pid); return `cmdline(${pid})`; } };
+		const slot = slotFor([claim("wt-a", 77)], twoHolders([77, 999, 1000]), PORT);
+		slotLines(PORT, slot, counted);
+		assert.deepEqual(asked, [999, 1000]);
 	});
 });

@@ -64,6 +64,15 @@ export interface EntryLookup {
 	status: (entry: PidEntry) => string;
 	/** Where its worktree is, or whatever the caller wants shown in its place. */
 	where: (entry: PidEntry) => string;
+	/**
+	 * What the process holding this PID is, for a holder with no entry to read
+	 * from — or `null` when the caller cannot say.
+	 *
+	 * `null` is a real answer, not a missing one: the process probe can fail
+	 * while the listener probe succeeds, leaving the PID known and the name
+	 * unknown. This module prints what it is given and never fills that in.
+	 */
+	named: (pid: number) => string | null;
 }
 
 /**
@@ -156,7 +165,10 @@ export function slotLines(port: number, slot: PortSlot, shown: EntryLookup): str
 				// one whose body is unparseable — so the line says what is known
 				// rather than "no pidfile exists". There is no entry here either
 				// way, so no status or worktree to show.
-				...slot.unclaimedHolders.map(pid => `${INDENT}also holding this port, no pidfile claims it — pid ${pid}`),
+				...slot.unclaimedHolders.map(pid => {
+					const name = shown.named(pid);
+					return `${INDENT}also holding this port, no pidfile claims it — pid ${pid}` + (name === null ? "" : `: ${name}`);
+				}),
 				...slot.alsoClaimed.map(e => under("also claimed, not holding it", e, shown.status(e))),
 			];
 		case "untracked":
