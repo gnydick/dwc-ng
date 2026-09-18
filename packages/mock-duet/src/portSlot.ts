@@ -151,9 +151,12 @@ export function slotLines(port: number, slot: PortSlot, shown: EntryLookup): str
 				`  mock ${port} : ${shown.status(slot.entry)} — pid ${slot.entry.pid}, ` +
 					`worktree ${slot.entry.segment} (${shown.where(slot.entry)})`,
 				...slot.alsoHolding.map(e => under("also holding this port", e, shown.status(e))),
-				// A live process on the reserved port that no pidfile names. It has
-				// no entry, so there is no status or worktree to show for it.
-				...slot.unclaimedHolders.map(pid => `${INDENT}also holding this port, with NO pidfile — pid ${pid}`),
+				// A live process on the reserved port that no pidfile claims FOR THIS
+				// PORT. It may still have a pidfile — one naming another port, or
+				// one whose body is unparseable — so the line says what is known
+				// rather than "no pidfile exists". There is no entry here either
+				// way, so no status or worktree to show.
+				...slot.unclaimedHolders.map(pid => `${INDENT}also holding this port, no pidfile claims it — pid ${pid}`),
 				...slot.alsoClaimed.map(e => under("also claimed, not holding it", e, shown.status(e))),
 			];
 		case "untracked":

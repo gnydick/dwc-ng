@@ -261,6 +261,21 @@ describe("every process holding the port is reported, registered or not", () => 
 		assert.match(lines[0] ?? "", /pid 77, worktree wt-a/);
 	});
 
+	test("a holder whose pidfile names ANOTHER port is not said to have none", () => {
+		// `claimants` filters on `e.port === port`, so a pidfile for 8971, or one
+		// whose body will not parse, leaves its PID outside the claimed set. The
+		// PID is still an unclaimed holder of THIS port — but saying "no pidfile"
+		// about it would be false, and the operator would go looking for a file
+		// that is sitting right there.
+		const elsewhere: PidEntry = { segment: "wt-b", pid: 999, port: 8971, file: "/registry/wt-b/999", mtimeMs: Date.now() };
+		const slot = slotFor([claim("wt-a", 77), elsewhere], twoHolders([77, 999]), PORT);
+		const lines = slotLines(PORT, slot, shown).join("\n");
+
+		assert.deepEqual(slot.kind === "listening" ? slot.unclaimedHolders : null, [999]);
+		assert.match(lines, /no pidfile claims it — pid 999/);
+		assert.doesNotMatch(lines, /with NO pidfile/, "the old wording asserted a file does not exist");
+	});
+
 	test("one holder, one pidfile: nothing extra is invented", () => {
 		// The positive control. Without it, listing a phantom holder in the
 		// ordinary case would satisfy the assertions above.
