@@ -34,18 +34,36 @@ export type PortSlot =
 	 * the holder set, so with two holders it is a different PID — which is why
 	 * the line says "also holding this port" and not "the same pid".
 	 */
-	| { kind: "listening"; entry: PidEntry; alsoHolding: PidEntry[]; alsoClaimed: PidEntry[] }
+	| {
+			kind: "listening";
+			entry: PidEntry;
+			alsoHolding: PidEntry[];
+			alsoClaimed: PidEntry[];
+			/**
+			 * PIDs on the socket that NO pidfile names. Measured 2026-09-17 on
+			 * Windows 11: two processes do hold one port (one bound 0.0.0.0, one
+			 * 127.0.0.1, distinct owners, both reported). Before GIT_220 such a
+			 * process was named in the `untracked` arm and silently dropped here.
+			 */
+			unclaimedHolders: number[];
+	  }
 	/** Something holds the socket; `claimed` are pidfiles naming the port that do not. */
 	| { kind: "untracked"; pids: number[]; claimed: PidEntry[] }
 	/** Nothing holds the socket. `claimed` are the pidfiles left behind. */
 	| { kind: "idle"; claimed: PidEntry[] };
 
-/** What the caller knows about an entry that this module cannot work out. */
-export interface EntryShown {
+/**
+ * What the caller knows about an entry that this module cannot work out.
+ *
+ * Two lookups rather than one record, because they do not cost the same: the
+ * real `where` reads a file off disk per entry, and only the head line shows
+ * it. Asking for both together meant a read per claimant, discarded (GIT_220).
+ */
+export interface EntryLookup {
 	/** The entry's classification, e.g. "running" or "stale pidfile (process gone)". */
-	status: string;
+	status: (entry: PidEntry) => string;
 	/** Where its worktree is, or whatever the caller wants shown in its place. */
-	worktree: string;
+	where: (entry: PidEntry) => string;
 }
 
 /**
@@ -85,18 +103,20 @@ export function slotFor(entries: readonly PidEntry[], snap: Snapshot, port: numb
 	if (entry === undefined) return { kind: "untracked", pids: holders, claimed: claimants };
 
 	const others = claimants.filter(e => e !== entry);
+	const claimed = new Set(claimants.map(e => e.pid));
 	return {
 		kind: "listening",
 		entry,
 		alsoHolding: others.filter(e => holders.includes(e.pid)),
 		alsoClaimed: others.filter(e => !holders.includes(e.pid)),
+		unclaimedHolders: holders.filter(pid => !claimed.has(pid)),
 	};
 }
 
 /** Continuation lines sit under the head line, not beside it. */
 const INDENT = " ".repeat(13);
-const under = (label: string, entry: PidEntry, shown: EntryShown): string =>
-	`${INDENT}${label} — pid ${entry.pid}, worktree ${entry.segment}: ${shown.status}`;
+const under = (label: string, entry: PidEntry, status: string): string =>
+	`${INDENT}${label} — pid ${entry.pid}, worktree ${entry.segment}: ${status}`;
 
 /**
  * @invariant the-uat-line-is-rendered-from-a-slot-never-from-the-entries
@@ -121,28 +141,33 @@ const under = (label: string, entry: PidEntry, shown: EntryShown): string =>
  *      claimants is how the second stayed invisible (GIT_218). Neither is
  *      prevented by construction — what this buys is one place to look
  */
-export function slotLines(port: number, slot: PortSlot, shown: (entry: PidEntry) => EntryShown): string[] {
+export function slotLines(port: number, slot: PortSlot, shown: EntryLookup): string[] {
 	switch (slot.kind) {
 		case "unverifiable":
 			// Naming a claimant here would be a guess wearing a reading's clothes.
 			return [`  mock ${port} : unknown — ${slot.reason}`];
-		case "listening": {
-			const head = shown(slot.entry);
+		case "listening":
 			return [
-				`  mock ${port} : ${head.status} — pid ${slot.entry.pid}, worktree ${slot.entry.segment} (${head.worktree})`,
-				...slot.alsoHolding.map(e => under("also holding this port", e, shown(e))),
-				...slot.alsoClaimed.map(e => under("also claimed, not holding it", e, shown(e))),
+				`  mock ${port} : ${shown.status(slot.entry)} — pid ${slot.entry.pid}, ` +
+					`worktree ${slot.entry.segment} (${shown.where(slot.entry)})`,
+				...slot.alsoHolding.map(e => under("also holding this port", e, shown.status(e))),
+				// A live process on the reserved port that no pidfile claims FOR THIS
+				// PORT. It may still have a pidfile — one naming another port, or
+				// one whose body is unparseable — so the line says what is known
+				// rather than "no pidfile exists". There is no entry here either
+				// way, so no status or worktree to show.
+				...slot.unclaimedHolders.map(pid => `${INDENT}also holding this port, no pidfile claims it — pid ${pid}`),
+				...slot.alsoClaimed.map(e => under("also claimed, not holding it", e, shown.status(e))),
 			];
-		}
 		case "untracked":
 			return [
 				`  mock ${port} : LISTENING but untracked — pid ${slot.pids.join(", ")}`,
-				...slot.claimed.map(e => under("claimed by a pidfile that does not hold it", e, shown(e))),
+				...slot.claimed.map(e => under("claimed by a pidfile that does not hold it", e, shown.status(e))),
 			];
 		case "idle":
 			return [
 				`  mock ${port} : not running`,
-				...slot.claimed.map(e => under("claimed by a pidfile", e, shown(e))),
+				...slot.claimed.map(e => under("claimed by a pidfile", e, shown.status(e))),
 			];
 	}
 }

@@ -134,7 +134,10 @@ describe("the UAT slot names the process that holds the port", () => {
  * registry; neither is what these check. What IS checked is which entries reach
  * the output and how each is labelled — the part that was wrong.
  */
-const shown = (e: PidEntry) => ({ status: `status(${e.pid})`, worktree: `/path/${e.segment}` });
+const shown = {
+	status: (e: PidEntry) => `status(${e.pid})`,
+	where: (e: PidEntry) => `/path/${e.segment}`,
+};
 
 describe("the rendered lines name every entry, and label each one truthfully", () => {
 	test("untracked: the pidfiles claiming the port are NOT dropped", () => {
@@ -216,5 +219,81 @@ describe("the rendered lines name every entry, and label each one truthfully", (
 		const lines = slotLines(PORT, slot, shown).join("\n");
 		assert.match(lines, /status\(4242\)/);
 		assert.match(lines, /\/path\/wt-only/);
+	});
+});
+
+
+// ---------------------------------------------------------------------------
+// GIT_220: a holder nobody registered
+// ---------------------------------------------------------------------------
+
+describe("every process holding the port is reported, registered or not", () => {
+	// Measured 2026-09-17 on Windows 11: two separate processes DO hold one
+	// port — one bound 0.0.0.0, one bound 127.0.0.1, both reported by
+	// Get-NetTCPConnection with distinct owning pids. So this is a state the
+	// machine reaches, not a hypothetical.
+	const twoHolders = (pids: number[]): Snapshot => ({
+		procs: okProbe(new Map(pids.map(pid => [pid, {
+			pid,
+			executable: "node.exe",
+			commandLine: `node holder-${pid}`,
+			startedAtMs: Date.now() - 1000,
+		}]))),
+		listeners: okProbe(new Map([[PORT, pids]])),
+	});
+
+	test("a holder with no pidfile is carried on the listening slot", () => {
+		const mine = claim("wt-a", 77);
+		const slot = slotFor([mine], twoHolders([77, 999]), PORT);
+		assert.equal(slot.kind, "listening");
+		assert.deepEqual(slot.kind === "listening" ? slot.unclaimedHolders : null, [999]);
+	});
+
+	test("and it reaches the lines — this is the one that was silent", () => {
+		const slot = slotFor([claim("wt-a", 77)], twoHolders([77, 999]), PORT);
+		const lines = slotLines(PORT, slot, shown).join("\n");
+		assert.match(lines, /pid 999/, "a live process on the reserved port must be named");
+	});
+
+	test("the registered holder is still the head line, not demoted", () => {
+		const slot = slotFor([claim("wt-a", 77)], twoHolders([77, 999]), PORT);
+		const lines = slotLines(PORT, slot, shown);
+		assert.match(lines[0] ?? "", /pid 77, worktree wt-a/);
+	});
+
+	test("a holder whose pidfile names ANOTHER port is not said to have none", () => {
+		// `claimants` filters on `e.port === port`, so a pidfile for 8971, or one
+		// whose body will not parse, leaves its PID outside the claimed set. The
+		// PID is still an unclaimed holder of THIS port — but saying "no pidfile"
+		// about it would be false, and the operator would go looking for a file
+		// that is sitting right there.
+		const elsewhere: PidEntry = { segment: "wt-b", pid: 999, port: 8971, file: "/registry/wt-b/999", mtimeMs: Date.now() };
+		const slot = slotFor([claim("wt-a", 77), elsewhere], twoHolders([77, 999]), PORT);
+		const lines = slotLines(PORT, slot, shown).join("\n");
+
+		assert.deepEqual(slot.kind === "listening" ? slot.unclaimedHolders : null, [999]);
+		assert.match(lines, /no pidfile claims it — pid 999/);
+		assert.doesNotMatch(lines, /with NO pidfile/, "the old wording asserted a file does not exist");
+	});
+
+	test("one holder, one pidfile: nothing extra is invented", () => {
+		// The positive control. Without it, listing a phantom holder in the
+		// ordinary case would satisfy the assertions above.
+		const slot = slotFor([claim("wt-a", 77)], twoHolders([77]), PORT);
+		assert.deepEqual(slot.kind === "listening" ? slot.unclaimedHolders : null, []);
+		assert.equal(slotLines(PORT, slot, shown).length, 1, "head line only");
+	});
+
+	test("a continuation line never costs a worktree lookup", () => {
+		// `where` runs readFileSync in the real caller. Four stale claims on this
+		// machine meant four reads per `status`, every one discarded.
+		let wheres = 0;
+		const counted = {
+			status: (e: PidEntry) => `status(${e.pid})`,
+			where: (e: PidEntry) => { wheres += 1; return `/path/${e.segment}`; },
+		};
+		const slot = slotFor([claim("wt-a", 77), claim("wt-b", 30092), claim("wt-c", 30093)], twoHolders([77]), PORT);
+		slotLines(PORT, slot, counted);
+		assert.equal(wheres, 1, "only the head entry has a worktree shown");
 	});
 });
