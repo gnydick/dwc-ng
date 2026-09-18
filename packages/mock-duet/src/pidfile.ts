@@ -530,6 +530,29 @@ export interface Snapshot {
 }
 
 /**
+ * What the process holding a PID is, as far as this reading can say.
+ *
+ * `null` is a real answer with three causes, and they are deliberately not
+ * distinguished, because the caller has the same thing to print in all three:
+ * the process probe failed; the PID is absent from a listing that worked,
+ * because it exited between the two probes of one reading; or the process is
+ * there and says nothing about itself. Each leaves a PID and no name.
+ *
+ * Never `""`. An empty string renders as a label with nothing after it, and a
+ * caller checking for `null` would not catch it.
+ *
+ * Lives here because it reads a {@link Snapshot} and a {@link ProcInfo} and
+ * nothing else — the same reason those types live here, rather than in the
+ * command that happens to print the result.
+ */
+export function processName(snap: Snapshot, pid: number): string | null {
+	if (!snap.procs.ok) return null;
+	const proc = snap.procs.data.get(pid);
+	if (proc === undefined) return null;
+	return proc.commandLine.trim() || proc.executable.trim() || null;
+}
+
+/**
  * The first thing wrong with this reading, or `null` if both probes answered.
  *
  * A convenience for a caller that wants one yes-or-no about the whole reading —

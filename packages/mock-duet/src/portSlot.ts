@@ -128,6 +128,16 @@ const under = (label: string, entry: PidEntry, status: string): string =>
 	`${INDENT}${label} — pid ${entry.pid}, worktree ${entry.segment}: ${status}`;
 
 /**
+ * A holder with no entry to read from: a PID, and its name when the caller has
+ * one. One form for both arms that print such a holder, so a stranger reads
+ * the same whether or not a mock happens to be running beside it.
+ */
+function holder(label: string, pid: number, shown: EntryLookup): string {
+	const name = shown.named(pid);
+	return `${label} — pid ${pid}` + (name === null ? "" : `: ${name}`);
+}
+
+/**
  * @invariant the-uat-line-is-rendered-from-a-slot-never-from-the-entries
  * @rung 6  choke point — the only function that turns a slot into lines, and it
  *          does not take `PidEntry[]` at all, so it cannot reach the registry
@@ -165,15 +175,18 @@ export function slotLines(port: number, slot: PortSlot, shown: EntryLookup): str
 				// one whose body is unparseable — so the line says what is known
 				// rather than "no pidfile exists". There is no entry here either
 				// way, so no status or worktree to show.
-				...slot.unclaimedHolders.map(pid => {
-					const name = shown.named(pid);
-					return `${INDENT}also holding this port, no pidfile claims it — pid ${pid}` + (name === null ? "" : `: ${name}`);
-				}),
+				...slot.unclaimedHolders.map(pid => `${INDENT}${holder("also holding this port, no pidfile claims it", pid, shown)}`),
 				...slot.alsoClaimed.map(e => under("also claimed, not holding it", e, shown.status(e))),
 			];
 		case "untracked":
+			// Every holder here is unclaimed by construction, so each is named the
+			// same way the listening arm names its strangers. Before GIT_222's
+			// follow-up this arm printed the PIDs joined on the head line and
+			// nothing else — the commoner case of the two, since it is what a
+			// squatter alone on the port produces.
 			return [
-				`  mock ${port} : LISTENING but untracked — pid ${slot.pids.join(", ")}`,
+				`  mock ${port} : LISTENING but untracked`,
+				...slot.pids.map(pid => `${INDENT}${holder("holding this port", pid, shown)}`),
 				...slot.claimed.map(e => under("claimed by a pidfile that does not hold it", e, shown.status(e))),
 			];
 		case "idle":

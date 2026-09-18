@@ -36,6 +36,7 @@ import {
 	stopLiveMock,
 	openStartLog,
 	probeMachine,
+	processName,
 	readEntries,
 	resolveRegistry,
 	stopEntry,
@@ -149,23 +150,6 @@ function liveMocks(snap: Snapshot): { proc: ProcInfo; ports: number[] }[] {
 		out.push({ proc, ports: (portsByPid.get(proc.pid) ?? []).sort((a, b) => a - b) });
 	}
 	return out.sort((a, b) => a.proc.pid - b.proc.pid);
-}
-
-/**
- * What the process holding a PID is, as far as this reading can say.
- *
- * `null` when the process probe failed, or when it succeeded and this PID is
- * not in it — a process that went away between the two probes. Either way the
- * caller prints the PID alone rather than inventing a name for it.
- *
- * The command line is preferred because that is what the orphans table shows,
- * so one process reads the same in both places.
- */
-function processName(snap: Snapshot, pid: number): string | null {
-	if (!snap.procs.ok) return null;
-	const proc = snap.procs.data.get(pid);
-	if (proc === undefined) return null;
-	return proc.commandLine.trim() || proc.executable.trim() || null;
 }
 
 function pidsOn(snap: Snapshot, port: number): number[] | null {

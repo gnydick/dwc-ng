@@ -147,7 +147,11 @@ describe("the rendered lines name every entry, and label each one truthfully", (
 		const slot = slotFor([claim("wt-a", 5), claim("wt-b", 7)], machineWith(6, [5, 6, 7]), PORT);
 		const lines = slotLines(PORT, slot, shown).join("\n");
 
-		assert.match(lines, /LISTENING but untracked — pid 6/);
+		assert.match(lines, /LISTENING but untracked/);
+		// The holder moved off the head line onto its own named line in GIT_222's
+		// follow-up, so that a stranger reads the same in both arms. It is still
+		// reported, which is what this test is for.
+		assert.match(lines, /holding this port — pid 6/);
 		assert.match(lines, /pid 5/, "the pidfile claiming the port must still be named");
 		assert.match(lines, /pid 7/, "and so must the second one");
 	});
@@ -313,6 +317,23 @@ describe("a holder with no pidfile is named, not just numbered", () => {
 			startedAtMs: Date.now() - 1000,
 		}]))),
 		listeners: okProbe(new Map([[PORT, pids]])),
+	});
+
+	test("a stranger ALONE on the port is named too — the untracked arm", () => {
+		// Reached whenever holders exist and no pidfile claims this port: a
+		// squatter with no mock running, which is at least as common as the
+		// two-holder case. Before GIT_222 this arm printed a bare PID.
+		const slot = slotFor([], twoHolders([999]), PORT);
+		assert.equal(slot.kind, "untracked");
+		const lines = slotLines(PORT, slot, shown).join("\n");
+		assert.match(lines, /cmdline\(999\)/);
+	});
+
+	test("an untracked holder the caller cannot name keeps its pid and gains no colon", () => {
+		const nameless = { ...shown, named: () => null };
+		const lines = slotLines(PORT, slotFor([], twoHolders([999]), PORT), nameless).join("\n");
+		assert.match(lines, /pid 999/);
+		assert.doesNotMatch(lines, /pid 999:/);
 	});
 
 	test("the line says WHAT is on the reserved port, not only that something is", () => {
