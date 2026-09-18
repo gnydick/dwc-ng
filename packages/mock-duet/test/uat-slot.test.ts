@@ -33,6 +33,18 @@ function proc(pid: number): ProcInfo {
 	};
 }
 
+/**
+ * A machine where every one of `pids` holds {@link PORT}.
+ *
+ * The command line is deliberately NOT a mock's: these fixtures are about
+ * holders the registry does not know, and a stranger that claims to be
+ * mock-duet would read as the thing it is standing in for.
+ */
+const twoHolders = (pids: number[]): Snapshot => ({
+	procs: okProbe(new Map(pids.map(pid => [pid, { ...proc(pid), commandLine: `node holder-${pid}` }]))),
+	listeners: okProbe(new Map([[PORT, pids]])),
+});
+
 /** A machine where exactly `listeningPid` holds {@link PORT}. */
 function machineWith(listeningPid: number | null, pids: number[]): Snapshot {
 	return {
@@ -173,11 +185,7 @@ describe("the rendered lines name every entry, and label each one truthfully", (
 	test("listening: a second holder with a DIFFERENT pid is not called the same pid", () => {
 		const mine = claim("wt-a", 77);
 		const other = claim("wt-b", 999);
-		const twoHolders: Snapshot = {
-			procs: okProbe(new Map([[77, proc(77)], [999, proc(999)]])),
-			listeners: okProbe(new Map([[PORT, [77, 999]]])),
-		};
-		const lines = slotLines(PORT, slotFor([mine, other], twoHolders, PORT), shown).join("\n");
+		const lines = slotLines(PORT, slotFor([mine, other], twoHolders([77, 999]), PORT), shown).join("\n");
 
 		assert.match(lines, /also holding this port — pid 999/);
 		assert.doesNotMatch(lines, /same live pid/, "the old label said this, and 999 is not 77");
@@ -237,16 +245,6 @@ describe("every process holding the port is reported, registered or not", () => 
 	// port — one bound 0.0.0.0, one bound 127.0.0.1, both reported by
 	// Get-NetTCPConnection with distinct owning pids. So this is a state the
 	// machine reaches, not a hypothetical.
-	const twoHolders = (pids: number[]): Snapshot => ({
-		procs: okProbe(new Map(pids.map(pid => [pid, {
-			pid,
-			executable: "node.exe",
-			commandLine: `node holder-${pid}`,
-			startedAtMs: Date.now() - 1000,
-		}]))),
-		listeners: okProbe(new Map([[PORT, pids]])),
-	});
-
 	test("a holder with no pidfile is carried on the listening slot", () => {
 		const mine = claim("wt-a", 77);
 		const slot = slotFor([mine], twoHolders([77, 999]), PORT);
@@ -309,16 +307,6 @@ describe("every process holding the port is reported, registered or not", () => 
 // ---------------------------------------------------------------------------
 
 describe("a holder with no pidfile is named, not just numbered", () => {
-	const twoHolders = (pids: number[]): Snapshot => ({
-		procs: okProbe(new Map(pids.map(pid => [pid, {
-			pid,
-			executable: "node.exe",
-			commandLine: `node holder-${pid}`,
-			startedAtMs: Date.now() - 1000,
-		}]))),
-		listeners: okProbe(new Map([[PORT, pids]])),
-	});
-
 	test("a stranger ALONE on the port is named too — the untracked arm", () => {
 		// Reached whenever holders exist and no pidfile claims this port: a
 		// squatter with no mock running, which is at least as common as the
