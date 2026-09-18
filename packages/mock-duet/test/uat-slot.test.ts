@@ -156,7 +156,24 @@ describe("the rendered lines name every entry, and label each one truthfully", (
 		const lines = slotLines(PORT, slotFor([here, there], machineWith(77, [77]), PORT), shown).join("\n");
 
 		assert.doesNotMatch(lines, /not holding it — pid 77/);
-		assert.match(lines, /same live pid/, "it says what is actually true of the other entry");
+		assert.match(lines, /also holding this port — pid 77/, "it says what is actually true of the other entry");
+	});
+
+	// The reading `machineWith` cannot build: more than one PID against one port.
+	// Its absence is why the label below was wrong and no test saw it — the
+	// predicate is membership in the holder set, NOT sameness of PID.
+	test("listening: a second holder with a DIFFERENT pid is not called the same pid", () => {
+		const mine = claim("wt-a", 77);
+		const other = claim("wt-b", 999);
+		const twoHolders: Snapshot = {
+			procs: okProbe(new Map([[77, proc(77)], [999, proc(999)]])),
+			listeners: okProbe(new Map([[PORT, [77, 999]]])),
+		};
+		const lines = slotLines(PORT, slotFor([mine, other], twoHolders, PORT), shown).join("\n");
+
+		assert.match(lines, /also holding this port — pid 999/);
+		assert.doesNotMatch(lines, /same live pid/, "the old label said this, and 999 is not 77");
+		assert.doesNotMatch(lines, /not holding it — pid 999/, "it IS holding it");
 	});
 
 	test("listening: a claimant that is NOT on the socket still reads as not holding it", () => {
@@ -165,7 +182,7 @@ describe("the rendered lines name every entry, and label each one truthfully", (
 		const lines = slotLines(PORT, slotFor([live, stale], machineWith(77, [77]), PORT), shown).join("\n");
 
 		assert.match(lines, /not holding it — pid 30092/);
-		assert.doesNotMatch(lines, /same live pid/);
+		assert.doesNotMatch(lines, /also holding this port/);
 	});
 
 	test("the first line always names the port, in every arm", () => {
@@ -181,10 +198,10 @@ describe("the rendered lines name every entry, and label each one truthfully", (
 		}
 	});
 
-	test("unverifiable: nobody is named, and the probe's reason is printed", () => {
-		const lines = slotLines(PORT, { kind: "unverifiable", reason: "the RPC server is unavailable" }, shown).join("\n");
-		assert.match(lines, /unknown — the RPC server is unavailable/);
-		assert.doesNotMatch(lines, /pid /, "a reading that failed names no pid at all");
+	test("unverifiable: the probe's reason is printed, on one line and no more", () => {
+		const lines = slotLines(PORT, { kind: "unverifiable", reason: "the RPC server is unavailable" }, shown);
+		assert.match(lines[0] ?? "", /unknown — the RPC server is unavailable/);
+		assert.equal(lines.length, 1, "a reading that failed has nothing to list under it");
 	});
 
 	test("idle: not running, and every left-behind pidfile is listed", () => {

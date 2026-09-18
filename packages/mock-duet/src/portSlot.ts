@@ -25,10 +25,14 @@ export type PortSlot =
 	 * `entry` holds the socket.
 	 *
 	 * The other pidfiles naming this port are split by what is TRUE of them, not
-	 * by which one was chosen: `alsoHolding` are on the socket as well (the same
-	 * live PID registered from a second worktree), `alsoClaimed` are not. Calling
-	 * the first group "not holding it" is a sentence that contradicts itself
-	 * (GIT_218).
+	 * by which one was chosen: `alsoHolding` are in the holder set too,
+	 * `alsoClaimed` are not. Calling the first group "not holding it" is a
+	 * sentence that contradicts itself (GIT_218).
+	 *
+	 * `alsoHolding` does NOT mean "the same PID as `entry`". The usual way in is
+	 * one PID registered from two worktrees, but the predicate is membership in
+	 * the holder set, so with two holders it is a different PID — which is why
+	 * the line says "also holding this port" and not "the same pid".
 	 */
 	| { kind: "listening"; entry: PidEntry; alsoHolding: PidEntry[]; alsoClaimed: PidEntry[] }
 	/** Something holds the socket; `claimed` are pidfiles naming the port that do not. */
@@ -50,14 +54,15 @@ export interface EntryShown {
  *          entry owns a port, and it cannot reach an entry except through the
  *          listener set: the `listening` arm is constructed solely from
  *          `claimants.find(e => holders.includes(e.pid))`, so an entry that is
- *          not on the socket has no route into it. The promotion this row used
- *          to name — the status renderer taking a PortSlot rather than the raw
- *          entries — LANDED in GIT_218 and is declared separately on
- *          {@link slotLines} at rung 7. This stays at 6 because `cmdStatus`
- *          still holds `entries` in scope for the tracked-mocks table, so a
- *          future line could select from them without coming through here; it
- *          reaches 7 when nothing in that function can name an entry except
- *          through a slot
+ *          not on the socket has no route into it. The step this row used to
+ *          call its promotion — the status renderer taking a PortSlot rather
+ *          than the raw entries — landed in GIT_218 and is declared on
+ *          {@link slotLines}, but it did NOT promote either row: the renderer
+ *          not taking entries says nothing about what `cmdStatus` can print
+ *          beside it. Both stay at 6 for the same reason — `cmdStatus` holds
+ *          `entries`, `snap` and `console.log` in scope — and both reach 7 only
+ *          when nothing in that function can name an entry except through a
+ *          slot
  * @why one process holds a listening socket, but any number of pidfiles may
  *      name that port — a hard kill leaves its file behind by design, and the
  *      registry is shared across worktrees. Selecting by registry order names
@@ -95,21 +100,26 @@ const under = (label: string, entry: PidEntry, shown: EntryShown): string =>
 
 /**
  * @invariant the-uat-line-is-rendered-from-a-slot-never-from-the-entries
- * @rung 7  sole input — this function takes a `PortSlot` and a lookup, and
- *          `PidEntry[]` is not among its parameters, so the lines for this port
- *          CANNOT be produced from the registry directly: a caller that wanted
- *          to name a claimant its own way has nothing here to call. Every entry
- *          reaching the output arrives through the arm `slotFor` put it in, and
- *          each arm is exhaustive over its own lists — a claimant cannot be
- *          silently dropped the way `untracked` dropped its own before GIT_218,
- *          because there is no arm without a list. This is the promotion the
- *          rung-6 declaration on `slotFor` named
+ * @rung 6  choke point — the only function that turns a slot into lines, and it
+ *          does not take `PidEntry[]` at all, so it cannot reach the registry
+ *          even by accident. NOT rung 7, and the first draft of this row said 7
+ *          wrongly: `cmdStatus` still holds `entries`, `snap` and `console.log`
+ *          in scope, so a second line printed beside this call compiles and
+ *          ships. That is the same residual bypass that caps `slotFor`, and
+ *          both rows reach 7 only when nothing in `cmdStatus` can name an entry
+ *          except through a slot. What the compiler DOES enforce unaided is
+ *          narrower: a new `PortSlot` arm fails to compile here — measured
+ *          2026-09-17, TS2366 under TypeScript strict mode — but that rests on
+ *          the declared return type rather than an explicit never arm, so
+ *          inferring the return type or adding a default arm would remove it
+ *          silently
  * @why the line answers "is the UAT stack up?", and both of its failure modes
  *      cost real work: naming a dead worktree sends someone to restart a stack
  *      that is already serving, and naming a live process in the WRONG worktree
  *      invites tearing down someone else's. Rendering from the raw entries is
- *      how the first one happened (GIT_216); dropping a list is how the second
- *      stayed invisible (GIT_218)
+ *      how the first one happened (GIT_216); an arm with nowhere to put its
+ *      claimants is how the second stayed invisible (GIT_218). Neither is
+ *      prevented by construction — what this buys is one place to look
  */
 export function slotLines(port: number, slot: PortSlot, shown: (entry: PidEntry) => EntryShown): string[] {
 	switch (slot.kind) {
@@ -120,7 +130,7 @@ export function slotLines(port: number, slot: PortSlot, shown: (entry: PidEntry)
 			const head = shown(slot.entry);
 			return [
 				`  mock ${port} : ${head.status} — pid ${slot.entry.pid}, worktree ${slot.entry.segment} (${head.worktree})`,
-				...slot.alsoHolding.map(e => under("the same live pid is registered here too", e, shown(e))),
+				...slot.alsoHolding.map(e => under("also holding this port", e, shown(e))),
 				...slot.alsoClaimed.map(e => under("also claimed, not holding it", e, shown(e))),
 			];
 		}
