@@ -15,6 +15,7 @@
 
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
 	failedProbe,
 	identify,
@@ -23,7 +24,9 @@ import {
 	type Probe,
 	probeFailureFrom,
 	type ProcInfo,
+	probeProcesses,
 	probeTrouble,
+	selfSeen,
 	type Snapshot,
 	stopEntry,
 	type Verdict,
@@ -183,5 +186,103 @@ describe("probeTrouble: is this reading usable, and if not, why", () => {
 	test("an unsupported platform is trouble of a different kind, so a caller can retry one and not the other", () => {
 		const trouble = probeTrouble({ ...healthy(), listeners: unsupportedProbe("no lsof here") });
 		assert.equal(trouble?.kind, "unsupported");
+	});
+});
+
+
+// ---------------------------------------------------------------------------
+// GIT_212: a listing that cannot see the probe itself
+// ---------------------------------------------------------------------------
+
+describe("a process listing must contain the process that asked for it", () => {
+	const listing = (pids: number[]) => new Map(pids.map(pid => [pid, {
+		pid,
+		executable: "node.exe",
+		commandLine: `node whatever-${pid}`,
+		startedAtMs: Date.now() - 1000,
+	}]));
+
+	// The positive control for the three below: a listing that DOES contain this
+	// process is handed back untouched. Without it, "failed" everywhere would
+	// satisfy each of them for free.
+	test("control: a listing containing this process is accepted, unchanged", () => {
+		const out = listing([process.pid, 4242]);
+		const probe = selfSeen(out, "ps");
+		assert.equal(probe.ok, true);
+		assert.equal(probe.ok ? probe.data : null, out, "the same map, not a copy or a subset");
+	});
+
+	test("an EMPTY listing is a failed probe, not a machine with no processes", () => {
+		// PowerShell exiting 0 with empty stdout parses to []. Believed, it says
+		// every mock is gone, and `stopEntry` deletes a live mock's pidfile.
+		const probe = selfSeen(listing([]), "powershell.exe");
+		assert.equal(probe.ok, false);
+		assert.equal(probe.ok ? null : probe.failure.kind, "failed");
+	});
+
+	test("a listing of OTHER processes but not this one is refused too", () => {
+		// Emptiness is the easy case. The fact being used is that this process is
+		// necessarily alive, so ANY listing without it is not of this machine.
+		const probe = selfSeen(listing([4242, 4243]), "ps");
+		assert.equal(probe.ok, false);
+	});
+
+	test("the refusal names this process, so the reason is checkable", () => {
+		const probe = selfSeen(listing([]), "powershell.exe");
+		const reason = probe.ok ? "" : probe.failure.reason;
+		assert.match(reason, new RegExp(String(process.pid)), "it names the pid that was missing");
+		assert.match(reason, /powershell\.exe/, "and the tool that produced the listing");
+	});
+
+	test("an unreadable listing can never be mistaken for `gone`", () => {
+		// The whole point: `gone` is what deletes a pidfile. A refused probe must
+		// reach `unverifiable` instead, which deletes nothing.
+		const verdict = identify(entry(), { ...healthy(), procs: selfSeen(listing([]), "ps") });
+		assert.notEqual(verdict.kind, "gone");
+		assert.equal(unverifiable(verdict).cause, "probe-failed");
+	});
+
+	test("this machine's REAL listing contains this process", () => {
+		// The guard is only safe if a true reading passes it. This is the check
+		// that would catch a platform where the assumption does not hold.
+		const probe = probeProcesses();
+		assert.equal(probe.ok, true, `the probe must work on ${process.platform}`);
+		assert.equal(probe.ok ? probe.data.has(process.pid) : false, true);
+	});
+});
+
+
+// ---------------------------------------------------------------------------
+// GIT_212: the guard is only a choke point if both branches go through it
+// ---------------------------------------------------------------------------
+
+describe("no process listing becomes a reading without passing the guard", () => {
+	// `selfSeen` being correct is worth nothing if `probeProcesses` stops calling
+	// it, and no behavioural test can see that: a real listing on this machine
+	// contains this process either way. So the routing is fenced by reading the
+	// source, the way this repo fences its other single-route claims.
+	const src = readFileSync(new URL("../src/pidfile.ts", import.meta.url), "utf8");
+	const start = src.indexOf("export function probeProcesses");
+	const end = src.indexOf("export function probeListeners");
+	const body = src.slice(start, end);
+
+	test("the fence finds the real function, not an empty string", () => {
+		// The red check for the two below: a scan that matched nothing would let
+		// them both pass while proving nothing at all.
+		assert.ok(start > 0 && end > start, "probeProcesses and probeListeners must both be found");
+		assert.match(body, /Get-CimInstance Win32_Process/, "the win32 branch is inside the slice");
+		assert.match(body, /execFileSync\("ps"/, "and so is the posix branch");
+	});
+
+	test("probeProcesses never builds a successful reading itself", () => {
+		assert.doesNotMatch(
+			body,
+			/okProbe\(/,
+			"a listing blessed here would skip the self-sighting check — hand it to selfSeen instead",
+		);
+	});
+
+	test("both platform branches leave through selfSeen", () => {
+		assert.equal((body.match(/selfSeen\(/g) ?? []).length, 2, "one call per platform branch");
 	});
 });
