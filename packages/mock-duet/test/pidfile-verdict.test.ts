@@ -2,11 +2,17 @@
  * The kill guard's verdict, over a synthesized machine reading (GIT_210).
  *
  * `identify` takes the machine reading as a PARAMETER, so its logic can be
- * driven without spawning anything — which is the point of this file. The
- * sibling `test/slow/pidfile.test.ts` drives real processes and cannot say
- * "the probe failed" on purpose; nothing here stubs the registry or a process,
- * only the reading itself, and every case below is a reading the machine can
- * actually produce.
+ * driven without spawning anything. The sibling `test/slow/pidfile.test.ts`
+ * drives real processes and cannot say "the probe failed" on purpose; nothing
+ * here stubs the registry or a process, only the reading itself, and every
+ * case below is a reading the machine can actually produce.
+ *
+ * ONE test here is not subprocess-free: "this machine's REAL listing contains
+ * this process" runs the real probe, and it is most of this file's runtime
+ * (425 ms of 527 ms, measured 2026-09-17). It stays in the fast tier
+ * deliberately — it is the only check that would catch a platform where the
+ * self-sighting guard's premise fails, and a premise that silently stops
+ * holding would turn every probe into a permanent refusal.
  *
  * What is under test: a machine that could not be READ must be distinguishable
  * from a platform that has no way to read it. Both refuse to kill. Only one of
@@ -253,36 +259,33 @@ describe("a process listing must contain the process that asked for it", () => {
 
 
 // ---------------------------------------------------------------------------
-// GIT_212: the guard is only a choke point if both branches go through it
+// GIT_212: the single exit, fenced
 // ---------------------------------------------------------------------------
 
-describe("no process listing becomes a reading without passing the guard", () => {
-	// `selfSeen` being correct is worth nothing if `probeProcesses` stops calling
-	// it, and no behavioural test can see that: a real listing on this machine
-	// contains this process either way. So the routing is fenced by reading the
-	// source, the way this repo fences its other single-route claims.
+describe("probeProcesses cannot bless a listing itself", () => {
+	// Collapsing to one exit made the routing structural in the SOURCE, but not
+	// checkable: measured 2026-09-17, replacing that one call with `okProbe`
+	// leaves all 19 behavioural tests passing, because a real listing on this
+	// machine contains this process either way. So the single exit is still
+	// fenced — one assertion now instead of three, because there is one site.
 	const src = readFileSync(new URL("../src/pidfile.ts", import.meta.url), "utf8");
 	const start = src.indexOf("export function probeProcesses");
 	const end = src.indexOf("export function probeListeners");
 	const body = src.slice(start, end);
 
-	test("the fence finds the real function, not an empty string", () => {
-		// The red check for the two below: a scan that matched nothing would let
-		// them both pass while proving nothing at all.
-		assert.ok(start > 0 && end > start, "probeProcesses and probeListeners must both be found");
-		assert.match(body, /Get-CimInstance Win32_Process/, "the win32 branch is inside the slice");
-		assert.match(body, /execFileSync\("ps"/, "and so is the posix branch");
+	test("the fence reads the real function, not an empty slice", () => {
+		// The red check for the assertion below: a scan matching nothing would
+		// pass it while proving nothing.
+		assert.ok(start > 0 && end > start, "both functions must be found, in this order");
+		assert.match(body, /return selfSeen\(/, "and the exit must be inside the slice");
 	});
 
-	test("probeProcesses never builds a successful reading itself", () => {
+	test("the only way out is through the guard", () => {
 		assert.doesNotMatch(
 			body,
 			/okProbe\(/,
-			"a listing blessed here would skip the self-sighting check — hand it to selfSeen instead",
+			"a listing blessed here skips the self-sighting check — hand it to selfSeen instead",
 		);
-	});
-
-	test("both platform branches leave through selfSeen", () => {
-		assert.equal((body.match(/selfSeen\(/g) ?? []).length, 2, "one call per platform branch");
+		assert.equal((body.match(/return /g) ?? []).length, 2, "one guarded exit, one catch");
 	});
 });

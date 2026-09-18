@@ -939,9 +939,9 @@ in the diff that drops it.
 
 ### `mock-duet/a-listing-without-the-prober-in-it-is-not-a-reading` — rung 6
 
-**Mechanism.** choke point — both platform branches of {@link probeProcesses} hand their map to this function and there is no other route to an `okProbe` of a process listing, so a listing that cannot see the prober cannot become a reading. Not rung 7: a future probe could build its own `okProbe` without coming through here, and nothing in the type prevents it. Promote by giving the listing a type whose sole constructor is this check
+**Mechanism.** choke point — {@link probeProcesses} has ONE exit and it is this call, so a listing that cannot see the prober has no route to becoming a reading. The platform helpers return a raw map and cannot bless it. Collapsed to one exit in GIT_212 after review, which had it calling the guard at two return sites. A source fence in test/pidfile-verdict.test.ts checks the exit stays guarded, and it is NOT redundant with the structure: measured 2026-09-17, swapping that one call for `okProbe` leaves every behavioural test passing, because a real listing on this machine contains this process either way. Still not rung 7 — `okProbe` is exported and generic, so another module could mint a listing without coming through here, and nothing in the type prevents it. Promote by giving the listing a type whose sole constructor is this check
 
-**Why.** GIT_212. PowerShell exiting 0 with empty stdout parses to `[]`, which the old code blessed as a successful reading meaning "this machine has no processes at all". `identify` then answers `gone` for every entry and `stopEntry` DELETES a live mock's pidfile as stale — nothing is killed, but the registration is lost and the operator is told it was stale. The fact used here is not about emptiness: this process is necessarily alive while it probes, so any listing without it is untrustworthy whatever its size. There is deliberately no counterpart for the LISTENER probe: an empty listener table is a true and ordinary state (nothing is running), and the prober holds no socket of its own to look for, so the same trick has nothing to stand on there
+**Why.** GIT_212. PowerShell exiting 0 with empty stdout parses to `[]`, which the old code blessed as a successful reading meaning "this machine has no processes at all". `identify` then answers `gone` for every entry and `stopEntry` DELETES a live mock's pidfile as stale — nothing is killed, but the registration is lost and the operator is told it was stale. The fact used here is not about emptiness: this process is necessarily alive while it probes, so any listing without it is untrustworthy whatever its size. The LISTENER probe gets no counterpart, and the reason is worth stating exactly, because "the trick does not apply" is not the same as "there is no hole". An empty listener table is a true and ordinary state, and the prober holds no socket to look for, so there is no self to anchor on. The harm is not absent either: a falsely-empty listener reading makes `identify` answer `reused` ("nothing is" listening), and `stopEntry` forgets a `reused` entry as well — the same lost registration by a different arm. What closes it today is a coincidence of the tools, not a mechanism: both `Get-NetTCPConnection` and `lsof` exit non-zero when nothing matches, so an empty result arrives as a thrown probe failure rather than as an empty reading. Measured 2026-09-17 on Windows. If a tool ever changes that, this hole opens with nothing guarding it
 
 `packages/mock-duet/src/pidfile.ts:357`
 
@@ -1031,7 +1031,7 @@ in the diff that drops it.
 
 **Why.** PIDs recycle, and the ruled pidfile format (name = pid, content = port) has no start time to disambiguate with. A `stop` that dereferenced a PID out of a file and killed it would eventually terminate a stranger's process on this machine. The three factors make that require a mock-duet, listening on exactly the recorded port, that started before the file naming it was written — and a recycled PID's process starts after the original died, hence after that write
 
-`packages/mock-duet/src/pidfile.ts:658`
+`packages/mock-duet/src/pidfile.ts:686`
 
 ### `mock-duet/one-parameter-reader` — rung 6
 
@@ -1051,7 +1051,7 @@ in the diff that drops it.
 
 **Debt — promotion.** rung 7 would make the resolved port a branded `BoundPort` mintable only by the bind, so even a future function inside this module could not write a port it had not watched a socket accept. Today the barrier stops at the module edge
 
-`packages/mock-duet/src/pidfile.ts:843`
+`packages/mock-duet/src/pidfile.ts:871`
 
 ### `mock-duet/shaping-has-one-home` — rung 6
 

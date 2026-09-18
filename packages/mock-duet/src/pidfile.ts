@@ -355,13 +355,20 @@ export function probeFailureFrom<T>(tool: string, what: string, e: unknown): Pro
  * A listing is only a listing of THIS machine if it contains this process.
  *
  * @invariant a-listing-without-the-prober-in-it-is-not-a-reading
- * @rung 6  choke point — both platform branches of {@link probeProcesses} hand
- *          their map to this function and there is no other route to an
- *          `okProbe` of a process listing, so a listing that cannot see the
- *          prober cannot become a reading. Not rung 7: a future probe could
- *          build its own `okProbe` without coming through here, and nothing in
- *          the type prevents it. Promote by giving the listing a type whose
- *          sole constructor is this check
+ * @rung 6  choke point — {@link probeProcesses} has ONE exit and it is this
+ *          call, so a listing that cannot see the prober has no route to
+ *          becoming a reading. The platform helpers return a raw map and
+ *          cannot bless it. Collapsed to one exit in GIT_212 after
+ *          review, which had it calling the guard at two return sites. A
+ *          source fence in test/pidfile-verdict.test.ts checks the exit stays
+ *          guarded, and it is NOT redundant with the structure: measured
+ *          2026-09-17, swapping that one call for `okProbe` leaves every
+ *          behavioural test passing, because a real listing on this machine
+ *          contains this process either way.
+ *          Still not rung 7 — `okProbe` is exported and generic, so another
+ *          module could mint a listing without coming through here, and
+ *          nothing in the type prevents it. Promote by giving the listing a
+ *          type whose sole constructor is this check
  * @why GIT_212. PowerShell exiting 0 with empty stdout parses to `[]`, which
  *      the old code blessed as a successful reading meaning "this machine has
  *      no processes at all". `identify` then answers `gone` for every entry and
@@ -371,10 +378,19 @@ export function probeFailureFrom<T>(tool: string, what: string, e: unknown): Pro
  *      while it probes, so any listing without it is untrustworthy whatever its
  *      size.
  *
- *      There is deliberately no counterpart for the LISTENER probe: an empty
- *      listener table is a true and ordinary state (nothing is running), and
- *      the prober holds no socket of its own to look for, so the same trick
- *      has nothing to stand on there
+ *      The LISTENER probe gets no counterpart, and the reason is worth stating
+ *      exactly, because "the trick does not apply" is not the same as "there
+ *      is no hole". An empty listener table is a true and ordinary state, and
+ *      the prober holds no socket to look for, so there is no self to anchor
+ *      on. The harm is not absent either: a falsely-empty listener reading
+ *      makes `identify` answer `reused` ("nothing is" listening), and
+ *      `stopEntry` forgets a `reused` entry as well — the same lost
+ *      registration by a different arm. What closes it today is a coincidence
+ *      of the tools, not a mechanism: both `Get-NetTCPConnection` and `lsof`
+ *      exit non-zero when nothing matches, so an empty result arrives as a
+ *      thrown probe failure rather than as an empty reading. Measured
+ *      2026-09-17 on Windows. If a tool ever changes that, this hole opens
+ *      with nothing guarding it
  */
 export function selfSeen(listing: Map<number, ProcInfo>, tool: string): Probe<Map<number, ProcInfo>> {
 	if (listing.has(process.pid)) return okProbe(listing);
@@ -398,54 +414,66 @@ export function selfSeen(listing: Map<number, ProcInfo>, tool: string): Probe<Ma
  * the mock-identity factor and so is never killed. POSIX reads `ps`. Either
  * way a probe that produces nothing says WHY, and no caller may kill on it.
  */
-export function probeProcesses(): Probe<Map<number, ProcInfo>> {
-	try {
-		if (process.platform === "win32") {
-			const raw = powershell(
-				"Get-CimInstance Win32_Process | " +
-					"Select-Object ProcessId, Name, CommandLine, " +
-					"@{n='Created';e={$_.CreationDate.ToUniversalTime().ToString('o')}} | " +
-					"ConvertTo-Json -Compress -Depth 2",
-			);
-			const out = new Map<number, ProcInfo>();
-			for (const row of parseJsonArray(raw)) {
-				const r = row as { ProcessId?: number; Name?: string | null; CommandLine?: string | null; Created?: string };
-				if (typeof r.ProcessId !== "number") continue;
-				const startedAtMs = typeof r.Created === "string" ? Date.parse(r.Created) : Number.NaN;
-				out.set(r.ProcessId, {
-					pid: r.ProcessId,
-					executable: r.Name ?? "",
-					commandLine: r.CommandLine ?? "",
-					startedAtMs: Number.isFinite(startedAtMs) ? startedAtMs : 0,
-				});
-			}
-			return selfSeen(out, "powershell.exe");
-		}
-		// `comm` is the real executable; `args` is what the process ADVERTISES,
-		// and --title rewrites it. Both are needed: one for identity, one for
-		// the mock marker.
-		const raw = execFileSync("ps", ["-A", "-o", "pid=,etime=,comm=,args="], {
-			encoding: "utf8",
-			maxBuffer: 16 * 1024 * 1024,
-			stdio: ["ignore", "pipe", "pipe"],
+/** Windows: `Win32_Process` carries the command line and the start time in one query. */
+function winListing(): Map<number, ProcInfo> {
+	const raw = powershell(
+		"Get-CimInstance Win32_Process | " +
+			"Select-Object ProcessId, Name, CommandLine, " +
+			"@{n='Created';e={$_.CreationDate.ToUniversalTime().ToString('o')}} | " +
+			"ConvertTo-Json -Compress -Depth 2",
+	);
+	const out = new Map<number, ProcInfo>();
+	for (const row of parseJsonArray(raw)) {
+		const r = row as { ProcessId?: number; Name?: string | null; CommandLine?: string | null; Created?: string };
+		if (typeof r.ProcessId !== "number") continue;
+		const startedAtMs = typeof r.Created === "string" ? Date.parse(r.Created) : Number.NaN;
+		out.set(r.ProcessId, {
+			pid: r.ProcessId,
+			executable: r.Name ?? "",
+			commandLine: r.CommandLine ?? "",
+			startedAtMs: Number.isFinite(startedAtMs) ? startedAtMs : 0,
 		});
-		const now = Date.now();
-		const out = new Map<number, ProcInfo>();
-		for (const line of raw.split("\n")) {
-			const m = /^\s*(\d+)\s+(\S+)\s+(\S+)\s+(.*)$/.exec(line);
-			if (m === null) continue;
-			const pid = Number(m[1]);
-			const seconds = parseEtime(m[2] ?? "");
-			out.set(pid, {
-				pid,
-				executable: basename(m[3] ?? ""),
-				commandLine: m[4] ?? "",
-				startedAtMs: seconds === null ? 0 : now - seconds * 1000,
-			});
-		}
-		return selfSeen(out, "ps");
+	}
+	return out;
+}
+
+/**
+ * POSIX: `comm` is the real executable; `args` is what the process ADVERTISES,
+ * and --title rewrites it. Both are needed: one for identity, one for the mock
+ * marker.
+ */
+function posixListing(): Map<number, ProcInfo> {
+	const raw = execFileSync("ps", ["-A", "-o", "pid=,etime=,comm=,args="], {
+		encoding: "utf8",
+		maxBuffer: 16 * 1024 * 1024,
+		stdio: ["ignore", "pipe", "pipe"],
+	});
+	const now = Date.now();
+	const out = new Map<number, ProcInfo>();
+	for (const line of raw.split("\n")) {
+		const m = /^\s*(\d+)\s+(\S+)\s+(\S+)\s+(.*)$/.exec(line);
+		if (m === null) continue;
+		const pid = Number(m[1]);
+		const seconds = parseEtime(m[2] ?? "");
+		out.set(pid, {
+			pid,
+			executable: basename(m[3] ?? ""),
+			commandLine: m[4] ?? "",
+			startedAtMs: seconds === null ? 0 : now - seconds * 1000,
+		});
+	}
+	return out;
+}
+
+export function probeProcesses(): Probe<Map<number, ProcInfo>> {
+	// ONE exit, so the guard is structural rather than something two return
+	// sites have to remember. Each platform helper produces a raw map and
+	// cannot bless it; only this line turns one into a reading.
+	const tool = process.platform === "win32" ? "powershell.exe" : "ps";
+	try {
+		return selfSeen(process.platform === "win32" ? winListing() : posixListing(), tool);
 	} catch (e) {
-		return probeFailureFrom(process.platform === "win32" ? "powershell.exe" : "ps", "processes", e);
+		return probeFailureFrom(tool, "processes", e);
 	}
 }
 
