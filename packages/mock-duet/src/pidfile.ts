@@ -352,6 +352,39 @@ export function probeFailureFrom<T>(tool: string, what: string, e: unknown): Pro
 }
 
 /**
+ * A listing is only a listing of THIS machine if it contains this process.
+ *
+ * @invariant a-listing-without-the-prober-in-it-is-not-a-reading
+ * @rung 6  choke point — both platform branches of {@link probeProcesses} hand
+ *          their map to this function and there is no other route to an
+ *          `okProbe` of a process listing, so a listing that cannot see the
+ *          prober cannot become a reading. Not rung 7: a future probe could
+ *          build its own `okProbe` without coming through here, and nothing in
+ *          the type prevents it. Promote by giving the listing a type whose
+ *          sole constructor is this check
+ * @why GIT_212. PowerShell exiting 0 with empty stdout parses to `[]`, which
+ *      the old code blessed as a successful reading meaning "this machine has
+ *      no processes at all". `identify` then answers `gone` for every entry and
+ *      `stopEntry` DELETES a live mock's pidfile as stale — nothing is killed,
+ *      but the registration is lost and the operator is told it was stale. The
+ *      fact used here is not about emptiness: this process is necessarily alive
+ *      while it probes, so any listing without it is untrustworthy whatever its
+ *      size.
+ *
+ *      There is deliberately no counterpart for the LISTENER probe: an empty
+ *      listener table is a true and ordinary state (nothing is running), and
+ *      the prober holds no socket of its own to look for, so the same trick
+ *      has nothing to stand on there
+ */
+export function selfSeen(listing: Map<number, ProcInfo>, tool: string): Probe<Map<number, ProcInfo>> {
+	if (listing.has(process.pid)) return okProbe(listing);
+	return failedProbe(
+		`reading processes with \`${tool}\` returned ${listing.size} process(es) but not this one ` +
+			`(pid ${process.pid}), so it is not a listing of this machine`,
+	);
+}
+
+/**
  * EVERY live process, by PID — not just the node ones.
  *
  * The width matters for honesty, not for speed: if this only listed node
@@ -386,7 +419,7 @@ export function probeProcesses(): Probe<Map<number, ProcInfo>> {
 					startedAtMs: Number.isFinite(startedAtMs) ? startedAtMs : 0,
 				});
 			}
-			return okProbe(out);
+			return selfSeen(out, "powershell.exe");
 		}
 		// `comm` is the real executable; `args` is what the process ADVERTISES,
 		// and --title rewrites it. Both are needed: one for identity, one for
@@ -410,7 +443,7 @@ export function probeProcesses(): Probe<Map<number, ProcInfo>> {
 				startedAtMs: seconds === null ? 0 : now - seconds * 1000,
 			});
 		}
-		return okProbe(out);
+		return selfSeen(out, "ps");
 	} catch (e) {
 		return probeFailureFrom(process.platform === "win32" ? "powershell.exe" : "ps", "processes", e);
 	}

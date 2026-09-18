@@ -21,7 +21,7 @@ and invariant claim mentions 13 -> 23, so no mechanism was deleted and no
 claim was lost in the gap. From here the ratchets make a dropped rung visible
 in the diff that drops it.
 
-**Totals:** 180 invariants · 153 at rung 6 or above · 27 below rung 6 (ceiling 27).
+**Totals:** 181 invariants · 154 at rung 6 or above · 27 below rung 6 (ceiling 27).
 
 ## bed
 
@@ -937,6 +937,14 @@ in the diff that drops it.
 
 ## mock-duet
 
+### `mock-duet/a-listing-without-the-prober-in-it-is-not-a-reading` — rung 6
+
+**Mechanism.** choke point — both platform branches of {@link probeProcesses} hand their map to this function and there is no other route to an `okProbe` of a process listing, so a listing that cannot see the prober cannot become a reading. Not rung 7: a future probe could build its own `okProbe` without coming through here, and nothing in the type prevents it. Promote by giving the listing a type whose sole constructor is this check
+
+**Why.** GIT_212. PowerShell exiting 0 with empty stdout parses to `[]`, which the old code blessed as a successful reading meaning "this machine has no processes at all". `identify` then answers `gone` for every entry and `stopEntry` DELETES a live mock's pidfile as stale — nothing is killed, but the registration is lost and the operator is told it was stale. The fact used here is not about emptiness: this process is necessarily alive while it probes, so any listing without it is untrustworthy whatever its size. There is deliberately no counterpart for the LISTENER probe: an empty listener table is a true and ordinary state (nothing is running), and the prober holds no socket of its own to look for, so the same trick has nothing to stand on there
+
+`packages/mock-duet/src/pidfile.ts:357`
+
 ### `mock-duet/a-port-is-owned-by-its-listener-not-by-a-filename` — rung 6
 
 **Mechanism.** choke point — this is the only place that decides which registry entry owns a port, and it cannot reach an entry except through the listener set: the `listening` arm is constructed solely from `claimants.find(e => holders.includes(e.pid))`, so an entry that is not on the socket has no route into it. The step this row used to call its promotion — the status renderer taking a PortSlot rather than the raw entries — landed in GIT_218 and is declared on {@link slotLines}, but it did NOT promote either row: the renderer not taking entries says nothing about what `cmdStatus` can print beside it. Both stay at 6 for the same reason — `cmdStatus` holds `entries`, `snap` and `console.log` in scope — and both reach 7 only when nothing in that function can name an entry except through a slot
@@ -1023,7 +1031,7 @@ in the diff that drops it.
 
 **Why.** PIDs recycle, and the ruled pidfile format (name = pid, content = port) has no start time to disambiguate with. A `stop` that dereferenced a PID out of a file and killed it would eventually terminate a stranger's process on this machine. The three factors make that require a mock-duet, listening on exactly the recorded port, that started before the file naming it was written — and a recycled PID's process starts after the original died, hence after that write
 
-`packages/mock-duet/src/pidfile.ts:625`
+`packages/mock-duet/src/pidfile.ts:658`
 
 ### `mock-duet/one-parameter-reader` — rung 6
 
@@ -1043,7 +1051,7 @@ in the diff that drops it.
 
 **Debt — promotion.** rung 7 would make the resolved port a branded `BoundPort` mintable only by the bind, so even a future function inside this module could not write a port it had not watched a socket accept. Today the barrier stops at the module edge
 
-`packages/mock-duet/src/pidfile.ts:810`
+`packages/mock-duet/src/pidfile.ts:843`
 
 ### `mock-duet/shaping-has-one-home` — rung 6
 
