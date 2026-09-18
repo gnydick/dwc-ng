@@ -951,7 +951,7 @@ in the diff that drops it.
 
 **Why.** one process holds a listening socket, but any number of pidfiles may name that port — a hard kill leaves its file behind by design, and the registry is shared across worktrees. Selecting by registry order names whichever worktree sorts first: on 2026-09-17 `status` called a running UAT stack "process gone" and attributed it to a worktree that had not run in weeks. The reverse costs more than a wrong label — a live process named in the wrong worktree invites tearing down someone else's stack
 
-`packages/mock-duet/src/portSlot.ts:70`
+`packages/mock-duet/src/portSlot.ts:79`
 
 ### `mock-duet/a-reading-that-failed-is-never-used-as-a-reading` — rung 7
 
@@ -1077,7 +1077,7 @@ in the diff that drops it.
 
 **Why.** the line answers "is the UAT stack up?", and both of its failure modes cost real work: naming a dead worktree sends someone to restart a stack that is already serving, and naming a live process in the WRONG worktree invites tearing down someone else's. Rendering from the raw entries is how the first one happened (GIT_216); an arm with nowhere to put its claimants is how the second stayed invisible (GIT_218). Neither is prevented by construction — what this buys is one place to look
 
-`packages/mock-duet/src/portSlot.ts:122`
+`packages/mock-duet/src/portSlot.ts:131`
 
 ## om
 

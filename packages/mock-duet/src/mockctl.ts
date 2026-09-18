@@ -151,6 +151,23 @@ function liveMocks(snap: Snapshot): { proc: ProcInfo; ports: number[] }[] {
 	return out.sort((a, b) => a.proc.pid - b.proc.pid);
 }
 
+/**
+ * What the process holding a PID is, as far as this reading can say.
+ *
+ * `null` when the process probe failed, or when it succeeded and this PID is
+ * not in it — a process that went away between the two probes. Either way the
+ * caller prints the PID alone rather than inventing a name for it.
+ *
+ * The command line is preferred because that is what the orphans table shows,
+ * so one process reads the same in both places.
+ */
+function processName(snap: Snapshot, pid: number): string | null {
+	if (!snap.procs.ok) return null;
+	const proc = snap.procs.data.get(pid);
+	if (proc === undefined) return null;
+	return proc.commandLine.trim() || proc.executable.trim() || null;
+}
+
 function pidsOn(snap: Snapshot, port: number): number[] | null {
 	if (!snap.listeners.ok) return null;
 	return snap.listeners.data.get(port) ?? [];
@@ -171,11 +188,13 @@ function cmdStatus(reg: Registry): void {
 	// --- the reserved UAT stack, first, because it is the one with a bookmark
 	console.log(`UAT stack (reserved: mock ${UAT_MOCK_PORT} + vite ${UAT_VITE_PORT}, one at a time)`);
 	// The lines come from the slot, never from `entries` directly: see the
-	// invariant on slotLines. This supplies only the two lookups that need a
-	// machine reading and a resolved registry.
+	// invariant on slotLines. This supplies only the lookups that need a machine
+	// reading and a resolved registry — including the name of a holder with no
+	// pidfile, which comes out of the SAME reading rather than a second probe.
 	for (const line of slotLines(UAT_MOCK_PORT, slotFor(entries, snap, UAT_MOCK_PORT), {
 		status: e => classify(e, snap),
 		where: e => describeSegment(reg, e.segment),
+		named: pid => processName(snap, pid),
 	})) {
 		console.log(line);
 	}
