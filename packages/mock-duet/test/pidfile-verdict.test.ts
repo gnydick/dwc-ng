@@ -32,6 +32,7 @@ import {
 	type ProcInfo,
 	probeProcesses,
 	probeTrouble,
+	processName,
 	selfSeen,
 	type Snapshot,
 	stopEntry,
@@ -287,5 +288,48 @@ describe("probeProcesses cannot bless a listing itself", () => {
 			"a listing blessed here skips the self-sighting check — hand it to selfSeen instead",
 		);
 		assert.equal((body.match(/return /g) ?? []).length, 2, "one guarded exit, one catch");
+	});
+});
+
+
+// ---------------------------------------------------------------------------
+// GIT_222: what a bare PID is, as far as one reading can say
+// ---------------------------------------------------------------------------
+
+describe("naming a process from a reading already taken", () => {
+	const reading = (procs: ProcInfo[]): Snapshot => ({
+		procs: okProbe(new Map(procs.map(p => [p.pid, p]))),
+		listeners: okProbe(new Map()),
+	});
+	const proc = (pid: number, commandLine: string, executable = "node.exe"): ProcInfo =>
+		({ pid, executable, commandLine, startedAtMs: Date.now() - 1000 });
+
+	test("the command line is the name, because that is what the orphans table shows", () => {
+		assert.equal(processName(reading([proc(999, "node holder.mjs")]), 999), "node holder.mjs");
+	});
+
+	test("a process probe that FAILED names nobody", () => {
+		// The decisive case: the PID came from the listener probe, which worked.
+		// The name would have come from the process probe, which did not.
+		const snap: Snapshot = { procs: failedProbe("the RPC server is unavailable"), listeners: okProbe(new Map()) };
+		assert.equal(processName(snap, 999), null);
+	});
+
+	test("a PID absent from a successful listing names nobody", () => {
+		// It exited between the two probes of one reading. Not an error, and not
+		// a reason to invent a name.
+		assert.equal(processName(reading([proc(1, "something else")]), 999), null);
+	});
+
+	test("a blank command line falls back to the executable", () => {
+		// Windows reports CommandLine as null for a process another user owns,
+		// and pidfile.ts fills that with "". The executable still identifies it.
+		assert.equal(processName(reading([proc(999, "   ", "svchost.exe")]), 999), "svchost.exe");
+	});
+
+	test("both blank names nobody, rather than an empty string", () => {
+		// An empty string would render as `pid 999: ` with nothing after the
+		// colon. The caller distinguishes null; it cannot distinguish "".
+		assert.equal(processName(reading([proc(999, "", "")]), 999), null);
 	});
 });

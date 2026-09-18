@@ -1031,7 +1031,7 @@ in the diff that drops it.
 
 **Why.** PIDs recycle, and the ruled pidfile format (name = pid, content = port) has no start time to disambiguate with. A `stop` that dereferenced a PID out of a file and killed it would eventually terminate a stranger's process on this machine. The three factors make that require a mock-duet, listening on exactly the recorded port, that started before the file naming it was written — and a recycled PID's process starts after the original died, hence after that write
 
-`packages/mock-duet/src/pidfile.ts:686`
+`packages/mock-duet/src/pidfile.ts:709`
 
 ### `mock-duet/one-parameter-reader` — rung 6
 
@@ -1051,7 +1051,7 @@ in the diff that drops it.
 
 **Debt — promotion.** rung 7 would make the resolved port a branded `BoundPort` mintable only by the bind, so even a future function inside this module could not write a port it had not watched a socket accept. Today the barrier stops at the module edge
 
-`packages/mock-duet/src/pidfile.ts:871`
+`packages/mock-duet/src/pidfile.ts:894`
 
 ### `mock-duet/shaping-has-one-home` — rung 6
 
@@ -1077,7 +1077,7 @@ in the diff that drops it.
 
 **Why.** the line answers "is the UAT stack up?", and both of its failure modes cost real work: naming a dead worktree sends someone to restart a stack that is already serving, and naming a live process in the WRONG worktree invites tearing down someone else's. Rendering from the raw entries is how the first one happened (GIT_216); an arm with nowhere to put its claimants is how the second stayed invisible (GIT_218). Neither is prevented by construction — what this buys is one place to look
 
-`packages/mock-duet/src/portSlot.ts:131`
+`packages/mock-duet/src/portSlot.ts:141`
 
 ## om
 
