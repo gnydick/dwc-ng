@@ -15,7 +15,7 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { failedProbe, okProbe, type PidEntry, type ProcInfo, type Snapshot } from "../src/pidfile.ts";
-import { slotFor } from "../src/portSlot.ts";
+import { type PortSlot, slotFor, slotLines } from "../src/portSlot.ts";
 
 const PORT = 8970;
 
@@ -119,5 +119,85 @@ describe("the UAT slot names the process that holds the port", () => {
 
 		assert.equal(slot.kind, "unverifiable");
 		assert.match(slot.kind === "unverifiable" ? slot.reason : "", /RPC server is unavailable/);
+	});
+});
+
+
+// ---------------------------------------------------------------------------
+// GIT_218: the lines the operator reads
+// ---------------------------------------------------------------------------
+
+/**
+ * The two display lookups the renderer needs, stubbed.
+ *
+ * `classify` needs a machine snapshot and `describeSegment` needs a resolved
+ * registry; neither is what these check. What IS checked is which entries reach
+ * the output and how each is labelled — the part that was wrong.
+ */
+const shown = (e: PidEntry) => ({ status: `status(${e.pid})`, worktree: `/path/${e.segment}` });
+
+describe("the rendered lines name every entry, and label each one truthfully", () => {
+	test("untracked: the pidfiles claiming the port are NOT dropped", () => {
+		// The arm's whole failure mode: a different pid holds the port, and the
+		// claimants vanished from the output entirely.
+		const slot = slotFor([claim("wt-a", 5), claim("wt-b", 7)], machineWith(6, [5, 6, 7]), PORT);
+		const lines = slotLines(PORT, slot, shown).join("\n");
+
+		assert.match(lines, /LISTENING but untracked — pid 6/);
+		assert.match(lines, /pid 5/, "the pidfile claiming the port must still be named");
+		assert.match(lines, /pid 7/, "and so must the second one");
+	});
+
+	test("listening: a claimant that IS on the socket is never called not-holding", () => {
+		// Same pid registered from two worktrees: both are on the socket, so
+		// "also claimed, not holding it" would contradict itself.
+		const here = claim("wt-aaa", 77);
+		const there = claim("wt-zzz", 77);
+		const lines = slotLines(PORT, slotFor([here, there], machineWith(77, [77]), PORT), shown).join("\n");
+
+		assert.doesNotMatch(lines, /not holding it — pid 77/);
+		assert.match(lines, /same live pid/, "it says what is actually true of the other entry");
+	});
+
+	test("listening: a claimant that is NOT on the socket still reads as not holding it", () => {
+		const live = claim("wt-live", 77);
+		const stale = claim("wt-stale", 30092);
+		const lines = slotLines(PORT, slotFor([live, stale], machineWith(77, [77]), PORT), shown).join("\n");
+
+		assert.match(lines, /not holding it — pid 30092/);
+		assert.doesNotMatch(lines, /same live pid/);
+	});
+
+	test("the first line always names the port, in every arm", () => {
+		const arms: PortSlot[] = [
+			{ kind: "unverifiable", reason: "the RPC server is unavailable" },
+			slotFor([claim("wt-a", 9)], machineWith(9, [9]), PORT),
+			slotFor([], machineWith(3, [3]), PORT),
+			slotFor([], machineWith(null, []), PORT),
+		];
+		for (const slot of arms) {
+			const first = slotLines(PORT, slot, shown)[0] ?? "";
+			assert.match(first, new RegExp(`mock ${PORT} `), `${slot.kind} must name the port`);
+		}
+	});
+
+	test("unverifiable: nobody is named, and the probe's reason is printed", () => {
+		const lines = slotLines(PORT, { kind: "unverifiable", reason: "the RPC server is unavailable" }, shown).join("\n");
+		assert.match(lines, /unknown — the RPC server is unavailable/);
+		assert.doesNotMatch(lines, /pid /, "a reading that failed names no pid at all");
+	});
+
+	test("idle: not running, and every left-behind pidfile is listed", () => {
+		const slot = slotFor([claim("wt-a", 1), claim("wt-b", 2)], machineWith(null, []), PORT);
+		const lines = slotLines(PORT, slot, shown);
+		assert.match(lines[0] ?? "", /not running/);
+		assert.equal(lines.length, 3, "the head line plus one per claimant");
+	});
+
+	test("the entry's status and worktree come from the caller, not invented here", () => {
+		const slot = slotFor([claim("wt-only", 4242)], machineWith(4242, [4242]), PORT);
+		const lines = slotLines(PORT, slot, shown).join("\n");
+		assert.match(lines, /status\(4242\)/);
+		assert.match(lines, /\/path\/wt-only/);
 	});
 });

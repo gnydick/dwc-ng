@@ -21,7 +21,7 @@ and invariant claim mentions 13 -> 23, so no mechanism was deleted and no
 claim was lost in the gap. From here the ratchets make a dropped rung visible
 in the diff that drops it.
 
-**Totals:** 179 invariants · 152 at rung 6 or above · 27 below rung 6 (ceiling 27).
+**Totals:** 180 invariants · 153 at rung 6 or above · 27 below rung 6 (ceiling 27).
 
 ## bed
 
@@ -939,11 +939,11 @@ in the diff that drops it.
 
 ### `mock-duet/a-port-is-owned-by-its-listener-not-by-a-filename` — rung 6
 
-**Mechanism.** choke point — this is the only place that decides which registry entry owns a port, and it cannot reach an entry except through the listener set: the `listening` arm is constructed solely from `claimants.find(e => holders.includes(e.pid))`, so an entry that is not on the socket has no route into it. A caller can still ignore the answer and read `entries` itself, which is what keeps this at 6 rather than 7; promoting it means the status renderer taking a PortSlot rather than the raw entries
+**Mechanism.** choke point — this is the only place that decides which registry entry owns a port, and it cannot reach an entry except through the listener set: the `listening` arm is constructed solely from `claimants.find(e => holders.includes(e.pid))`, so an entry that is not on the socket has no route into it. The promotion this row used to name — the status renderer taking a PortSlot rather than the raw entries — LANDED in GIT_218 and is declared separately on {@link slotLines} at rung 7. This stays at 6 because `cmdStatus` still holds `entries` in scope for the tracked-mocks table, so a future line could select from them without coming through here; it reaches 7 when nothing in that function can name an entry except through a slot
 
 **Why.** one process holds a listening socket, but any number of pidfiles may name that port — a hard kill leaves its file behind by design, and the registry is shared across worktrees. Selecting by registry order names whichever worktree sorts first: on 2026-09-17 `status` called a running UAT stack "process gone" and attributed it to a worktree that had not run in weeks. The reverse costs more than a wrong label — a live process named in the wrong worktree invites tearing down someone else's stack
 
-`packages/mock-duet/src/portSlot.ts:32`
+`packages/mock-duet/src/portSlot.ts:48`
 
 ### `mock-duet/a-reading-that-failed-is-never-used-as-a-reading` — rung 7
 
@@ -1062,6 +1062,14 @@ in the diff that drops it.
 **Why.** a second hand-rolled framer is how a mock stops being a faithful stand-in for the board: the connector under test would be exercised against two slightly different dialects and pass both. Strict on purpose — fragmentation, RSV bits, unmasked client frames, binary and oversized frames each die with a NAMED close code, so a connector bug surfaces as a diagnosis rather than a hang
 
 `packages/mock-duet/src/ws.ts:4`
+
+### `mock-duet/the-uat-line-is-rendered-from-a-slot-never-from-the-entries` — rung 7
+
+**Mechanism.** sole input — this function takes a `PortSlot` and a lookup, and `PidEntry[]` is not among its parameters, so the lines for this port CANNOT be produced from the registry directly: a caller that wanted to name a claimant its own way has nothing here to call. Every entry reaching the output arrives through the arm `slotFor` put it in, and each arm is exhaustive over its own lists — a claimant cannot be silently dropped the way `untracked` dropped its own before GIT_218, because there is no arm without a list. This is the promotion the rung-6 declaration on `slotFor` named
+
+**Why.** the line answers "is the UAT stack up?", and both of its failure modes cost real work: naming a dead worktree sends someone to restart a stack that is already serving, and naming a live process in the WRONG worktree invites tearing down someone else's. Rendering from the raw entries is how the first one happened (GIT_216); dropping a list is how the second stayed invisible (GIT_218)
+
+`packages/mock-duet/src/portSlot.ts:97`
 
 ## om
 
