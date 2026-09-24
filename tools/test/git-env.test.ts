@@ -5,10 +5,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { spawnWithoutGitEnv, withoutGitEnv } from "../git-env.mjs";
 
 const TOOLS = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -74,62 +74,89 @@ test("INVERSE CONTROL: the same probe spawned raw does damage the repository, so
 	assert.deepEqual(damage(box.config), { bare: "true", user: "t" });
 });
 
-// The hooks run whatever `tiers.fast` and `tiers.merge` say, with the hook's environment. So the
-// protection holds only while each of them is a tools/ runner, and each runner can start a process
-// only through the helper. This is the tripwire for either one drifting.
-//
-// A runner's whole reach is its imports, so they are an allowlist, not a denylist of spawners:
-// nothing that can start a process (child_process, worker_threads, a second local module that
-// might) and no run-time loading, whose specifier a text scan cannot see. A runner that needs
-// another module widens this list in the same change, where a reviewer sees it.
-const RUNNER = /^node tools\/([\w-]+\.mjs)(?:\s|$)/;
-const RUNNER_IMPORTS = new Set(["node:fs", "node:path", "node:url", "./git-env.mjs"]);
-const STATIC_IMPORT = /^\s*(?:import|export)\s+(?:[^'";]*?\s+from\s+)?['"]([^'"]+)['"]/gm;
-const RUNTIME_LOAD = /\bimport\s*\(|\brequire\s*\(|\bcreateRequire\b|\bprocess\s*\.\s*(?:binding|dlopen)\b/;
+// The hooks run whatever `tiers.fast` and `tiers.merge` say, with the hook's environment. The
+// protection holds only while each is a tools/ runner that starts every process without GIT_*.
+// That is checked by BEHAVIOUR, not by reading source: review of #224 walked around two text scans
+// in a row (a second import sharing a line, a comment between `import` and its parenthesis). Each
+// runner runs with a hook-shaped environment under spawn-spy.mjs, which intercepts every way Node
+// starts a process, records the environment each child would have had, and starts nothing — so no
+// real test runs and nothing is touched. Limit: the spy sees the paths a run takes, not branches
+// it never reaches.
+// Plain word arguments only: a shell operator (`&&`, `|`, `;`, a redirect) would run something the
+// runner never sees.
+const RUNNER = /^node (tools\/[\w-]+\.mjs)((?:\s+[\w.-]+)*)\s*$/;
+const SPY = join(TOOLS, "test", "spawn-spy.mjs");
 
-// Why a runner's source could let a hook's GIT_* variables through, or null when it cannot.
-function leak(source: string): string | null {
-	if (RUNTIME_LOAD.test(source)) return "loads code dynamically";
-	const imports = [...source.matchAll(STATIC_IMPORT)].map((m) => m[1] as string);
-	const stray = imports.find((spec) => !RUNNER_IMPORTS.has(spec));
-	if (stray !== undefined) return `imports ${stray}`;
-	if (!imports.includes("./git-env.mjs")) return "does not import ./git-env.mjs";
-	return null;
+type Attempt = { fn: string; command: string; inherits: boolean; gitVars: string[] };
+
+// Run `script` the way a hook would: GIT_DIR and GIT_INDEX_FILE set. They name a directory that
+// does not exist, since nothing here may ever point at a real repository; the spy only needs them
+// to be present.
+function spied(script: string, args: string[]): { status: number | null; stderr: string; attempts: Attempt[] } {
+	const dir = tempDir("spy");
+	const log = join(dir, "attempts.jsonl");
+	const hookDir = join(dir, "no-such-gitdir");
+	const r = spawnSync(process.execPath, ["--import", pathToFileURL(SPY).href, script, ...args], {
+		cwd: ROOT,
+		encoding: "utf8",
+		env: { ...withoutGitEnv(), GIT_DIR: hookDir, GIT_INDEX_FILE: join(hookDir, "index"), SPAWN_SPY_LOG: log },
+	});
+	const lines = existsSync(log) ? readFileSync(log, "utf8").split("\n").filter(Boolean) : [];
+	return { status: r.status, stderr: r.stderr, attempts: lines.map((l) => JSON.parse(l) as Attempt) };
 }
 
-test("both tier commands the hooks run are tools/ runners that start processes only through the helper", () => {
-	const tiers = JSON.parse(readFileSync(join(ROOT, ".claude", "machinery", "config.json"), "utf8")).tiers;
+// A runner under the spy that ran `pnpm test` for real would reach this file again; the spy's log
+// variable survives withoutGitEnv, so a nested run sees it and stops here instead of recursing.
+const NESTED = process.env.SPAWN_SPY_LOG !== undefined;
+
+test("each tier command the hooks run starts every process with GIT_* removed, seen by behaviour", { skip: NESTED && "inside a spied run" }, () => {
+	const config = JSON.parse(readFileSync(join(ROOT, ".claude", "machinery", "config.json"), "utf8"));
 	for (const key of ["fast", "merge"]) {
-		const command = tiers[key];
-		const runner = RUNNER.exec(command);
-		assert.ok(runner, `tiers.${key} is \`${command}\`, not a tools/ runner — the hook would hand it GIT_DIR and GIT_INDEX_FILE`);
-		const file = runner[1] as string;
-		assert.equal(leak(readFileSync(join(TOOLS, file), "utf8")), null, `tools/${file}`);
+		const configured: string = config.tiers[key];
+		const m = RUNNER.exec(configured.replaceAll("<components>", Object.keys(config.components).join(" ")));
+		assert.ok(m, `tiers.${key} is \`${configured}\`, not a tools/ runner — the hook would hand it GIT_DIR and GIT_INDEX_FILE`);
+		const run = spied(join(ROOT, m[1] as string), (m[2] as string).trim().split(/\s+/).filter(Boolean));
+		assert.equal(run.status, 0, `tiers.${key} failed under the spy: ${run.stderr}`);
+		assert.ok(run.attempts.length > 0, `tiers.${key} started nothing, so there was nothing for the spy to see`);
+		for (const a of run.attempts) {
+			assert.equal(a.inherits, false, `tiers.${key}: ${a.fn}(${a.command}) would inherit the hook's environment`);
+			assert.deepEqual(a.gitVars, [], `tiers.${key}: ${a.fn}(${a.command}) would get ${a.gitVars.join(", ")}`);
+		}
 	}
 });
 
-test("POSITIVE CONTROL: the scan still flags every way a runner could spawn around the helper", () => {
-	const helper = "import { spawnWithoutGitEnv } from './git-env.mjs';\n";
-	// child_process itself, however it is spelled or laid out.
-	assert.equal(leak(helper + "import { spawnSync } from 'node:child_process';"), "imports node:child_process");
-	assert.equal(leak(helper + 'import cp from "child_process";'), "imports child_process");
-	assert.equal(leak(helper + "import {\n\tspawnSync,\n} from 'node:child_process';"), "imports node:child_process");
-	// Anything loaded at run time, where the specifier is invisible to a text scan.
-	assert.equal(leak(helper + "const cp = require('child_process');"), "loads code dynamically");
-	assert.equal(leak(helper + "const cp = await import('node:child_process');"), "loads code dynamically");
-	assert.equal(leak(helper + "const cp = await import('child_' + 'process');"), "loads code dynamically");
-	assert.equal(leak(helper + "import { createRequire } from 'node:module';\ncreateRequire(import.meta.url)('child_process');"), "loads code dynamically");
-	// A second module that could do the spawning, or another way to start a process.
-	assert.equal(leak(helper + "import { run } from './other.mjs';"), "imports ./other.mjs");
-	assert.equal(leak(helper + "export { run } from './other.mjs';"), "imports ./other.mjs");
-	assert.equal(leak(helper + "import { Worker } from 'node:worker_threads';"), "imports node:worker_threads");
-	assert.equal(leak(helper + "import { execa } from 'execa';"), "imports execa");
-	// No helper at all.
-	assert.equal(leak("import path from 'node:path';"), "does not import ./git-env.mjs");
-	// And a runner shaped like the real ones passes.
-	assert.equal(leak(helper + "import path from 'node:path';\nimport { fileURLToPath } from 'node:url';\nconst here = fileURLToPath(import.meta.url);\nspawnWithoutGitEnv('node', ['--test']);"), null);
-	assert.ok(RUNNER.test("node tools/tier-fast.mjs <components>"));
+test("POSITIVE CONTROL: the spy catches a runner that starts a process around the helper, however it gets there", () => {
+	const dir = tempDir("fixtures");
+	const helper = JSON.stringify(pathToFileURL(join(TOOLS, "git-env.mjs")).href);
+	const bad: Record<string, string> = {
+		"inherits": "import { spawnSync } from 'node:child_process';\nspawnSync('x', ['y']);",
+		"passes-process-env": "import { spawnSync } from 'node:child_process';\nspawnSync('x', [], { env: process.env });",
+		"shares-the-helpers-line": `import { spawnWithoutGitEnv } from ${helper}; import { execSync } from 'node:child_process';\nexecSync('x');`,
+		"comment-before-the-paren": "const cp = await import/*x*/('node:child_process');\ncp.execFileSync('x', []);",
+		"computed-specifier": "const cp = await import('node:child_' + 'process');\ncp.spawnSync('x');",
+		"getBuiltinModule": "process.getBuiltinModule('node:child_process').spawnSync('x');",
+		"createRequire": "import { createRequire } from 'node:module';\ncreateRequire(import.meta.url)('child_process').execSync('x');",
+		"async-spawn": "import { spawn } from 'node:child_process';\nspawn('x', []);",
+		"exec-with-callback": "import { exec } from 'node:child_process';\nexec('x', () => {});",
+		"fork": "import { fork } from 'node:child_process';\nfork('x.mjs');",
+	};
+	for (const [name, source] of Object.entries(bad)) {
+		const file = join(dir, `${name}.mjs`);
+		writeFileSync(file, source);
+		const run = spied(file, []);
+		assert.ok(run.attempts.some((a) => a.inherits || a.gitVars.length > 0), `${name}: not caught — attempts ${JSON.stringify(run.attempts)}, stderr ${run.stderr}`);
+	}
+	// A runner that goes through the helper is clean, and it is seen.
+	const good = join(dir, "good.mjs");
+	writeFileSync(good, `import { spawnWithoutGitEnv } from ${helper};\nspawnWithoutGitEnv('x', ['y']);`);
+	assert.deepEqual(spied(good, []).attempts, [{ fn: "spawnSync", command: "x", inherits: false, gitVars: [] }]);
+});
+
+test("the configured-runner pattern takes a tools/ runner and refuses a raw command", () => {
+	assert.ok(RUNNER.test("node tools/tier-fast.mjs connector ui"));
+	assert.ok(RUNNER.test("node tools/tier-merge.mjs"));
 	assert.ok(!RUNNER.test("pnpm test && pnpm build"));
+	assert.ok(!RUNNER.test("node tools/tier-merge.mjs && pnpm build"));
 });
 
 test("every GIT_* variable is removed, whatever its letter case", () => {
