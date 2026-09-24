@@ -12,11 +12,14 @@
 // `--conditions=browser` is a process-wide flag; packages/ui's tests need it and it is inert for the
 // rest, so one run covers every component.
 //
+// The pre-commit hook runs this with its own git environment; the tests start without any GIT_*
+// variable (#224, see git-env.mjs).
+//
 // Exit codes: node --test's own (0 passed, non-zero failed); 2 usage or an unknown component.
 import fs from 'node:fs';
 import path from 'node:path';
-import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { spawnWithoutGitEnv } from './git-env.mjs';
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const names = process.argv.slice(2);
@@ -44,5 +47,5 @@ for (const name of names) {
 	globs.push(`${prefix.replaceAll('\\', '/').replace(/\/+$/, '')}/test/*.test.ts`);
 }
 
-const run = spawnSync(process.execPath, ['--conditions=browser', '--test', ...globs], { cwd: root, stdio: 'inherit' });
+const run = spawnWithoutGitEnv(process.execPath, ['--conditions=browser', '--test', ...globs], { cwd: root, stdio: 'inherit' });
 process.exit(run.status ?? 1);
