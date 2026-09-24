@@ -14,6 +14,6 @@
     "declaration": "directory: <component>/test/*.test.ts is fast; <component>/test/slow/*.test.ts runs at push to main only",
     "assignment": "claude-decides"
   },
-  "comparisonAgent": "on-request",
+  "comparisonAgent": "we have no comparison for this project",
   "reviewBeforeMain": "person-and-agent"
 }
