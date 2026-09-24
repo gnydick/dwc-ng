@@ -232,7 +232,9 @@ test("the default mock PLACES its demo card, and degrades nothing doing it", asy
 
 	assert.deepEqual(Object.keys(layouts).sort(), ["machine"],
 		"the default seed overrides exactly the one screen it places a card on");
-	for (const value of Object.values(layouts.machine)) {
+	const machine = layouts.machine;
+	assert.ok(machine !== undefined, "the default seed overrides the machine screen");
+	for (const value of Object.values(machine)) {
 		assert.notEqual(value, null,
 			"the default machine removes nothing — an additive placement carries no tombstone");
 	}
