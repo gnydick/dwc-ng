@@ -8,17 +8,27 @@
 //
 // The fakes answer "succeeded", so a runner goes on to its end and every attempt it makes is seen.
 //
-// Patched on the child_process module object itself, then synced into its ESM exports. So the
+// Patched on the builtin module objects themselves, then synced into their ESM exports. So the
 // same fakes answer however a script reaches them:
 // - a static import, on its own line or not
 // - import(), with a literal or a computed specifier
 // - createRequire
 // - process.getBuiltinModule
-// process.execve is replaced too.
+//
+// What is covered:
+// - every child_process function, and the ChildProcess class's own spawn underneath them
+// - worker_threads: a Worker gets its own unpatched child_process and, by default, a copy of this
+//   process's environment
+// - cluster.fork, which always passes this process's environment on
+// - process.execve
+// - process.binding and process.dlopen: a way into the spawn internals, and native code no patch
+//   can see. A runner has no use for either, so any call is recorded as a failure.
 import cp from 'node:child_process';
+import cluster from 'node:cluster';
 import { EventEmitter } from 'node:events';
 import { appendFileSync } from 'node:fs';
 import { syncBuiltinESMExports } from 'node:module';
+import wt from 'node:worker_threads';
 
 const LOG = process.env.SPAWN_SPY_LOG;
 if (!LOG) throw new Error('spawn-spy: SPAWN_SPY_LOG is not set, so nothing could be recorded');
@@ -60,8 +70,44 @@ cp.execFile = (file, args, options, callback) => {
 	if (done) setImmediate(done, null, '', '');
 	return fakeChild();
 };
+
+// The primitive the functions above delegate to. Its environment arrives as "NAME=value" pairs.
+cp.ChildProcess.prototype.spawn = function (options) {
+	const pairs = options?.envPairs;
+	const env = pairs === undefined ? undefined : Object.fromEntries(pairs.map((pair) => {
+		const at = String(pair).indexOf('=');
+		return [String(pair).slice(0, at), String(pair).slice(at + 1)];
+	}));
+	record('ChildProcess.spawn', options?.file, env === undefined ? undefined : { env });
+	this.pid = 0;
+	setImmediate(() => { this.emit('exit', 0, null); this.emit('close', 0, null); });
+	return 0;
+};
+
+// A Worker's `env` defaults to a copy of this process's environment; SHARE_ENV shares it outright.
+class FakeWorker extends EventEmitter {
+	constructor(file, options) {
+		super();
+		const env = options?.env === wt.SHARE_ENV ? undefined : options?.env;
+		record('Worker', file, env === undefined ? undefined : { env });
+		setImmediate(() => this.emit('exit', 0));
+	}
+	postMessage() {}
+	ref() {}
+	unref() {}
+	terminate() { return Promise.resolve(0); }
+}
+wt.Worker = FakeWorker;
+
+// cluster.fork merges its argument over this process's environment, so the child always inherits.
+cluster.fork = (env) => { record('cluster.fork', process.argv[1], undefined); return Object.assign(new EventEmitter(), { id: 0, process: fakeChild() }); };
+
 syncBuiltinESMExports();
 
 if (typeof process.execve === 'function') {
 	process.execve = (file, args, env) => { record('execve', file, env === undefined ? undefined : { env }); process.exit(0); };
 }
+
+// No runner needs these. Record the call as inheriting, which the test counts as a failure, then refuse.
+process.binding = (name) => { record('process.binding', name, undefined); throw new Error(`spawn-spy: process.binding('${name}') refused`); };
+process.dlopen = (module, filename) => { record('process.dlopen', filename, undefined); throw new Error(`spawn-spy: process.dlopen('${filename}') refused`); };

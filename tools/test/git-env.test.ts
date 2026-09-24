@@ -105,11 +105,10 @@ function spied(script: string, args: string[]): { status: number | null; stderr:
 	return { status: r.status, stderr: r.stderr, attempts: lines.map((l) => JSON.parse(l) as Attempt) };
 }
 
-// A runner under the spy that ran `pnpm test` for real would reach this file again; the spy's log
-// variable survives withoutGitEnv, so a nested run sees it and stops here instead of recursing.
-const NESTED = process.env.SPAWN_SPY_LOG !== undefined;
-
-test("each tier command the hooks run starts every process with GIT_* removed, seen by behaviour", { skip: NESTED && "inside a spied run" }, () => {
+test("each tier command the hooks run starts every process with GIT_* removed, seen by behaviour", () => {
+	// Only reachable if a spied runner really ran `pnpm test` (the spy failed to fake it) or the
+	// variable leaked in from outside. Both are failures, and failing here also stops the recursion.
+	assert.equal(process.env.SPAWN_SPY_LOG, undefined, "SPAWN_SPY_LOG is set: this suite is running inside a spied run, so a runner under the spy really executed its tier");
 	const config = JSON.parse(readFileSync(join(ROOT, ".claude", "machinery", "config.json"), "utf8"));
 	for (const key of ["fast", "merge"]) {
 		const configured: string = config.tiers[key];
@@ -139,6 +138,13 @@ test("POSITIVE CONTROL: the spy catches a runner that starts a process around th
 		"async-spawn": "import { spawn } from 'node:child_process';\nspawn('x', []);",
 		"exec-with-callback": "import { exec } from 'node:child_process';\nexec('x', () => {});",
 		"fork": "import { fork } from 'node:child_process';\nfork('x.mjs');",
+		// Review of a937636: the primitive under every function above, and routes that never touch
+		// this thread's child_process at all.
+		"ChildProcess-class": "import { ChildProcess } from 'node:child_process';\nnew ChildProcess().spawn({ file: 'x', args: ['x'], envPairs: Object.entries(process.env).map(([k, v]) => `${k}=${v}`), stdio: 'ignore' });",
+		"worker-thread": "import { Worker } from 'node:worker_threads';\nnew Worker('x.mjs');",
+		"cluster-fork": "import cluster from 'node:cluster';\ncluster.fork();",
+		"process-binding": "process.binding('spawn_sync');",
+		"native-addon": "process.dlopen({ exports: {} }, 'x.node');",
 	};
 	for (const [name, source] of Object.entries(bad)) {
 		const file = join(dir, `${name}.mjs`);
