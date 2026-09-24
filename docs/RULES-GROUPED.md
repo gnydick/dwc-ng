@@ -1,5 +1,7 @@
 # Design and Implementation Rules, Grouped by Intent
 
+> SUPERSEDED (2026-09-02): the register is now .claude/machinery/INDEX.md (generated) over .claude/rules/*.md; universal groups moved to the machinery plugin. Kept verbatim as history.
+
 **This is the project's design-decision register — the living authority on WHAT
 was decided.** Its sibling, `docs/invariant-register.md`, is the enforcement
 ledger — the living authority on HOW STRONGLY code holds each invariant (rungs
@@ -27,6 +29,8 @@ exist here and should not be invented** — if one is ever wanted, generate it
 from git blame rather than writing it by hand.
 
 ## Maintaining this file (the contract)
+
+> SUPERSEDED (2026-09-02): the contract is now mechanical, not prose - see machinery plugin rules/rule-governance.md § Where a rule lives, § Finding the group it joins and § Filing and closing the loop. The index is generated from the rule files, so a register that disagrees with them cannot be committed.
 
 - **The register CITES, it never ORIGINATES.** Every row points at where the
   rule actually lives — `CLAUDE.md` § heading, a spec, the invariant register.
@@ -60,6 +64,8 @@ from git blame rather than writing it by hand.
 
 ## Confirmation discipline — a local check is not a general one 🟢
 
+> SUPERSEDED (2026-09-02): see machinery plugin rules/verification-and-evidence.md § The word you just wrote makes a check due. All four rows are stated there.
+
 **What binds these:** each rule closes one route by which a check that could
 only speak to the instance in front of it was treated as proof of the class,
 premise, or diagnosis it was attached to. Named as a single generator by the
@@ -87,6 +93,8 @@ post-mortem trigger that fires on a ledger mismatch.
 
 ## Acting outside the working tree 🟢
 
+> SUPERSEDED (2026-09-02): see machinery plugin rules/verification-and-evidence.md § The word you just wrote makes a check due.
+
 **What binds these:** the same generator pointed outward — a fact true in one
 context, carried into another where it was never checked. Currently one rule;
 kept as its own group because its trigger (an action leaving the tree) is
@@ -105,6 +113,8 @@ tickets into a stranger's repository and closed two of its issues. Repaired in
 ---
 
 ## Proving a change against something that behaves like the machine 🟢
+
+> SUPERSEDED (2026-09-02): see .claude/rules/uat-and-mock.md § Proving a change against something that behaves like the machine (rows 1 and 3-7) and § Completion claims (row 2).
 
 **What binds these:** a test suite exercises the units someone wrote a fixture
 for; it does not exercise the wiring a person touches. This group holds the
@@ -187,6 +197,8 @@ reading the `scripts` blocks of both `package.json` and
 
 ## Dispatching work — who does it, and where it runs 🟢
 
+> SUPERSEDED (2026-09-02): see machinery plugin rules/agent-topology.md § What gets dispatched, § How many at once and § Where an agent works, plus machinery plugin rules/worktree-discipline.md. The project-specific residue is .claude/rules/uat-and-mock.md § The test agent class (row 2, the fourth agent kind) and § Proving a change against something that behaves like the machine (row 6, the mock).
+
 **What binds these:** the groups above fire on an artefact that already exists
 — a claim, a diagnosis, a completion note. These fire one step earlier, at the
 moment work is HANDED OUT: who executes it, how many executors may be alive at
@@ -241,6 +253,8 @@ anything enforces it.
 
 ## Claiming what the tooling can do 🟢
 
+> SUPERSEDED (2026-09-02): see machinery plugin rules/verification-and-evidence.md § The word you just wrote makes a check due.
+
 **What binds these:** the same generator as "Acting outside the working tree" —
 a fact taken from prose about the environment instead of from the environment —
 but pointed at a different kind of fact and caught at a different moment. That
@@ -281,6 +295,8 @@ other verification-discipline rules.
 ---
 
 ## Persisted layouts across releases 🟢
+
+> SUPERSEDED (2026-09-02): see .claude/rules/persisted-layouts.md § Persisted layouts across releases. Each rule keeps its own spec citation there.
 
 **What binds these:** all three are one decision about the boundary between a
 RELEASE and the layout state that outlives it. A layout lives in three places at

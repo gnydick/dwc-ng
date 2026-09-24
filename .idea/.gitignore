@@ -12,3 +12,7 @@
 # name carries a host and username that a fresh clone neither needs nor should
 # learn. Configure your own under Settings > Deployment.
 /deployment.xml
+# Per-user editor state (open tabs, folding, caret positions). Tracked until
+# 2026-09-17; it is not shared configuration and it dirtied the tree on every
+# session, which the pre-push hook refuses.
+/editor.xml

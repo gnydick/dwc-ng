@@ -5,8 +5,9 @@ Duet 3 running RRF 3.6.3 differ, so the remaining gap is *visible* rather than
 rediscovered one feature at a time. GIT_92 requirement 5.
 
 **Why it exists at all.** The mock is not a convenience. It is the thing that
-makes a wrong UI observable before a change reaches hardware, and every rule in
-`CLAUDE.md` § "Working rules (development environment)" leans on it. Two drifts
+makes a wrong UI observable before a change reaches hardware, and every rule about
+proving a change against it leans on it —
+`.claude/rules/uat-and-mock.md` § Proving a change against something that behaves like the machine. Two drifts
 were found the expensive way: the machine-identity campaign keyed everything off
 `boards[].uniqueId` against a mock serving no `boards` at all, and #102 found
 `G28` hardcoded to XYZ on a machine with seven axes. Both were found by the

@@ -260,3 +260,38 @@ the SAME change, not afterwards.
    with the placeholder still in place. The card is then mid-rewrite and the
    served page is the placeholder forever until someone re-deploys. Whether
    that is acceptable, or whether the write must be made atomic, is undecided.
+6. **Per-screen layout files on the SD card, instead of one `0:/sys/dwc-ng-config.json`.**
+   Raised by Gabe 2026-08-28 and recorded here at his assent — NOT decided. It belongs on
+   this ticket because it reshapes question 1: with one file per screen, "the layout
+   version" becomes a **per-file** fact rather than one global stamp, so the
+   `CONFIG_VERSION` / `CANVAS_FORMAT_VERSION` conflict ("two independent stamps cannot both
+   be strictly greater every release") stops being a contest between two globals. A
+   migration could then rewrite one screen and leave the rest untouched, which also makes a
+   **half-finished migration legible** instead of all-or-nothing — directly relevant to
+   question 5 (interrupted migration).
+
+   **For:**
+   - A per-screen write is self-evidently scoped. The defect ticketed as #146 — saving one
+     screen rewrote seven others — would have been VISIBLE as seven unexpected files
+     changing timestamps, instead of one opaque blob that had to be diffed against a backup
+     to detect at all.
+   - Corruption is isolated to one screen rather than costing the whole overlay.
+   - Migration granularity: per-file version stamps, per-file rewrite, resumable.
+   - Smaller payload per change — a screen save writes one small file, not the whole config.
+
+   **Against:**
+   - `CLAUDE.md`'s standing hard constraint is that RRF's embedded HTTP server is weak and
+     **request count** is the thing to minimise. Nine layout files is nine requests on load
+     where one file is one request. The tension is real and should not be papered over: the
+     **payload** argument favours per-file, the **request-count** argument favours one file.
+     Whichever way this goes, it is a trade against an explicit project constraint and needs
+     Gabe's call, not an implementer's.
+
+   **Interaction to design, not discover:** `screens.layouts` is MACHINE-scoped while
+   `renames`, `hidden` and `custom` are PERSON-scoped (`packages/ui/src/config/types.ts:387-403`,
+   `splitOverlay` splits `screens` per leaf on every read and write). Per-screen files cut
+   along the machine-scoped half only, so they interact with that split rather than replacing
+   it — a per-screen file cannot simply be "the screens section".
+
+   **Explicitly:** per-screen files would make the #146 save-scope defect *visible*, not
+   prevent it. The fix in #146 (sparse overrides, only-what-changed writes) stands either way.

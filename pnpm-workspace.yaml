@@ -1,7 +1,7 @@
 packages:
   - 'packages/*'
 
-# Security (see CLAUDE.md > Dependency policy):
+# Security (see .claude/rules/dependencies.md - Dependency policy):
 # Lifecycle build scripts are blocked by default in pnpm 10+; allowlist only esbuild.
 onlyBuiltDependencies:
   - esbuild

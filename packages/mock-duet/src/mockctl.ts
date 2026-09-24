@@ -26,6 +26,7 @@ import { closeSync, existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import process from "node:process";
 import { stripArgSeparators } from "./argv.ts";
+import { slotFor, slotLines } from "./portSlot.ts";
 import {
 	adoptStartLog,
 	describeSegment,
@@ -35,6 +36,7 @@ import {
 	stopLiveMock,
 	openStartLog,
 	probeMachine,
+	processName,
 	readEntries,
 	resolveRegistry,
 	stopEntry,
@@ -135,10 +137,10 @@ function classify(entry: PidEntry, snap: Snapshot): string {
 
 /** Live mock-duet processes, with the ports each is listening on. */
 function liveMocks(snap: Snapshot): { proc: ProcInfo; ports: number[] }[] {
-	if (snap.procs === null) return [];
+	if (!snap.procs.ok) return [];
 	const portsByPid = new Map<number, number[]>();
-	if (snap.listeners !== null) {
-		for (const [port, pids] of snap.listeners) {
+	if (snap.listeners.ok) {
+		for (const [port, pids] of snap.listeners.data) {
 			for (const pid of pids) {
 				const list = portsByPid.get(pid) ?? [];
 				list.push(port);
@@ -147,7 +149,7 @@ function liveMocks(snap: Snapshot): { proc: ProcInfo; ports: number[] }[] {
 		}
 	}
 	const out: { proc: ProcInfo; ports: number[] }[] = [];
-	for (const proc of snap.procs.values()) {
+	for (const proc of snap.procs.data.values()) {
 		if (proc.pid === process.pid) continue;
 		if (!isMockProcess(proc)) continue;
 		out.push({ proc, ports: (portsByPid.get(proc.pid) ?? []).sort((a, b) => a - b) });
@@ -156,8 +158,8 @@ function liveMocks(snap: Snapshot): { proc: ProcInfo; ports: number[] }[] {
 }
 
 function pidsOn(snap: Snapshot, port: number): number[] | null {
-	if (snap.listeners === null) return null;
-	return snap.listeners.get(port) ?? [];
+	if (!snap.listeners.ok) return null;
+	return snap.listeners.data.get(port) ?? [];
 }
 
 // ---------------------------------------------------------------------------
@@ -174,17 +176,16 @@ function cmdStatus(reg: Registry): void {
 
 	// --- the reserved UAT stack, first, because it is the one with a bookmark
 	console.log(`UAT stack (reserved: mock ${UAT_MOCK_PORT} + vite ${UAT_VITE_PORT}, one at a time)`);
-	const uatEntry = entries.find(e => e.port === UAT_MOCK_PORT);
-	if (uatEntry === undefined) {
-		const stray = pidsOn(snap, UAT_MOCK_PORT);
-		if (stray === null) console.log(`  mock ${UAT_MOCK_PORT} : unknown (cannot enumerate sockets)`);
-		else if (stray.length === 0) console.log(`  mock ${UAT_MOCK_PORT} : not running`);
-		else console.log(`  mock ${UAT_MOCK_PORT} : LISTENING but untracked — pid ${stray.join(", ")}`);
-	} else {
-		console.log(
-			`  mock ${UAT_MOCK_PORT} : ${classify(uatEntry, snap)} — pid ${uatEntry.pid}, ` +
-				`worktree ${uatEntry.segment} (${describeSegment(reg, uatEntry.segment)})`,
-		);
+	// The lines come from the slot, never from `entries` directly: see the
+	// invariant on slotLines. This supplies only the lookups that need a machine
+	// reading and a resolved registry — including the name of a holder with no
+	// pidfile, which comes out of the SAME reading rather than a second probe.
+	for (const line of slotLines(UAT_MOCK_PORT, slotFor(entries, snap, UAT_MOCK_PORT), {
+		status: e => classify(e, snap),
+		where: e => describeSegment(reg, e.segment),
+		named: pid => processName(snap, pid),
+	})) {
+		console.log(line);
 	}
 	const vite = pidsOn(snap, UAT_VITE_PORT);
 	if (vite === null) console.log(`  vite ${UAT_VITE_PORT} : unknown (cannot enumerate sockets)`);
@@ -226,8 +227,8 @@ function cmdStatus(reg: Registry): void {
 			);
 		}
 	}
-	if (snap.procs === null) console.log("\nWARNING: could not enumerate processes; nothing above is verified.");
-	if (snap.listeners === null) console.log("\nWARNING: could not enumerate listening sockets; nothing can be stopped safely.");
+	if (!snap.procs.ok) console.log(`\nWARNING: ${snap.procs.failure.reason}; nothing above is verified.`);
+	if (!snap.listeners.ok) console.log(`\nWARNING: ${snap.listeners.failure.reason}; nothing can be stopped safely.`);
 }
 
 // ---------------------------------------------------------------------------
@@ -469,7 +470,7 @@ function cmdReap(reg: Registry, args: string[]): void {
 	}
 
 	const snap = probeMachine();
-	if (snap.procs === null) fail("reap: cannot enumerate processes on this platform; refusing to guess.");
+	if (!snap.procs.ok) fail(`reap: ${snap.procs.failure.reason}; refusing to guess.`);
 	const entries = readEntries(reg);
 	const byPid = new Map(entries.map(e => [e.pid, e]));
 	let found = liveMocks(snap);

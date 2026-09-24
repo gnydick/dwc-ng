@@ -8,98 +8,45 @@ first (board serves UI from SD card via RRF's embedded HTTP server), with
 an architecture that allows a DSF/SBC WebSocket connector to be added later
 with no rework above the connector abstraction.
 
+## Rules
+
+- Project rules live in `.claude/rules/`, one markdown file per group and one rule per
+  bullet. The register index over them is `.claude/machinery/INDEX.md`, which is
+  GENERATED and never edited by hand — run `/machinery:reindex`.
+- Universal rules — the ones that would hold in any project — come from the `machinery`
+  plugin and are loaded into every session automatically. They are deliberately not
+  restated here; several sections below are retired to a pointer at one.
+- Dictate a project rule by starting the prompt with `PRULE:` and a universal one with
+  `URULE:`. The capture lands in `.claude/machinery/inbox.md` as PENDING. A bare `RULE:`
+  captures nothing and asks which you meant.
+- File a captured rule with `/machinery:rule-intake`. The commit gate — `.githooks/pre-commit`,
+  which runs `.githooks/machinery/gate.mjs` on EVERY commit — fails while any inbox entry
+  is PENDING, while the index disagrees with the staged rule files, or on a newly added
+  citation that does not resolve.
+
 ## Hard constraints (these drive everything)
 
-- RRF's embedded HTTP server is weak: very few concurrent connections,
-  small output buffers, requests are expensive. Minimize request count and
-  total payload. **Standalone only:** emit pre-gzipped assets (RRF serves
-  .gz transparently). **Never gzip for DSF/SBC** — verified 2026-07-24 on
-  a Duet 3 + SBC: DuetWebServer (Kestrel) neither compresses on the fly
-  nor serves .gz transparently, so a .gz deploy 404s every asset. The
-  packager derives compression from the SERVING STACK (which server will
-  answer the browser), not from the transport that wrote the files —
-  re-seated 2026-07-31 so one protocol, e.g. FTP, can serve either mode;
-  see docs/superpowers/specs/2026-07-24-deployment-packaging-design.md.
-- No heavy component libraries. Hand-rolled CSS. (The old "under ~300KB
-  gzipped" bundle target is **non-binding** — Gabe, 2026-07-24: "that size
-  is not a problem at all". Measured: eager 96.9 KB gz, total 665 KB gz,
-  Babylon 232 KB of it and lazy.)
-- The UI is a live mirror of RRF's object model, updated via polling:
-  lightweight status polls, watch `seqs` counters, re-fetch changed
-  subtrees via chunked `rr_model` queries (depth/frequency flags, array
-  offsets). Merge = wholesale subtree replacement.
-- nothing should be able to break by construction
+> SUPERSEDED (2026-09-02): see .claude/rules/hard-constraints.md § Hard constraints
 
 ## Reference source: read-only, never copy (HARD AND FAST RULE)
 
-- ALL vendored and example third-party source we read — everything under
-  reference/ (DWC, @duet3d/*, the M409 docs), any installed dep we open to
-  study (e.g. @sindarius/gcodeviewer, Babylon examples), and any code seen
-  on a board, in a repo, or on the web — is REFERENCE ONLY. It exists to
-  help us understand HOW a problem was solved and WHAT edge cases exist.
-- You may NEVER copy, port, transcribe, translate, or line-by-line
-  paraphrase vendor/example code into this repo. Every implementation here
-  must be our own novel work: take the understanding, then write it from
-  scratch to fit our architecture (Solid store + reconcile, connector
-  abstraction, lean plain-data types, hand-rolled CSS, our conventions).
-- Citing reference by file/line to explain a decision is encouraged;
-  lifting its code is forbidden. This is a standing project rule, not
-  license-driven caution to be waived — it holds regardless of the vendor's
-  license. If a solution seems to require copying, STOP and ask.
+> SUPERSEDED (2026-09-02): see .claude/rules/reference-material.md § What counts as reference here for what counts as reference in this repo, and machinery plugin rules/reference-sources.md § Reference only for the ban on copying it
 
 ## Stack (already decided, do not relitigate)
 
-- SolidJS + TypeScript + Vite, pnpm workspaces
-- packages/ui — the app. packages/mock-duet — mock RRF server (to be built)
-- Solid store + reconcile() for object model merging
-- uPlot for temperature charts, CodeMirror 6 (lazy-loaded) for config
-  editing, Three.js (lazy-loaded) only if/when gcode/heightmap 3D happens
+> SUPERSEDED (2026-09-02): see .claude/rules/stack.md § Stack (already decided, do not relitigate)
 
 ## Architecture requirements
 
-- Connector abstraction from day one: interface with connect, subscribe,
-  sendCode, upload, list, etc. Implement PollConnector (rr_ API) only.
-  DSF connector is a future bolt-on.
-- PollConnector must handle: rr_connect sessions/auth, seqs-driven
-  invalidation, chunked rr_model, rr_gcode + rr_reply shared-buffer
-  draining, rr_upload with CRC32 verification, rr_filelist pagination
-  ("next" param), retry-on-503 (firmware busy), idle keepalive.
-- ✅ Evaluated (2026-07-12): @duet3d/objectmodel is NOT Vue-coupled (zero
-  runtime deps) but is class-instance based with in-place mutating update()
-  — incompatible with Solid store proxies + reconcile(). Decision: types
-  reference only (vendored copy = shape authority, cited by file/line);
-  UI defines lean plain-data interfaces for rendered subtrees. Not a
-  runtime dependency.
-- Vendor the official DWC source into reference/dwc/ as read-only
-  reference (mark excluded from builds). Its PollConnector encodes years
-  of edge cases (M409 retry logic, upload verification, firmware version
-  workarounds). Read it before reimplementing any rr_ interaction.
-- Scaling features should work universally. Interface cards should
-  not need resizing or layout updated. ✅ Met (2026-08-21): one global unit
-  `--u` (`shell/scale.ts`, `data-scale` on `<html>`), every layout-space
-  length `calc(n * var(--u))`, zero-layout decorations (borders/hairlines as
-  inset box-shadow, never `border:`), enforced by a test-suite-failing px lint
-  (`test/unit-lengths.test.ts` — `pnpm test`, not `pnpm build`; there is no CI
-  or hook running it yet) and a Card Lab scale sweep asserting equal
-  cell floors at 0.75/1.5 for every card. See
-  docs/superpowers/specs/2026-08-21-global-unit-scaling-design.md.
-- Unique desktop and mobile profiles for both portrait and landscape should be
-  saved, so 4 layouts per machine
-- Mobile version of UI should be mobile first, not copying desktop
-  paradigms by default. Desktop paradigms are not rules out.
+> SUPERSEDED (2026-09-02): see .claude/rules/architecture.md § Architecture requirements
 
 ## Solid-specific rules (I will be reviewing for these)
 
-- Never destructure props (kills reactivity). Use props.x or splitProps.
-- Use <Show>/<For>/<Switch>, not early returns or .map in JSX.
-- Signals/stores accessed inside tracking scopes only.
+> SUPERSEDED (2026-09-02): see .claude/rules/solid.md § Solid-specific rules
 
 ## Dependency policy (security)
 
-- pnpm 10+. Lifecycle scripts blocked by default; allowlist only esbuild
-  in onlyBuiltDependencies. minimumReleaseAge: 4320 in pnpm-workspace.yaml.
-- NEVER add a dependency without asking me first. Prefer zero-dep or
-  low-dep packages. Frozen lockfile installs only.
+> SUPERSEDED (2026-09-02): see .claude/rules/dependencies.md § Dependency policy for this project's values, and machinery plugin rules/environment-and-platform.md § Dependencies for the policy itself
 
 ## First tasks (in order, confirm plan before executing)
 
@@ -154,170 +101,16 @@ with no rework above the connector abstraction.
    repository ecosystem. (Exact refs in reference/README.md: @duet3d/objectmodel
    3.6.3, @duet3d/connectors 3.6.0 — its 3.6.x release — DuetWebControl v3.6.3.)
 
-Put this file's contents (condensed) into CLAUDE.md as project memory.
 Ask me before deviating from any decision recorded here.
 
 ## Working rules (verification discipline)
 
-Adopted 2026-08-26 from campaign #76 phase 1, where five of six BEFORE/AFTER
-mismatches shared one cause and two of them destroyed configuration on the
-real printer. Each fires on an ARTEFACT — when you write the word, the check
-is due. Evidence per rule is in `docs/LEARNINGS.md`; the register that groups
-them is `docs/RULES-GROUPED.md`.
-
-- **A "class" or "shape" ruling must enumerate every instance.** If a finding
-  or ruling uses a class noun ("class", "shape", "pattern") or calls a
-  behaviour recurring, search the changed layer for the same shape and fix or
-  defer every hit BY NAME before the task closes. Fixing the one you were
-  pointed at does not discharge a class-shaped claim.
-- **A diagnosis is not "confirmed" until the call path is traced.** For a
-  behavioural bug, cite the call chain hop by hop, file:line, from the entry
-  point that runs on the ACTUAL observed input to the indicted line. Reading
-  the end function correctly is not showing that execution reaches it.
-- **A fix for a falsified premise must check the premise underneath it.** When
-  a task exists BECAUSE an earlier premise was shown false, state what the
-  broken premise assumed about its INPUTS, and check whether the replacement
-  inherits it one layer down: does the new code still trust its input to be
-  complete, coherent or singular when nothing enforces that?
-- **Closing an open question requires a testable proposition.** Name the
-  variable whose value would flip the answer, as something a later reader
-  could check and find FALSE. If only prose can be written, the question is
-  not closed — it is a guess with a due date.
-- **Verify the target from the environment, not from a document.** Before any
-  action leaving the working tree: `git remote -v` for a tracker, the
-  configured host for a deploy, `rev-parse` for a branch. A document adapted
-  from another project carries that project's identifiers.
-- **Check what the tooling can do; never assert it from prose.** Before
-  claiming that a hook, test, gate, flag, script or harness exists, blocks
-  something, or would catch a given defect, run the check that could FALSIFY
-  the claim: `git config core.hooksPath` plus reading the hook script; opening
-  the test file and finding the assertion that would fail on that input;
-  `--help` for a flag; the `scripts` block of `package.json` for a command; a
-  lockfile grep for a dependency. This repo's own prose is not exempt — it is
-  the most dangerous source, because it reads authoritative and goes stale
-  silently.
+> SUPERSEDED (2026-09-02): see machinery plugin rules/verification-and-evidence.md § The word you just wrote makes a check due. All six bullets are stated there; none is restated as a project rule
 
 ## Working rules (development environment)
 
-Adopted 2026-08-26 (Gabe, via `RULE:` intake).
-
-- **The full mock suite runs during development, and a user-facing change is
-  not done until it has been exercised against it.** Keep `pnpm mock` up while
-  building UI so any change can be clicked through without waiting for a
-  deploy to the printer, and drive the change against mock-duet before
-  reporting it complete. A green unit suite is not UAT: it exercises the units
-  you wrote a fixture for, not the wiring a person touches. Two defects reached
-  the real printer in one day with 1,500 tests passing, because nothing ran the
-  boot path end to end.
-- **The mock moves with every iteration.** A change to what the UI reads from
-  or writes to the board — a new object-model key, a new file path, a config
-  version bump, a new endpoint — updates `packages/mock-duet` in the SAME
-  change, not later. Mock parity is part of the work, not a follow-up ticket.
-  The machine-identity campaign keyed everything off `boards[].uniqueId` and
-  never touched the mock, which still serves a machine with no `boards` at all;
-  the drift was found by the owner failing to use it, not by any review. A mock
-  a version behind cannot host the UAT the rules above require, so letting it
-  drift disables the rule that catches everything else.
-- **Nothing deploys to the printer until Gabe has UAT'd it on the mock.** The
-  implementer's UAT (above) is evidence that the change works; Gabe's is the
-  gate that lets it reach hardware. So the sequence is: work lands → review
-  clean → mock stood up and handed to Gabe → **he** drives it → he says deploy.
-  A clean review is not permission to ship. Deploying first and letting him
-  find the defect on the machine is what happened on 2026-08-26, twice in one
-  morning, and both times the mock could have shown it first.
-- **Every code-complete iteration is deployed to the mock for UAT.** Not only
-  the final one, and not gated on the review being clean: as soon as an
-  iteration is code complete, stand it up against `packages/mock-duet` and say
-  so, so Gabe can drive it while review and any fix rounds continue. This
-  refines the gate above rather than replacing it — the mock deploy happens
-  EARLY and often; the printer deploy still waits for Gabe's word. Batching UAT
-  to the end is how a wrong reading of a requirement survives three fix rounds
-  before anyone who knows the machine looks at it.
-- **Whoever stands a mock up owns tearing it down.** A mock started for an
-  iteration's UAT is stopped when that UAT ends, and a ticket's mock does not
-  outlive the ticket's merge. The four rules above stand one up per iteration
-  and per ticket; nothing in the workflow ever took one down, so on 2026-08-29
-  ten orphaned `mock-duet` processes were still listening, the oldest two days
-  old — and ports 8136/8138/8142/8144 were GIT_136/GIT_138/GIT_142/GIT_144, the
-  four branches merged the day before, which is what makes the leak systematic
-  rather than a slip. The rule that catches everything else was the source of
-  it. Falsifying check: `Get-CimInstance Win32_Process -Filter "Name='node.exe'"`
-  filtered to `mock-duet` returns no process older than the current session's
-  work. Confirm a kill by port state, never by exit code — `pkill` exits 0 on
-  Windows while leaving the process alive.
-- **Identify the mock you are driving by PID and start time, never by "something
-  answered on that port".** Before reporting a mock as stood up, confirm the
-  listening process is the one you launched: owning PID via
-  `Get-NetTCPConnection`, cross-checked against its `CreationDate`. A response
-  on the expected port is not evidence the expected process produced it. On
-  2026-08-29 a start command failed outright
-  (`ERR_PARSE_ARGS_UNEXPECTED_POSITIONAL`, from pnpm passing `--` through as a
-  positional) while `curl 127.0.0.1:8971/rr_connect` still returned a healthy
-  `{"err":0,"apiLevel":1,"sessionTimeout":8000}` — from the previous evening's
-  orphan, one step from a UAT that would have validated the wrong code and
-  looked green doing it. Orphans also carry flags that silently mask defects:
-  `--max-sessions 32` (the mock's own `--help`: "Raise ONLY to work around a
-  known session leak during UAT — a high cap hides that class of bug") and
-  `--no-auth` were both live on orphans found that day.
+> SUPERSEDED (2026-09-02): see .claude/rules/uat-and-mock.md § Proving a change against something that behaves like the machine, and § Completion claims in the same file
 
 ## Working rules (work topology)
 
-Adopted 2026-08-28 (Gabe, ruled in conversation). The two subsections above
-fire on an ARTEFACT — a claim already written. These fire earlier, on the
-decision to DISPATCH: they govern who does a piece of work and where it runs,
-before any of it exists.
-
-- **The main agent does no work.** Verbatim: "nothing runs in the main agent
-  conserve tokens and keep conversation context tight". The main agent holds
-  conversation, adjudication and relay; everything else is delegated to an
-  agent. The line is intent, not file count: reading a file to ANSWER a
-  question is conversation; reading it to CHANGE it is work, and work is
-  dispatched. The cost being conserved is main-loop context — tool output an
-  agent would have absorbed and returned as a summary — not model spend.
-- **Four agent classes: effort, review, test, rule-intake.** Every dispatch
-  belongs to exactly one of them. (*effort* = implementation and research;
-  *review* = reading work for defects; *test* = exercising it, including UAT;
-  *rule-intake* = governance filing.) A new class is named by Gabe, not
-  inferred by an agent that wants a second slot.
-- **Serial WITHIN a class, concurrent ACROSS classes.** One agent in flight
-  per class, so at most four at once — and only when each is in a DIFFERENT
-  worktree.
-- **At most ONE agent per worktree.** Two agents in one checkout collide:
-  each sees the other's half-written files as the tree it is reasoning about,
-  and neither can attribute or undo a change it did not make. This is not
-  waivable by an agent's own reading of its brief — a brief that says "do not
-  touch the tree" is a promise, not a mechanism. Sharing a worktree happens
-  only when Gabe explicitly requests it.
-- **A review or test of work in flight targets that branch, in its own
-  worktree of it.** Not the main checkout, and not the worktree the effort
-  agent is writing in. If the branch has no second worktree, create one.
-- **Agents are named by CLASS and TARGET at spawn** — `effort: GIT_118`,
-  `review: GIT_87`, `test: uat`, `rule-intake: agent topology`. The harness
-  refers to a running agent only by an opaque id (`a147f359d45f0a51e`), so
-  without the convention the class of a live agent is invisible and the
-  serial-per-class rule cannot be followed at a glance.
-- **All work happens in a worktree; the main checkout is not a work surface.**
-  Adopted 2026-08-29. Verbatim: "all work happens in worktrees, mocks must be
-  there too". An agent given work gets a worktree of the branch that work lands
-  on, created if the branch has none — even when it is the only agent alive and
-  nothing would collide. The main checkout keeps the same three jobs the main
-  agent holds: conversation, adjudication, relay. This does not contradict the
-  rules above, it closes their silence: they say WHICH worktree an agent may
-  have (one agent each; a review or test in its own), and never said an agent
-  must have one at all. Git counts the main checkout as a worktree, so read the
-  rule by its subject, not its noun — the falsifying check is
-  `git rev-parse --git-dir` in the checkout an agent wrote in, which reads
-  `.git/worktrees/<name>` in a linked worktree and a bare `.git` in the main
-  one. The silence was acted on twice on 2026-08-29, which is what prompted the
-  ruling: `rule-intake: mock teardown` was dispatched to the main checkout and
-  committed `7c3ee6d` there, and the UAT mock (port 8975) plus a vite dev
-  server (port 5173) were started from it.
-- **A mock belongs to the worktree of the work it serves.** "mocks must be
-  there too": a mock stood up for a piece of work runs FROM that work's
-  worktree — never from the main checkout, never shared between worktrees — so
-  what it serves is the branch under test rather than whatever main happens to
-  hold. Treat this as a PARTIAL mechanism for the teardown rule in § Working
-  rules (development environment), not a guarantee: binding the mock to a
-  worktree gives the process a visible owner and an obvious end, but removing a
-  worktree does NOT kill a process started from it, so teardown stays a
-  discipline that must be performed and confirmed by port state.
+> SUPERSEDED (2026-09-02): see machinery plugin rules/agent-topology.md § What gets dispatched, § How many at once and § Where an agent works, plus machinery plugin rules/worktree-discipline.md. The two bullets with project-specific residue are .claude/rules/uat-and-mock.md § The test agent class (this project's fourth agent kind) and § Proving a change against something that behaves like the machine (a mock runs from the worktree of the work it serves)

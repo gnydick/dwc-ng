@@ -21,7 +21,7 @@ and invariant claim mentions 13 -> 23, so no mechanism was deleted and no
 claim was lost in the gap. From here the ratchets make a dropped rung visible
 in the diff that drops it.
 
-**Totals:** 184 invariants · 157 at rung 6 or above · 27 below rung 6 (ceiling 27).
+**Totals:** 188 invariants · 161 at rung 6 or above · 27 below rung 6 (ceiling 27).
 
 ## bed
 
@@ -973,6 +973,30 @@ in the diff that drops it.
 
 ## mock-duet
 
+### `mock-duet/a-listing-without-the-prober-in-it-is-not-a-reading` — rung 6
+
+**Mechanism.** choke point — {@link probeProcesses} has ONE exit and it is this call, so a listing that cannot see the prober has no route to becoming a reading. The platform helpers return a raw map and cannot bless it. Collapsed to one exit in GIT_212 after review, which had it calling the guard at two return sites. A source fence in test/pidfile-verdict.test.ts checks the exit stays guarded, and it is NOT redundant with the structure: measured 2026-09-17, swapping that one call for `okProbe` leaves every behavioural test passing, because a real listing on this machine contains this process either way. Still not rung 7 — `okProbe` is exported and generic, so another module could mint a listing without coming through here, and nothing in the type prevents it. Promote by giving the listing a type whose sole constructor is this check
+
+**Why.** GIT_212. PowerShell exiting 0 with empty stdout parses to `[]`, which the old code blessed as a successful reading meaning "this machine has no processes at all". `identify` then answers `gone` for every entry and `stopEntry` DELETES a live mock's pidfile as stale — nothing is killed, but the registration is lost and the operator is told it was stale. The fact used here is not about emptiness: this process is necessarily alive while it probes, so any listing without it is untrustworthy whatever its size. The LISTENER probe gets no counterpart, and the reason is worth stating exactly, because "the trick does not apply" is not the same as "there is no hole". An empty listener table is a true and ordinary state, and the prober holds no socket to look for, so there is no self to anchor on. The harm is not absent either: a falsely-empty listener reading makes `identify` answer `reused` ("nothing is" listening), and `stopEntry` forgets a `reused` entry as well — the same lost registration by a different arm. What closes it today is a coincidence of the tools, not a mechanism: both `Get-NetTCPConnection` and `lsof` exit non-zero when nothing matches, so an empty result arrives as a thrown probe failure rather than as an empty reading. Measured 2026-09-17 on Windows. If a tool ever changes that, this hole opens with nothing guarding it
+
+`packages/mock-duet/src/pidfile.ts:357`
+
+### `mock-duet/a-port-is-owned-by-its-listener-not-by-a-filename` — rung 6
+
+**Mechanism.** choke point — this is the only place that decides which registry entry owns a port, and it cannot reach an entry except through the listener set: the `listening` arm is constructed solely from `claimants.find(e => holders.includes(e.pid))`, so an entry that is not on the socket has no route into it. The step this row used to call its promotion — the status renderer taking a PortSlot rather than the raw entries — landed in GIT_218 and is declared on {@link slotLines}, but it did NOT promote either row: the renderer not taking entries says nothing about what `cmdStatus` can print beside it. Both stay at 6 for the same reason — `cmdStatus` holds `entries`, `snap` and `console.log` in scope — and both reach 7 only when nothing in that function can name an entry except through a slot
+
+**Why.** one process holds a listening socket, but any number of pidfiles may name that port — a hard kill leaves its file behind by design, and the registry is shared across worktrees. Selecting by registry order names whichever worktree sorts first: on 2026-09-17 `status` called a running UAT stack "process gone" and attributed it to a worktree that had not run in weeks. The reverse costs more than a wrong label — a live process named in the wrong worktree invites tearing down someone else's stack
+
+`packages/mock-duet/src/portSlot.ts:79`
+
+### `mock-duet/a-reading-that-failed-is-never-used-as-a-reading` — rung 7
+
+**Mechanism.** discriminated union — the failure arm has no `data` field at all, so reaching a reading without first handling its absence is a compile error, not a silent `undefined`. Introducing it named all five existing call sites (`identify` twice, `confirmedGone`, `stopLiveMock`, `mockctl`), which is the mechanism working: the old `T | null` let `snap.procs?.has(pid)` read "absent" out of "could not look" with no diagnostic. The SORT of failure (`unsupported` vs `failed`) is a runtime reading of the thrown error's `code` and sits at rung 3, covered by test/pidfile-verdict.test.ts — a probe that throws something new would be classified `failed`, which is the safe direction: it refuses and says so, rather than claiming the platform cannot answer
+
+**Why.** GIT_210. `probeProcesses` and `probeListeners` each swallowed every failure into one `null` that `identify` reported as "cannot enumerate processes on this platform" — on Windows, which enumerates them fine. Three kill-guard tests failed once with that verdict and the run could not say why, because the error had been discarded by a bare `catch`. A transient failure and an unaskable platform are different facts: only one of them means something is wrong, and only one is worth asking again
+
+`packages/mock-duet/src/pidfile.ts:308`
+
 ### `mock-duet/a-ticket-port-can-never-be-the-uat-port` — rung 6
 
 **Mechanism.** choke point — this is the only function that turns a ticket number into a port, `mockctl start` calls nothing else to derive one, and it throws on the single input (970) whose arithmetic would land on the reserved slot. The number is never returned and then checked; there is no value to check
@@ -1053,7 +1077,7 @@ in the diff that drops it.
 
 **Why.** PIDs recycle, and the ruled pidfile format (name = pid, content = port) has no start time to disambiguate with. A `stop` that dereferenced a PID out of a file and killed it would eventually terminate a stranger's process on this machine. The three factors make that require a mock-duet, listening on exactly the recorded port, that started before the file naming it was written — and a recycled PID's process starts after the original died, hence after that write
 
-`packages/mock-duet/src/pidfile.ts:528`
+`packages/mock-duet/src/pidfile.ts:709`
 
 ### `mock-duet/one-parameter-reader` — rung 6
 
@@ -1073,7 +1097,7 @@ in the diff that drops it.
 
 **Debt — promotion.** rung 7 would make the resolved port a branded `BoundPort` mintable only by the bind, so even a future function inside this module could not write a port it had not watched a socket accept. Today the barrier stops at the module edge
 
-`packages/mock-duet/src/pidfile.ts:713`
+`packages/mock-duet/src/pidfile.ts:894`
 
 ### `mock-duet/shaping-has-one-home` — rung 6
 
@@ -1092,6 +1116,14 @@ in the diff that drops it.
 **Why.** a second hand-rolled framer is how a mock stops being a faithful stand-in for the board: the connector under test would be exercised against two slightly different dialects and pass both. Strict on purpose — fragmentation, RSV bits, unmasked client frames, binary and oversized frames each die with a NAMED close code, so a connector bug surfaces as a diagnosis rather than a hang
 
 `packages/mock-duet/src/ws.ts:4`
+
+### `mock-duet/the-uat-line-is-rendered-from-a-slot-never-from-the-entries` — rung 6
+
+**Mechanism.** choke point — the only function that turns a slot into lines, and it does not take `PidEntry[]` at all, so it cannot reach the registry even by accident. NOT rung 7, and the first draft of this row said 7 wrongly: `cmdStatus` still holds `entries`, `snap` and `console.log` in scope, so a second line printed beside this call compiles and ships. That is the same residual bypass that caps `slotFor`, and both rows reach 7 only when nothing in `cmdStatus` can name an entry except through a slot. What the compiler DOES enforce unaided is narrower: a new `PortSlot` arm fails to compile here — measured 2026-09-17, TS2366 under TypeScript strict mode — but that rests on the declared return type rather than an explicit never arm, so inferring the return type or adding a default arm would remove it silently
+
+**Why.** the line answers "is the UAT stack up?", and both of its failure modes cost real work: naming a dead worktree sends someone to restart a stack that is already serving, and naming a live process in the WRONG worktree invites tearing down someone else's. Rendering from the raw entries is how the first one happened (GIT_216); an arm with nowhere to put its claimants is how the second stayed invisible (GIT_218). Neither is prevented by construction — what this buys is one place to look
+
+`packages/mock-duet/src/portSlot.ts:141`
 
 ## om
 

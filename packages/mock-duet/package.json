@@ -8,7 +8,8 @@
     "start": "node --title=mock-duet src/cli.ts",
     "dev": "node --title=mock-duet --watch src/cli.ts",
     "ctl": "node src/mockctl.ts",
-    "test": "node --test",
+    "test": "node --test \"test/*.test.ts\"",
+    "test:slow": "node --test \"test/slow/*.test.ts\"",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
