@@ -20,6 +20,7 @@ import { spawn, execFileSync, type ChildProcess } from "node:child_process";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
+import { PassThrough } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { resolveDialect, ContradictoryDialectError } from "../src/dialect.ts";
 
@@ -59,7 +60,14 @@ async function startCli(args: string[]): Promise<{ base: string; banner: string 
 	return awaitBanner(child);
 }
 
-/** Read a started CLI's banner off its output, and the base URL from it. */
+/**
+ * Read a started CLI's banner off its output, and the base URL from it.
+ *
+ * Returns only once the banner holds both lines these tests read: the
+ * listening URL and a whole `dialects:` line. The CLI writes them separately,
+ * so a pipe can deliver them in separate chunks. Every start prints exactly
+ * one `dialects:` line, whichever dialect it serves.
+ */
 async function awaitBanner(
 	child: Pick<ChildProcess, "stdout" | "stderr" | "exitCode">,
 	timeoutMs = 60_000,
@@ -72,11 +80,11 @@ async function awaitBanner(
 	const deadline = Date.now() + timeoutMs;
 	while (Date.now() < deadline) {
 		const m = /listening on (http:\/\/127\.0\.0\.1:\d+)/.exec(out);
-		if (m !== null) return { base: m[1] as string, banner: out };
+		if (m !== null && /^dialects: .*\n/m.test(out)) return { base: m[1] as string, banner: out };
 		if (child.exitCode !== null) break;
 		await new Promise(r => setTimeout(r, 50));
 	}
-	throw new Error(`cli did not report a listening port.\nstdout:\n${out}\nstderr:\n${err}`);
+	throw new Error(`cli did not print its banner (a listening port and a dialects line).\nstdout:\n${out}\nstderr:\n${err}`);
 }
 
 /**
@@ -149,6 +157,29 @@ describe("resolveDialect", () => {
 
 	test("the contradictory pair is REFUSED, never resolved by argument order", () => {
 		assert.throws(() => resolveDialect({ dsf: true, standalone: true }), ContradictoryDialectError);
+	});
+});
+
+// --------------------------------------------------------------------------
+// reading the banner
+// --------------------------------------------------------------------------
+
+describe("awaitBanner", () => {
+	// The CLI prints its banner as separate console.log writes (cli.ts, from the
+	// "listening on" line to the "dialects:" line). On Windows a pipe hands those
+	// to the reader as separate chunks, and under a full parallel `pnpm test` the
+	// "dialects:" line arrived after the read had already returned: `banner` held
+	// only the listening line, and the DSF test failed twice running on 2026-09-23.
+	// A fake child replays that order deterministically, with the rest 200 ms late.
+	test("a dialects line arriving in a later chunk is still in the banner", async () => {
+		const stdout = new PassThrough();
+		const stderr = new PassThrough();
+		const read = awaitBanner({ stdout, stderr, exitCode: null } as unknown as ChildProcess, 5_000);
+		stdout.write("mock-duet listening on http://127.0.0.1:1234 [GIT_x]  pid 1\n");
+		setTimeout(() => stdout.write("pidfile: p\nscenario: idle\ndialects: rr_ + DSF (default) — REST http://127.0.0.1:1234/machine/*\n"), 200);
+		const { base, banner } = await read;
+		assert.equal(base, "http://127.0.0.1:1234");
+		assert.match(banner, /dialects: rr_ \+ DSF/);
 	});
 });
 
