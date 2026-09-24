@@ -56,12 +56,20 @@ async function startCli(args: string[]): Promise<{ base: string; banner: string 
 		stdio: ["ignore", "pipe", "pipe"],
 	});
 	spawned.push(child);
+	return awaitBanner(child);
+}
+
+/** Read a started CLI's banner off its output, and the base URL from it. */
+async function awaitBanner(
+	child: Pick<ChildProcess, "stdout" | "stderr" | "exitCode">,
+	timeoutMs = 60_000,
+): Promise<{ base: string; banner: string }> {
 	let out = "";
 	let err = "";
 	child.stdout?.on("data", d => (out += String(d)));
 	child.stderr?.on("data", d => (err += String(d)));
 
-	const deadline = Date.now() + 60_000;
+	const deadline = Date.now() + timeoutMs;
 	while (Date.now() < deadline) {
 		const m = /listening on (http:\/\/127\.0\.0\.1:\d+)/.exec(out);
 		if (m !== null) return { base: m[1] as string, banner: out };
