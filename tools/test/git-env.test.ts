@@ -77,14 +77,23 @@ test("INVERSE CONTROL: the same probe spawned raw does damage the repository, so
 // The hooks run whatever `tiers.fast` and `tiers.merge` say, with the hook's environment. So the
 // protection holds only while each of them is a tools/ runner, and each runner can start a process
 // only through the helper. This is the tripwire for either one drifting.
+//
+// A runner's whole reach is its imports, so they are an allowlist, not a denylist of spawners:
+// nothing that can start a process (child_process, worker_threads, a second local module that
+// might) and no run-time loading, whose specifier a text scan cannot see. A runner that needs
+// another module widens this list in the same change, where a reviewer sees it.
 const RUNNER = /^node tools\/([\w-]+\.mjs)(?:\s|$)/;
-const CHILD_PROCESS = /\bfrom\s+['"](?:node:)?child_process['"]|\brequire\(\s*['"](?:node:)?child_process['"]\s*\)|\bimport\(\s*['"](?:node:)?child_process['"]\s*\)/;
-const HELPER = /\bfrom\s+['"]\.\/git-env\.mjs['"]/;
+const RUNNER_IMPORTS = new Set(["node:fs", "node:path", "node:url", "./git-env.mjs"]);
+const STATIC_IMPORT = /^\s*(?:import|export)\s+(?:[^'";]*?\s+from\s+)?['"]([^'"]+)['"]/gm;
+const RUNTIME_LOAD = /\bimport\s*\(|\brequire\s*\(|\bcreateRequire\b|\bprocess\s*\.\s*(?:binding|dlopen)\b/;
 
 // Why a runner's source could let a hook's GIT_* variables through, or null when it cannot.
 function leak(source: string): string | null {
-	if (CHILD_PROCESS.test(source)) return "imports child_process directly";
-	if (!HELPER.test(source)) return "does not import ./git-env.mjs";
+	if (RUNTIME_LOAD.test(source)) return "loads code dynamically";
+	const imports = [...source.matchAll(STATIC_IMPORT)].map((m) => m[1] as string);
+	const stray = imports.find((spec) => !RUNNER_IMPORTS.has(spec));
+	if (stray !== undefined) return `imports ${stray}`;
+	if (!imports.includes("./git-env.mjs")) return "does not import ./git-env.mjs";
 	return null;
 }
 
@@ -101,12 +110,24 @@ test("both tier commands the hooks run are tools/ runners that start processes o
 
 test("POSITIVE CONTROL: the scan still flags every way a runner could spawn around the helper", () => {
 	const helper = "import { spawnWithoutGitEnv } from './git-env.mjs';\n";
-	assert.equal(leak(helper + "import { spawnSync } from 'node:child_process';"), "imports child_process directly");
-	assert.equal(leak(helper + 'import cp from "child_process";'), "imports child_process directly");
-	assert.equal(leak(helper + "const cp = require('child_process');"), "imports child_process directly");
-	assert.equal(leak(helper + "const cp = await import('node:child_process');"), "imports child_process directly");
-	assert.equal(leak("console.log('no spawn at all');"), "does not import ./git-env.mjs");
-	assert.equal(leak(helper + "spawnWithoutGitEnv('node', ['--test']);"), null);
+	// child_process itself, however it is spelled or laid out.
+	assert.equal(leak(helper + "import { spawnSync } from 'node:child_process';"), "imports node:child_process");
+	assert.equal(leak(helper + 'import cp from "child_process";'), "imports child_process");
+	assert.equal(leak(helper + "import {\n\tspawnSync,\n} from 'node:child_process';"), "imports node:child_process");
+	// Anything loaded at run time, where the specifier is invisible to a text scan.
+	assert.equal(leak(helper + "const cp = require('child_process');"), "loads code dynamically");
+	assert.equal(leak(helper + "const cp = await import('node:child_process');"), "loads code dynamically");
+	assert.equal(leak(helper + "const cp = await import('child_' + 'process');"), "loads code dynamically");
+	assert.equal(leak(helper + "import { createRequire } from 'node:module';\ncreateRequire(import.meta.url)('child_process');"), "loads code dynamically");
+	// A second module that could do the spawning, or another way to start a process.
+	assert.equal(leak(helper + "import { run } from './other.mjs';"), "imports ./other.mjs");
+	assert.equal(leak(helper + "export { run } from './other.mjs';"), "imports ./other.mjs");
+	assert.equal(leak(helper + "import { Worker } from 'node:worker_threads';"), "imports node:worker_threads");
+	assert.equal(leak(helper + "import { execa } from 'execa';"), "imports execa");
+	// No helper at all.
+	assert.equal(leak("import path from 'node:path';"), "does not import ./git-env.mjs");
+	// And a runner shaped like the real ones passes.
+	assert.equal(leak(helper + "import path from 'node:path';\nimport { fileURLToPath } from 'node:url';\nconst here = fileURLToPath(import.meta.url);\nspawnWithoutGitEnv('node', ['--test']);"), null);
 	assert.ok(RUNNER.test("node tools/tier-fast.mjs <components>"));
 	assert.ok(!RUNNER.test("pnpm test && pnpm build"));
 });
